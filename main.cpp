@@ -26,9 +26,9 @@ public:
 		acceptor_.bind(endpoint);
 		acceptor_.listen();
 
-		acceptor_.async_accept(handler->socket(), [=](auto ec)
-		{
-			handle_new_connection(handler, ec);
+        acceptor_.async_accept(handler->socket(), [=](auto error)
+        {
+			this->handle_new_connection(handler, error);
 		});
 
 		for (auto i = 0; i < thread_count; ++i)
@@ -37,10 +37,8 @@ public:
 		}
 	}
 
-
-
 private:
-	void handle_new_connection(shared_handler_t handler, boost::system::error_code const error)
+    void handle_new_connection(shared_handler_t handler, const boost::system::error_code error)
 	{
 		if (error) { return; }
 
@@ -48,13 +46,13 @@ private:
 
 		auto new_handler = std::make_shared<connection_handler_t>(io_service);
 
-		acceptor_.async_accept(new_handler->socket(), [=](auto ec)
+		acceptor_.async_accept(new_handler->socket(), [=](auto error)
 		{
-			handle_new_connection(new_handler, ec);
+			this->handle_new_connection(new_handler, error);
 		});
 	}
-
-	int thread_count;
+	
+    int thread_count;
 	std::vector<std::thread> thread_pool;
 	boost::asio::io_service io_service;
 	boost::asio::ip::tcp::acceptor acceptor_;
