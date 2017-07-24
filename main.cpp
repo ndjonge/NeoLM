@@ -8,7 +8,7 @@
 template <typename connection_handler_t>
 class asio_generic_server
 {
-	using shared_handler_t = std::shared_ptr<ConnectionHandler>;
+	using shared_handler_t = std::shared_ptr<connection_handler_t>;
 
 public:
 	asio_generic_server(int thread_count = 1) : thread_count(thread_count), acceptor_(io_service)
@@ -46,7 +46,7 @@ private:
 
 		handler->start();
 
-		auto new_handler = std::make_shared<ConnectionHandler>(io_service);
+		auto new_handler = std::make_shared<connection_handler_t>(io_service);
 
 		acceptor_.async_accept(new_handler->socket(), [=](auto ec)
 		{
