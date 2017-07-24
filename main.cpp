@@ -26,7 +26,7 @@ public:
 		acceptor_.bind(endpoint);
 		acceptor_.listen();
 
-		acceptor_.async_accept(handler->socket(), [=](auto ec)
+		acceptor_.async_accept(handler->socket(), [&](auto ec)
 		{
 			handle_new_connection(handler, ec);
 		});
