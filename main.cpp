@@ -5,7 +5,7 @@
 #include <thread>
 #include <deque>
 
-template <typename ConnectionHandler>
+template <typename connection_handler_t>
 class asio_generic_server
 {
 	using shared_handler_t = std::shared_ptr<ConnectionHandler>;
@@ -15,11 +15,9 @@ public:
 	{
 	}
 
-
-
 	void start_server(uint16_t port)
 	{
-		auto handler = std::make_shared<ConnectionHandler>(io_service);
+		auto handler = std::make_shared<connection_handler_t>(io_service);
 
 		boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::tcp::v4(), port);
 		acceptor_.open(endpoint.protocol());
