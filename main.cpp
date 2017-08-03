@@ -1,4 +1,3 @@
-#include <boost/asio.hpp>
 #include <memory>
 #include <chrono>
 #include <iostream>
@@ -6,6 +5,9 @@
 
 #include <thread>
 #include <deque>
+
+#include <boost/asio/ssl.hpp>
+#include <boost/asio.hpp>
 
 namespace http
 {
@@ -781,7 +783,116 @@ namespace http
 		}
 	};
 
+	class ssl_client_connection_handler : public std::enable_shared_from_this<http::ssl_client_connection_handler>
+	{
+		using ssl_socket_t = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>;
+	public:
+		ssl_client_connection_handler(boost::asio::io_service& service, boost::asio::ssl::context& ssl_context) : service_(service), ssl_socket_(service, ssl_context), write_strand_(service), request_handler_("C:\\temp")
+		{
+		}
 
+		http::ssl_client_connection_handler(http::ssl_client_connection_handler const &) = delete;
+		void operator==(http::ssl_client_connection_handler const &) = delete;
+		~ssl_client_connection_handler() = default;
+
+		ssl_socket_t::lowest_layer_type& socket()
+		{
+			return ssl_socket_.lowest_layer();
+		}
+
+		void start()
+		{
+			do_read();
+		}
+
+		void do_read()
+		{
+			boost::asio::async_read_until(ssl_socket_, in_packet_, '\n',
+				[me = shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer)
+			{
+				me->do_read_done(ec, bytes_xfer);
+			});
+		}
+
+		void do_read_done(boost::system::error_code const& ec, std::size_t bytes_transferred)
+		{
+			if (!ec)
+			{
+				http::request_parser::result_type result;
+
+				std::tie(result, std::ignore) = request_parser_.parse(request_, boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_begin(in_packet_.data()) + bytes_transferred);
+
+				in_packet_.consume(bytes_transferred);
+
+
+				if (result == http::request_parser::good)
+				{
+					request_handler_.handle_request(request_, reply_);
+
+					do_write();
+				}
+				else if (result == http::request_parser::bad)
+				{
+					reply_ = http::reply::stock_reply(http::reply::bad_request);
+					do_write();
+				}
+				else
+				{
+					do_read();
+				}
+			}
+			else if (ec != boost::asio::error::operation_aborted)
+			{
+				//connection_manager_.stop(shared_from_this());
+			}
+
+		}
+
+		void do_write()
+		{
+			boost::asio::async_write(ssl_socket_, reply_.to_buffers(), write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
+			{
+				if (ec != boost::asio::error::operation_aborted)
+				{
+					me->do_write_done(ec);
+				}
+			}));
+		}
+
+		void do_write_done(boost::system::error_code const & error)
+		{
+			if (!error)
+			{
+				/*			send_packet_queue_.pop_front();
+				if (!send_packet_queue_.empty()) { this->start_packet_send(); }*/
+			}
+		}
+
+	private:
+		boost::asio::io_service& service_;
+//		boost::asio::ip::tcp::socket socket_;
+
+		boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_socket_;
+
+		boost::asio::io_service::strand write_strand_;
+		boost::asio::streambuf in_packet_;
+
+		/// The handler used to process the incoming request.
+		http::request_handler request_handler_;
+
+		/// Buffer for incoming data.
+		std::array<char, 8192> buffer_;
+
+		/// The incoming request.
+		http::request request_;
+
+		/// The parser for the incoming request.
+		http::request_parser request_parser_;
+
+		/// The reply to be sent back to the client.
+		http::reply reply_;
+
+	};
 
 	class client_connection_handler : public std::enable_shared_from_this<http::client_connection_handler>
 	{
@@ -818,13 +929,6 @@ namespace http
 			if (!ec)
 			{
 				http::request_parser::result_type result;
-
-/*				strncpy(&buffer_[0], &boost::asio::buffers_begin(in_packet_.data())[0], bytes_transferred);
-				buffer_[bytes_transferred] = '\0';
-
-				std::cout << "[read]\t\t:";
-				std::cout << buffer_.data() << "\n";
-*/
 
 				std::tie(result, std::ignore) = request_parser_.parse(request_, boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_begin(in_packet_.data())+ bytes_transferred);
 
@@ -877,6 +981,7 @@ namespace http
 	private:
 		boost::asio::io_service& service_;
 		boost::asio::ip::tcp::socket socket_;
+
 		boost::asio::io_service::strand write_strand_;
 		boost::asio::streambuf in_packet_;
 
@@ -901,30 +1006,45 @@ namespace http
 
 
 
-	template <typename client_connection_handler> class server
+	template <typename client_connection_handler_t, typename ssl_connection_handler_t> class server
 	{
 		using shared_client_connection_handler_t = std::shared_ptr<http::client_connection_handler>;
+		using shared_https_client_connection_handler_t = std::shared_ptr<http::ssl_client_connection_handler>;
 
 	public:
-		server(int thread_count = 10) : thread_count(thread_count), acceptor_(io_service)
+		server(int thread_count = 10) : thread_count(thread_count), acceptor_(io_service), ssl_context(io_service, boost::asio::ssl::context::sslv23)
 		{
 		}
 
-		void start_server(uint16_t port)
+		void start_server()
 		{
-			auto handler = std::make_shared<http::client_connection_handler>(io_service);
+			auto http_handler = std::make_shared<http::client_connection_handler>(io_service);
+			auto https_handler = std::make_shared<http::ssl_client_connection_handler>(io_service, ssl_context);
 
-			boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::tcp::v4(), port);
-			acceptor_.open(endpoint.protocol());
+			boost::asio::ip::tcp::endpoint http_endpoint(boost::asio::ip::tcp::v4(),  60005);
+			boost::asio::ip::tcp::endpoint https_endpoint(boost::asio::ip::tcp::v4(), 60006);
+
+
+			acceptor_.open(http_endpoint.protocol());
+			acceptor_.open(https_endpoint.protocol());
 
 			acceptor_.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
-			acceptor_.bind(endpoint);
+
+			acceptor_.bind(http_endpoint);
+			acceptor_.bind(https_endpoint);
+
 			acceptor_.listen();
 
-			acceptor_.async_accept(handler->socket(), [this, handler](auto error)
+			acceptor_.async_accept(http_handler->socket(), [this, http_handler](auto error)
 			{
-				this->handle_new_connection(handler, error);
+				this->handle_new_connection(http_handler, error);
 			});
+
+			acceptor_.async_accept(https_handler->socket(), [this, https_handler](auto error)
+			{
+				this->handle_new_https_connection(https_handler, error);
+			});
+
 
 			for (auto i = 0; i < thread_count; ++i)
 			{
@@ -955,11 +1075,26 @@ namespace http
 			});
 		}
 
+		void handle_new_https_connection(shared_https_client_connection_handler_t handler, const boost::system::error_code error)
+		{
+			if (error) { return; }
+
+			handler->start();
+
+			auto new_handler = std::make_shared<http::ssl_client_connection_handler>(io_service, ssl_context);
+
+			acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error)
+			{
+				this->handle_new_https_connection(new_handler, error);
+			});
+		}
+
 		int thread_count;
 		std::vector<std::thread> thread_pool;
 
 		boost::asio::io_service io_service;
 		boost::asio::ip::tcp::acceptor acceptor_;
+		boost::asio::ssl::context ssl_context;
 	};
 
 }
@@ -968,9 +1103,9 @@ namespace http
 int main(int argc, char* argv[])
 {
 
-	http::server<http::client_connection_handler> server;
+	http::server<http::client_connection_handler, http::ssl_client_connection_handler> server;
 
-	server.start_server(60005);
+	server.start_server();
 
 	return 0;
 }
