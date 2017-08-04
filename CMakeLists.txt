@@ -5,11 +5,11 @@ project (${PROJECT_NAME})
 
 
 IF (WIN32)
-set (BOOST_ROOT "C:\\boost_1_64_0")
-set (BOOST_LIBRARYDIR "C:\\boost_1_64_0\\lib64-msvc-14.1")
-set (OPENSSL_ROOT_DIR C:\\ssl)
-link_directories("C:\\boost_1_64_0\\lib64-msvc-14.1")
-add_definitions(-DWINVER=0x502
+	set (BOOST_ROOT "C:\\Development Libraries\\boost_1_64_0")
+	set (BOOST_LIBRARYDIR "C:\\Development Libraries\\boost_1_64_0\\lib64-msvc-14.1")
+	set (OPENSSL_ROOT_DIR "C:\\Development Libraries\\openssl-bld-lib\\")
+	link_directories("C:\\Development Libraries\\boost_1_64_0\\lib64-msvc-14.1")
+	add_definitions(-DWINVER=0x502
                     -D_WIN32_WINNT=0x502
                     -D_WIN32_WINDOWS=0x502
                     -D_SETUPAPI_VER=0x502)

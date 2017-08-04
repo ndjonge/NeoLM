@@ -802,15 +802,31 @@ namespace http
 
 		void start()
 		{
-			do_read();
+			ssl_socket_.lowest_layer().set_option(boost::asio::ip::tcp::no_delay(true));
+
+			ssl_socket_.async_handshake(boost::asio::ssl::stream_base::server, [me = shared_from_this()](boost::system::error_code const& ec)
+			{
+				if (ec)
+				{
+					std::cout << ec.message() << std::endl;
+				}
+				else
+				{
+					me->do_read();
+				}
+			});
 		}
 
 		void do_read()
 		{
-			boost::asio::async_read_until(ssl_socket_, in_packet_, '\n',
+			boost::asio::async_read_until(ssl_socket_, in_packet_, "\r\n\r\n",
 				[me = shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer)
 			{
-				me->do_read_done(ec, bytes_xfer);
+				//if (ec)
+				//{
+				//	std::cout << ec.message() << std::endl;
+					me->do_read_done(ec, bytes_xfer);
+				//}
 			});
 		}
 
@@ -1012,35 +1028,46 @@ namespace http
 		using shared_https_client_connection_handler_t = std::shared_ptr<http::ssl_client_connection_handler>;
 
 	public:
-		server(int thread_count = 10) : thread_count(thread_count), acceptor_(io_service), ssl_context(io_service, boost::asio::ssl::context::sslv23)
+		server(const std::string &cert_file, const std::string &private_key_file, const std::string &verify_file = std::string(), int thread_count = 10) : thread_count(thread_count), acceptor_(io_service), ssl_acceptor_(io_service), ssl_context(io_service, boost::asio::ssl::context::tlsv12)
 		{
+			ssl_context.use_certificate_chain_file(cert_file);
+			ssl_context.use_private_key_file(private_key_file, boost::asio::ssl::context::pem);
+
+			if (verify_file.size() > 0) {
+				ssl_context.load_verify_file(verify_file);
+				ssl_context.set_verify_mode(boost::asio::ssl::verify_peer | boost::asio::ssl::verify_fail_if_no_peer_cert | boost::asio::ssl::verify_client_once);
+				//set_session_id_context = true;
+			}
 		}
 
 		void start_server()
 		{
+
+
+
 			auto http_handler = std::make_shared<http::client_connection_handler>(io_service);
 			auto https_handler = std::make_shared<http::ssl_client_connection_handler>(io_service, ssl_context);
 
 			boost::asio::ip::tcp::endpoint http_endpoint(boost::asio::ip::tcp::v4(),  60005);
 			boost::asio::ip::tcp::endpoint https_endpoint(boost::asio::ip::tcp::v4(), 60006);
 
-
 			acceptor_.open(http_endpoint.protocol());
-			acceptor_.open(https_endpoint.protocol());
+			ssl_acceptor_.open(https_endpoint.protocol());
 
 			acceptor_.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
 
 			acceptor_.bind(http_endpoint);
-			acceptor_.bind(https_endpoint);
+			ssl_acceptor_.bind(https_endpoint);
 
 			acceptor_.listen();
+			ssl_acceptor_.listen();
 
 			acceptor_.async_accept(http_handler->socket(), [this, http_handler](auto error)
 			{
 				this->handle_new_connection(http_handler, error);
 			});
 
-			acceptor_.async_accept(https_handler->socket(), [this, https_handler](auto error)
+			ssl_acceptor_.async_accept(https_handler->socket(), [this, https_handler](auto error)
 			{
 				this->handle_new_https_connection(https_handler, error);
 			});
@@ -1083,7 +1110,7 @@ namespace http
 
 			auto new_handler = std::make_shared<http::ssl_client_connection_handler>(io_service, ssl_context);
 
-			acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error)
+			ssl_acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error)
 			{
 				this->handle_new_https_connection(new_handler, error);
 			});
@@ -1094,6 +1121,8 @@ namespace http
 
 		boost::asio::io_service io_service;
 		boost::asio::ip::tcp::acceptor acceptor_;
+		boost::asio::ip::tcp::acceptor ssl_acceptor_;
+
 		boost::asio::ssl::context ssl_context;
 	};
 
@@ -1103,7 +1132,7 @@ namespace http
 int main(int argc, char* argv[])
 {
 
-	http::server<http::client_connection_handler, http::ssl_client_connection_handler> server;
+	http::server<http::client_connection_handler, http::ssl_client_connection_handler> server("C:\\Development Libraries\\ssl.crt", "C:\\Development Libraries\\ssl.key");
 
 	server.start_server();
 
