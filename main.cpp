@@ -802,7 +802,13 @@ namespace http
 
 		http::ssl_client_connection_handler(http::ssl_client_connection_handler const &) = delete;
 		void operator==(http::ssl_client_connection_handler const &) = delete;
-		~ssl_client_connection_handler() = default;
+		~ssl_client_connection_handler()
+		{
+			std::string s = socket().remote_endpoint().address().to_string();
+
+			std::cout << "done with connection from: " << s << "\n";
+		}
+			
 
 		ssl_socket_t::lowest_layer_type& socket()
 		{
@@ -811,8 +817,6 @@ namespace http
 
 		void start()
 		{
-			ssl_socket_.lowest_layer().set_option(boost::asio::ip::tcp::no_delay(true));
-
 			ssl_socket_.async_handshake(boost::asio::ssl::stream_base::server, [me = shared_from_this()](boost::system::error_code const& ec)
 			{
 				if (ec)
@@ -828,6 +832,7 @@ namespace http
 
 		void do_read()
 		{
+
 			boost::asio::async_read_until(ssl_socket_, in_packet_, "\r\n\r\n",
 				[me = shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer)
 			{
@@ -927,7 +932,12 @@ namespace http
 
 		http::client_connection_handler(http::client_connection_handler const &) = delete;
 		void operator==(http::client_connection_handler const &) = delete;
-		~client_connection_handler() = default;
+		~client_connection_handler() 
+		{
+			std::string s = socket().remote_endpoint().address().to_string();
+			std::cout << "done with connection from: " << s << "\n";
+		}
+		
 
 		boost::asio::ip::tcp::socket& socket()
 		{
@@ -936,6 +946,10 @@ namespace http
 
 		void start()
 		{
+			std::string s = socket().remote_endpoint().address().to_string();
+
+			std::cout << "connection from: " << s << "\n";
+
 			do_read();
 		}
 
@@ -1072,11 +1086,13 @@ namespace http
 
 			acceptor_.async_accept(http_handler->socket(), [this, http_handler](auto error)
 			{
+				std::cout << "start with non-ssl-connection from: " << http_handler->socket().remote_endpoint().address().to_string() << "\n";
 				this->handle_new_connection(http_handler, error);
 			});
 
 			ssl_acceptor_.async_accept(https_handler->socket(), [this, https_handler](auto error)
 			{
+				std::cout << "start with ssl-connection from: " << https_handler->socket().remote_endpoint().address().to_string() << "\n";
 				this->handle_new_https_connection(https_handler, error);
 			});
 
