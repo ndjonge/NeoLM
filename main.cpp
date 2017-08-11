@@ -135,6 +135,18 @@ namespace http
 	class request
 	{
 	public:
+
+		void reset()
+		{
+			method.clear();
+			uri.clear();
+			headers.clear();
+
+			http_version_major = 0;
+			http_version_minor = 0;
+
+		}
+
 		std::string method;
 		std::string uri;
 		int http_version_major;
@@ -520,6 +532,11 @@ namespace http
 			service_unavailable = 503
 		} status;
 
+		void reset()
+		{
+			headers.clear();
+			content.clear();
+		}
 
 
 		/// Convert the reply into a vector of buffers. The buffers do not own the
@@ -679,6 +696,15 @@ namespace http
 		}
 	} // namespace mime_types
 
+	class session
+	{
+		public:
+			session(int keepalive_count, int other_stuff) : keepalive_count(keepalive_count), keepalive_max(keepalive_max) {};
+			int keepalive_count;
+			int keepalive_max;
+
+	};
+
 	class request_handler
 	{
 	public:
@@ -690,8 +716,13 @@ namespace http
 		{
 		}
 
+		bool& keep_alive()
+		{
+			return keep_alive_;
+		}
+
 		/// Handle a request and produce a reply.
-		void handle_request(const http::request& request, http::reply& reply)
+		void handle_request(const http::request& request, http::reply& reply, const session& session)
 		{
 			// Decode url to path.
 			std::string request_path;
@@ -737,18 +768,40 @@ namespace http
 			// Fill out the reply to be sent to the client.
 			reply.status = http::reply::ok;
 			char buf[512];
+
 			while (is.read(buf, sizeof(buf)).gcount() > 0)
 				reply.content.append(buf, is.gcount());
-			reply.headers.resize(2);
+
+			reply.headers.resize(3);
 			reply.headers[0].name = "Content-Length";
 			reply.headers[0].value = std::to_string(reply.content.size());
 			reply.headers[1].name = "Content-Type";
 			reply.headers[1].value = mime_types::extension_to_type(extension);
+
+			keep_alive() = std::find_if(std::cbegin(request.headers), std::cend(request.headers), [](const http::header& header)
+			{ 
+				return (header.name == "Connection" && header.value == "keep-alive");
+			}
+			) != std::cend(request.headers);
+
+			if (keep_alive() == true)
+			{
+				reply.headers[1].name = "Connection";
+				reply.headers[1].value = "keep-alive";
+
+				reply.headers[2].name = "Keep-Alive";
+				reply.headers[2].value = std::string("timeout=") + std::to_string(session.keepalive_max) + std::string("max=") + std::to_string(session.keepalive_count);
+				
+			}
+
 		}
 
 	private:
 		/// The directory containing the files to be served.
 		std::string doc_root_;
+		
+		// Is keep-alive set?
+		bool keep_alive_;
 
 		/// Perform URL-decoding on a string. Returns false if the encoding was
 		/// invalid.
@@ -796,7 +849,12 @@ namespace http
 	{
 		using ssl_socket_t = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>;
 	public:
-		ssl_client_connection_handler(boost::asio::io_service& service, boost::asio::ssl::context& ssl_context) : service_(service), ssl_socket_(service, ssl_context), write_strand_(service), request_handler_("C:\\temp")
+		ssl_client_connection_handler(boost::asio::io_service& service, boost::asio::ssl::context& ssl_context, int keep_alive_count = 100, int keepalive_timeout = 5) 
+			: service_(service), 
+			  session(keep_alive_count, keepalive_timeout),
+			  ssl_socket_(service, ssl_context), 
+			  write_strand_(service), 
+			  request_handler_("C:\\temp")
 		{
 		}
 
@@ -817,14 +875,16 @@ namespace http
 
 		void start()
 		{
+	
 			ssl_socket_.async_handshake(boost::asio::ssl::stream_base::server, [me = shared_from_this()](boost::system::error_code const& ec)
 			{
 				if (ec)
 				{
-					//std::cout << ec.message() << std::endl;
+					std::cout << "handshake incomplete : \n" << ec.message() << " : this=" << reinterpret_cast<int64_t>(me.get()) << std::endl;
 				}
 				else
 				{
+					std::cout << "handshake complete   : \n" << ec.message() << " : this=" << reinterpret_cast<int64_t>(me.get()) << std::endl;
 					me->do_read();
 				}
 			});
@@ -856,7 +916,7 @@ namespace http
 
 				if (result == http::request_parser::good)
 				{
-					request_handler_.handle_request(request_, reply_);
+					request_handler_.handle_request(request_, reply_, session);
 
 					do_write();
 				}
@@ -892,14 +952,25 @@ namespace http
 		{
 			if (!error)
 			{
-				/*			send_packet_queue_.pop_front();
-				if (!send_packet_queue_.empty()) { this->start_packet_send(); }*/
+				if (request_handler_.keep_alive())
+				{
+					session.keepalive_count--;
+
+					if (session.keepalive_count > 0)
+					{
+						request_parser_.reset();
+						request_.reset();
+						reply_.reset();
+						do_read();
+					}
+				}
 			}
 		}
 
 	private:
 		boost::asio::io_service& service_;
-//		boost::asio::ip::tcp::socket socket_;
+		http::session session;
+
 
 		boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_socket_;
 
@@ -926,7 +997,12 @@ namespace http
 	class client_connection_handler : public std::enable_shared_from_this<http::client_connection_handler>
 	{
 	public:
-		client_connection_handler(boost::asio::io_service& service) : service_(service), socket_(service), write_strand_(service), request_handler_("C:\\temp")
+		client_connection_handler(boost::asio::io_service& service, int keep_alive_count = 100, int keepalive_timeout = 5) 
+			: service_(service), 
+			socket_(service), 
+			session(keep_alive_count, keepalive_timeout),
+			write_strand_(service), 
+			request_handler_("C:\\temp")
 		{
 		}
 
@@ -975,7 +1051,7 @@ namespace http
 
 				if (result == http::request_parser::good)
 				{
-					request_handler_.handle_request(request_, reply_);
+					request_handler_.handle_request(request_, reply_, session);
 
 					do_write();
 				}
@@ -1018,7 +1094,10 @@ namespace http
 
 	private:
 		boost::asio::io_service& service_;
+		http::session session;
 		boost::asio::ip::tcp::socket socket_;
+		int keep_alive_count;
+		int keepalive_timeout;
 
 		boost::asio::io_service::strand write_strand_;
 		boost::asio::streambuf in_packet_;
@@ -1050,7 +1129,7 @@ namespace http
 		using shared_https_client_connection_handler_t = std::shared_ptr<http::ssl_client_connection_handler>;
 
 	public:
-		server(const std::string &cert_file, const std::string &private_key_file, const std::string &verify_file = std::string(), int thread_count = 10) : thread_count(thread_count), acceptor_(io_service), ssl_acceptor_(io_service), ssl_context(io_service, boost::asio::ssl::context::tlsv12)
+		server(const std::string &cert_file, const std::string &private_key_file, const std::string &verify_file = std::string(), int thread_count = 10, int keep_alive_count = 100, int keepalive_timeout=5) : thread_count(thread_count), acceptor_(io_service), ssl_acceptor_(io_service), ssl_context(io_service, boost::asio::ssl::context::tlsv12)
 		{
 			ssl_context.use_certificate_chain_file(cert_file);
 			ssl_context.use_private_key_file(private_key_file, boost::asio::ssl::context::pem);
@@ -1118,7 +1197,7 @@ namespace http
 
 			handler->start();
 
-			auto new_handler = std::make_shared<http::client_connection_handler>(io_service);
+			auto new_handler = std::make_shared<http::client_connection_handler>(io_service, keep_alive_count, keep_alive_count);
 
 			acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error)
 			{
@@ -1132,7 +1211,7 @@ namespace http
 
 			handler->start();
 
-			auto new_handler = std::make_shared<http::ssl_client_connection_handler>(io_service, ssl_context);
+			auto new_handler = std::make_shared<http::ssl_client_connection_handler>(io_service, ssl_context, keep_alive_count, keep_alive_count);
 
 			ssl_acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error)
 			{
@@ -1141,6 +1220,9 @@ namespace http
 		}
 
 		int thread_count;
+		int keep_alive_count;
+		int keepalive_timeout;
+
 		std::vector<std::thread> thread_pool;
 
 		boost::asio::io_service io_service;
@@ -1156,7 +1238,9 @@ namespace http
 int main(int argc, char* argv[])
 {
 
-	http::server<http::client_connection_handler, http::ssl_client_connection_handler> server("C:\\Development Libraries\\ssl.crt", "C:\\Development Libraries\\ssl.key");
+	http::server<http::client_connection_handler, http::ssl_client_connection_handler> server(
+		"C:\\Development Libraries\\ssl.crt", 
+		"C:\\Development Libraries\\ssl.key");
 
 	server.start_server();
 
