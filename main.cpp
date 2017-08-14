@@ -505,7 +505,6 @@ namespace http
 		} state_;
 	};
 
-
 	class reply
 	{
 	public:
@@ -627,40 +626,40 @@ namespace http
 		{
 			switch (status)
 			{
-			case http::reply::ok:
-				return boost::asio::buffer(http::status_strings::ok);
-			case http::reply::created:
-				return boost::asio::buffer(http::status_strings::created);
-			case http::reply::accepted:
-				return boost::asio::buffer(http::status_strings::accepted);
-			case http::reply::no_content:
-				return boost::asio::buffer(http::status_strings::no_content);
-			case http::reply::multiple_choices:
-				return boost::asio::buffer(http::status_strings::multiple_choices);
-			case http::reply::moved_permanently:
-				return boost::asio::buffer(http::status_strings::moved_permanently);
-			case http::reply::moved_temporarily:
-				return boost::asio::buffer(http::status_strings::moved_temporarily);
-			case http::reply::not_modified:
-				return boost::asio::buffer(http::status_strings::not_modified);
-			case http::reply::bad_request:
-				return boost::asio::buffer(http::status_strings::bad_request);
-			case http::reply::unauthorized:
-				return boost::asio::buffer(http::status_strings::unauthorized);
-			case http::reply::forbidden:
-				return boost::asio::buffer(http::status_strings::forbidden);
-			case http::reply::not_found:
-				return boost::asio::buffer(http::status_strings::not_found);
-			case http::reply::internal_server_error:
-				return boost::asio::buffer(http::status_strings::internal_server_error);
-			case http::reply::not_implemented:
-				return boost::asio::buffer(http::status_strings::not_implemented);
-			case http::reply::bad_gateway:
-				return boost::asio::buffer(http::status_strings::bad_gateway);
-			case http::reply::service_unavailable:
-				return boost::asio::buffer(http::status_strings::service_unavailable);
-			default:
-				return boost::asio::buffer(http::status_strings::internal_server_error);
+				case http::reply::ok:
+					return boost::asio::buffer(http::status_strings::ok);
+				case http::reply::created:
+					return boost::asio::buffer(http::status_strings::created);
+				case http::reply::accepted:
+					return boost::asio::buffer(http::status_strings::accepted);
+				case http::reply::no_content:
+					return boost::asio::buffer(http::status_strings::no_content);
+				case http::reply::multiple_choices:
+					return boost::asio::buffer(http::status_strings::multiple_choices);
+				case http::reply::moved_permanently:
+					return boost::asio::buffer(http::status_strings::moved_permanently);
+				case http::reply::moved_temporarily:
+					return boost::asio::buffer(http::status_strings::moved_temporarily);
+				case http::reply::not_modified:
+					return boost::asio::buffer(http::status_strings::not_modified);
+				case http::reply::bad_request:
+					return boost::asio::buffer(http::status_strings::bad_request);
+				case http::reply::unauthorized:
+					return boost::asio::buffer(http::status_strings::unauthorized);
+				case http::reply::forbidden:
+					return boost::asio::buffer(http::status_strings::forbidden);
+				case http::reply::not_found:
+					return boost::asio::buffer(http::status_strings::not_found);
+				case http::reply::internal_server_error:
+					return boost::asio::buffer(http::status_strings::internal_server_error);
+				case http::reply::not_implemented:
+					return boost::asio::buffer(http::status_strings::not_implemented);
+				case http::reply::bad_gateway:
+					return boost::asio::buffer(http::status_strings::bad_gateway);
+				case http::reply::service_unavailable:
+					return boost::asio::buffer(http::status_strings::service_unavailable);
+				default:
+					return boost::asio::buffer(http::status_strings::internal_server_error);
 			}
 		}
 	};
@@ -699,7 +698,11 @@ namespace http
 	class session
 	{
 		public:
-			session(int keepalive_count, int other_stuff) : keepalive_count(keepalive_count), keepalive_max(keepalive_max) {};
+			session(int keepalive_count, int keepalive_max) : keepalive_count(keepalive_count), keepalive_max(keepalive_max) {};
+			session(const session& rhs) : keepalive_count(rhs.keepalive_count), keepalive_max(rhs.keepalive_max) {};
+
+			session& operator=(const session& rhs) { keepalive_count = rhs.keepalive_count; keepalive_max = rhs.keepalive_max; };
+
 			int keepalive_count;
 			int keepalive_max;
 
@@ -790,7 +793,7 @@ namespace http
 				reply.headers[1].value = "keep-alive";
 
 				reply.headers[2].name = "Keep-Alive";
-				reply.headers[2].value = std::string("timeout=") + std::to_string(session.keepalive_max) + std::string("max=") + std::to_string(session.keepalive_count);
+				reply.headers[2].value = std::string("timeout=") + std::to_string(session.keepalive_max) + std::string(" max=") + std::to_string(session.keepalive_count);
 				
 			}
 
@@ -849,7 +852,7 @@ namespace http
 	{
 		using ssl_socket_t = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>;
 	public:
-		ssl_client_connection_handler(boost::asio::io_service& service, boost::asio::ssl::context& ssl_context, int keep_alive_count = 100, int keepalive_timeout = 5) 
+		ssl_client_connection_handler(boost::asio::io_service& service, boost::asio::ssl::context& ssl_context, int keep_alive_count = 14, int keepalive_timeout = 3) 
 			: service_(service), 
 			  session(keep_alive_count, keepalive_timeout),
 			  ssl_socket_(service, ssl_context), 
@@ -875,7 +878,9 @@ namespace http
 
 		void start()
 		{
-	
+			std::string s = socket().remote_endpoint().address().to_string();
+			std::cout << "new connection from: " << s << "\n";
+
 			ssl_socket_.async_handshake(boost::asio::ssl::stream_base::server, [me = shared_from_this()](boost::system::error_code const& ec)
 			{
 				if (ec)
@@ -969,9 +974,9 @@ namespace http
 
 	private:
 		boost::asio::io_service& service_;
+		
 		http::session session;
-
-
+		
 		boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_socket_;
 
 		boost::asio::io_service::strand write_strand_;
@@ -997,17 +1002,19 @@ namespace http
 	class client_connection_handler : public std::enable_shared_from_this<http::client_connection_handler>
 	{
 	public:
-		client_connection_handler(boost::asio::io_service& service, int keep_alive_count = 100, int keepalive_timeout = 5) 
+		client_connection_handler(boost::asio::io_service& service, const int keep_alive_count = 15, const int keepalive_timeout = 3) 
 			: service_(service), 
 			socket_(service), 
 			session(keep_alive_count, keepalive_timeout),
 			write_strand_(service), 
 			request_handler_("C:\\temp")
 		{
+
 		}
 
 		http::client_connection_handler(http::client_connection_handler const &) = delete;
 		void operator==(http::client_connection_handler const &) = delete;
+
 		~client_connection_handler() 
 		{
 			std::string s = socket().remote_endpoint().address().to_string();
@@ -1023,15 +1030,14 @@ namespace http
 		void start()
 		{
 			std::string s = socket().remote_endpoint().address().to_string();
-
-			std::cout << "connection from: " << s << "\n";
+			std::cout << "new connection from: " << s << "\n";
 
 			do_read();
 		}
 
 		void do_read()
 		{
-			boost::asio::async_read_until(socket_, in_packet_, '\n',
+			boost::asio::async_read_until(socket_, in_packet_, "\r\n\r\n",
 				[me=shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer)
 			{
 				me->do_read_done(ec, bytes_xfer);
@@ -1087,8 +1093,22 @@ namespace http
 		{
 			if (!error)
 			{
-				/*			send_packet_queue_.pop_front();
-				if (!send_packet_queue_.empty()) { this->start_packet_send(); }*/
+				if (request_handler_.keep_alive())
+				{
+					session.keepalive_count--;
+
+					if (session.keepalive_count > 0)
+					{
+						request_parser_.reset();
+						request_.reset();
+						reply_.reset();
+						do_read();
+					}
+					else
+					{
+						std::cout << "closing connection\n";
+					}
+				}
 			}
 		}
 
@@ -1119,17 +1139,19 @@ namespace http
 
 	};
 
-
-
-
-
 	template <typename client_connection_handler_t, typename ssl_connection_handler_t> class server
 	{
 		using shared_client_connection_handler_t = std::shared_ptr<http::client_connection_handler>;
 		using shared_https_client_connection_handler_t = std::shared_ptr<http::ssl_client_connection_handler>;
 
 	public:
-		server(const std::string &cert_file, const std::string &private_key_file, const std::string &verify_file = std::string(), int thread_count = 10, int keep_alive_count = 100, int keepalive_timeout=5) : thread_count(thread_count), acceptor_(io_service), ssl_acceptor_(io_service), ssl_context(io_service, boost::asio::ssl::context::tlsv12)
+		server(const std::string &cert_file, const std::string &private_key_file, const std::string &verify_file = std::string(), int thread_count = 10, int keep_alive_count = 5, int keepalive_timeout = 2) : 
+			thread_count(thread_count), 
+			keep_alive_count(keep_alive_count),
+			keepalive_timeout(keepalive_timeout),
+			acceptor_(io_service), 
+			ssl_acceptor_(io_service), 
+			ssl_context(io_service, boost::asio::ssl::context::tlsv12)
 		{
 			ssl_context.use_certificate_chain_file(cert_file);
 			ssl_context.use_private_key_file(private_key_file, boost::asio::ssl::context::pem);
@@ -1146,8 +1168,8 @@ namespace http
 
 
 
-			auto http_handler = std::make_shared<http::client_connection_handler>(io_service);
-			auto https_handler = std::make_shared<http::ssl_client_connection_handler>(io_service, ssl_context);
+			auto http_handler = std::make_shared<http::client_connection_handler>(io_service, keep_alive_count, keepalive_timeout);
+			auto https_handler = std::make_shared<http::ssl_client_connection_handler>(io_service, ssl_context, keep_alive_count, keepalive_timeout);
 
 			boost::asio::ip::tcp::endpoint http_endpoint(boost::asio::ip::tcp::v4(),  60005);
 			boost::asio::ip::tcp::endpoint https_endpoint(boost::asio::ip::tcp::v4(), 60006);
@@ -1165,13 +1187,13 @@ namespace http
 
 			acceptor_.async_accept(http_handler->socket(), [this, http_handler](auto error)
 			{
-				std::cout << "start with non-ssl-connection from: " << http_handler->socket().remote_endpoint().address().to_string() << "\n";
+				std::cout << "accepted a non-ssl-connection from: " << http_handler->socket().remote_endpoint().address().to_string() << "\n";
 				this->handle_new_connection(http_handler, error);
 			});
 
 			ssl_acceptor_.async_accept(https_handler->socket(), [this, https_handler](auto error)
 			{
-				std::cout << "start with ssl-connection from: " << https_handler->socket().remote_endpoint().address().to_string() << "\n";
+				std::cout << "accepted a ssl-connection from: " << https_handler->socket().remote_endpoint().address().to_string() << "\n";
 				this->handle_new_https_connection(https_handler, error);
 			});
 
