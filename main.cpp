@@ -13,22 +13,45 @@ namespace http
 {
 	namespace status_strings
 	{
-		const char ok[] = "HTTP/1.1 200 OK\r\n";
-		const char created[]  = "HTTP/1.1 201 Created\r\n";
-		const char accepted[] = "HTTP/1.1 202 Accepted\r\n";
-		const char no_content[] = "HTTP/1.1 204 No Content\r\n";
-		const char multiple_choices[] = "HTTP/1.1 300 Multiple Choices\r\n";
-		const char moved_permanently[] = "HTTP/1.1 301 Moved Permanently\r\n";
-		const char moved_temporarily[] = "HTTP/1.1 302 Moved Temporarily\r\n";
-		const char not_modified[] = "HTTP/1.1 304 Not Modified\r\n";
-		const char bad_request[] = "HTTP/1.1 400 Bad Request\r\n";
-		const char unauthorized[] = "HTTP/1.0 401 Unauthorized\r\n";
-		const char forbidden[] = "HTTP/1.1 403 Forbidden\r\n";
-		const char not_found[] = "HTTP/1.1 404 Not Found\r\n";
-		const char internal_server_error[] = "HTTP/1.1 500 Internal Server Error\r\n";
-		const char not_implemented[] = "HTTP/1.1 501 Not Implemented\r\n";
-		const char bad_gateway[] = "HTTP/1.1 502 Bad Gateway\r\n";
-		const char service_unavailable[] = "HTTP/1.1 503 Service Unavailable\r\n";
+		namespace http_10
+		{
+			const char ok[] = "HTTP/1.0 200 OK\r\n";
+			const char created[] = "HTTP/1.0 201 Created\r\n";
+			const char accepted[] = "HTTP/1.0 202 Accepted\r\n";
+			const char no_content[] = "HTTP/1.0 204 No Content\r\n";
+			const char multiple_choices[] = "HTTP/1.0 300 Multiple Choices\r\n";
+			const char moved_permanently[] = "HTTP/1.0 301 Moved Permanently\r\n";
+			const char moved_temporarily[] = "HTTP/1.0 302 Moved Temporarily\r\n";
+			const char not_modified[] = "HTTP/1.01 304 Not Modified\r\n";
+			const char bad_request[] = "HTTP/1.0 400 Bad Request\r\n";
+			const char unauthorized[] = "HTTP/1.0 401 Unauthorized\r\n";
+			const char forbidden[] = "HTTP/1.0 403 Forbidden\r\n";
+			const char not_found[] = "HTTP/1.0 404 Not Found\r\n";
+			const char internal_server_error[] = "HTTP/1.0 500 Internal Server Error\r\n";
+			const char not_implemented[] = "HTTP/1.0 501 Not Implemented\r\n";
+			const char bad_gateway[] = "HTTP/1.0 502 Bad Gateway\r\n";
+			const char service_unavailable[] = "HTTP/1.0 503 Service Unavailable\r\n";
+		}
+
+		namespace http_11
+		{
+			const char ok[] = "HTTP/1.1 200 OK\r\n";
+			const char created[] = "HTTP/1.1 201 Created\r\n";
+			const char accepted[] = "HTTP/1.1 202 Accepted\r\n";
+			const char no_content[] = "HTTP/1.1 204 No Content\r\n";
+			const char multiple_choices[] = "HTTP/1.1 300 Multiple Choices\r\n";
+			const char moved_permanently[] = "HTTP/1.1 301 Moved Permanently\r\n";
+			const char moved_temporarily[] = "HTTP/1.1 302 Moved Temporarily\r\n";
+			const char not_modified[] = "HTTP/1.1 304 Not Modified\r\n";
+			const char bad_request[] = "HTTP/1.1 400 Bad Request\r\n";
+			const char unauthorized[] = "HTTP/1.1 401 Unauthorized\r\n";
+			const char forbidden[] = "HTTP/1.1 403 Forbidden\r\n";
+			const char not_found[] = "HTTP/1.1 404 Not Found\r\n";
+			const char internal_server_error[] = "HTTP/1.1 500 Internal Server Error\r\n";
+			const char not_implemented[] = "HTTP/1.1 501 Not Implemented\r\n";
+			const char bad_gateway[] = "HTTP/1.1 502 Bad Gateway\r\n";
+			const char service_unavailable[] = "HTTP/1.1 503 Service Unavailable\r\n";
+		}
 	}
 
 	namespace misc_strings
@@ -121,7 +144,11 @@ namespace http
 
 	} // namespace stock_replies
 
-
+	enum version
+	{
+		HTTP_10,
+		HTTP_11
+	};
 
 	class header
 	{
@@ -147,12 +174,23 @@ namespace http
 
 		}
 
+		const http::version version() const
+		{
+			if (http_version_major == 1 && http_version_major == 1)
+				return http::version::HTTP_11;
+			else 
+				return http::version::HTTP_11;
+		}
+
 		std::string method;
 		std::string uri;
 		int http_version_major;
 		int http_version_minor;
 		std::vector<http::header> headers;
 	};
+
+
+
 
 	class request_parser
 	{
@@ -544,7 +582,9 @@ namespace http
 		std::vector<boost::asio::const_buffer> to_buffers()
 		{
 			std::vector<boost::asio::const_buffer> buffers;
-			buffers.push_back(http::reply::to_buffer(status));
+
+			buffers.push_back(http::reply::to_buffer(status, version));
+
 			for (std::size_t i = 0; i < headers.size(); ++i)
 			{
 				http::header& h = headers[i];
@@ -564,12 +604,14 @@ namespace http
 		/// The content to be sent in the reply.
 		std::string content;
 
+		http::version version;
+
 		/// Get a stock reply.
-		static http::reply stock_reply(http::reply::status_type status)
+		static http::reply stock_reply(http::reply::status_type status, http::version version)
 		{
 			http::reply reply;
 			reply.status = status;
-			reply.content = to_string(status);
+			reply.content = to_string(status, version);
 			reply.headers.resize(2);
 			reply.headers[0].name = "Content-Length";
 			reply.headers[0].value = std::to_string(reply.content.size());
@@ -580,86 +622,170 @@ namespace http
 
 	private:
 
-		static std::string to_string(http::reply::status_type status)
+		static std::string to_string(http::reply::status_type status, http::version version)
 		{
-			switch (status)
+			switch (version)
 			{
-			case http::reply::ok:
-				return http::status_strings::ok;
-			case http::reply::created:
-				return http::status_strings::created;
-			case http::reply::accepted:
-				return http::status_strings::accepted;
-			case http::reply::no_content:
-				return http::status_strings::no_content;
-			case http::reply::multiple_choices:
-				return http::status_strings::multiple_choices;
-			case http::reply::moved_permanently:
-				return http::status_strings::moved_permanently;
-			case http::reply::moved_temporarily:
-				return http::status_strings::moved_temporarily;
-			case http::reply::not_modified:
-				return http::status_strings::not_modified;
-			case http::reply::bad_request:
-				return http::status_strings::bad_request;
-			case http::reply::unauthorized:
-				return http::status_strings::unauthorized;
-			case http::reply::forbidden:
-				return http::status_strings::forbidden;
-			case http::reply::not_found:
-				return http::status_strings::not_found;
-			case http::reply::internal_server_error:
-				return http::status_strings::internal_server_error;
-			case http::reply::not_implemented:
-				return http::status_strings::not_implemented;
-			case http::reply::bad_gateway:
-				return http::status_strings::bad_gateway;
-			case http::reply::service_unavailable:
-				return http::status_strings::service_unavailable;
+			case HTTP_11:
+				switch (status)
+				{
+					case http::reply::ok:
+						return http::status_strings::http_11::ok;
+					case http::reply::created:
+						return http::status_strings::http_11::created;
+					case http::reply::accepted:
+						return http::status_strings::http_11::accepted;
+					case http::reply::no_content:
+						return http::status_strings::http_11::no_content;
+					case http::reply::multiple_choices:
+						return http::status_strings::http_11::multiple_choices;
+					case http::reply::moved_permanently:
+						return http::status_strings::http_11::moved_permanently;
+					case http::reply::moved_temporarily:
+						return http::status_strings::http_11::moved_temporarily;
+					case http::reply::not_modified:
+						return http::status_strings::http_11::not_modified;
+					case http::reply::bad_request:
+						return http::status_strings::http_11::bad_request;
+					case http::reply::unauthorized:
+						return http::status_strings::http_11::unauthorized;
+					case http::reply::forbidden:
+						return http::status_strings::http_11::forbidden;
+					case http::reply::not_found:
+						return http::status_strings::http_11::not_found;
+					case http::reply::internal_server_error:
+						return http::status_strings::http_11::internal_server_error;
+					case http::reply::not_implemented:
+						return http::status_strings::http_11::not_implemented;
+					case http::reply::bad_gateway:
+						return http::status_strings::http_11::bad_gateway;
+					case http::reply::service_unavailable:
+						return http::status_strings::http_11::service_unavailable;
+					default:
+						return http::status_strings::http_11::internal_server_error;
+				}
 			default:
-				return http::status_strings::internal_server_error;
+				switch (status)
+				{
+				case http::reply::ok:
+					return http::status_strings::http_10::ok;
+				case http::reply::created:
+					return http::status_strings::http_10::created;
+				case http::reply::accepted:
+					return http::status_strings::http_10::accepted;
+				case http::reply::no_content:
+					return http::status_strings::http_10::no_content;
+				case http::reply::multiple_choices:
+					return http::status_strings::http_10::multiple_choices;
+				case http::reply::moved_permanently:
+					return http::status_strings::http_10::moved_permanently;
+				case http::reply::moved_temporarily:
+					return http::status_strings::http_10::moved_temporarily;
+				case http::reply::not_modified:
+					return http::status_strings::http_10::not_modified;
+				case http::reply::bad_request:
+					return http::status_strings::http_10::bad_request;
+				case http::reply::unauthorized:
+					return http::status_strings::http_10::unauthorized;
+				case http::reply::forbidden:
+					return http::status_strings::http_10::forbidden;
+				case http::reply::not_found:
+					return http::status_strings::http_10::not_found;
+				case http::reply::internal_server_error:
+					return http::status_strings::http_10::internal_server_error;
+				case http::reply::not_implemented:
+					return http::status_strings::http_10::not_implemented;
+				case http::reply::bad_gateway:
+					return http::status_strings::http_10::bad_gateway;
+				case http::reply::service_unavailable:
+					return http::status_strings::http_10::service_unavailable;
+				default:
+					return http::status_strings::http_10::internal_server_error;
+				}
 			}
 		}
 
 
-		static boost::asio::const_buffer to_buffer(http::reply::status_type status)
+		static boost::asio::const_buffer to_buffer(http::reply::status_type status, http::version version)
 		{
-			switch (status)
+			switch (version)
 			{
+			case HTTP_11:
+				switch (status)
+				{
 				case http::reply::ok:
-					return boost::asio::buffer(http::status_strings::ok);
+					return boost::asio::buffer(http::status_strings::http_11::ok);
 				case http::reply::created:
-					return boost::asio::buffer(http::status_strings::created);
+					return boost::asio::buffer(http::status_strings::http_11::created);
 				case http::reply::accepted:
-					return boost::asio::buffer(http::status_strings::accepted);
+					return boost::asio::buffer(http::status_strings::http_11::accepted);
 				case http::reply::no_content:
-					return boost::asio::buffer(http::status_strings::no_content);
+					return boost::asio::buffer(http::status_strings::http_11::no_content);
 				case http::reply::multiple_choices:
-					return boost::asio::buffer(http::status_strings::multiple_choices);
+					return boost::asio::buffer(http::status_strings::http_11::multiple_choices);
 				case http::reply::moved_permanently:
-					return boost::asio::buffer(http::status_strings::moved_permanently);
+					return boost::asio::buffer(http::status_strings::http_11::moved_permanently);
 				case http::reply::moved_temporarily:
-					return boost::asio::buffer(http::status_strings::moved_temporarily);
+					return boost::asio::buffer(http::status_strings::http_11::moved_temporarily);
 				case http::reply::not_modified:
-					return boost::asio::buffer(http::status_strings::not_modified);
+					return boost::asio::buffer(http::status_strings::http_11::not_modified);
 				case http::reply::bad_request:
-					return boost::asio::buffer(http::status_strings::bad_request);
+					return boost::asio::buffer(http::status_strings::http_11::bad_request);
 				case http::reply::unauthorized:
-					return boost::asio::buffer(http::status_strings::unauthorized);
+					return boost::asio::buffer(http::status_strings::http_11::unauthorized);
 				case http::reply::forbidden:
-					return boost::asio::buffer(http::status_strings::forbidden);
+					return boost::asio::buffer(http::status_strings::http_11::forbidden);
 				case http::reply::not_found:
-					return boost::asio::buffer(http::status_strings::not_found);
+					return boost::asio::buffer(http::status_strings::http_11::not_found);
 				case http::reply::internal_server_error:
-					return boost::asio::buffer(http::status_strings::internal_server_error);
+					return boost::asio::buffer(http::status_strings::http_11::internal_server_error);
 				case http::reply::not_implemented:
-					return boost::asio::buffer(http::status_strings::not_implemented);
+					return boost::asio::buffer(http::status_strings::http_11::not_implemented);
 				case http::reply::bad_gateway:
-					return boost::asio::buffer(http::status_strings::bad_gateway);
+					return boost::asio::buffer(http::status_strings::http_11::bad_gateway);
 				case http::reply::service_unavailable:
-					return boost::asio::buffer(http::status_strings::service_unavailable);
+					return boost::asio::buffer(http::status_strings::http_11::service_unavailable);
 				default:
-					return boost::asio::buffer(http::status_strings::internal_server_error);
+					return boost::asio::buffer(http::status_strings::http_11::internal_server_error);
+				}
+			default:
+				switch (status)
+				{
+				case http::reply::ok:
+					return boost::asio::buffer(http::status_strings::http_10::ok);
+				case http::reply::created:
+					return boost::asio::buffer(http::status_strings::http_10::created);
+				case http::reply::accepted:
+					return boost::asio::buffer(http::status_strings::http_10::accepted);
+				case http::reply::no_content:
+					return boost::asio::buffer(http::status_strings::http_10::no_content);
+				case http::reply::multiple_choices:
+					return boost::asio::buffer(http::status_strings::http_10::multiple_choices);
+				case http::reply::moved_permanently:
+					return boost::asio::buffer(http::status_strings::http_10::moved_permanently);
+				case http::reply::moved_temporarily:
+					return boost::asio::buffer(http::status_strings::http_10::moved_temporarily);
+				case http::reply::not_modified:
+					return boost::asio::buffer(http::status_strings::http_10::not_modified);
+				case http::reply::bad_request:
+					return boost::asio::buffer(http::status_strings::http_10::bad_request);
+				case http::reply::unauthorized:
+					return boost::asio::buffer(http::status_strings::http_10::unauthorized);
+				case http::reply::forbidden:
+					return boost::asio::buffer(http::status_strings::http_10::forbidden);
+				case http::reply::not_found:
+					return boost::asio::buffer(http::status_strings::http_10::not_found);
+				case http::reply::internal_server_error:
+					return boost::asio::buffer(http::status_strings::http_10::internal_server_error);
+				case http::reply::not_implemented:
+					return boost::asio::buffer(http::status_strings::http_10::not_implemented);
+				case http::reply::bad_gateway:
+					return boost::asio::buffer(http::status_strings::http_10::bad_gateway);
+				case http::reply::service_unavailable:
+					return boost::asio::buffer(http::status_strings::http_10::service_unavailable);
+				default:
+					return boost::asio::buffer(http::status_strings::http_10::internal_server_error);
+				}
 			}
 		}
 	};
@@ -724,6 +850,25 @@ namespace http
 			return keep_alive_;
 		}
 
+		inline std::string date_header_value()
+		{
+			std::string returnvalue = "";
+
+			/// The value to use to format an HTTP date into RFC1123 format.
+			static const char DATE_FORMAT[] = { "%a, %d %b %Y %H:%M:%S GMT" };
+
+			char buffer[30];
+
+			time_t uTime;
+			time(&uTime);
+			strftime(buffer, 30, DATE_FORMAT, std::gmtime(&uTime));
+
+			returnvalue = buffer;
+
+			return returnvalue;
+		}
+
+
 		/// Handle a request and produce a reply.
 		void handle_request(const http::request& request, http::reply& reply, const session& session)
 		{
@@ -732,7 +877,7 @@ namespace http
 
 			if (!url_decode(request.uri, request_path))
 			{
-				reply = http::reply::stock_reply(http::reply::bad_request);
+				reply = http::reply::stock_reply(http::reply::bad_request, request.version());
 				return;
 			}
 
@@ -740,7 +885,7 @@ namespace http
 			if (request_path.empty() || request_path[0] != '/'
 				|| request_path.find("..") != std::string::npos)
 			{
-				reply = http::reply::stock_reply(http::reply::bad_request);
+				reply = http::reply::stock_reply(http::reply::bad_request, request.version());
 				return;
 			}
 
@@ -764,37 +909,68 @@ namespace http
 			std::ifstream is(full_path.c_str(), std::ios::in | std::ios::binary);
 			if (!is)
 			{
-				reply = http::reply::stock_reply(http::reply::not_found);
+				reply = http::reply::stock_reply(http::reply::not_found, request.version());
 				return;
 			}
 
 			// Fill out the reply to be sent to the client.
 			reply.status = http::reply::ok;
+
 			char buf[512];
 
 			while (is.read(buf, sizeof(buf)).gcount() > 0)
 				reply.content.append(buf, is.gcount());
 
-			reply.headers.resize(3);
-			reply.headers[0].name = "Content-Length";
-			reply.headers[0].value = std::to_string(reply.content.size());
-			reply.headers[1].name = "Content-Type";
-			reply.headers[1].value = mime_types::extension_to_type(extension);
-
 			keep_alive() = std::find_if(std::cbegin(request.headers), std::cend(request.headers), [](const http::header& header)
-			{ 
+			{
 				return (header.name == "Connection" && header.value == "keep-alive");
 			}
 			) != std::cend(request.headers);
 
 			if (keep_alive() == true)
 			{
-				reply.headers[1].name = "Connection";
-				reply.headers[1].value = "keep-alive";
+				reply.headers.resize(6);
 
-				reply.headers[2].name = "Keep-Alive";
-				reply.headers[2].value = std::string("timeout=") + std::to_string(session.keepalive_max) + std::string(" max=") + std::to_string(session.keepalive_count);
+				reply.headers[0].name = "Content-Length";
+				reply.headers[0].value = std::to_string(reply.content.size());
+
+
+				reply.headers[1].name = "Server";
+				reply.headers[1].value = "NeoLM/0.01 (Win32)";
 				
+				reply.headers[2].name = "Date";
+				reply.headers[2].value = date_header_value();
+
+
+				reply.headers[3].name = "Content-Type";
+				reply.headers[3].value = mime_types::extension_to_type(extension);
+
+				reply.headers[4].name = "Connection";
+				reply.headers[4].value = "Keep-Alive";
+
+				reply.headers[5].name = "Keep-Alive";
+				reply.headers[5].value = std::string("timeout=") + std::to_string(session.keepalive_max) + std::string(" max=") + std::to_string(session.keepalive_count);			
+			}
+			else
+			{
+				reply.headers.resize(6);
+
+				reply.headers[0].name = "Date";
+				reply.headers[0].value = date_header_value();
+
+				reply.headers[1].name = "Server";
+				reply.headers[1].value = "NeoLM/0.01 (Win32)";
+
+				reply.headers[2].name = "Content-Length";
+				reply.headers[2].value = std::to_string(reply.content.size());
+
+				reply.headers[3].name = "Connection";
+				reply.headers[3].value = "close\r\n";
+
+				reply.headers[4].name = "Content-Type";
+				reply.headers[4].value = mime_types::extension_to_type(extension);
+
+
 			}
 
 		}
@@ -921,13 +1097,13 @@ namespace http
 
 				if (result == http::request_parser::good)
 				{
-					request_handler_.handle_request(request_, reply_, session);
+					request_handler_.handle_request(request_, reply_, session);					
 
 					do_write();
 				}
 				else if (result == http::request_parser::bad)
 				{
-					reply_ = http::reply::stock_reply(http::reply::bad_request);
+					reply_ = http::reply::stock_reply(http::reply::bad_request, request_.version());
 					do_write();
 				}
 				else
@@ -937,14 +1113,17 @@ namespace http
 			}
 			else if (ec != boost::asio::error::operation_aborted)
 			{
-				//connection_manager_.stop(shared_from_this());
+				std::cout << "closing ssl-connection\n";
+				socket().shutdown(boost::asio::ip::tcp::socket::shutdown_receive);
 			}
 
 		}
 
 		void do_write()
 		{
-			boost::asio::async_write(ssl_socket_, reply_.to_buffers(), write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
+			std::vector<boost::asio::const_buffer> data = std::move(reply_.to_buffers());
+
+			boost::asio::async_write(ssl_socket_, data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
 			{
 				if (ec != boost::asio::error::operation_aborted)
 				{
@@ -957,17 +1136,18 @@ namespace http
 		{
 			if (!error)
 			{
-				if (request_handler_.keep_alive())
+				if (request_handler_.keep_alive() && session.keepalive_count > 0)
 				{
 					session.keepalive_count--;
-
-					if (session.keepalive_count > 0)
-					{
-						request_parser_.reset();
-						request_.reset();
-						reply_.reset();
-						do_read();
-					}
+					request_parser_.reset();
+					request_.reset();
+					reply_.reset();
+					do_read();
+				}
+				else
+				{
+					std::cout << "closing connection\n";
+					socket().shutdown(boost::asio::ip::tcp::socket::shutdown_receive);
 				}
 			}
 		}
@@ -1032,6 +1212,9 @@ namespace http
 			std::string s = socket().remote_endpoint().address().to_string();
 			std::cout << "new connection from: " << s << "\n";
 
+
+			socket().set_option(boost::asio::ip::tcp::no_delay(true));
+
 			do_read();
 		}
 
@@ -1063,7 +1246,7 @@ namespace http
 				}
 				else if (result == http::request_parser::bad)
 				{
-					reply_ = http::reply::stock_reply(http::reply::bad_request);
+					reply_ = http::reply::stock_reply(http::reply::bad_request, request_.version());
 					do_write();
 				}
 				else
@@ -1080,7 +1263,13 @@ namespace http
 
 		void do_write()
 		{
-			boost::asio::async_write(socket_, reply_.to_buffers(), write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
+			std::vector<boost::asio::const_buffer> data = std::move(reply_.to_buffers());
+
+			std::for_each(data.begin(), data.end(), [&](boost::asio::const_buffer& b) {
+				std::cout << boost::asio::buffer_cast<const char*>(b);
+			});
+
+			boost::asio::async_write(socket_, data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
 			{
 				if (ec != boost::asio::error::operation_aborted)
 				{
@@ -1093,21 +1282,18 @@ namespace http
 		{
 			if (!error)
 			{
-				if (request_handler_.keep_alive())
+				if (request_handler_.keep_alive() && session.keepalive_count > 0)
 				{
-					session.keepalive_count--;
-
-					if (session.keepalive_count > 0)
-					{
+						session.keepalive_count--;
 						request_parser_.reset();
 						request_.reset();
 						reply_.reset();
 						do_read();
-					}
-					else
-					{
-						std::cout << "closing connection\n";
-					}
+				}
+				else
+				{
+					std::cout << "closing connection\n";
+					socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both);
 				}
 			}
 		}
