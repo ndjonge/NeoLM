@@ -15,42 +15,42 @@ namespace http
 	{
 		namespace http_10
 		{
-			const char ok[] = "HTTP/1.0 200 OK\r\n";
-			const char created[] = "HTTP/1.0 201 Created\r\n";
-			const char accepted[] = "HTTP/1.0 202 Accepted\r\n";
-			const char no_content[] = "HTTP/1.0 204 No Content\r\n";
-			const char multiple_choices[] = "HTTP/1.0 300 Multiple Choices\r\n";
-			const char moved_permanently[] = "HTTP/1.0 301 Moved Permanently\r\n";
-			const char moved_temporarily[] = "HTTP/1.0 302 Moved Temporarily\r\n";
-			const char not_modified[] = "HTTP/1.01 304 Not Modified\r\n";
-			const char bad_request[] = "HTTP/1.0 400 Bad Request\r\n";
-			const char unauthorized[] = "HTTP/1.0 401 Unauthorized\r\n";
-			const char forbidden[] = "HTTP/1.0 403 Forbidden\r\n";
-			const char not_found[] = "HTTP/1.0 404 Not Found\r\n";
-			const char internal_server_error[] = "HTTP/1.0 500 Internal Server Error\r\n";
-			const char not_implemented[] = "HTTP/1.0 501 Not Implemented\r\n";
-			const char bad_gateway[] = "HTTP/1.0 502 Bad Gateway\r\n";
-			const char service_unavailable[] = "HTTP/1.0 503 Service Unavailable\r\n";
+			const std::string ok = "HTTP/1.0 200 OK\r\n";
+			const std::string created = "HTTP/1.0 201 Created\r\n";
+			const std::string accepted = "HTTP/1.0 202 Accepted\r\n";
+			const std::string no_content = "HTTP/1.0 204 No Content\r\n";
+			const std::string multiple_choices = "HTTP/1.0 300 Multiple Choices\r\n";
+			const std::string moved_permanently = "HTTP/1.0 301 Moved Permanently\r\n";
+			const std::string moved_temporarily = "HTTP/1.0 302 Moved Temporarily\r\n";
+			const std::string not_modified = "HTTP/1.0 304 Not Modified\r\n";
+			const std::string bad_request = "HTTP/1.0 400 Bad Request\r\n";
+			const std::string unauthorized = "HTTP/1.0 401 Unauthorized\r\n";
+			const std::string forbidden = "HTTP/1.0 403 Forbidden\r\n";
+			const std::string not_found = "HTTP/1.0 404 Not Found\r\n";
+			const std::string internal_server_error = "HTTP/1.0 500 Internal Server Error\r\n";
+			const std::string not_implemented = "HTTP/1.0 501 Not Implemented\r\n";
+			const std::string bad_gateway = "HTTP/1.0 502 Bad Gateway\r\n";
+			const std::string service_unavailable = "HTTP/1.0 503 Service Unavailable\r\n";
 		}
 
 		namespace http_11
 		{
-			const char ok[] = "HTTP/1.1 200 OK\r\n";
-			const char created[] = "HTTP/1.1 201 Created\r\n";
-			const char accepted[] = "HTTP/1.1 202 Accepted\r\n";
-			const char no_content[] = "HTTP/1.1 204 No Content\r\n";
-			const char multiple_choices[] = "HTTP/1.1 300 Multiple Choices\r\n";
-			const char moved_permanently[] = "HTTP/1.1 301 Moved Permanently\r\n";
-			const char moved_temporarily[] = "HTTP/1.1 302 Moved Temporarily\r\n";
-			const char not_modified[] = "HTTP/1.1 304 Not Modified\r\n";
-			const char bad_request[] = "HTTP/1.1 400 Bad Request\r\n";
-			const char unauthorized[] = "HTTP/1.1 401 Unauthorized\r\n";
-			const char forbidden[] = "HTTP/1.1 403 Forbidden\r\n";
-			const char not_found[] = "HTTP/1.1 404 Not Found\r\n";
-			const char internal_server_error[] = "HTTP/1.1 500 Internal Server Error\r\n";
-			const char not_implemented[] = "HTTP/1.1 501 Not Implemented\r\n";
-			const char bad_gateway[] = "HTTP/1.1 502 Bad Gateway\r\n";
-			const char service_unavailable[] = "HTTP/1.1 503 Service Unavailable\r\n";
+			const std::string ok = "HTTP/1.1 200 OK\r\n";
+			const std::string created = "HTTP/1.1 201 Created\r\n";
+			const std::string accepted = "HTTP/1.1 202 Accepted\r\n";
+			const std::string no_content = "HTTP/1.1 204 No Content\r\n";
+			const std::string multiple_choices = "HTTP/1.1 300 Multiple Choices\r\n";
+			const std::string moved_permanently = "HTTP/1.1 301 Moved Permanently\r\n";
+			const std::string moved_temporarily = "HTTP/1.1 302 Moved Temporarily\r\n";
+			const std::string not_modified = "HTTP/1.1 304 Not Modified\r\n";
+			const std::string bad_request = "HTTP/1.1 400 Bad Request\r\n";
+			const std::string unauthorized = "HTTP/1.1 401 Unauthorized\r\n";
+			const std::string forbidden = "HTTP/1.1 403 Forbidden\r\n";
+			const std::string not_found = "HTTP/1.1 404 Not Found\r\n";
+			const std::string internal_server_error = "HTTP/1.1 500 Internal Server Error\r\n";
+			const std::string not_implemented = "HTTP/1.1 501 Not Implemented\r\n";
+			const std::string bad_gateway = "HTTP/1.1 502 Bad Gateway\r\n";
+			const std::string service_unavailable = "HTTP/1.1 503 Service Unavailable\r\n";
 		}
 	}
 
@@ -210,15 +210,13 @@ namespace http
 
 			while (begin != end)
 			{
-				trace << *begin;
+				/* trace << *begin; */
 
 				result_type result = consume(req, *begin++);
 
-
-
 				if (result == good || result == bad)
 				{
-					std::cout << trace.str();
+					/* std::cout << trace.str(); */
 					return std::make_tuple(result, begin);
 				}
 			}
@@ -906,7 +904,13 @@ namespace http
 
 			// Open the file to send back.
 			std::string full_path = doc_root_ + request_path;
+			std::array<char, 8192> buffer;
+
 			std::ifstream is(full_path.c_str(), std::ios::in | std::ios::binary);
+
+			is.rdbuf()->pubsetbuf(&buffer[0], buffer.size());
+			
+
 			if (!is)
 			{
 				reply = http::reply::stock_reply(http::reply::not_found, request.version());
@@ -916,10 +920,14 @@ namespace http
 			// Fill out the reply to be sent to the client.
 			reply.status = http::reply::ok;
 
-			char buf[512];
 
-			while (is.read(buf, sizeof(buf)).gcount() > 0)
-				reply.content.append(buf, is.gcount());
+			std::stringstream ss;
+
+			while (is.read(&buffer[0], buffer.size()).gcount() > 0)
+				ss << &buffer[0];
+
+			reply.content = std::move(ss.str());
+
 
 			keep_alive() = std::find_if(std::cbegin(request.headers), std::cend(request.headers), [](const http::header& header)
 			{
@@ -1043,7 +1051,7 @@ namespace http
 		{
 			std::string s = socket().remote_endpoint().address().to_string();
 
-			std::cout << "done with connection from: " << s << "\n";
+			//std::cout << "done with connection from: " << s << "\n";
 		}
 			
 
@@ -1055,7 +1063,7 @@ namespace http
 		void start()
 		{
 			std::string s = socket().remote_endpoint().address().to_string();
-			std::cout << "new connection from: " << s << "\n";
+			//std::cout << "new connection from: " << s << "\n";
 
 			ssl_socket_.async_handshake(boost::asio::ssl::stream_base::server, [me = shared_from_this()](boost::system::error_code const& ec)
 			{
@@ -1113,7 +1121,7 @@ namespace http
 			}
 			else if (ec != boost::asio::error::operation_aborted)
 			{
-				std::cout << "closing ssl-connection\n";
+				//std::cout << "closing ssl-connection\n";
 				socket().shutdown(boost::asio::ip::tcp::socket::shutdown_receive);
 			}
 
@@ -1146,7 +1154,7 @@ namespace http
 				}
 				else
 				{
-					std::cout << "closing connection\n";
+					//std::cout << "closing connection\n";
 					socket().shutdown(boost::asio::ip::tcp::socket::shutdown_receive);
 				}
 			}
@@ -1197,8 +1205,8 @@ namespace http
 
 		~client_connection_handler() 
 		{
-			std::string s = socket().remote_endpoint().address().to_string();
-			std::cout << "done with connection from: " << s << "\n";
+			//std::string s = socket().remote_endpoint().address().to_string();
+			//std::cout << "done with connection from: " << s << "\n";
 		}
 		
 
@@ -1209,11 +1217,11 @@ namespace http
 
 		void start()
 		{
-			std::string s = socket().remote_endpoint().address().to_string();
-			std::cout << "new connection from: " << s << "\n";
+			//std::string s = socket().remote_endpoint().address().to_string();
+			//std::cout << "new connection from: " << s << "\n";
 
 
-			socket().set_option(boost::asio::ip::tcp::no_delay(true));
+			/*socket().set_option(boost::asio::ip::tcp::no_delay(true));*/
 
 			do_read();
 		}
@@ -1265,9 +1273,10 @@ namespace http
 		{
 			std::vector<boost::asio::const_buffer> data = std::move(reply_.to_buffers());
 
+			/*
 			std::for_each(data.begin(), data.end(), [&](boost::asio::const_buffer& b) {
 				std::cout << boost::asio::buffer_cast<const char*>(b);
-			});
+			});*/
 
 			boost::asio::async_write(socket_, data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
 			{
@@ -1292,7 +1301,7 @@ namespace http
 				}
 				else
 				{
-					std::cout << "closing connection\n";
+					//std::cout << "closing connection\n";
 					socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both);
 				}
 			}
