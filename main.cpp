@@ -1,10 +1,11 @@
+#include <string>
 #include <memory>
 #include <chrono>
 #include <iostream>
 #include <fstream>
-
+#include <iomanip>
+#include <ctime>
 #include <thread>
-#include <deque>
 
 #include <boost/asio/ssl.hpp>
 #include <boost/asio.hpp>
@@ -858,8 +859,13 @@ namespace http
 			char buffer[30];
 
 			time_t uTime;
+			std::tm tm;
+
 			time(&uTime);
-			strftime(buffer, 30, DATE_FORMAT, std::gmtime(&uTime));
+
+			::localtime_s(&tm, &uTime);
+
+			strftime(buffer, 30, DATE_FORMAT, &tm);
 
 			returnvalue = buffer;
 
@@ -897,6 +903,7 @@ namespace http
 			std::size_t last_slash_pos = request_path.find_last_of("/");
 			std::size_t last_dot_pos = request_path.find_last_of(".");
 			std::string extension;
+
 			if (last_dot_pos != std::string::npos && last_dot_pos > last_slash_pos)
 			{
 				extension = request_path.substr(last_dot_pos + 1);
@@ -926,7 +933,7 @@ namespace http
 			while (is.read(&buffer[0], buffer.size()).gcount() > 0)
 				ss << &buffer[0];
 
-			reply.content = std::move(ss.str());
+			reply.content.assign(std::move(ss.str()));
 
 
 			keep_alive() = std::find_if(std::cbegin(request.headers), std::cend(request.headers), [](const http::header& header)
