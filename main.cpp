@@ -3,9 +3,9 @@
 #include <chrono>
 #include <iostream>
 #include <fstream>
-#include <iomanip>
-#include <ctime>
+
 #include <thread>
+#include <deque>
 
 #include <boost/asio/ssl.hpp>
 #include <boost/asio.hpp>
@@ -820,19 +820,35 @@ namespace http
 		}
 	} // namespace mime_types
 
+
+	template <typename socket_type_t>
 	class session
 	{
 		public:
-			session(int keepalive_count, int keepalive_max) : keepalive_count(keepalive_count), keepalive_max(keepalive_max) {};
-			session(const session& rhs) : keepalive_count(rhs.keepalive_count), keepalive_max(rhs.keepalive_max) {};
+			session(const socket_type_t& socket, int keepalive_count, int keepalive_max)
+				: socket(socket),
+				  keepalive_count(keepalive_count), 
+				  keepalive_max(keepalive_max) 
+			{
+			};
 
-			session& operator=(const session& rhs) { keepalive_count = rhs.keepalive_count; keepalive_max = rhs.keepalive_max; };
+			session(const session& rhs) : socket(rhs.socket), keepalive_count(rhs.keepalive_count), keepalive_max(rhs.keepalive_max) 
+			{ 
+			};
 
+			session& operator=(const session& rhs) = default;
+
+			~session()
+			{
+			};
+
+			const socket_type_t& socket;
 			int keepalive_count;
 			int keepalive_max;
 
 	};
 
+	template <typename socket_type_t>
 	class request_handler
 	{
 	public:
@@ -849,23 +865,23 @@ namespace http
 			return keep_alive_;
 		}
 
-		inline std::string date_header_value()
+		const std::string date_header_value() const
 		{
-			std::string returnvalue = "";
+			std::string returnvalue;
 
 			/// The value to use to format an HTTP date into RFC1123 format.
 			static const char DATE_FORMAT[] = { "%a, %d %b %Y %H:%M:%S GMT" };
 
 			char buffer[30];
 
-			time_t uTime;
-			std::tm tm;
+			time_t now;
+			tm	tm;
 
-			time(&uTime);
+			time(&now);
 
-			::localtime_s(&tm, &uTime);
+			::localtime_s(&tm, &now);
 
-			strftime(buffer, 30, DATE_FORMAT, &tm);
+			std::strftime(buffer, 30, DATE_FORMAT, &tm);
 
 			returnvalue = buffer;
 
@@ -874,7 +890,7 @@ namespace http
 
 
 		/// Handle a request and produce a reply.
-		void handle_request(const http::request& request, http::reply& reply, const session& session)
+		void handle_request(const http::request& request, http::reply& reply, const session<socket_type_t>& session)
 		{
 			// Decode url to path.
 			std::string request_path;
@@ -1042,10 +1058,12 @@ namespace http
 	class ssl_client_connection_handler : public std::enable_shared_from_this<http::ssl_client_connection_handler>
 	{
 		using ssl_socket_t = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>;
+
+
 	public:
 		ssl_client_connection_handler(boost::asio::io_service& service, boost::asio::ssl::context& ssl_context, int keep_alive_count = 14, int keepalive_timeout = 3) 
 			: service_(service), 
-			  session(keep_alive_count, keepalive_timeout),
+			  session(ssl_socket_, keep_alive_count, keepalive_timeout),
 			  ssl_socket_(service, ssl_context), 
 			  write_strand_(service), 
 			  request_handler_("C:\\temp")
@@ -1076,11 +1094,11 @@ namespace http
 			{
 				if (ec)
 				{
-					std::cout << "handshake incomplete : \n" << ec.message() << " : this=" << reinterpret_cast<int64_t>(me.get()) << std::endl;
+					//std::cout << "handshake incomplete : \n" << ec.message() << " : this=" << reinterpret_cast<int64_t>(me.get()) << std::endl;
 				}
 				else
 				{
-					std::cout << "handshake complete   : \n" << ec.message() << " : this=" << reinterpret_cast<int64_t>(me.get()) << std::endl;
+					//std::cout << "handshake complete   : \n" << ec.message() << " : this=" << reinterpret_cast<int64_t>(me.get()) << std::endl;
 					me->do_read();
 				}
 			});
@@ -1092,11 +1110,7 @@ namespace http
 			boost::asio::async_read_until(ssl_socket_, in_packet_, "\r\n\r\n",
 				[me = shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer)
 			{
-				//if (ec)
-				//{
-				//	std::cout << ec.message() << std::endl;
-					me->do_read_done(ec, bytes_xfer);
-				//}
+				me->do_read_done(ec, bytes_xfer);
 			});
 		}
 
@@ -1128,7 +1142,6 @@ namespace http
 			}
 			else if (ec != boost::asio::error::operation_aborted)
 			{
-				//std::cout << "closing ssl-connection\n";
 				socket().shutdown(boost::asio::ip::tcp::socket::shutdown_receive);
 			}
 
@@ -1170,7 +1183,7 @@ namespace http
 	private:
 		boost::asio::io_service& service_;
 		
-		http::session session;
+		http::session<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>> session;
 		
 		boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_socket_;
 
@@ -1178,7 +1191,7 @@ namespace http
 		boost::asio::streambuf in_packet_;
 
 		/// The handler used to process the incoming request.
-		http::request_handler request_handler_;
+		http::request_handler<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>> request_handler_;
 
 		/// Buffer for incoming data.
 		std::array<char, 8192> buffer_;
@@ -1200,7 +1213,7 @@ namespace http
 		client_connection_handler(boost::asio::io_service& service, const int keep_alive_count = 15, const int keepalive_timeout = 3) 
 			: service_(service), 
 			socket_(service), 
-			session(keep_alive_count, keepalive_timeout),
+			session(socket_, keep_alive_count, keepalive_timeout),
 			write_strand_(service), 
 			request_handler_("C:\\temp")
 		{
@@ -1212,8 +1225,6 @@ namespace http
 
 		~client_connection_handler() 
 		{
-			//std::string s = socket().remote_endpoint().address().to_string();
-			//std::cout << "done with connection from: " << s << "\n";
 		}
 		
 
@@ -1224,12 +1235,6 @@ namespace http
 
 		void start()
 		{
-			//std::string s = socket().remote_endpoint().address().to_string();
-			//std::cout << "new connection from: " << s << "\n";
-
-
-			/*socket().set_option(boost::asio::ip::tcp::no_delay(true));*/
-
 			do_read();
 		}
 
@@ -1271,7 +1276,6 @@ namespace http
 			}
 			else if (ec != boost::asio::error::operation_aborted)
 			{
-				//connection_manager_.stop(shared_from_this());
 			}
 
 		}
@@ -1308,7 +1312,6 @@ namespace http
 				}
 				else
 				{
-					//std::cout << "closing connection\n";
 					socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both);
 				}
 			}
@@ -1316,7 +1319,7 @@ namespace http
 
 	private:
 		boost::asio::io_service& service_;
-		http::session session;
+		http::session<boost::asio::ip::tcp::socket> session;
 		boost::asio::ip::tcp::socket socket_;
 		int keep_alive_count;
 		int keepalive_timeout;
@@ -1325,7 +1328,7 @@ namespace http
 		boost::asio::streambuf in_packet_;
 
 		/// The handler used to process the incoming request.
-		http::request_handler request_handler_;
+		http::request_handler<boost::asio::ip::tcp::socket> request_handler_;
 
 		/// Buffer for incoming data.
 		std::array<char, 8192> buffer_;
