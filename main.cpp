@@ -12,6 +12,19 @@
 
 namespace http
 {
+	
+	namespace util
+	{
+		inline bool case_insensitive_equal(const std::string &str1, const std::string &str2) noexcept
+		{
+			return str1.size() == str2.size() &&
+				std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b)
+			{
+				return tolower(a) == tolower(b);
+			});
+		}
+	}
+
 	namespace status_strings
 	{
 		namespace http_10
@@ -156,6 +169,8 @@ namespace http
 	public:
 		header() = default;
 
+		header(const std::string&& name, const std::string&& value = "") : name(std::move(name)), value(std::move(value)) {};
+
 		std::string name;
 		std::string value;
 	};
@@ -163,6 +178,7 @@ namespace http
 	class request
 	{
 	public:
+		request() = default;
 
 		void reset()
 		{
@@ -183,10 +199,12 @@ namespace http
 				return http::version::HTTP_11;
 		}
 
+
 		std::string method;
 		std::string uri;
 		int http_version_major;
 		int http_version_minor;
+
 		std::vector<http::header> headers;
 	};
 
@@ -545,7 +563,7 @@ namespace http
 	class reply
 	{
 	public:
-		reply() = default;
+		reply() : document_path_ { "" }, keep_alive_ { false }, chunked_encoding_{ false } {};
 
 		/// The status of the reply.
 		enum status_type
@@ -574,6 +592,20 @@ namespace http
 			content.clear();
 		}
 
+		std::string& document_path() noexcept
+		{
+			return document_path_;
+		}
+
+		bool& keep_alive()
+		{
+			return keep_alive_;
+		}
+
+		bool& chunked_encoding()
+		{
+			return chunked_encoding_;
+		}
 
 		/// Convert the reply into a vector of buffers. The buffers do not own the
 		/// underlying memory blocks, therefore the reply object must remain valid and
@@ -620,6 +652,9 @@ namespace http
 		}
 
 	private:
+		bool chunked_encoding_;
+		bool keep_alive_;
+		std::string document_path_;
 
 		static std::string to_string(http::reply::status_type status, http::version version)
 		{
@@ -856,13 +891,8 @@ namespace http
 		request_handler& operator=(const request_handler&) = delete;
 
 		/// Construct with a directory containing files to be served.
-		explicit request_handler(const std::string& doc_root) : doc_root_(doc_root)
+		explicit request_handler(const std::string& doc_root) : doc_root_{ doc_root }
 		{
-		}
-
-		bool& keep_alive()
-		{
-			return keep_alive_;
 		}
 
 		const std::string date_header_value() const
@@ -925,83 +955,34 @@ namespace http
 				extension = request_path.substr(last_dot_pos + 1);
 			}
 
-			// Open the file to send back.
-			std::string full_path = doc_root_ + request_path;
-			std::array<char, 8192> buffer;
-
-			std::ifstream is(full_path.c_str(), std::ios::in | std::ios::binary);
-
-			is.rdbuf()->pubsetbuf(&buffer[0], buffer.size());
-			
-
-			if (!is)
-			{
-				reply = http::reply::stock_reply(http::reply::not_found, request.version());
-				return;
-			}
+			reply.document_path() = doc_root_ + request_path;
 
 			// Fill out the reply to be sent to the client.
 			reply.status = http::reply::ok;
 
-
-			std::stringstream ss;
-
-			while (is.read(&buffer[0], buffer.size()).gcount() > 0)
-				ss << &buffer[0];
-
-			reply.content.assign(std::move(ss.str()));
-
-
-			keep_alive() = std::find_if(std::cbegin(request.headers), std::cend(request.headers), [](const http::header& header)
+			for (auto& request_header : request.headers)
 			{
-				return (header.name == "Connection" && header.value == "keep-alive");
+				if (http::util::case_insensitive_equal(request_header.name, "Content-Encoding") && http::util::case_insensitive_equal(request_header.name, "chunked"))
+					reply.chunked_encoding() = true;
+
+				if (http::util::case_insensitive_equal(request_header.name, "Keep-Alive"))
+					reply.keep_alive() = true;
+
 			}
-			) != std::cend(request.headers);
 
-			if (keep_alive() == true)
+			reply.headers.emplace_back(http::header("Server", "NeoLM / 0.01 (Windows)"));
+			reply.headers.emplace_back(http::header("Date", date_header_value()));
+			reply.headers.emplace_back(http::header("Content-Type", mime_types::extension_to_type(extension)));
+
+
+			if (reply.keep_alive() == true)
 			{
-				reply.headers.resize(6);
-
-				reply.headers[0].name = "Content-Length";
-				reply.headers[0].value = std::to_string(reply.content.size());
-
-
-				reply.headers[1].name = "Server";
-				reply.headers[1].value = "NeoLM/0.01 (Win32)";
-				
-				reply.headers[2].name = "Date";
-				reply.headers[2].value = date_header_value();
-
-
-				reply.headers[3].name = "Content-Type";
-				reply.headers[3].value = mime_types::extension_to_type(extension);
-
-				reply.headers[4].name = "Connection";
-				reply.headers[4].value = "Keep-Alive";
-
-				reply.headers[5].name = "Keep-Alive";
-				reply.headers[5].value = std::string("timeout=") + std::to_string(session.keepalive_max) + std::string(" max=") + std::to_string(session.keepalive_count);			
+				reply.headers.emplace_back(http::header("Connection", "Keep-Alive"));
+				reply.headers.emplace_back(http::header("Keep-Alive", std::string("timeout=") + std::to_string(session.keepalive_max) + std::string(" max=") + std::to_string(session.keepalive_count)));
 			}
 			else
 			{
-				reply.headers.resize(6);
-
-				reply.headers[0].name = "Date";
-				reply.headers[0].value = date_header_value();
-
-				reply.headers[1].name = "Server";
-				reply.headers[1].value = "NeoLM/0.01 (Win32)";
-
-				reply.headers[2].name = "Content-Length";
-				reply.headers[2].value = std::to_string(reply.content.size());
-
-				reply.headers[3].name = "Connection";
-				reply.headers[3].value = "close\r\n";
-
-				reply.headers[4].name = "Content-Type";
-				reply.headers[4].value = mime_types::extension_to_type(extension);
-
-
+				reply.headers.emplace_back(http::header("Connection", "close"));
 			}
 
 		}
@@ -1010,9 +991,6 @@ namespace http
 		/// The directory containing the files to be served.
 		std::string doc_root_;
 		
-		// Is keep-alive set?
-		bool keep_alive_;
-
 		/// Perform URL-decoding on a string. Returns false if the encoding was
 		/// invalid.
 		static bool url_decode(const std::string& in, std::string& out)
@@ -1164,7 +1142,7 @@ namespace http
 		{
 			if (!error)
 			{
-				if (request_handler_.keep_alive() && session.keepalive_count > 0)
+				if (reply_.keep_alive() && session.keepalive_count > 0)
 				{
 					session.keepalive_count--;
 					request_parser_.reset();
@@ -1257,7 +1235,6 @@ namespace http
 
 				in_packet_.consume(bytes_transferred);
 
-
 				if (result == http::request_parser::good)
 				{
 					request_handler_.handle_request(request_, reply_, session);
@@ -1280,29 +1257,92 @@ namespace http
 
 		}
 
+		void do_chunked_write(const std::vector<boost::asio::const_buffer>&& content_data)
+		{
+			boost::asio::async_write(socket_, content_data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
+			{
+				me->do_write_done(ec);
+			}));
+		}
+
 		void do_write()
 		{
-			std::vector<boost::asio::const_buffer> data = std::move(reply_.to_buffers());
+			if (reply_.chunked_encoding())
+			{				
+				std::vector<boost::asio::const_buffer> data = std::move(reply_.to_buffers());
 
-			/*
-			std::for_each(data.begin(), data.end(), [&](boost::asio::const_buffer& b) {
-				std::cout << boost::asio::buffer_cast<const char*>(b);
-			});*/
+				// Open the file to send back.
+				std::array<char, 16> buffer;
 
-			boost::asio::async_write(socket_, data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
-			{
-				if (ec != boost::asio::error::operation_aborted)
+				std::ifstream is(reply_.document_path().c_str(), std::ios::in | std::ios::binary);
+
+				is.rdbuf()->pubsetbuf(&buffer[0], buffer.size());
+
+				std::stringstream ss;
+
+				boost::asio::async_write(socket_, data, write_strand_.wrap([this, me = shared_from_this(), &buffer, &is, &ss](boost::system::error_code ec, std::size_t)
 				{
-					me->do_write_done(ec);
+					while (int bytes_in = is.read(&buffer[0], buffer.size()).gcount() > 0)
+					{
+						ss << std::to_string(bytes_in);
+						ss << "\r\n";
+						ss << &buffer[0];
+						ss << "\r\n";
+						std::vector<boost::asio::const_buffer> content_data;
+						content_data.emplace_back(boost::asio::buffer(ss.str()));
+
+						me->do_chunked_write(std::move(content_data));
+					}
+				}));
+
+			}
+			else
+			{
+
+				std::array<char, 8192> buffer;
+
+				std::ifstream is(reply_.document_path().c_str(), std::ios::in | std::ios::binary);
+
+				is.rdbuf()->pubsetbuf(&buffer[0], buffer.size());
+
+				if (!is)
+				{
+					reply_ = http::reply::stock_reply(http::reply::not_found, request_.version());
 				}
-			}));
+
+				/*
+				std::for_each(data.begin(), data.end(), [&](boost::asio::const_buffer& b) {
+					std::cout << boost::asio::buffer_cast<const char*>(b);
+				});*/
+
+
+				std::stringstream ss;
+
+				while (int bytes_in = is.read(&buffer[0], buffer.size()).gcount() > 0)
+				{
+					ss << &buffer[0];
+				}
+
+				reply_.content.assign(std::move(ss.str()));
+				reply_.headers.emplace_back(http::header("Content-Length", std::to_string(reply_.content.size())));
+
+				std::vector<boost::asio::const_buffer> data = std::move(reply_.to_buffers());
+
+				boost::asio::async_write(socket_, data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
+				{
+					if (ec != boost::asio::error::operation_aborted)
+					{
+						me->do_write_done(ec);
+					}
+				}));
+			}
 		}
 
 		void do_write_done(boost::system::error_code const & error)
 		{
 			if (!error)
 			{
-				if (request_handler_.keep_alive() && session.keepalive_count > 0)
+				if (reply_.keep_alive() && session.keepalive_count > 0)
 				{
 						session.keepalive_count--;
 						request_parser_.reset();
