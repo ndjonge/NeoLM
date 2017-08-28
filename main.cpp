@@ -962,10 +962,10 @@ namespace http
 
 			for (auto& request_header : request.headers)
 			{
-				if (http::util::case_insensitive_equal(request_header.name, "Content-Encoding") && http::util::case_insensitive_equal(request_header.name, "chunked"))
+				//if (http::util::case_insensitive_equal(request_header.name, "Content-Encoding") && http::util::case_insensitive_equal(request_header.name, "chunked"))
 					reply.chunked_encoding() = true;
 
-				if (http::util::case_insensitive_equal(request_header.name, "Keep-Alive"))
+				//if (http::util::case_insensitive_equal(request_header.name, "Keep-Alive"))
 					reply.keep_alive() = true;
 
 			}
@@ -973,6 +973,10 @@ namespace http
 			reply.headers.emplace_back(http::header("Server", "NeoLM / 0.01 (Windows)"));
 			reply.headers.emplace_back(http::header("Date", date_header_value()));
 			reply.headers.emplace_back(http::header("Content-Type", mime_types::extension_to_type(extension)));
+
+
+			if (reply.chunked_encoding())
+				reply.headers.emplace_back(http::header("Transfer-Encoding", "chunked"));
 
 
 			if (reply.keep_alive() == true)
@@ -1257,12 +1261,19 @@ namespace http
 
 		}
 
-		void do_chunked_write(const std::vector<boost::asio::const_buffer>&& content_data)
+		void do_chunked_write(bool finished)
 		{
-			boost::asio::async_write(socket_, content_data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
+			std::vector<boost::asio::const_buffer> data; 
+			
+			data.emplace_back(boost::asio::buffer(this->write_buffer.back()));
+
+			boost::asio::async_write(socket_, data, write_strand_.wrap([this, finished, me = shared_from_this()](boost::system::error_code ec, std::size_t)
 			{
-				me->do_write_done(ec);
+				if (finished)
+					me->do_write_done(ec);
 			}));
+
+
 		}
 
 		void do_write()
@@ -1271,28 +1282,45 @@ namespace http
 			{				
 				std::vector<boost::asio::const_buffer> data = std::move(reply_.to_buffers());
 
-				// Open the file to send back.
-				std::array<char, 16> buffer;
-
-				std::ifstream is(reply_.document_path().c_str(), std::ios::in | std::ios::binary);
-
-				is.rdbuf()->pubsetbuf(&buffer[0], buffer.size());
-
-				std::stringstream ss;
-
-				boost::asio::async_write(socket_, data, write_strand_.wrap([this, me = shared_from_this(), &buffer, &is, &ss](boost::system::error_code ec, std::size_t)
+				boost::asio::async_write(socket_, data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
 				{
-					while (int bytes_in = is.read(&buffer[0], buffer.size()).gcount() > 0)
-					{
-						ss << std::to_string(bytes_in);
-						ss << "\r\n";
-						ss << &buffer[0];
-						ss << "\r\n";
-						std::vector<boost::asio::const_buffer> content_data;
-						content_data.emplace_back(boost::asio::buffer(ss.str()));
+					reply_.content.clear();
 
-						me->do_chunked_write(std::move(content_data));
+					std::ifstream is(reply_.document_path().c_str(), std::ios::in | std::ios::binary);
+
+					// Open the file to send back.
+					std::string buffer;
+					buffer.resize(255);
+					is.rdbuf()->pubsetbuf(&buffer[0], buffer.size());
+
+					std::streamsize bytes_in = is.read(&buffer[0], buffer.size()).gcount();
+					std::vector<boost::asio::const_buffer> content_data;
+
+					while (bytes_in > 0)
+					{
+						std::stringstream ss;
+
+						ss << std::hex << bytes_in;
+						ss << misc_strings::crlf;
+						ss << buffer;
+						ss << misc_strings::crlf;
+
+						me->write_buffer.emplace_back(ss.str());
+
+						me->do_chunked_write(false);
+
+						bytes_in = is.read(&buffer[0], buffer.size()).gcount();
 					}
+
+					std::stringstream ss;
+					ss.clear();
+					ss << std::hex << 0;
+					ss << misc_strings::crlf;
+					ss << misc_strings::crlf;
+					me->write_buffer.emplace_back(ss.str());
+
+					me->do_chunked_write(true);
+
 				}));
 
 			}
@@ -1372,6 +1400,8 @@ namespace http
 
 		/// Buffer for incoming data.
 		std::array<char, 8192> buffer_;
+
+		std::deque<std::string> write_buffer;
 
 		/// The incoming request.
 		http::request request_;
