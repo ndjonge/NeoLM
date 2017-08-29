@@ -158,12 +158,6 @@ namespace http
 
 	} // namespace stock_replies
 
-	enum version
-	{
-		HTTP_10,
-		HTTP_11
-	};
-
 	class header
 	{
 	public:
@@ -190,15 +184,6 @@ namespace http
 			http_version_minor = 0;
 
 		}
-
-		const http::version version() const
-		{
-			if (http_version_major == 1 && http_version_major == 1)
-				return http::version::HTTP_11;
-			else 
-				return http::version::HTTP_11;
-		}
-
 
 		std::string method;
 		std::string uri;
@@ -614,7 +599,7 @@ namespace http
 		{
 			std::vector<boost::asio::const_buffer> buffers;
 
-			buffers.push_back(http::reply::to_buffer(status, version));
+			buffers.push_back(http::reply::to_buffer(status));
 
 			for (std::size_t i = 0; i < headers.size(); ++i)
 			{
@@ -635,14 +620,12 @@ namespace http
 		/// The content to be sent in the reply.
 		std::string content;
 
-		http::version version;
-
 		/// Get a stock reply.
-		static http::reply stock_reply(http::reply::status_type status, http::version version)
+		static http::reply stock_reply(http::reply::status_type status)
 		{
 			http::reply reply;
 			reply.status = status;
-			reply.content = to_string(status, version);
+			reply.content = to_string(status);
 			reply.headers.resize(2);
 			reply.headers[0].name = "Content-Length";
 			reply.headers[0].value = std::to_string(reply.content.size());
@@ -656,97 +639,52 @@ namespace http
 		bool keep_alive_;
 		std::string document_path_;
 
-		static std::string to_string(http::reply::status_type status, http::version version)
+		static std::string to_string(http::reply::status_type status)
 		{
-			switch (version)
+			switch (status)
 			{
-			case HTTP_11:
-				switch (status)
-				{
-					case http::reply::ok:
-						return http::status_strings::http_11::ok;
-					case http::reply::created:
-						return http::status_strings::http_11::created;
-					case http::reply::accepted:
-						return http::status_strings::http_11::accepted;
-					case http::reply::no_content:
-						return http::status_strings::http_11::no_content;
-					case http::reply::multiple_choices:
-						return http::status_strings::http_11::multiple_choices;
-					case http::reply::moved_permanently:
-						return http::status_strings::http_11::moved_permanently;
-					case http::reply::moved_temporarily:
-						return http::status_strings::http_11::moved_temporarily;
-					case http::reply::not_modified:
-						return http::status_strings::http_11::not_modified;
-					case http::reply::bad_request:
-						return http::status_strings::http_11::bad_request;
-					case http::reply::unauthorized:
-						return http::status_strings::http_11::unauthorized;
-					case http::reply::forbidden:
-						return http::status_strings::http_11::forbidden;
-					case http::reply::not_found:
-						return http::status_strings::http_11::not_found;
-					case http::reply::internal_server_error:
-						return http::status_strings::http_11::internal_server_error;
-					case http::reply::not_implemented:
-						return http::status_strings::http_11::not_implemented;
-					case http::reply::bad_gateway:
-						return http::status_strings::http_11::bad_gateway;
-					case http::reply::service_unavailable:
-						return http::status_strings::http_11::service_unavailable;
-					default:
-						return http::status_strings::http_11::internal_server_error;
-				}
-			default:
-				switch (status)
-				{
 				case http::reply::ok:
-					return http::status_strings::http_10::ok;
+					return http::status_strings::http_11::ok;
 				case http::reply::created:
-					return http::status_strings::http_10::created;
+					return http::status_strings::http_11::created;
 				case http::reply::accepted:
-					return http::status_strings::http_10::accepted;
+					return http::status_strings::http_11::accepted;
 				case http::reply::no_content:
-					return http::status_strings::http_10::no_content;
+					return http::status_strings::http_11::no_content;
 				case http::reply::multiple_choices:
-					return http::status_strings::http_10::multiple_choices;
+					return http::status_strings::http_11::multiple_choices;
 				case http::reply::moved_permanently:
-					return http::status_strings::http_10::moved_permanently;
+					return http::status_strings::http_11::moved_permanently;
 				case http::reply::moved_temporarily:
-					return http::status_strings::http_10::moved_temporarily;
+					return http::status_strings::http_11::moved_temporarily;
 				case http::reply::not_modified:
-					return http::status_strings::http_10::not_modified;
+					return http::status_strings::http_11::not_modified;
 				case http::reply::bad_request:
-					return http::status_strings::http_10::bad_request;
+					return http::status_strings::http_11::bad_request;
 				case http::reply::unauthorized:
-					return http::status_strings::http_10::unauthorized;
+					return http::status_strings::http_11::unauthorized;
 				case http::reply::forbidden:
-					return http::status_strings::http_10::forbidden;
+					return http::status_strings::http_11::forbidden;
 				case http::reply::not_found:
-					return http::status_strings::http_10::not_found;
+					return http::status_strings::http_11::not_found;
 				case http::reply::internal_server_error:
-					return http::status_strings::http_10::internal_server_error;
+					return http::status_strings::http_11::internal_server_error;
 				case http::reply::not_implemented:
-					return http::status_strings::http_10::not_implemented;
+					return http::status_strings::http_11::not_implemented;
 				case http::reply::bad_gateway:
-					return http::status_strings::http_10::bad_gateway;
+					return http::status_strings::http_11::bad_gateway;
 				case http::reply::service_unavailable:
-					return http::status_strings::http_10::service_unavailable;
+					return http::status_strings::http_11::service_unavailable;
 				default:
-					return http::status_strings::http_10::internal_server_error;
-				}
+					return http::status_strings::http_11::internal_server_error;
 			}
 		}
 
 
-		static boost::asio::const_buffer to_buffer(http::reply::status_type status, http::version version)
+		static boost::asio::const_buffer to_buffer(http::reply::status_type status)
 		{
-			switch (version)
+			switch (status)
 			{
-			case HTTP_11:
-				switch (status)
-				{
 				case http::reply::ok:
 					return boost::asio::buffer(http::status_strings::http_11::ok);
 				case http::reply::created:
@@ -781,45 +719,6 @@ namespace http
 					return boost::asio::buffer(http::status_strings::http_11::service_unavailable);
 				default:
 					return boost::asio::buffer(http::status_strings::http_11::internal_server_error);
-				}
-			default:
-				switch (status)
-				{
-				case http::reply::ok:
-					return boost::asio::buffer(http::status_strings::http_10::ok);
-				case http::reply::created:
-					return boost::asio::buffer(http::status_strings::http_10::created);
-				case http::reply::accepted:
-					return boost::asio::buffer(http::status_strings::http_10::accepted);
-				case http::reply::no_content:
-					return boost::asio::buffer(http::status_strings::http_10::no_content);
-				case http::reply::multiple_choices:
-					return boost::asio::buffer(http::status_strings::http_10::multiple_choices);
-				case http::reply::moved_permanently:
-					return boost::asio::buffer(http::status_strings::http_10::moved_permanently);
-				case http::reply::moved_temporarily:
-					return boost::asio::buffer(http::status_strings::http_10::moved_temporarily);
-				case http::reply::not_modified:
-					return boost::asio::buffer(http::status_strings::http_10::not_modified);
-				case http::reply::bad_request:
-					return boost::asio::buffer(http::status_strings::http_10::bad_request);
-				case http::reply::unauthorized:
-					return boost::asio::buffer(http::status_strings::http_10::unauthorized);
-				case http::reply::forbidden:
-					return boost::asio::buffer(http::status_strings::http_10::forbidden);
-				case http::reply::not_found:
-					return boost::asio::buffer(http::status_strings::http_10::not_found);
-				case http::reply::internal_server_error:
-					return boost::asio::buffer(http::status_strings::http_10::internal_server_error);
-				case http::reply::not_implemented:
-					return boost::asio::buffer(http::status_strings::http_10::not_implemented);
-				case http::reply::bad_gateway:
-					return boost::asio::buffer(http::status_strings::http_10::bad_gateway);
-				case http::reply::service_unavailable:
-					return boost::asio::buffer(http::status_strings::http_10::service_unavailable);
-				default:
-					return boost::asio::buffer(http::status_strings::http_10::internal_server_error);
-				}
 			}
 		}
 	};
@@ -834,10 +733,12 @@ namespace http
 
 		mappings[] =
 		{
+			{ "ico", "image/x-icon" },
 			{ "gif", "image/gif" },
 			{ "htm", "text/html" },
 			{ "html", "text/html" },
 			{ "jpg", "image/jpeg" },
+			{ "jpeg", "image/jpeg" },
 			{ "png", "image/png" }
 		};
 
@@ -927,7 +828,7 @@ namespace http
 
 			if (!url_decode(request.uri, request_path))
 			{
-				reply = http::reply::stock_reply(http::reply::bad_request, request.version());
+				reply = http::reply::stock_reply(http::reply::bad_request);
 				return;
 			}
 
@@ -935,7 +836,7 @@ namespace http
 			if (request_path.empty() || request_path[0] != '/'
 				|| request_path.find("..") != std::string::npos)
 			{
-				reply = http::reply::stock_reply(http::reply::bad_request, request.version());
+				reply = http::reply::stock_reply(http::reply::bad_request);
 				return;
 			}
 
@@ -1114,7 +1015,7 @@ namespace http
 				}
 				else if (result == http::request_parser::bad)
 				{
-					reply_ = http::reply::stock_reply(http::reply::bad_request, request_.version());
+					reply_ = http::reply::stock_reply(http::reply::bad_request);
 					do_write();
 				}
 				else
@@ -1247,7 +1148,7 @@ namespace http
 				}
 				else if (result == http::request_parser::bad)
 				{
-					reply_ = http::reply::stock_reply(http::reply::bad_request, request_.version());
+					reply_ = http::reply::stock_reply(http::reply::bad_request);
 					do_write();
 				}
 				else
@@ -1263,12 +1164,16 @@ namespace http
 
 		void do_chunked_write(bool finished)
 		{
-			std::vector<boost::asio::const_buffer> data; 
-			
-			data.emplace_back(boost::asio::buffer(this->write_buffer.back()));
+			std::vector<boost::asio::const_buffer> data_buffer; 
+		
+			data_buffer.push_back(boost::asio::buffer(this->write_buffer.back()));
 
-			boost::asio::async_write(socket_, data, write_strand_.wrap([this, finished, me = shared_from_this()](boost::system::error_code ec, std::size_t)
+			boost::asio::async_write(socket_, data_buffer, write_strand_.wrap([this, finished, me = shared_from_this()](boost::system::error_code ec, std::size_t bytes_written)
 			{
+				me->write_buffer.pop_front();
+
+				std::cout << "wrote:" << bytes_written << "\n";
+
 				if (finished)
 					me->do_write_done(ec);
 			}));
@@ -1287,14 +1192,15 @@ namespace http
 					reply_.content.clear();
 
 					std::ifstream is(reply_.document_path().c_str(), std::ios::in | std::ios::binary);
+					is.seekg(0, std::ifstream::ios_base::beg);
 
 					// Open the file to send back.
-					std::string buffer;
-					buffer.resize(255);
-					is.rdbuf()->pubsetbuf(&buffer[0], buffer.size());
-
-					std::streamsize bytes_in = is.read(&buffer[0], buffer.size()).gcount();
 					std::vector<boost::asio::const_buffer> content_data;
+					std::array<char, 4096> buffer;
+
+					is.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
+
+					std::streamsize bytes_in = is.read(buffer.data(), buffer.size()).gcount();
 
 					while (bytes_in > 0)
 					{
@@ -1302,14 +1208,14 @@ namespace http
 
 						ss << std::hex << bytes_in;
 						ss << misc_strings::crlf;
-						ss << buffer;
+						ss << std::string(buffer.begin(), buffer.begin() + bytes_in);
 						ss << misc_strings::crlf;
 
 						me->write_buffer.emplace_back(ss.str());
 
 						me->do_chunked_write(false);
 
-						bytes_in = is.read(&buffer[0], buffer.size()).gcount();
+						bytes_in = is.read(buffer.data(), buffer.size()).gcount();
 					}
 
 					std::stringstream ss;
@@ -1335,7 +1241,7 @@ namespace http
 
 				if (!is)
 				{
-					reply_ = http::reply::stock_reply(http::reply::not_found, request_.version());
+					reply_ = http::reply::stock_reply(http::reply::not_found);
 				}
 
 				/*
