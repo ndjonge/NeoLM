@@ -1,3 +1,4 @@
+#pragma once 
 #include <string>
 #include <memory>
 #include <chrono>
@@ -23,7 +24,7 @@ namespace http
 				return tolower(a) == tolower(b);
 			});
 		}
-	}
+	} // namespace util
 
 	namespace status_strings
 	{
@@ -45,7 +46,7 @@ namespace http
 			const std::string not_implemented = "HTTP/1.0 501 Not Implemented\r\n";
 			const std::string bad_gateway = "HTTP/1.0 502 Bad Gateway\r\n";
 			const std::string service_unavailable = "HTTP/1.0 503 Service Unavailable\r\n";
-		}
+		} // namespace http_10
 
 		namespace http_11
 		{
@@ -65,8 +66,8 @@ namespace http
 			const std::string not_implemented = "HTTP/1.1 501 Not Implemented\r\n";
 			const std::string bad_gateway = "HTTP/1.1 502 Bad Gateway\r\n";
 			const std::string service_unavailable = "HTTP/1.1 503 Service Unavailable\r\n";
-		}
-	}
+		} // namespace http_11
+	} // namespace status_strings
 
 	namespace misc_strings
 	{
@@ -938,4 +939,4 @@ namespace http
 		}
 	};
 
-}
+} // namespace http

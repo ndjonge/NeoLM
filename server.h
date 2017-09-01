@@ -513,4 +513,4 @@ namespace http
 		boost::asio::ssl::context ssl_context;
 	};
 
-}
+} // namespace http
