@@ -11,6 +11,72 @@
 #include <boost/asio/ssl.hpp>
 #include <boost/asio.hpp>
 
+
+/*
+class http_session
+{
+public:
+std::vector<char> data_received;
+
+http::request_parser parser_;
+http::request request_;
+http::reply reply_;
+};
+
+std::deque<std::unique_ptr<http_session>> http_sessions_registry;
+
+
+extern "C" http_session_ptr construct_httpsession()
+{
+http_sessions_registry.push_back(std::make_unique<http_session>());
+
+auto i = http_sessions_registry.back().get();
+
+return reinterpret_cast<http_session_ptr>(i);
+}
+
+extern "C" void destruct_httpsession(http_session_ptr session)
+{
+}
+
+extern "C" int http_session_store_request_data(http_session_ptr session_ptr, const char* buffer, size_t size)
+{
+http_session* session = reinterpret_cast<http_session*>(session_ptr);
+
+session->data_received.insert(std::end(session->data_received), &buffer[0], &buffer[size]);
+
+return 0;
+}
+
+extern "C" int http_session_parse_request(http_session_ptr session_ptr)
+{
+http_session* session = reinterpret_cast<http_session*>(session_ptr);
+http::request_parser::result_type result;
+
+std::tie(result, std::ignore) = session->parser_.parse(session->request_, std::begin(session->data_received), std::end(session->data_received));
+
+
+session->
+
+
+
+return 0;
+}
+
+extern "C" int http_session_handle_request(http_session_ptr session)
+{
+return 0;
+}
+
+int http_session_reset(http_session_ptr session)
+{
+return 0;
+}
+
+
+*/
+
+
 namespace http
 {
 
