@@ -24,7 +24,7 @@ namespace http
 	public:
 		ssl_client_connection_handler(boost::asio::io_service& service, boost::asio::ssl::context& ssl_context, int keep_alive_count = 14, int keepalive_timeout = 3)
 			: service_(service),
-			session(ssl_socket_, keep_alive_count, keepalive_timeout),
+			session(keep_alive_count, keepalive_timeout),
 			ssl_socket_(service, ssl_context),
 			write_strand_(service),
 			request_handler_("C:\\temp")
@@ -110,7 +110,8 @@ namespace http
 
 		void do_write()
 		{
-			std::vector<boost::asio::const_buffer> data = std::move(reply_.to_buffers());
+			std::vector<boost::asio::const_buffer> data;
+			data.push_back(std::move(boost::asio::buffer(reply_.to_string())));
 
 			boost::asio::async_write(ssl_socket_, data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
 			{
@@ -125,9 +126,9 @@ namespace http
 		{
 			if (!error)
 			{
-				if (reply_.keep_alive() && session.keepalive_count > 0)
+				if (reply_.keep_alive() && session.keepalive_count_ > 0)
 				{
-					session.keepalive_count--;
+					session.keepalive_count_--;
 					request_parser_.reset();
 					request_.reset();
 					reply_.reset();
@@ -144,7 +145,7 @@ namespace http
 	private:
 		boost::asio::io_service& service_;
 
-		http::session<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>> session;
+		http::session session;
 
 		boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_socket_;
 
@@ -174,11 +175,10 @@ namespace http
 		client_connection_handler(boost::asio::io_service& service, const int keep_alive_count = 15, const int keepalive_timeout = 3)
 			: service_(service),
 			socket_(service),
-			session(socket_, keep_alive_count, keepalive_timeout),
+			session(keep_alive_count, keepalive_timeout),
 			write_strand_(service),
 			request_handler_("C:\\temp")
 		{
-
 		}
 
 		http::client_connection_handler(http::client_connection_handler const &) = delete;
@@ -263,7 +263,8 @@ namespace http
 		{
 			if (reply_.chunked_encoding())
 			{
-				std::vector<boost::asio::const_buffer> data = std::move(reply_.to_buffers());
+				std::vector<boost::asio::const_buffer> data;
+				data.push_back(std::move(boost::asio::buffer(reply_.to_string())));
 
 				boost::asio::async_write(socket_, data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
 				{
@@ -338,7 +339,8 @@ namespace http
 				reply_.content.assign(std::move(ss.str()));
 				reply_.headers.emplace_back(http::header("Content-Length", std::to_string(reply_.content.size())));
 
-				std::vector<boost::asio::const_buffer> data = std::move(reply_.to_buffers());
+				std::vector<boost::asio::const_buffer> data;
+				data.push_back(std::move(boost::asio::buffer(reply_.to_string())));
 
 				boost::asio::async_write(socket_, data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
 				{
@@ -354,9 +356,9 @@ namespace http
 		{
 			if (!error)
 			{
-				if (reply_.keep_alive() && session.keepalive_count > 0)
+				if (reply_.keep_alive() && session.keepalive_count_ > 0)
 				{
-					session.keepalive_count--;
+					session.keepalive_count_--;
 					request_parser_.reset();
 					request_.reset();
 					reply_.reset();
@@ -371,7 +373,7 @@ namespace http
 
 	private:
 		boost::asio::io_service& service_;
-		http::session<boost::asio::ip::tcp::socket> session;
+		http::session session;
 		boost::asio::ip::tcp::socket socket_;
 		int keep_alive_count;
 		int keepalive_timeout;
@@ -424,9 +426,6 @@ namespace http
 
 		void start_server()
 		{
-
-
-
 			auto http_handler = std::make_shared<http::client_connection_handler>(io_service, keep_alive_count, keepalive_timeout);
 			auto https_handler = std::make_shared<http::ssl_client_connection_handler>(io_service, ssl_context, keep_alive_count, keepalive_timeout);
 
@@ -455,7 +454,6 @@ namespace http
 				std::cout << "accepted a ssl-connection from: " << https_handler->socket().remote_endpoint().address().to_string() << "\n";
 				this->handle_new_https_connection(https_handler, error);
 			});
-
 
 			for (auto i = 0; i < thread_count; ++i)
 			{

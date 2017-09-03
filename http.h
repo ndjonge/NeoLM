@@ -1,80 +1,15 @@
 #pragma once 
 #include <string>
+#include <sstream>
+
 #include <memory>
 #include <chrono>
 #include <iostream>
 #include <fstream>
 
+#include <vector>
 #include <thread>
 #include <deque>
-
-#include <boost/asio/ssl.hpp>
-#include <boost/asio.hpp>
-
-
-/*
-class http_session
-{
-public:
-std::vector<char> data_received;
-
-http::request_parser parser_;
-http::request request_;
-http::reply reply_;
-};
-
-std::deque<std::unique_ptr<http_session>> http_sessions_registry;
-
-
-extern "C" http_session_ptr construct_httpsession()
-{
-http_sessions_registry.push_back(std::make_unique<http_session>());
-
-auto i = http_sessions_registry.back().get();
-
-return reinterpret_cast<http_session_ptr>(i);
-}
-
-extern "C" void destruct_httpsession(http_session_ptr session)
-{
-}
-
-extern "C" int http_session_store_request_data(http_session_ptr session_ptr, const char* buffer, size_t size)
-{
-http_session* session = reinterpret_cast<http_session*>(session_ptr);
-
-session->data_received.insert(std::end(session->data_received), &buffer[0], &buffer[size]);
-
-return 0;
-}
-
-extern "C" int http_session_parse_request(http_session_ptr session_ptr)
-{
-http_session* session = reinterpret_cast<http_session*>(session_ptr);
-http::request_parser::result_type result;
-
-std::tie(result, std::ignore) = session->parser_.parse(session->request_, std::begin(session->data_received), std::end(session->data_received));
-
-
-session->
-
-
-
-return 0;
-}
-
-extern "C" int http_session_handle_request(http_session_ptr session)
-{
-return 0;
-}
-
-int http_session_reset(http_session_ptr session)
-{
-return 0;
-}
-
-
-*/
 
 
 namespace http
@@ -94,26 +29,6 @@ namespace http
 
 	namespace status_strings
 	{
-		namespace http_10
-		{
-			const std::string ok = "HTTP/1.0 200 OK\r\n";
-			const std::string created = "HTTP/1.0 201 Created\r\n";
-			const std::string accepted = "HTTP/1.0 202 Accepted\r\n";
-			const std::string no_content = "HTTP/1.0 204 No Content\r\n";
-			const std::string multiple_choices = "HTTP/1.0 300 Multiple Choices\r\n";
-			const std::string moved_permanently = "HTTP/1.0 301 Moved Permanently\r\n";
-			const std::string moved_temporarily = "HTTP/1.0 302 Moved Temporarily\r\n";
-			const std::string not_modified = "HTTP/1.0 304 Not Modified\r\n";
-			const std::string bad_request = "HTTP/1.0 400 Bad Request\r\n";
-			const std::string unauthorized = "HTTP/1.0 401 Unauthorized\r\n";
-			const std::string forbidden = "HTTP/1.0 403 Forbidden\r\n";
-			const std::string not_found = "HTTP/1.0 404 Not Found\r\n";
-			const std::string internal_server_error = "HTTP/1.0 500 Internal Server Error\r\n";
-			const std::string not_implemented = "HTTP/1.0 501 Not Implemented\r\n";
-			const std::string bad_gateway = "HTTP/1.0 502 Bad Gateway\r\n";
-			const std::string service_unavailable = "HTTP/1.0 503 Service Unavailable\r\n";
-		} // namespace http_10
-
 		namespace http_11
 		{
 			const std::string ok = "HTTP/1.1 200 OK\r\n";
@@ -612,6 +527,7 @@ namespace http
 		} state_;
 	};
 
+
 	class reply
 	{
 	public:
@@ -659,27 +575,26 @@ namespace http
 			return chunked_encoding_;
 		}
 
-		/// Convert the reply into a vector of buffers. The buffers do not own the
-		/// underlying memory blocks, therefore the reply object must remain valid and
-		/// not be changed until the write operation has completed.
-		std::vector<boost::asio::const_buffer> to_buffers()
+		std::string to_string()
 		{
-			std::vector<boost::asio::const_buffer> buffers;
+			std::stringstream ss;
 
-			buffers.push_back(http::reply::to_buffer(status));
+			ss << http::reply::to_buffer(this->status);
 
 			for (std::size_t i = 0; i < headers.size(); ++i)
 			{
 				http::header& h = headers[i];
-				buffers.push_back(boost::asio::buffer(h.name));
-				buffers.push_back(boost::asio::buffer(misc_strings::name_value_separator));
-				buffers.push_back(boost::asio::buffer(h.value));
-				buffers.push_back(boost::asio::buffer(misc_strings::crlf));
+				ss << h.name;
+				ss << misc_strings::name_value_separator;
+				ss << h.value;
+				ss << misc_strings::crlf;
 			}
-			buffers.push_back(boost::asio::buffer(misc_strings::crlf));
-			buffers.push_back(boost::asio::buffer(content));
-			return buffers;
+			ss << misc_strings::crlf;
+			ss << content;
+
+			return ss.str();
 		};
+
 
 		/// The headers to be included in the reply.
 		std::vector<http::header> headers;
@@ -748,44 +663,44 @@ namespace http
 		}
 
 
-		static boost::asio::const_buffer to_buffer(http::reply::status_type status)
+		static const std::string to_buffer(http::reply::status_type status)
 		{
 			switch (status)
 			{
 			case http::reply::ok:
-				return boost::asio::buffer(http::status_strings::http_11::ok);
+				return http::status_strings::http_11::ok;
 			case http::reply::created:
-				return boost::asio::buffer(http::status_strings::http_11::created);
+				return http::status_strings::http_11::created;
 			case http::reply::accepted:
-				return boost::asio::buffer(http::status_strings::http_11::accepted);
+				return http::status_strings::http_11::accepted;
 			case http::reply::no_content:
-				return boost::asio::buffer(http::status_strings::http_11::no_content);
+				return http::status_strings::http_11::no_content;
 			case http::reply::multiple_choices:
-				return boost::asio::buffer(http::status_strings::http_11::multiple_choices);
+				return http::status_strings::http_11::multiple_choices;
 			case http::reply::moved_permanently:
-				return boost::asio::buffer(http::status_strings::http_11::moved_permanently);
+				return http::status_strings::http_11::moved_permanently;
 			case http::reply::moved_temporarily:
-				return boost::asio::buffer(http::status_strings::http_11::moved_temporarily);
+				return http::status_strings::http_11::moved_temporarily;
 			case http::reply::not_modified:
-				return boost::asio::buffer(http::status_strings::http_11::not_modified);
+				return http::status_strings::http_11::not_modified;
 			case http::reply::bad_request:
-				return boost::asio::buffer(http::status_strings::http_11::bad_request);
+				return http::status_strings::http_11::bad_request;
 			case http::reply::unauthorized:
-				return boost::asio::buffer(http::status_strings::http_11::unauthorized);
+				return http::status_strings::http_11::unauthorized;
 			case http::reply::forbidden:
-				return boost::asio::buffer(http::status_strings::http_11::forbidden);
+				return http::status_strings::http_11::forbidden;
 			case http::reply::not_found:
-				return boost::asio::buffer(http::status_strings::http_11::not_found);
+				return http::status_strings::http_11::not_found;
 			case http::reply::internal_server_error:
-				return boost::asio::buffer(http::status_strings::http_11::internal_server_error);
+				return http::status_strings::http_11::internal_server_error;
 			case http::reply::not_implemented:
-				return boost::asio::buffer(http::status_strings::http_11::not_implemented);
+				return http::status_strings::http_11::not_implemented;
 			case http::reply::bad_gateway:
-				return boost::asio::buffer(http::status_strings::http_11::bad_gateway);
+				return http::status_strings::http_11::bad_gateway;
 			case http::reply::service_unavailable:
-				return boost::asio::buffer(http::status_strings::http_11::service_unavailable);
+				return http::status_strings::http_11::service_unavailable;
 			default:
-				return boost::asio::buffer(http::status_strings::http_11::internal_server_error);
+				return http::status_strings::http_11::internal_server_error;
 			}
 		}
 	};
@@ -824,18 +739,16 @@ namespace http
 	} // namespace mime_types
 
 
-	template <typename socket_type_t>
 	class session
 	{
 	public:
-		session(const socket_type_t& socket, int keepalive_count, int keepalive_max)
-			: socket(socket),
-			keepalive_count(keepalive_count),
-			keepalive_max(keepalive_max)
+		session(int keepalive_count, int keepalive_max) : 
+			keepalive_count_(keepalive_count),
+			keepalive_max_(keepalive_max)
 		{
 		};
 
-		session(const session& rhs) : socket(rhs.socket), keepalive_count(rhs.keepalive_count), keepalive_max(rhs.keepalive_max)
+		session(const session& rhs) : keepalive_count_(rhs.keepalive_count_), keepalive_max_(rhs.keepalive_max_)
 		{
 		};
 
@@ -845,10 +758,8 @@ namespace http
 		{
 		};
 
-		const socket_type_t& socket;
-		int keepalive_count;
-		int keepalive_max;
-
+		int keepalive_count_;
+		int keepalive_max_;
 	};
 
 	template <typename socket_type_t>
@@ -888,7 +799,7 @@ namespace http
 
 
 		/// Handle a request and produce a reply.
-		void handle_request(const http::request& request, http::reply& reply, const session<socket_type_t>& session)
+		void handle_request(const http::request& request, http::reply& reply, const session& session)
 		{
 			// Decode url to path.
 			std::string request_path;
@@ -950,7 +861,7 @@ namespace http
 			if (reply.keep_alive() == true)
 			{
 				reply.headers.emplace_back(http::header("Connection", "Keep-Alive"));
-				reply.headers.emplace_back(http::header("Keep-Alive", std::string("timeout=") + std::to_string(session.keepalive_max) + std::string(" max=") + std::to_string(session.keepalive_count)));
+				reply.headers.emplace_back(http::header("Keep-Alive", std::string("timeout=") + std::to_string(session.keepalive_max_) + std::string(" max=") + std::to_string(session.keepalive_count_)));
 			}
 			else
 			{
@@ -1006,3 +917,70 @@ namespace http
 	};
 
 } // namespace http
+
+
+  /*
+  class http_session
+  {
+  public:
+  std::vector<char> data_received;
+
+  http::request_parser parser_;
+  http::request request_;
+  http::reply reply_;
+  };
+
+  std::deque<std::unique_ptr<http_session>> http_sessions_registry;
+
+
+  extern "C" http_session_ptr construct_httpsession()
+  {
+  http_sessions_registry.push_back(std::make_unique<http_session>());
+
+  auto i = http_sessions_registry.back().get();
+
+  return reinterpret_cast<http_session_ptr>(i);
+  }
+
+  extern "C" void destruct_httpsession(http_session_ptr session)
+  {
+  }
+
+  extern "C" int http_session_store_request_data(http_session_ptr session_ptr, const char* buffer, size_t size)
+  {
+  http_session* session = reinterpret_cast<http_session*>(session_ptr);
+
+  session->data_received.insert(std::end(session->data_received), &buffer[0], &buffer[size]);
+
+  return 0;
+  }
+
+  extern "C" int http_session_parse_request(http_session_ptr session_ptr)
+  {
+  http_session* session = reinterpret_cast<http_session*>(session_ptr);
+  http::request_parser::result_type result;
+
+  std::tie(result, std::ignore) = session->parser_.parse(session->request_, std::begin(session->data_received), std::end(session->data_received));
+
+
+  session->
+
+
+
+  return 0;
+  }
+
+  extern "C" int http_session_handle_request(http_session_ptr session)
+  {
+  return 0;
+  }
+
+  int http_session_reset(http_session_ptr session)
+  {
+  return 0;
+  }
+
+
+  */
+
+
