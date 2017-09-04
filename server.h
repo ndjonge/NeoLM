@@ -16,13 +16,13 @@
 namespace http
 {
 
-	class ssl_client_connection_handler : public std::enable_shared_from_this<http::ssl_client_connection_handler>
+	class connection_handler_https : public std::enable_shared_from_this<http::connection_handler_https>
 	{
 		using ssl_socket_t = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>;
 
 
 	public:
-		ssl_client_connection_handler(boost::asio::io_service& service, boost::asio::ssl::context& ssl_context, int keep_alive_count = 14, int keepalive_timeout = 3)
+		connection_handler_https(boost::asio::io_service& service, boost::asio::ssl::context& ssl_context, int keep_alive_count = 14, int keepalive_timeout = 3)
 			: service_(service),
 			session(keep_alive_count, keepalive_timeout),
 			ssl_socket_(service, ssl_context),
@@ -31,13 +31,11 @@ namespace http
 		{
 		}
 
-		http::ssl_client_connection_handler(http::ssl_client_connection_handler const &) = delete;
-		void operator==(http::ssl_client_connection_handler const &) = delete;
-		~ssl_client_connection_handler()
-		{
-			std::string s = socket().remote_endpoint().address().to_string();
+		http::connection_handler_https(http::connection_handler_https const &) = delete;
+		void operator==(http::connection_handler_https const &) = delete;
 
-			//std::cout << "done with connection from: " << s << "\n";
+		~connection_handler_https()
+		{
 		}
 
 
@@ -48,18 +46,14 @@ namespace http
 
 		void start()
 		{
-			std::string s = socket().remote_endpoint().address().to_string();
-			//std::cout << "new connection from: " << s << "\n";
 
 			ssl_socket_.async_handshake(boost::asio::ssl::stream_base::server, [me = shared_from_this()](boost::system::error_code const& ec)
 			{
 				if (ec)
 				{
-					//std::cout << "handshake incomplete : \n" << ec.message() << " : this=" << reinterpret_cast<int64_t>(me.get()) << std::endl;
 				}
 				else
 				{
-					//std::cout << "handshake complete   : \n" << ec.message() << " : this=" << reinterpret_cast<int64_t>(me.get()) << std::endl;
 					me->do_read();
 				}
 			});
@@ -153,7 +147,9 @@ namespace http
 		boost::asio::streambuf in_packet_;
 
 		/// The handler used to process the incoming request.
-		http::request_handler<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>> request_handler_;
+//		http::request_handler<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>> request_handler_;
+		http::request_handler request_handler_;
+
 
 		/// Buffer for incoming data.
 		std::array<char, 8192> buffer_;
@@ -169,10 +165,10 @@ namespace http
 
 	};
 
-	class client_connection_handler : public std::enable_shared_from_this<http::client_connection_handler>
+	class connection_handler_http : public std::enable_shared_from_this<http::connection_handler_http>
 	{
 	public:
-		client_connection_handler(boost::asio::io_service& service, const int keep_alive_count = 15, const int keepalive_timeout = 3)
+		connection_handler_http(boost::asio::io_service& service, const int keep_alive_count = 15, const int keepalive_timeout = 3)
 			: service_(service),
 			socket_(service),
 			session(keep_alive_count, keepalive_timeout),
@@ -181,10 +177,10 @@ namespace http
 		{
 		}
 
-		http::client_connection_handler(http::client_connection_handler const &) = delete;
-		void operator==(http::client_connection_handler const &) = delete;
+		http::connection_handler_http(http::connection_handler_http const &) = delete;
+		void operator==(http::connection_handler_http const &) = delete;
 
-		~client_connection_handler()
+		~connection_handler_http()
 		{
 		}
 
@@ -311,6 +307,11 @@ namespace http
 			}
 			else
 			{
+				/*
+				std::for_each(data.begin(), data.end(), [&](boost::asio::const_buffer& b) {
+				std::cout << boost::asio::buffer_cast<const char*>(b);
+				});*/
+
 
 				std::array<char, 8192> buffer;
 
@@ -322,12 +323,6 @@ namespace http
 				{
 					reply_ = http::reply::stock_reply(http::reply::not_found);
 				}
-
-				/*
-				std::for_each(data.begin(), data.end(), [&](boost::asio::const_buffer& b) {
-				std::cout << boost::asio::buffer_cast<const char*>(b);
-				});*/
-
 
 				std::stringstream ss;
 
@@ -382,7 +377,7 @@ namespace http
 		boost::asio::streambuf in_packet_;
 
 		/// The handler used to process the incoming request.
-		http::request_handler<boost::asio::ip::tcp::socket> request_handler_;
+		http::request_handler request_handler_;
 
 		/// Buffer for incoming data.
 		std::array<char, 8192> buffer_;
@@ -400,10 +395,10 @@ namespace http
 
 	};
 
-	template <typename client_connection_handler_t, typename ssl_connection_handler_t> class server
+	template <typename connection_handler_http_t, typename ssl_connection_handler_t> class server
 	{
-		using shared_client_connection_handler_t = std::shared_ptr<http::client_connection_handler>;
-		using shared_https_client_connection_handler_t = std::shared_ptr<http::ssl_client_connection_handler>;
+		using shared_connection_handler_http_t = std::shared_ptr<http::connection_handler_http>;
+		using shared_https_connection_handler_http_t = std::shared_ptr<http::connection_handler_https>;
 
 	public:
 		server(const std::string &cert_file, const std::string &private_key_file, const std::string &verify_file = std::string(), int thread_count = 10, int keep_alive_count = 5, int keepalive_timeout = 2) :
@@ -426,8 +421,8 @@ namespace http
 
 		void start_server()
 		{
-			auto http_handler = std::make_shared<http::client_connection_handler>(io_service, keep_alive_count, keepalive_timeout);
-			auto https_handler = std::make_shared<http::ssl_client_connection_handler>(io_service, ssl_context, keep_alive_count, keepalive_timeout);
+			auto http_handler = std::make_shared<http::connection_handler_http>(io_service, keep_alive_count, keepalive_timeout);
+			auto https_handler = std::make_shared<http::connection_handler_https>(io_service, ssl_context, keep_alive_count, keepalive_timeout);
 
 			boost::asio::ip::tcp::endpoint http_endpoint(boost::asio::ip::tcp::v4(), 60005);
 			boost::asio::ip::tcp::endpoint https_endpoint(boost::asio::ip::tcp::v4(), 60006);
@@ -470,13 +465,13 @@ namespace http
 		}
 
 	private:
-		void handle_new_connection(shared_client_connection_handler_t handler, const boost::system::error_code error)
+		void handle_new_connection(shared_connection_handler_http_t handler, const boost::system::error_code error)
 		{
 			if (error) { return; }
 
 			handler->start();
 
-			auto new_handler = std::make_shared<http::client_connection_handler>(io_service, keep_alive_count, keep_alive_count);
+			auto new_handler = std::make_shared<http::connection_handler_http>(io_service, keep_alive_count, keep_alive_count);
 
 			acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error)
 			{
@@ -484,13 +479,13 @@ namespace http
 			});
 		}
 
-		void handle_new_https_connection(shared_https_client_connection_handler_t handler, const boost::system::error_code error)
+		void handle_new_https_connection(shared_https_connection_handler_http_t handler, const boost::system::error_code error)
 		{
 			if (error) { return; }
 
 			handler->start();
 
-			auto new_handler = std::make_shared<http::ssl_client_connection_handler>(io_service, ssl_context, keep_alive_count, keep_alive_count);
+			auto new_handler = std::make_shared<http::connection_handler_https>(io_service, ssl_context, keep_alive_count, keep_alive_count);
 
 			ssl_acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error)
 			{

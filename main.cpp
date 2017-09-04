@@ -5,7 +5,7 @@
 int main(int argc, char* argv[])
 {
 
-	http::server<http::client_connection_handler, http::ssl_client_connection_handler> server(
+	http::server<http::connection_handler_http, http::connection_handler_https> server(
 		"C:\\Development Libraries\\ssl.crt", 
 		"C:\\Development Libraries\\ssl.key");
 
