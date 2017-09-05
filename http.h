@@ -576,6 +576,7 @@ namespace http
 
 		std::string to_string()
 		{
+			std::string result;
 			std::stringstream ss;
 
 			ss << http::reply::to_buffer(this->status);
@@ -591,7 +592,7 @@ namespace http
 			ss << misc_strings::crlf;
 			ss << content;
 
-			return ss.str();
+			return result = ss.str();
 		};
 
 
@@ -839,11 +840,11 @@ namespace http
 
 			for (auto& request_header : request.headers)
 			{
-				//if (http::util::case_insensitive_equal(request_header.name, "Content-Encoding") && http::util::case_insensitive_equal(request_header.name, "chunked"))
-				reply.chunked_encoding() = true;
+				if (http::util::case_insensitive_equal(request_header.name, "Content-Encoding") && http::util::case_insensitive_equal(request_header.name, "chunked"))
+					reply.chunked_encoding() = true;
 
-				//if (http::util::case_insensitive_equal(request_header.name, "Keep-Alive"))
-				reply.keep_alive() = true;
+				if (http::util::case_insensitive_equal(request_header.name, "Keep-Alive"))
+					reply.keep_alive() = true;
 
 			}
 

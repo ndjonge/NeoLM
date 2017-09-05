@@ -12,6 +12,8 @@
 #include <boost/asio/ssl.hpp>
 #include <boost/asio.hpp>
 
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
 
 namespace http
 {
@@ -164,6 +166,33 @@ namespace http
 		http::reply reply_;
 
 	};
+	
+	template <typename block_container_t = std::array<char, 1024>>
+	bool read_from_disk(const std::string& file_path, const std::function<bool(block_container_t, size_t)>& read)
+	{
+
+		block_container_t buffer;
+		std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
+
+		is.seekg(0, std::ifstream::ios_base::beg);
+		is.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
+
+		std::streamsize bytes_in = is.read(buffer.data(), buffer.size()).gcount();
+
+		bool result = false;
+
+		while (bytes_in > 0)
+		{
+
+			if (!read(buffer, bytes_in))
+				break;
+
+			bytes_in = is.read(buffer.data(), buffer.size()).gcount();
+		}
+
+		return result;
+	}
+
 
 	class connection_handler_http : public std::enable_shared_from_this<http::connection_handler_http>
 	{
@@ -246,8 +275,6 @@ namespace http
 			{
 				me->write_buffer.pop_front();
 
-				std::cout << "wrote:" << bytes_written << "\n";
-
 				if (finished)
 					me->do_write_done(ec);
 			}));
@@ -257,94 +284,59 @@ namespace http
 
 		void do_write()
 		{
-			if (reply_.chunked_encoding())
+			write_buffer.push_back(reply_.to_string());
+
+			std::vector<boost::asio::const_buffer> data_buffers;
+
+			data_buffers.push_back(boost::asio::buffer(this->write_buffer.back()));
+
+			if (!reply_.chunked_encoding())
 			{
-				std::vector<boost::asio::const_buffer> data;
-				data.push_back(std::move(boost::asio::buffer(reply_.to_string())));
+				size_t bytes_total = fs::file_size(reply_.document_path());
+				reply_.headers.emplace_back(http::header("Content-Length", std::to_string(bytes_total)));
+			}
 
-				boost::asio::async_write(socket_, data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
-				{
-					reply_.content.clear();
+			boost::asio::async_write(socket_, data_buffers, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
+			{
+				reply_.content.clear();
+				me->write_buffer.pop_front();
 
-					std::ifstream is(reply_.document_path().c_str(), std::ios::in | std::ios::binary);
-					is.seekg(0, std::ifstream::ios_base::beg);
-
-					// Open the file to send back.
-					std::vector<boost::asio::const_buffer> content_data;
-					std::array<char, 4096> buffer;
-
-					is.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
-
-					std::streamsize bytes_in = is.read(buffer.data(), buffer.size()).gcount();
-
-					while (bytes_in > 0)
-					{
+				auto result = read_from_disk<std::array<char, 4096>>(reply_.document_path().c_str(),
+					[me, chunked = reply_.chunked_encoding()](std::array<char, 4096>& buffer, size_t bytes_in)
+					{							
 						std::stringstream ss;
-
-						ss << std::hex << bytes_in;
-						ss << misc_strings::crlf;
-						ss << std::string(buffer.begin(), buffer.begin() + bytes_in);
-						ss << misc_strings::crlf;
+							
+						if (!chunked)
+							ss << std::string(buffer.begin(), buffer.begin() + bytes_in);
+						else
+							ss << std::hex << bytes_in << misc_strings::crlf << std::string(buffer.begin(), buffer.begin() + bytes_in) << misc_strings::crlf;
 
 						me->write_buffer.emplace_back(ss.str());
-
-						me->do_chunked_write(false);
-
-						bytes_in = is.read(buffer.data(), buffer.size()).gcount();
+							
+						if (bytes_in == buffer.size())
+						{
+							me->do_chunked_write(false);
+						}
+						else
+						{
+							if (!chunked)
+							{
+								me->do_chunked_write(true);
+							}
+							else
+							{
+								me->do_chunked_write(false);
+								ss.str("");
+								ss << std::hex << 0 << misc_strings::crlf;
+								me->write_buffer.emplace_back(ss.str());
+								me->do_chunked_write(true);
+							}
+						}
+							
+						return true;
 					}
-
-					std::stringstream ss;
-					ss.clear();
-					ss << std::hex << 0;
-					ss << misc_strings::crlf;
-					ss << misc_strings::crlf;
-					me->write_buffer.emplace_back(ss.str());
-
-					me->do_chunked_write(true);
-
-				}));
-
-			}
-			else
-			{
-				/*
-				std::for_each(data.begin(), data.end(), [&](boost::asio::const_buffer& b) {
-				std::cout << boost::asio::buffer_cast<const char*>(b);
-				});*/
-
-
-				std::array<char, 8192> buffer;
-
-				std::ifstream is(reply_.document_path().c_str(), std::ios::in | std::ios::binary);
-
-				is.rdbuf()->pubsetbuf(&buffer[0], buffer.size());
-
-				if (!is)
-				{
-					reply_ = http::reply::stock_reply(http::reply::not_found);
-				}
-
-				std::stringstream ss;
-
-				while (int bytes_in = is.read(&buffer[0], buffer.size()).gcount() > 0)
-				{
-					ss << &buffer[0];
-				}
-
-				reply_.content.assign(std::move(ss.str()));
-				reply_.headers.emplace_back(http::header("Content-Length", std::to_string(reply_.content.size())));
-
-				std::vector<boost::asio::const_buffer> data;
-				data.push_back(std::move(boost::asio::buffer(reply_.to_string())));
-
-				boost::asio::async_write(socket_, data, write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
-				{
-					if (ec != boost::asio::error::operation_aborted)
-					{
-						me->do_write_done(ec);
-					}
-				}));
-			}
+				);
+			}));
 		}
 
 		void do_write_done(boost::system::error_code const & error)
