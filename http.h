@@ -27,6 +27,33 @@ namespace http
 				return tolower(a) == tolower(b);
 			});
 		}
+
+		template <typename block_container_t = std::array<char, 1024>>
+		bool read_from_disk(const std::string& file_path, const std::function<bool(block_container_t, size_t)>& read)
+		{
+
+			block_container_t buffer;
+			std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
+
+			is.seekg(0, std::ifstream::ios_base::beg);
+			is.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
+
+			std::streamsize bytes_in = is.read(buffer.data(), buffer.size()).gcount();
+
+			bool result = false;
+
+			while (bytes_in > 0)
+			{
+
+				if (!read(buffer, bytes_in))
+					break;
+
+				bytes_in = is.read(buffer.data(), buffer.size()).gcount();
+			}
+
+			return result;
+		}
+
 	} // namespace util
 
 	namespace status_strings
