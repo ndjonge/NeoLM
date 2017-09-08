@@ -870,7 +870,7 @@ namespace http
 				if (http::util::case_insensitive_equal(request_header.name, "Content-Encoding") && http::util::case_insensitive_equal(request_header.name, "chunked"))
 					reply.chunked_encoding() = true;
 
-				if (http::util::case_insensitive_equal(request_header.name, "Keep-Alive"))
+				if (http::util::case_insensitive_equal(request_header.value, "Keep-Alive"))
 					reply.keep_alive() = true;
 
 			}

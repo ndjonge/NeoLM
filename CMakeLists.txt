@@ -12,7 +12,8 @@ IF (WIN32)
 	add_definitions(-DWINVER=0x502
                     -D_WIN32_WINNT=0x502
                     -D_WIN32_WINDOWS=0x502
-                    -D_SETUPAPI_VER=0x502)
+                    -D_SETUPAPI_VER=0x502
+					-DBOOST_ASIO_ENABLE_HANDLER_TRACKING)
 ENDIF()
 
 
