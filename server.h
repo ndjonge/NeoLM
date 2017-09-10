@@ -14,6 +14,8 @@
 #include <boost/asio/steady_timer.hpp>
 #include <boost/asio/ssl.hpp>
 
+#include <boost/log/trivial.hpp>
+
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 
@@ -30,8 +32,7 @@ protected:
 	boost::asio::io_service::strand write_strand_;
 	boost::asio::streambuf in_packet_;
 	boost::asio::steady_timer steady_timer_;
-
-	std::array<char, 8192> buffer_;
+//	std::array<char, 8192> buffer_;
 	std::deque<std::string> write_buffer;
 
 	http::request_handler request_handler_;
@@ -55,13 +56,10 @@ public:
 		request_handler_("C:\\temp"),
 		connection_nr(connection_handler_base::connections++)
 	{
-		std::cout << "base connection [" << std::to_string(connection_nr) << "] created" << std::endl;
-
 	}
 
 	~connection_handler_base()
 	{
-		std::cout << "base connection [" << std::to_string(connection_nr) << "] closed" << std::endl << std::flush;		
 	}
 
 	connection_handler_base(connection_handler_base const &) = delete;
