@@ -601,7 +601,7 @@ namespace http
 			return chunked_encoding_;
 		}
 
-		std::string to_string()
+		std::string headers_to_string()
 		{
 			std::string result;
 			std::stringstream ss;
@@ -617,11 +617,20 @@ namespace http
 				ss << misc_strings::crlf;
 			}
 			ss << misc_strings::crlf;
-			ss << content;
 
 			return result = ss.str();
 		};
 
+
+		std::string content_to_string()
+		{
+			std::string result;
+			std::stringstream ss;
+
+			ss << content;
+
+			return result = ss.str();
+		};
 
 		/// The headers to be included in the reply.
 		std::vector<http::header> headers;

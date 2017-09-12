@@ -147,7 +147,7 @@ public:
 					size_t bytes_total = fs::file_size(reply_.document_path());
 					reply_.headers.emplace_back(http::header("Content-Length", std::to_string(bytes_total)));
 				}
-				write_buffer.push_back(reply_.to_string());
+				write_buffer.push_back(reply_.headers_to_string());
 
 				do_write_header();
 			}
@@ -329,7 +329,7 @@ public:
 					size_t bytes_total = fs::file_size(reply_.document_path());
 					reply_.headers.emplace_back(http::header("Content-Length", std::to_string(bytes_total)));
 				}
-				write_buffer.push_back(reply_.to_string());
+				write_buffer.push_back(reply_.headers_to_string());
 
 				do_write_header(); 
 
