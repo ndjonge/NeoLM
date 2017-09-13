@@ -56,6 +56,44 @@ namespace http
 
 	} // namespace util
 
+	namespace api
+	{	
+		class router
+		{
+		public:
+			router()
+			{
+			};
+
+			void add_route(const char* api_route, const char* http_method, std::function<bool(const char* method, http::session& session)> api_method)
+			{
+				std::string key{ http_method };
+
+				key += "_";
+				key += api_route;
+
+				api_router_table.insert(std::make_pair(key.c_str(), api_method));
+			}
+
+			bool call(const char* api_route, const char* http_method, http::session& session)
+			{
+				std::string key{ http_method };
+
+				key += "_";
+				key += api_route;
+
+				auto result = api_router_table[api_route](http_method, session);
+
+				return result;
+			}
+
+		protected:
+			std::map<const char*, std::function<bool(const char* method, http::session& session)>>api_router_table;
+		};
+
+	} //namespace api
+
+
 	namespace status_strings
 	{
 		namespace http_11
@@ -794,6 +832,11 @@ namespace http
 		{
 		};
 
+		http::reply response_;
+		http::reply request_;
+		http::request_parser request_parser_;
+		http::api::router& router;
+		
 		int keepalive_count_;
 		int keepalive_max_;
 	};
@@ -950,5 +993,4 @@ namespace http
 			return true;
 		}
 	};
-
 } // namespace http
