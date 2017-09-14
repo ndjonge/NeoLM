@@ -824,7 +824,7 @@ namespace http
 		session_handler& operator=(const session_handler&) = delete;
 
 		/// Construct with a directory containing files to be served.
-		explicit session_handler(const std::string& doc_root, http::api::router& router) : doc_root_{ doc_root }, router_(router)
+		explicit session_handler(const std::string& doc_root, http::api::router& router) : doc_root_{ doc_root }, router_(router), keepalive_count_(5), keepalive_max_(10)
 		{
 		}
 

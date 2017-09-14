@@ -104,7 +104,7 @@ public:
 			{
 				session_handler_.handle_request();
 
-				write_buffer_.push_back(reply().headers_to_string());
+				write_buffer_.push_back(session_handler_.reply().headers_to_string());
 
 				do_write_header();
 			}
@@ -126,8 +126,8 @@ public:
 
 	void do_write_content()
 	{
-		auto result = http::util::read_from_disk<std::array<char, 16384>>(reply().document_path().c_str(),
-			[this, chunked = reply().chunked_encoding()](std::array<char, 16384>& buffer, size_t bytes_in)
+		auto result = http::util::read_from_disk<std::array<char, 16384>>(session_handler_.reply().document_path().c_str(),
+			[this, chunked = session_handler_.reply().chunked_encoding()](std::array<char, 16384>& buffer, size_t bytes_in)
 		{
 			std::stringstream ss;
 
@@ -182,7 +182,7 @@ public:
 
 	void do_write_header_done()
 	{
-		if (reply().keep_alive() && session_handler_.keepalive_count() > 0)
+		if (session_handler_.reply().keep_alive() && session_handler_.keepalive_count() > 0)
 		{
 			session_handler_.keepalive_count()--;
 			session_handler_.reset();
