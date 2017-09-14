@@ -13,6 +13,11 @@
 
 #include <ctime>
 
+#include <map>
+
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
+
 
 namespace http
 {
@@ -55,43 +60,6 @@ namespace http
 		}
 
 	} // namespace util
-
-	namespace api
-	{	
-		class router
-		{
-		public:
-			router()
-			{
-			};
-
-			void add_route(const char* api_route, const char* http_method, std::function<bool(const char* method, http::session& session)> api_method)
-			{
-				std::string key{ http_method };
-
-				key += "_";
-				key += api_route;
-
-				api_router_table.insert(std::make_pair(key.c_str(), api_method));
-			}
-
-			bool call(const char* api_route, const char* http_method, http::session& session)
-			{
-				std::string key{ http_method };
-
-				key += "_";
-				key += api_route;
-
-				auto result = api_router_table[api_route](http_method, session);
-
-				return result;
-			}
-
-		protected:
-			std::map<const char*, std::function<bool(const char* method, http::session& session)>>api_router_table;
-		};
-
-	} //namespace api
 
 
 	namespace status_strings
@@ -812,43 +780,51 @@ namespace http
 		}
 	} // namespace mime_types
 
+	namespace api
+	{
+		class router
+		{
+		public:
+			router()
+			{
+			};
 
-	class session
+			void add_route(const char* api_route, const char* http_method, std::function<bool(const char* method, class session& session)> api_method)
+			{
+				std::string key{ http_method };
+
+				key += "_";
+				key += api_route;
+
+				api_router_table.insert(std::make_pair(key.c_str(), api_method));
+			}
+
+			bool call(const char* api_route, const char* http_method, class session& session)
+			{
+				std::string key{ http_method };
+
+				key += "_";
+				key += api_route;
+
+				auto result = api_router_table[api_route](http_method, session);
+
+				return result;
+			}
+
+		protected:
+			std::map<const char*, std::function<bool(const char* method, class session& session)>>api_router_table;
+		};
+
+	} //namespace api
+
+	class session_handler
 	{
 	public:
-		session(int keepalive_count, int keepalive_max) :
-			keepalive_count_(keepalive_count),
-			keepalive_max_(keepalive_max)
-		{
-		};
-
-		session(const session& rhs) : keepalive_count_(rhs.keepalive_count_), keepalive_max_(rhs.keepalive_max_)
-		{
-		};
-
-		session& operator=(const session& rhs) = default;
-
-		~session()
-		{
-		};
-
-		http::reply response_;
-		http::reply request_;
-		http::request_parser request_parser_;
-		http::api::router& router;
-		
-		int keepalive_count_;
-		int keepalive_max_;
-	};
-
-	class request_handler
-	{
-	public:
-		request_handler(const request_handler&) = delete;
-		request_handler& operator=(const request_handler&) = delete;
+		session_handler(const session_handler&) = delete;
+		session_handler& operator=(const session_handler&) = delete;
 
 		/// Construct with a directory containing files to be served.
-		explicit request_handler(const std::string& doc_root) : doc_root_{ doc_root }
+		explicit session_handler(const std::string& doc_root, http::api::router& router) : doc_root_{ doc_root }, router_(router)
 		{
 		}
 
@@ -875,16 +851,22 @@ namespace http
 			return returnvalue;
 		}
 
+		/// Handle a request and produce a reply.
+
+		template <typename InputIterator> std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end)
+		{
+			return request_parser_.parse(request_, begin, end);
+		}
 
 		/// Handle a request and produce a reply.
-		void handle_request(const http::request& request, http::reply& reply, const session& session)
+		void handle_request()
 		{
 			// Decode url to path.
 			std::string request_path;
 
-			if (!url_decode(request.uri, request_path))
+			if (!url_decode(request_.uri, request_path))
 			{
-				reply = http::reply::stock_reply(http::reply::bad_request);
+				reply_ = http::reply::stock_reply(http::reply::bad_request);
 				return;
 			}
 
@@ -892,7 +874,7 @@ namespace http
 			if (request_path.empty() || request_path[0] != '/'
 				|| request_path.find("..") != std::string::npos)
 			{
-				reply = http::reply::stock_reply(http::reply::bad_request);
+				reply_ = http::reply::stock_reply(http::reply::bad_request);
 				return;
 			}
 
@@ -912,45 +894,74 @@ namespace http
 				extension = request_path.substr(last_dot_pos + 1);
 			}
 
-			reply.document_path() = doc_root_ + request_path;
+			reply_.document_path() = doc_root_ + request_path;
 
 			// Fill out the reply to be sent to the client.
-			reply.status = http::reply::ok;
+			reply_.status = http::reply::ok;
 
-			for (auto& request_header : request.headers)
+			for (auto& request_header : request_.headers)
 			{
 				if (http::util::case_insensitive_equal(request_header.name, "Content-Encoding") && http::util::case_insensitive_equal(request_header.name, "chunked"))
-					reply.chunked_encoding() = true;
+					reply_.chunked_encoding() = true;
 
 				if (http::util::case_insensitive_equal(request_header.value, "Keep-Alive"))
-					reply.keep_alive() = true;
+					reply_.keep_alive() = true;
 
 			}
 
-			reply.headers.emplace_back(http::header("Server", "NeoLM / 0.01 (Windows)"));
-			reply.headers.emplace_back(http::header("Date", date_header_value()));
-			reply.headers.emplace_back(http::header("Content-Type", mime_types::extension_to_type(extension)));
+			reply_.headers.emplace_back(http::header("Server", "NeoLM / 0.01 (Windows)"));
+			reply_.headers.emplace_back(http::header("Date", date_header_value()));
+			reply_.headers.emplace_back(http::header("Content-Type", mime_types::extension_to_type(extension)));
 
 
-			if (reply.chunked_encoding())
-				reply.headers.emplace_back(http::header("Transfer-Encoding", "chunked"));
-
-
-			if (reply.keep_alive() == true)
+			if (reply_.chunked_encoding())
 			{
-				reply.headers.emplace_back(http::header("Connection", "Keep-Alive"));
-				reply.headers.emplace_back(http::header("Keep-Alive", std::string("timeout=") + std::to_string(session.keepalive_max_) + std::string(" max=") + std::to_string(session.keepalive_count_)));
+				reply_.headers.emplace_back(http::header("Transfer-Encoding", "chunked"));
 			}
 			else
 			{
-				reply.headers.emplace_back(http::header("Connection", "close"));
+				size_t bytes_total = fs::file_size(reply_.document_path());
+				reply_.headers.emplace_back(http::header("Content-Length", std::to_string(bytes_total)));
 			}
 
+
+			if (reply_.keep_alive() == true)
+			{
+				reply_.headers.emplace_back(http::header("Connection", "Keep-Alive"));
+				reply_.headers.emplace_back(http::header("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max_) + std::string(" max=") + std::to_string(keepalive_count_)));
+			}
+			else
+			{
+				reply_.headers.emplace_back(http::header("Connection", "close"));
+			}
+
+		}
+
+		int& keepalive_count() { return keepalive_count_; };
+		int& keepalive_max() { return keepalive_max_; };
+
+		request_parser& request_parser() { return request_parser_; };
+		reply& reply() { return reply_; };
+		request& request() { return request_; };
+
+		void reset()
+		{
+			request_parser_.reset();
+			request_.reset();
+			reply_.reset();
 		}
 
 	private:
 		/// The directory containing the files to be served.
 		std::string doc_root_;
+
+		http::request request_;
+		http::reply reply_;
+		http::request_parser request_parser_;
+
+		http::api::router& router_;
+		int keepalive_count_;
+		int keepalive_max_;
 
 		/// Perform URL-decoding on a string. Returns false if the encoding was
 		/// invalid.
@@ -993,4 +1004,5 @@ namespace http
 			return true;
 		}
 	};
+
 } // namespace http

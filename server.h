@@ -16,266 +16,56 @@
 
 #include <boost/log/trivial.hpp>
 
-#include <experimental/filesystem>
-namespace fs = std::experimental::filesystem;
 
 namespace http
 {
 
 
+/*typedef boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_socket;
+typedef boost::asio::ip::tcp::socket::lowest_layer_type socket_t;*/
 
 
-template<class connection_handler_base>
-class connection_handler_base : public std::enable_shared_from_this<connection_handler_base>
+
+template<class connection_handler_derived, class socket_t>
+class connection_handler_base : public std::enable_shared_from_this<connection_handler_derived>
 {
 protected:
-	static int connections;
-
 	boost::asio::io_service& service_;
 	boost::asio::io_service::strand write_strand_;
 	boost::asio::streambuf in_packet_;
 	boost::asio::steady_timer steady_timer_;
-//	std::array<char, 8192> buffer_;
-	std::deque<std::string> write_buffer;
 
-	http::request_handler request_handler_;
 
-	http::session session;
+	std::deque<std::string> write_buffer_;
 
-	http::request request_;
-
-	http::request_parser request_parser_;
-
-	http::reply reply_;
-
-	int connection_nr;
+	http::session_handler session_handler_;
 
 public:
-	connection_handler_base(boost::asio::io_service& service)
+	connection_handler_base(boost::asio::io_service& service, http::api::router& router)
 		: service_(service),
-		session(10, 5),
 		write_strand_(service),
 		steady_timer_(service),
-		request_handler_("C:\\temp"),
-		connection_nr(connection_handler_base::connections++)
+		session_handler_("C:\\temp", router)
 	{
 	}
 
-	~connection_handler_base()
-	{
-	}
+	~connection_handler_base() = default;
 
 	connection_handler_base(connection_handler_base const &) = delete;
 	void operator==(connection_handler_base const &) = delete;
 
-};
-
-class connection_handler_https :
-	public http::connection_handler_base<connection_handler_https>
-{
-	using ssl_socket_t = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>;
-
-
-public:
-	connection_handler_https(boost::asio::io_service& service, boost::asio::ssl::context& ssl_context)
-		: connection_handler_base(service),
-		ssl_context_(ssl_context),
-		socket_(service, ssl_context)
-	{
-	}
-
-
-	~connection_handler_https()
-	{
-	}
-
-	ssl_socket_t::lowest_layer_type& socket()
-	{
-		return socket_.lowest_layer();
-	}
-
-	void start()
-	{
-		socket_.async_handshake(boost::asio::ssl::stream_base::server, [me = shared_from_this()](boost::system::error_code const& ec)
-		{
-			if (ec)
-			{
-			}
-			else
-			{
-				me->do_read();
-			}
-		});
-
-		steady_timer_.expires_from_now(std::chrono::seconds(session.keepalive_max_));
-		steady_timer_.async_wait([me = shared_from_this()](boost::system::error_code const& ec)
-		{
-			if (!ec)
-				me->stop();
-		});
-
-	}
+	socket_t& socket_base() 
+	{ 
+		return static_cast<connection_handler_derived*>(this)->socket();
+	};
 
 	void stop()
 	{
-		this->socket().close();
-	}
-
-	void do_read()
-	{
-
-		boost::asio::async_read_until(socket_, in_packet_, "\r\n\r\n",
-			[me = shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer)
-		{
-			me->do_read_done(ec, bytes_xfer);
-		});
-	}
-
-	void do_read_done(boost::system::error_code const& ec, std::size_t bytes_transferred)
-	{
-		if (!ec)
-		{
-			http::request_parser::result_type result;
-
-			std::tie(result, std::ignore) = request_parser_.parse(request_, boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_begin(in_packet_.data()) + bytes_transferred);
-
-			in_packet_.consume(bytes_transferred);
-
-			if (result == http::request_parser::good)
-			{
-				request_handler_.handle_request(request_, reply_, session);
-
-				if (!reply_.chunked_encoding())
-				{
-					size_t bytes_total = fs::file_size(reply_.document_path());
-					reply_.headers.emplace_back(http::header("Content-Length", std::to_string(bytes_total)));
-				}
-				write_buffer.push_back(reply_.headers_to_string());
-
-				do_write_header();
-			}
-			else if (result == http::request_parser::bad)
-			{
-				reply_ = http::reply::stock_reply(http::reply::bad_request);
-				do_write_header();
-			}
-			else
-			{
-				do_read();
-			}
-		}
-		else if (ec != boost::asio::error::operation_aborted)
-		{
-			socket().shutdown(boost::asio::ip::tcp::socket::shutdown_receive);
-		}
-		else if (ec == boost::asio::error::operation_aborted)
-		{
-			stop();
-		}
-	}
-
-	void do_write_content()
-	{
-		auto result = http::util::read_from_disk<std::array<char, 16384>>(reply_.document_path().c_str(),
-			[this, chunked = reply_.chunked_encoding()](std::array<char, 16384>& buffer, size_t bytes_in)
-		{
-			std::stringstream ss;
-
-			if (!chunked)
-				ss << std::string(buffer.begin(), buffer.begin() + bytes_in);
-			else
-				ss << std::hex << bytes_in << misc_strings::crlf << std::string(buffer.begin(), buffer.begin() + bytes_in) << misc_strings::crlf;
-
-			if (bytes_in == buffer.size())
-			{
-				boost::asio::write(socket_, boost::asio::buffer(ss.str()));
-			}
-			else
-			{
-				if (!chunked)
-				{
-					boost::asio::write(socket_, boost::asio::buffer(ss.str()));
-					do_write_content_done();
-				}
-				else
-				{
-					boost::asio::write(socket_, boost::asio::buffer(ss.str()));
-
-					ss.str("");
-					ss << std::hex << 0 << misc_strings::crlf;
-
-					boost::asio::write(socket_, boost::asio::buffer(ss.str()));
-
-					do_write_content_done();
-				}
-			}
-
-			return true;
-		}
-		);
-	}
-
-	void do_write_content_done()
-	{
-		do_write_header_done();
-	}
-
-	void do_write_header()
-	{
-		boost::asio::async_write(socket_, boost::asio::buffer(this->write_buffer.front()), write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
-		{
-			me->write_buffer.pop_front();
-
-			me->do_write_content();
-		}));
-	}
-
-	void do_write_header_done()
-	{
-		if (reply_.keep_alive() && session.keepalive_count_ > 0)
-		{
-			session.keepalive_count_--;
-			request_parser_.reset();
-			request_.reset();
-			reply_.reset();
-			start();
-		}
-		else
-		{
-			socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both);
-		}
-	}
-
-
-private:
-
-	boost::asio::ssl::context& ssl_context_;
-	boost::asio::ssl::stream<boost::asio::ip::tcp::socket> socket_;
-
-};
-	
-class connection_handler_http : 
-	public http::connection_handler_base<connection_handler_http>
-{
-public:
-	connection_handler_http(boost::asio::io_service& service)
-		: connection_handler_base(service),
-		socket_(service)
-	{
-	}
-
-	~connection_handler_http()
-	{
-	}
-
-	boost::asio::ip::tcp::socket& socket()
-	{
-		return socket_;
 	}
 
 	void set_timeout()
 	{
-		steady_timer_.expires_from_now(std::chrono::seconds(session.keepalive_max_));
+		steady_timer_.expires_from_now(std::chrono::seconds(session_handler_.keepalive_max()));
 
 		steady_timer_.async_wait([me = shared_from_this()](boost::system::error_code const& ec)
 		{
@@ -290,22 +80,10 @@ public:
 		steady_timer_.cancel(ec);
 	}
 
-	void start()
-	{
-		set_timeout();
-		do_read();
-	}
-
-	void stop()
-	{
-		this->socket_.close();
-	}
-
-
 	void do_read()
 	{
-		set_timeout();
-		boost::asio::async_read_until(socket_, in_packet_, "\r\n\r\n",
+
+		boost::asio::async_read_until(this->socket_base(), in_packet_, "\r\n\r\n",
 			[me = shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer)
 		{
 			me->do_read_done(ec, bytes_xfer);
@@ -318,29 +96,21 @@ public:
 		{
 			http::request_parser::result_type result;
 
-			std::tie(result, std::ignore) = request_parser_.parse(request_, boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_begin(in_packet_.data()) + bytes_transferred);
+			std::tie(result, std::ignore) = session_handler_.parse_request(boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_begin(in_packet_.data()) + bytes_transferred);
 
 			in_packet_.consume(bytes_transferred);
 
 			if (result == http::request_parser::good)
 			{
-				cancel_timeout();
-				request_handler_.handle_request(request_, reply_, session);
+				session_handler_.handle_request();
 
-				if (!reply_.chunked_encoding())
-				{
-					size_t bytes_total = fs::file_size(reply_.document_path());
-					reply_.headers.emplace_back(http::header("Content-Length", std::to_string(bytes_total)));
-				}
-				write_buffer.push_back(reply_.headers_to_string());
+				write_buffer_.push_back(reply().headers_to_string());
 
-				do_write_header(); 
-
-
+				do_write_header();
 			}
 			else if (result == http::request_parser::bad)
 			{
-				reply_ = http::reply::stock_reply(http::reply::bad_request);
+				reply() = http::reply::stock_reply(http::reply::bad_request);
 				do_write_header();
 			}
 			else
@@ -348,11 +118,7 @@ public:
 				do_read();
 			}
 		}
-		else if (ec != boost::asio::error::operation_aborted)
-		{
-			stop();
-		}
-		else if (ec == boost::asio::error::operation_aborted)
+ 		else if (ec == boost::asio::error::operation_aborted)
 		{
 			stop();
 		}
@@ -360,8 +126,8 @@ public:
 
 	void do_write_content()
 	{
-		auto result = http::util::read_from_disk<std::array<char, 16384>>(reply_.document_path().c_str(),
-			[this, chunked = reply_.chunked_encoding()](std::array<char, 16384>& buffer, size_t bytes_in)
+		auto result = http::util::read_from_disk<std::array<char, 16384>>(reply().document_path().c_str(),
+			[this, chunked = reply().chunked_encoding()](std::array<char, 16384>& buffer, size_t bytes_in)
 		{
 			std::stringstream ss;
 
@@ -372,23 +138,23 @@ public:
 
 			if (bytes_in == buffer.size())
 			{
-				boost::asio::write(socket_, boost::asio::buffer(ss.str()));
+				boost::asio::write(socket_base(), boost::asio::buffer(ss.str()));
 			}
 			else
 			{
 				if (!chunked)
 				{
-					boost::asio::write(socket_, boost::asio::buffer(ss.str()));
+					boost::asio::write(socket_base(), boost::asio::buffer(ss.str()));
 					do_write_content_done();
 				}
 				else
 				{
-					boost::asio::write(socket_, boost::asio::buffer(ss.str()));
+					boost::asio::write(socket_base(), boost::asio::buffer(ss.str()));
 
 					ss.str("");
 					ss << std::hex << 0 << misc_strings::crlf;
 
-					boost::asio::write(socket_, boost::asio::buffer(ss.str()));
+					boost::asio::write(socket_base(), boost::asio::buffer(ss.str()));
 
 					do_write_content_done();
 				}
@@ -406,31 +172,94 @@ public:
 
 	void do_write_header()
 	{
-		boost::asio::async_write(socket_, boost::asio::buffer(this->write_buffer.front()), write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
+		boost::asio::async_write(socket_base(), boost::asio::buffer(this->write_buffer_.front()), write_strand_.wrap([this, me = shared_from_this()](boost::system::error_code ec, std::size_t)
 		{
-			me->write_buffer.pop_front();
+			me->write_buffer_.pop_front();
 
 			me->do_write_content();
-
-			me->do_write_header_done();
 		}));
 	}
 
 	void do_write_header_done()
 	{
-		if (reply_.keep_alive() && session.keepalive_count_ > 0)
+		if (reply().keep_alive() && session_handler_.keepalive_count() > 0)
 		{
-			session.keepalive_count_--;
-			request_parser_.reset();
-			request_.reset();
-			reply_.reset();
-			start();
+			session_handler_.keepalive_count()--;
+			session_handler_.reset();
+
+			static_cast<connection_handler_derived*>(this)->start();
 		}
 		else
 		{
-			socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both);
-			this->cancel_timeout();
+			//socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both);
 		}
+	}
+};
+
+class connection_handler_https :
+	public http::connection_handler_base<connection_handler_https, boost::asio::ssl::stream<boost::asio::ip::tcp::socket>>
+{
+
+public:
+	connection_handler_https(boost::asio::io_service& service, http::api::router& router, boost::asio::ssl::context& ssl_context)
+		: connection_handler_base(service, router),
+		ssl_context_(ssl_context),
+		socket_(service, ssl_context)
+	{
+	}
+
+	boost::asio::ssl::stream<boost::asio::ip::tcp::socket>& socket()
+	{
+		return socket_;
+	};
+
+	void start()
+	{
+
+		socket_.async_handshake(boost::asio::ssl::stream_base::server, [me = shared_from_this()](boost::system::error_code const& ec)
+		{
+			if (ec)
+			{
+			}
+			else
+			{
+				me->set_timeout();
+
+				me->do_read();
+			}
+		});
+
+	}
+
+private:
+	boost::asio::ssl::context& ssl_context_;
+	boost::asio::ssl::stream<boost::asio::ip::tcp::socket> socket_;
+};
+	
+class connection_handler_http : 
+	public http::connection_handler_base<connection_handler_http, boost::asio::ip::tcp::socket>
+{
+public:
+	connection_handler_http(boost::asio::io_service& service, http::api::router& router)
+		: connection_handler_base(service, router),
+		socket_(service)
+	{
+	}
+
+	boost::asio::ip::tcp::socket& socket()
+	{
+		return socket_;
+	}
+
+	void start()
+	{
+		set_timeout();
+		do_read();
+	}
+
+	void stop()
+	{
+		this->socket_.close();
 	}
 
 private:
@@ -463,8 +292,8 @@ public:
 
 	void start_server()
 	{
-		auto http_handler = std::make_shared<http::connection_handler_http>(io_service);
-		auto https_handler = std::make_shared<http::connection_handler_https>(io_service, ssl_context);
+		auto http_handler = std::make_shared<http::connection_handler_http>(io_service, router_);
+		auto https_handler = std::make_shared<http::connection_handler_https>(io_service, router_, ssl_context);
 
 		boost::asio::ip::tcp::endpoint http_endpoint(boost::asio::ip::tcp::v4(), 60005);
 		boost::asio::ip::tcp::endpoint https_endpoint(boost::asio::ip::tcp::v4(), 60006);
@@ -485,7 +314,7 @@ public:
 			this->handle_new_connection(http_handler, error);
 		});
 
-		ssl_acceptor_.async_accept(https_handler->socket(), [this, https_handler](auto error)
+		ssl_acceptor_.async_accept(https_handler->socket().lowest_layer(), [this, https_handler](auto error)
 		{
 			this->handle_new_https_connection(https_handler, error);
 		});
@@ -511,7 +340,7 @@ private:
 
 		handler->start();
 
-		auto new_handler = std::make_shared<http::connection_handler_http>(io_service);
+		auto new_handler = std::make_shared<http::connection_handler_http>(io_service, router_);
 
 		acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error)
 		{
@@ -525,9 +354,9 @@ private:
 
 		handler->start();
 
-		auto new_handler = std::make_shared<http::connection_handler_https>(io_service, ssl_context);
+		auto new_handler = std::make_shared<http::connection_handler_https>(io_service, router_, ssl_context);
 
-		ssl_acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error)
+		ssl_acceptor_.async_accept(new_handler->socket().lowest_layer(), [this, new_handler](auto error)
 		{
 			this->handle_new_https_connection(new_handler, error);
 		});
@@ -542,12 +371,9 @@ private:
 	boost::asio::io_service io_service;
 	boost::asio::ip::tcp::acceptor acceptor_;
 	boost::asio::ip::tcp::acceptor ssl_acceptor_;
+	http::api::router router_;
 
 	boost::asio::ssl::context ssl_context;
 };
-
-int connection_handler_base<connection_handler_https>::connections = 0;
-int connection_handler_base<connection_handler_http>::connections = 0;
-
 
 } // namespace http
