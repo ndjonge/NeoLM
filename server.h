@@ -82,6 +82,7 @@ public:
 
 	void do_read()
 	{
+		set_timeout();
 
 		boost::asio::async_read_until(this->socket_base(), in_packet_, "\r\n\r\n",
 			[me = shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer)
