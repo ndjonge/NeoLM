@@ -1,9 +1,10 @@
 # BasedOnStyle: WebKit
 AccessModifierOffset: -4
 ConstructorInitializerIndentWidth: 4
+AlignAfterOpenBracket: AlwaysBreak
 AlignEscapedNewlinesLeft: false
 AlignTrailingComments: false
-AllowAllParametersOfDeclarationOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortIfStatementsOnASingleLine: true
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakTemplateDeclarations: false
@@ -11,8 +12,8 @@ AlwaysBreakBeforeMultilineStrings: true
 BreakBeforeBinaryOperators: true
 BreakBeforeTernaryOperators: true
 BreakConstructorInitializersBeforeComma: true
-BinPackParameters: true
-ColumnLimit: 0
+BinPackParameters: false
+ColumnLimit: 160
 ConstructorInitializerAllOnOneLineOrOnePerLine: false
 DerivePointerBinding: false
 ExperimentalAutoDetectBinPacking: false
@@ -29,7 +30,6 @@ PenaltyReturnTypeOnItsOwnLine: 60
 PointerBindsToType: true
 SpacesBeforeTrailingComments: 1
 Cpp11BracedListStyle: false
-Standard: Cpp17
 IndentWidth: 4
 TabWidth: 4
 UseTab: Always
