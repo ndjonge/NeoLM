@@ -21,31 +21,8 @@ static const char* big_JSON(void);
 
 int main(void)
 {
-	pValue ptrValue;
+	json::value value;
 
-	ptrValue = value::parse("\"a\\\"b\"");
-	std::cout << ptrValue << std::endl;
-
-	//	pValue pv = Value::parse( "12345.6E0123 3" );
-	//	std::cout << "pv: " << pv << std::endl;
-	//
-
-	//return 0;
-
-	value::parse(myScope, "0.3");
-	value::parse(myScope, "{ \"xxx\" : 123 }");
-
-	ptrValue = value::parse(myScope, small_JSON());
-
-	std::cout << "JSON doc    : " << small_JSON() << std::endl;
-	std::cout << "Parsed value: " << ptrValue << std::endl;
-
-	for (size_t i = 0; i < 100000; i++)
-	{
-		ptrValue = value::parse(myScope, big_JSON());
-
-		std::cout << "big_JSON: " << ptrValue << std::endl;
-	}
 
 	return 0;
 }
