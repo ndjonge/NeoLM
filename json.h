@@ -5,17 +5,19 @@
 #include <iostream>
 
 // Forward declarations:
+/*
 class value;
 class null;
 class string;
 class number;
 class boolean;
 class object;
-class array;
+class array;*/
 
 namespace json
 {
 
+template<typename T>
 class value
 {
 public:
@@ -30,32 +32,217 @@ public:
 
 	virtual void to_stream(std::ostream& ost) const {};
 
-private:
+protected:
+	template <typename T>
+	value<T> parse(const std::string& str)
+	{
+		std::string::const_iterator i = str.begin();
 
-	static void skipWhiteSpace(const std::string& str, std::string::const_iterator& i);
+		value ptrValue = parse_value(str, i);
 
-	static void expect_char(char c, char expectedChar);
-	static void expect_char(char c, bool(*fExpectedChars)(char c));
+		skipWhiteSpace(str, i);
 
-	static value parse_value(const std::string& str, std::string::const_iterator& i);
-	static null parse_null(const std::string& str, std::string::const_iterator& i);
+		expect_char(*i, '\0');
+
+		return ptrValue;
+	}
+
+	template <typename T>
+	value<T> parse_value(const std::string& str, std::string::const_iterator& i)
+	{
+		skipWhiteSpace(str, i);
+
+		switch (*i)
+		{
+		case 'n':
+			return parse_null(str, i);
+		case '"':
+			return parse_string(str, i);
+		case '{':
+			return parse_object(str, i);
+		case '[':
+			return parse_array(str, i);
+		case '-':
+		case '0':
+		case '1':
+		case '2':
+		case '3':
+		case '4':
+		case '5':
+		case '6':
+		case '7':
+		case '8':
+		case '9':
+			return parse_number(str, i);
+		case 'f':
+		case 't':
+			return parse_boolean(str, i);
+		default:
+			ASSERT(0); // Parse error
+		}
+	}
+
+	void skip_white_space(const std::string& str, std::string::const_iterator& i)
+	{
+		while (i != str.end())
+		{
+			switch (*i)
+			{
+			case 0x20:
+			case 0x09:
+			case 0x0A:
+			case 0x0D:
+				i++;
+				break;
+			default:
+				return;
+			}
+		}
+	}
+
+	static bool charIsDigit(char c)
+	{
+		return !!isdigit((unsigned int)c);
+	}
+
+	static void expect_char(char c, char expectedChar)
+	{
+		if (c != expectedChar)
+		{
+			//	ASSERT(0); // TODO parse error
+		}
+	}
+
+	static void expect_char(char c, bool(*fExpectedChars)(char))
+	{
+		if (!fExpectedChars(c))
+		{
+			//ASSERT(0); // TODO parse error
+		}
+	}
+
+
+
+
+
+	static T parse_value(const std::string& str, std::string::const_iterator& i);
+/*	static null parse_null(const std::string& str, std::string::const_iterator& i);
 	static string parse_string(const std::string& str, std::string::const_iterator& i);
 	static number parse_number(const std::string& str, std::string::const_iterator& i);
 	static boolean parse_boolean(const std::string& str, std::string::const_iterator& i);
 	static object parse_object(const std::string& str, std::string::const_iterator& i);
-	static array parse_array(const std::string& str, std::string::const_iterator& i);
+	static array parse_array(const std::string& str, std::string::const_iterator& i);*/
 
-	static void parse_string(const std::string& str, std::string::const_iterator& i, std::string& result, bool& containsEscape);
+	static void parse_string(const std::string& str, std::string::const_iterator& i, std::string& result, bool& containsEscape)
+	{
+		result = "";
+		containsEscape = false;
+
+		ASSERT(*i == '"');
+		i++;
+
+		std::string::const_iterator begin = i;
+
+		while (i != str.end() && *i != '"')
+		{
+			switch (*i)
+			{
+			case 0x01:
+			case 0x02:
+			case 0x03:
+			case 0x04:
+			case 0x05:
+			case 0x06:
+			case 0x07:
+			case 0x08:
+			case 0x09:
+			case 0x0a:
+			case 0x0b:
+			case 0x0c:
+			case 0x0d:
+			case 0x0e:
+			case 0x0f:
+			case 0x10:
+			case 0x11:
+			case 0x12:
+			case 0x13:
+			case 0x14:
+			case 0x15:
+			case 0x16:
+			case 0x17:
+			case 0x18:
+			case 0x19:
+			case 0x1a:
+			case 0x1b:
+			case 0x1c:
+			case 0x1d:
+			case 0x1e:
+			case 0x1f:
+				ASSERT(0); // TODO parse error
+			case '\\':
+				containsEscape = true;
+				result.append(begin, i);
+				i++;
+				switch (*i)
+				{
+					// Escapes: ", \, /, b, f, n, r, t, uXXXX
+				case '"':
+					result.append("\"", 1);
+					break;
+				case '\\':
+					result.append("\\", 1);
+					break;
+				case '/':
+					result.append("/", 1);
+					break;
+				case 'b':
+					result.append("\b", 1);
+					break;
+				case 'f':
+					result.append("\f", 1);
+					break;
+				case 'n':
+					result.append("\n", 1);
+					break;
+				case 'r':
+					result.append("\r", 1);
+					break;
+				case 't':
+					result.append("\t", 1);
+					break;
+
+				case 'u':
+					ASSERT(0); // TODO parse \uXXXX sequence
+
+				default:
+					ASSERT(0); // TODO parse error
+				}
+				i++;
+				begin = i;
+				break;
+			default:
+				i++;
+				break;
+			}
+		}
+
+		result.append(begin, i);
+
+		expect_char(*i, '"');
+
+		i++;
+	}
+
 };
 
-class null : public value
+class null : public value<null>
 {
 public:
-	bool isNull(void) const { return true; }
+	bool is_null(void) const { return true; }
 	virtual void to_stream(std::ostream& ost) const { ost << "null"; }
 };
 
-class string : public value
+class string : public value<string>
 {
 public:
 	string(const std::string& str)
@@ -73,7 +260,7 @@ private:
 	std::string string_;
 };
 
-class number : public value
+class number : public value<number>
 {
 public:
 	number(const std::string& value)
@@ -87,7 +274,7 @@ private:
 	std::string value_;
 };
 
-class boolean : public value
+class boolean : public value<boolean>
 {
 public:
 	boolean(bool value)
@@ -101,7 +288,7 @@ private:
 	bool value_;
 };
 
-class object : public value
+class object : public value<object>
 {
 public:
 	bool is_object(void) const { return true; }
@@ -151,7 +338,7 @@ private:
 	std::map<std::string, value> map_;
 };
 
-class array : public value
+class array : public value<array>
 {
 public:
 	bool is_array(void) const { return true; }
@@ -194,7 +381,8 @@ private:
 	std::vector<value> array_;
 };
 
-std::ostream& operator<<(std::ostream& ost, const value& v)
+template<class T>
+std::ostream& operator<<(std::ostream& ost, const value<T>& v)
 {
 	if (v.is_null())
 	{
@@ -207,6 +395,7 @@ std::ostream& operator<<(std::ostream& ost, const value& v)
 	return ost;
 }
 
+/*
 std::ostream& operator<<(std::ostream& ost, const null& v)
 {
 	ost << (value)v;
@@ -242,192 +431,9 @@ std::ostream& operator<<(std::ostream& ost, const array& v)
 	ost << (value)v;
 	return ost;
 }
+*/
 
-value value::parse(const std::string& str)
-{
-	std::string::const_iterator i = str.begin();
 
-	value ptrValue = parse_value(str, i);
-
-	skipWhiteSpace(str, i);
-
-	expect_char(*i, '\0');
-
-	return ptrValue;
-}
-
-value value::parse_value(const std::string& str, std::string::const_iterator& i)
-{
-	skipWhiteSpace(str, i);
-
-	switch (*i)
-	{
-	case 'n':
-		return parse_null(str, i);
-	case '"':
-		return parse_string(str, i);
-	case '{':
-		return parse_object(str, i);
-	case '[':
-		return parse_array(str, i);
-	case '-':
-	case '0':
-	case '1':
-	case '2':
-	case '3':
-	case '4':
-	case '5':
-	case '6':
-	case '7':
-	case '8':
-	case '9':
-		return parse_number(str, i);
-	case 'f':
-	case 't':
-		return parse_boolean(str, i);
-	default:
-		ASSERT(0); // Parse error
-	}
-}
-
-void value::skip_white_space(const std::string& str, std::string::const_iterator& i)
-{
-	while (i != str.end())
-	{
-		switch (*i)
-		{
-		case 0x20:
-		case 0x09:
-		case 0x0A:
-		case 0x0D:
-			i++;
-			break;
-		default:
-			return;
-		}
-	}
-}
-
-static bool charIsDigit(char c)
-{
-	return !!isdigit((unsigned int)c);
-}
-
-void value::expect_char(char c, char expectedChar)
-{
-	if (c != expectedChar)
-	{
-	//	ASSERT(0); // TODO parse error
-	}
-}
-
-void value::expect_char(char c, bool(*fExpectedChars)(char))
-{
-	if (!fExpectedChars(c))
-	{
-		//ASSERT(0); // TODO parse error
-	}
-}
-
-void value::parse_string(const std::string& str, std::string::const_iterator& i, std::string& result, bool& containsEscape)
-{
-	result = "";
-	containsEscape = false;
-
-	ASSERT(*i == '"');
-	i++;
-
-	std::string::const_iterator begin = i;
-
-	while (i != str.end() && *i != '"')
-	{
-		switch (*i)
-		{
-		case 0x01:
-		case 0x02:
-		case 0x03:
-		case 0x04:
-		case 0x05:
-		case 0x06:
-		case 0x07:
-		case 0x08:
-		case 0x09:
-		case 0x0a:
-		case 0x0b:
-		case 0x0c:
-		case 0x0d:
-		case 0x0e:
-		case 0x0f:
-		case 0x10:
-		case 0x11:
-		case 0x12:
-		case 0x13:
-		case 0x14:
-		case 0x15:
-		case 0x16:
-		case 0x17:
-		case 0x18:
-		case 0x19:
-		case 0x1a:
-		case 0x1b:
-		case 0x1c:
-		case 0x1d:
-		case 0x1e:
-		case 0x1f:
-			ASSERT(0); // TODO parse error
-		case '\\':
-			containsEscape = true;
-			result.append(begin, i);
-			i++;
-			switch (*i)
-			{
-				// Escapes: ", \, /, b, f, n, r, t, uXXXX
-			case '"':
-				result.append("\"", 1);
-				break;
-			case '\\':
-				result.append("\\", 1);
-				break;
-			case '/':
-				result.append("/", 1);
-				break;
-			case 'b':
-				result.append("\b", 1);
-				break;
-			case 'f':
-				result.append("\f", 1);
-				break;
-			case 'n':
-				result.append("\n", 1);
-				break;
-			case 'r':
-				result.append("\r", 1);
-				break;
-			case 't':
-				result.append("\t", 1);
-				break;
-
-			case 'u':
-				ASSERT(0); // TODO parse \uXXXX sequence
-
-			default:
-				ASSERT(0); // TODO parse error
-			}
-			i++;
-			begin = i;
-			break;
-		default:
-			i++;
-			break;
-		}
-	}
-
-	result.append(begin, i);
-
-	expect_char(*i, '"');
-
-	i++;
-}
 
 pString value::parse_string(const std::string& str, std::string::const_iterator& i)
 {
