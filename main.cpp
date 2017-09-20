@@ -21,7 +21,7 @@ static const char* big_JSON(void);
 
 int main(void)
 {
-	json::value value;
+	json::value j;
 
 
 	return 0;

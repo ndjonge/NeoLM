@@ -12,17 +12,16 @@
 namespace json
 {
 
+class value; 
+struct null_t
+{
+};
+
 using string_t = std::string;
 using float_t = double;
 using double_t = double;
 using int_t = int64_t;
 using bool_t = bool;
-struct null_t
-{
-};
-
-class value;
-
 using object_t = std::map<std::string, value>;
 using object_member_t = object_t::value_type;
 using array_t = std::vector<value>;

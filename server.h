@@ -27,7 +27,6 @@ protected:
 	boost::asio::steady_timer steady_timer_;
 
 	std::deque<std::string> write_buffer_;
-
 	http::session_handler session_handler_;
 
 public:
