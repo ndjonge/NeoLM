@@ -46,32 +46,15 @@ public:
 	using base_type = base_type;
 	using base_type::operator=;
 
+	value& operator=(value& rhs) = default;
+
 	value(null_t val = null_t())
 		: base_type(val)
 	{
 	}
-	value(bool_t val)
-		: base_type(val)
-	{
-	}
-	value(string_t const& val)
-		: base_type(val)
-	{
-	}
+
 	value(char const* val)
 		: base_type((string_t(val)))
-	{
-	}
-	value(object_t const& val)
-		: base_type(val)
-	{
-	}
-	value(array_t const& val)
-		: base_type(val)
-	{
-	}
-	value(value const& rhs)
-		: base_type(rhs.get_ast())
 	{
 	}
 
@@ -116,28 +99,85 @@ namespace parser
 	member_pair_type const member_pair = "member_pair";
 	array_type const array = "array";
 
-	auto const value_def = null_value | bool_value | detail::unicode_string | lexeme[!('+' | (-lit('-') >> '0' >> digit)) >> int_ >> !char_(".eE")]
-						   | lexeme[!('+' | (-lit('-') >> '0' >> digit)) >> double_] | object | array;
+	struct unicode_string_class;
+	using unicode_string_type = x3::rule<unicode_string_class, std::string>;
+	using uchar = unsigned char;
 
-	auto const null_value = lit("null") >> attr(json::null_t{});
+	x3::uint_parser<uchar, 16, 4, 4> const hex4 = {};
+
+	auto push_esc = [](auto& ctx) {
+		auto& utf8 = _val(ctx);
+		switch (_attr(ctx))
+		{
+		case '"':
+			utf8 += '"';
+			break;
+		case '\\':
+			utf8 += '"';
+			break;
+		case '/':
+			utf8 += '"';
+			break;
+		case 'b':
+			utf8 += 'b';
+			break;
+		case 'f':
+			utf8 += 'f';
+			break;
+		case 'n':
+			utf8 += 'n';
+			break;
+		case 'r':
+			utf8 += 'r';
+			break;
+		case 't':
+			utf8 += 't';
+			break;
+		}
+	};
+
+	auto push_utf8 = [](auto& ctx) {
+		typedef std::back_insert_iterator<std::string> insert_iter;
+		insert_iter out_iter(_val(ctx));
+		boost::utf8_output_iterator<insert_iter> utf8_iter(out_iter);
+		*utf8_iter++ = _attr(ctx);
+	};
+
+	auto const escape = ('u' > hex4)[push_utf8]
+		| x3::char_("\"\\/bfnrt")[push_esc];
+
+	auto const char_esc = '\\' > escape;
+
+
+	auto const append = [](auto& ctx) { _val(ctx) += _attr(ctx); };
+
+	auto const double_quoted
+		= x3::lexeme['"' > *(char_esc | (x3::char_("\x20\x21\x23-\x5b\x5d-\x7e"))[append]) > '"'];
+
+	auto const unicode_string_def = double_quoted;
+
+	unicode_string_type const unicode_string = "unicode_string";
+
+	BOOST_SPIRIT_DEFINE(unicode_string);
+
+	auto const null_value = x3::lit("null") >> x3::attr(json::null_t{});
 
 	x3::int_parser<int64_t> const int_ = {};
-	ascii::bool_type const bool_value = {};
 
-	auto const object_def = lit('{') >> -(member_pair % ',') >> lit('}');
+	x3::ascii::bool_type const bool_value = {};
 
-	auto const member_pair_def = detail::unicode_string >> ':' >> value;
+	auto const object_def = x3::lit('{') >> -(member_pair % ',') >> x3::lit('}');
 
-	auto const array_def = lit('{') >> -(value % ',') >> lit('}');
+	auto const member_pair_def = unicode_string >> ':' >> value;
+
+	auto const array_def = x3::lit('{') >> -(value % ',') >> x3::lit('}');
+
+	auto const value_def = null_value | bool_value | unicode_string | x3::lexeme[!('+' | (-x3::lit('-') >> '0' >> x3::digit)) >> int_ >> !x3::char_(".eE")]
+						   | x3::lexeme[!('+' | (-x3::lit('-') >> '0' >> x3::digit)) >> x3::double_] | object | array;
 
 	BOOST_SPIRIT_DEFINE(value, object, member_pair, array)
 
-	struct unicode_string_class;
-	using unicode_string_type = x3::rule<unicode_string_class, std::string>;
-	unicode_string_type const unicode_string = "unicode_string";
-	auto const unicode_string_def = double_quoted;
-
-	BOOST_SPIRIT_DEFINE(unicode_string);
+	auto const json_grammar = x3::skip(x3::ascii::space)[value];
 }
 
 } // namespace json
