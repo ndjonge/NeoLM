@@ -23,15 +23,14 @@ int main(void)
 {
 	namespace x3 = boost::spirit::x3;
 
-	std::string storage; // We will read the contents here.    
+	std::string storage = R"({ "check": [ 1,2,3, null, true ], "more": { "nested" : "values" } })";
 
-	using boost::spirit::x3::ascii::space;
 	std::string::const_iterator iter = storage.begin();
 	std::string::const_iterator iter_end = storage.end();
 
 	json::value o;
 
-	bool r = phrase_parse(iter, iter_end, json::parser::json_grammar, space, o);
+	auto p = parse(storage.begin(), storage.end(), json::parser::json, o) ? 0 : 255;
 
 
 	return 0;
