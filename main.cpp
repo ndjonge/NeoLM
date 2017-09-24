@@ -23,14 +23,19 @@ int main(void)
 {
 	namespace x3 = boost::spirit::x3;
 
-	std::string storage = R"({ "check": [ 1,2,3, null, true ], "more": { "nested" : "values" } })";
+	std::string storage = small_JSON();
 
 	std::string::const_iterator iter = storage.begin();
 	std::string::const_iterator iter_end = storage.end();
 
 	json::value o;
 
-	auto p = parse(storage.begin(), storage.end(), json::parser::json, o) ? 0 : 255;
+	auto p = parse(storage.begin(), storage.end(), json::parser::json, o);
+
+	auto s = boost::get<json::object_t>(o);
+	auto t = boost::get<json::array_t>(s["key1"]);
+	auto q = boost::get<json::string_t>(t[0]);
+
 
 
 	return 0;

@@ -2,14 +2,18 @@
 #include <string>
 #include <vector>
 
+#pragma warning(disable:4521)
+
+//#define BOOST_SPIRIT_X3_DEBUG
+
 #include <boost/spirit/home/x3.hpp>
 #include <boost/spirit/home/x3/core/parser.hpp>
 #include <boost/spirit/home/x3/core/skip_over.hpp>
 #include <boost/spirit/home/x3/support/ast/variant.hpp>
 #include <boost/spirit/home/x3/support/context.hpp>
 #include <boost/spirit/home/x3/support/unused.hpp>
+#include <boost/container/stable_vector.hpp>
 #include <boost/fusion/include/std_pair.hpp>
-
 
 
 namespace json
@@ -31,7 +35,8 @@ class value;
 using object_t = std::map<std::string, value>;
 using object_member_t = object_t::value_type;
 using member_pair_t = std::pair<object_t::key_type, object_t::mapped_type>;
-using array_t = std::vector<value>;
+//using array_t = std::vector<value>;
+using array_t = boost::container::stable_vector<value>;
 
 class value : public x3::variant<null_t, bool_t, string_t, int_t, double_t, object_t, array_t>
 {
@@ -41,7 +46,7 @@ public:
 	using base_type::operator=;
 
 	value(null_t val = null_t{}) : base_type(val) {}
-	value(char const* val) : base_type(string_t(val)) {}
+	value(const char* val) : base_type(string_t(val)) {}
 
 	template<typename T>
 	value(T val, typename std::enable_if<std::is_floating_point<T>::value>::type) : base_type(double_t{ val }) {}
@@ -52,56 +57,43 @@ public:
 
 namespace parser
 {
-	auto const append = [](auto& ctx) { x3::_val(ctx) += x3::_attr(ctx); };
+	auto const append = [](auto& ctx) { 
+		x3::_val(ctx) += x3::_attr(ctx); 
+	};
 
 	using uchar = unsigned char;
 
 	x3::uint_parser<uchar, 16, 4, 4> const hex4 = {};
 
-	auto push_esc = [](auto& ctx) {
+	auto push_esc = [](auto& ctx)
+	{
 		auto& utf8 = x3::_val(ctx);
 		switch (x3::_attr(ctx))
 		{
-		case '"':
-			utf8 += '"';
-			break;
-		case '\\':
-			utf8 += '\\';
-			break;
-		case '/':
-			utf8 += '/';
-			break;
-		case 'b':
-			utf8 += '\b';
-			break;
-		case 'f':
-			utf8 += '\f';
-			break;
-		case 'n':
-			utf8 += '\n';
-			break;
-		case 'r':
-			utf8 += '\r';
-			break;
-		case 't':
-			utf8 += '\t';
-			break;
+		case '"': utf8 += '"';   break;
+		case '\\': utf8 += '\\';  break;
+		case '/': utf8 += '/';   break;
+		case 'b': utf8 += '\b';  break;
+		case 'f': utf8 += '\f';  break;
+		case 'n': utf8 += '\n';  break;
+		case 'r': utf8 += '\r';  break;
+		case 't': utf8 += '\t';  break;
 		}
 	};
 
-	auto push_utf8 = [](auto& ctx) {
+	auto push_utf8 = [](auto& ctx)
+	{
 		typedef std::back_insert_iterator<std::string> insert_iter;
 		insert_iter out_iter(x3::_val(ctx));
 		boost::utf8_output_iterator<insert_iter> utf8_iter(out_iter);
 		*utf8_iter++ = x3::_attr(ctx);
 	};
 
-	auto const escape = ('u' > hex4)[push_utf8] | x3::char_("\"\\/bfnrt")[push_esc];
+	auto const escape = ('u' > hex4)[push_utf8]	| x3::char_("\"\\/bfnrt")[push_esc];
 
 	auto const char_esc = '\\' > escape;
 
 	auto const double_quoted = x3::lexeme['"' > *(char_esc | (x3::char_("\x20\x21\x23-\x5b\x5d-\x7e")[append])) > '"'];
-
 	auto const unicode_string = x3::rule<struct unicode_string_class, std::string>{ "unicode_string" } = double_quoted;
 
 	auto const null_value = x3::lit("null") >> x3::attr(json::null_t{});
