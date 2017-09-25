@@ -36,7 +36,8 @@ int main(void)
 	auto t = boost::get<json::array_t>(s["key1"]);
 	auto q = boost::get<json::string_t>(t[0]);
 
-
+	//json::write();
+	boost::apply_visitor((json::printer(1)), o);
 
 	return 0;
 }
