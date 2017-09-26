@@ -119,70 +119,74 @@ namespace parser
 	auto const json = x3::skip(x3::ascii::space)[value];
 }
 
-int const tabsize = 4;
-
-struct printer : public boost::static_visitor<>
+struct writer : public boost::static_visitor<>
 {
 	typedef void result_type;
-	int indent;
+	std::stringstream& stream;
 
-	printer(int indent = 0)
-		: indent(indent)
+	writer(std::stringstream& s)
+		: stream(s)
 	{
 	}
-
-	//null_t, bool_t, string_t, int_t, double_t, object_t, array_t
 
 	template< typename T >
 	void operator()(T const & value) const
 	{
-		std::cout << value;
+		stream << value;
 	}
 	
 	void operator()(null_t const& val) const
 	{
-		std::cout << "null" << std::endl;
+		stream << "null";
 	}
 
 	void operator()(bool_t const& b) const
 	{
 		if (b==true)
-			std::cout << "true";
+			stream << "true";
 		else
-			std::cout << "false";
+			stream << "false";
 	}
 
 	void operator()(std::string const& text) const
 	{
-		std::cout << '"' << text << '"' << std::endl;
+		stream << '"' << text << '"';
 	}
 
 	void operator()(int_t const& i) const
 	{
-		std::cout << i;
+		stream << i;
 	}
 
 	void operator()(array_t const& a) const
 	{
-		for (auto& item : a)
+		stream << '[';
+		for (auto i = 0; i != a.size(); ++i)
 		{
-			boost::apply_visitor(*this, item);
+			boost::apply_visitor(*this, a[i]);
+
+			if (i < a.size()-1 )
+				stream << ',';
 		}
+		stream << ']';
 	}
 
 	void operator()(object_t const& o) const
 	{
+		stream << '{';
+		int i = 0;
+
 		for (auto& object : o)
 		{
-			std::cout << object.first;
+			stream << "\"" << object.first << "\":";
 			boost::apply_visitor(*this, object.second);
-		}
-	}
 
-	void tab(int spaces) const
-	{
-		for (int i = 0; i < spaces; ++i)
-			std::cout << ' ';
+			if (i < o.size() -1)
+				stream << ',';
+
+			i++;
+		}
+		stream << '}';
 	}
 };
 

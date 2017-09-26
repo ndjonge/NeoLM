@@ -1,6 +1,6 @@
 #include "http.h"
 #include "server.h"
-
+#include <sstream>
 #include "json.h"
 
 
@@ -23,7 +23,7 @@ int main(void)
 {
 	namespace x3 = boost::spirit::x3;
 
-	std::string storage = small_JSON();
+	std::string storage = big_JSON();
 
 	std::string::const_iterator iter = storage.begin();
 	std::string::const_iterator iter_end = storage.end();
@@ -32,12 +32,18 @@ int main(void)
 
 	auto p = parse(storage.begin(), storage.end(), json::parser::json, o);
 
-	auto s = boost::get<json::object_t>(o);
+/*	auto s = boost::get<json::object_t>(o);
 	auto t = boost::get<json::array_t>(s["key1"]);
 	auto q = boost::get<json::string_t>(t[0]);
+*/
 
 	//json::write();
-	boost::apply_visitor((json::printer(1)), o);
+	std::stringstream s;
+	boost::apply_visitor((json::writer(s)), o);
+
+	auto s2 = s.str();
+
+	p = parse(s2.begin(), s2.end(), json::parser::json, o);
 
 	return 0;
 }
