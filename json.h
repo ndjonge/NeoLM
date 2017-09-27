@@ -67,8 +67,8 @@ namespace parser
 
 	auto push_esc = [](auto& ctx)
 	{
-		auto& utf8 = x3::_val(ctx);
-		switch (x3::_attr(ctx))
+		auto& utf8 = _val(ctx);
+		switch (_attr(ctx))
 		{
 		case '"': utf8 += '"';   break;
 		case '\\': utf8 += '\\';  break;
@@ -89,7 +89,7 @@ namespace parser
 		*utf8_iter++ = x3::_attr(ctx);
 	};
 
-	auto const escape = ('u' > hex4)[push_utf8]	| x3::char_("\"\\/bfnrt")[push_esc];
+	auto const escape = ('u' > hex4)[push_utf8] | x3::char_("\"\\/bfnrt")[push_esc];
 
 	auto const char_esc = '\\' > escape;
 
@@ -148,9 +148,14 @@ struct writer : public boost::static_visitor<>
 			stream << "false";
 	}
 
+	void operator()(float_t const& f) const
+	{
+		stream << f;
+	}
+
 	void operator()(std::string const& text) const
 	{
-		stream << '"' << text << '"';
+		stream << "\"" << text << "\"";
 	}
 
 	void operator()(int_t const& i) const
@@ -178,7 +183,7 @@ struct writer : public boost::static_visitor<>
 
 		for (auto& object : o)
 		{
-			stream << "\"" << object.first << "\":";
+			stream << "\"" << object.first << "\" : ";
 			boost::apply_visitor(*this, object.second);
 
 			if (i < o.size() -1)

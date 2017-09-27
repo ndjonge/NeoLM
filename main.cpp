@@ -42,8 +42,11 @@ int main(void)
 	boost::apply_visitor((json::writer(s)), o);
 
 	auto s2 = s.str();
+	std::cout << s2 << std::endl;
 
-	p = parse(s2.begin(), s2.end(), json::parser::json, o);
+	json::value o2;
+
+	p = parse(s2.begin(), s2.end(), json::parser::json, o2);
 
 	return 0;
 }
