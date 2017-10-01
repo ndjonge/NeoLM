@@ -1,6 +1,7 @@
 #include "http.h"
 #include "server.h"
 #include <sstream>
+#include <functional>
 #include "json.h"
 
 
@@ -16,14 +17,40 @@
 	return 0;
 }*/
 
-static const char* small_JSON(void);
-static const char* big_JSON(void);
+
+namespace application
+{
+	namespace routers
+	{
+		namespace json
+		{
+			class router
+			{
+			public:
+				router() = default;
+			private:
+				std::map<const char*, std::function<double(double, double)> > dispTable{
+					{ "addRequest",[](double a, double b) { return a + b; } },
+					{ "concatRequest",[](double a, double b) { return a - b; } }
+				};
+
+			};
+		}
+	}
+}
 
 int main(void)
 {
+	const char addRequest[] = "{\"jsonrpc\":\"2.0\",\"method\":\"add\",\"id\":0,\"params\":[3,2]}";
+	const char concatRequest[] = "{\"jsonrpc\":\"2.0\",\"method\":\"concat\",\"id\":1,\"params\":[\"Hello, \",\"World!\"]}";
+	const char addArrayRequest[] = "{\"jsonrpc\":\"2.0\",\"method\":\"add_array\",\"id\":2,\"params\":[[1000,2147483647]]}";
+	const char toStructRequest[] = "{\"jsonrpc\":\"2.0\",\"method\":\"to_struct\",\"id\":5,\"params\":[[12,\"foobar\",[12,\"foobar\"]]]}";
+	const char printNotificationRequest[] = "{\"jsonrpc\":\"2.0\",\"method\":\"print_notification\",\"params\":[\"This is just a notification, no response expected!\"]}";
+
+
 	namespace x3 = boost::spirit::x3;
 
-	std::string storage = big_JSON();
+	std::string storage = addRequest;
 
 	std::string::const_iterator iter = storage.begin();
 	std::string::const_iterator iter_end = storage.end();
@@ -32,361 +59,17 @@ int main(void)
 
 	auto p = parse(storage.begin(), storage.end(), json::parser::json, o);
 
-/*	auto s = boost::get<json::object_t>(o);
-	auto t = boost::get<json::array_t>(s["key1"]);
-	auto q = boost::get<json::string_t>(t[0]);
-*/
-
-	//json::write();
 	std::stringstream s;
 	boost::apply_visitor((json::writer(s)), o);
+
+	boost::apply_visitor((json::rpc::dispatcher(application::routers::json::router())), o);
 
 	auto s2 = s.str();
 	std::cout << s2 << std::endl;
 
 	json::value o2;
-
 	p = parse(s2.begin(), s2.end(), json::parser::json, o2);
 
 	return 0;
-}
-
-static const char* small_JSON(void)
-{
-	return "{"
-		"\"key1\":"
-		"[\"aap\",\"noot\",null],"
-		"\"key2\":"
-		"\"string value\","
-		"\"key3\":"
-		"{"
-		"},"
-		"\"key4\":"
-		"{\"key4a\":"
-		"["
-		"]"
-		"}"
-		"}";
-}
-
-static const char* big_JSON(void)
-{
-	return "["
-		"  {"
-		"    \"_id\": \"54eb1e64acabd33e135930ab\","
-		"    \"index\": 0,"
-		"    \"guid\": \"617e83c5-aa74-4cda-9464-fcfbf93f68df\","
-		"    \"isActive\": false,"
-		"    \"balance\": \"$3,929.01\","
-		"    \"picture\": \"http://placehold.it/32x32\","
-		"    \"age\": 28,"
-		"    \"eyeColor\": \"blue\","
-		"    \"name\": \"Mcknight Dunn\","
-		"    \"gender\": \"male\","
-		"    \"company\": \"XIXAN\","
-		"    \"email\": \"mcknightdunn@xixan.com\","
-		"    \"phone\": \"+1 (857) 558-3874\","
-		"    \"address\": \"131 Russell Street, Cherokee, Arkansas, 4580\","
-		"    \"about\": \"Aliqua dolore elit sit pariatur consequat dolor ipsum anim. Aliquip non eiusmod enim aliquip dolore commodo aliquip pariatur velit. Eu deserunt in elit mollit magna ad et dolor qui eiusmod ex. Aliqua qui nisi culpa occaecat proident excepteur. Ipsum velit aliquip Lorem est qui quis. Elit aute voluptate cupidatat amet laboris ut proident tempor.\\r\\n\","
-		"    \"registered\": \"2014-11-13T05:07:04 -01:00\","
-		"    \"latitude\": -46.005856,"
-		"    \"longitude\": 86.504883,"
-		"    \"tags\": ["
-		"      \"eiusmod\","
-		"      \"deserunt\","
-		"      \"cupidatat\","
-		"      \"ea\","
-		"      \"ex\","
-		"      \"sunt\","
-		"      \"magna\""
-		"    ],"
-		"    \"friends\": ["
-		"      {"
-		"        \"id\": 0,"
-		"        \"name\": \"Sybil Rosales\""
-		"      },"
-		"      {"
-		"        \"id\": 1,"
-		"        \"name\": \"Roseann Glover\""
-		"      },"
-		"      {"
-		"        \"id\": 2,"
-		"        \"name\": \"Cohen Little\""
-		"      }"
-		"    ],"
-		"    \"greeting\": \"Hello, Mcknight Dunn! You have 7 unread messages.\","
-		"    \"favoriteFruit\": \"apple\""
-		"  },"
-		"  {"
-		"    \"_id\": \"54eb1e6496e96cacbef517cc\","
-		"    \"index\": 1,"
-		"    \"guid\": \"8ee6a321-235e-486f-9cec-f2db6b1d3aa0\","
-		"    \"isActive\": true,"
-		"    \"balance\": \"$1,300.06\","
-		"    \"picture\": \"http://placehold.it/32x32\","
-		"    \"age\": 32,"
-		"    \"eyeColor\": \"brown\","
-		"    \"name\": \"Janell Joyner\","
-		"    \"gender\": \"female\","
-		"    \"company\": \"ISOPOP\","
-		"    \"email\": \"janelljoyner@isopop.com\","
-		"    \"phone\": \"+1 (972) 600-2270\","
-		"    \"address\": \"754 Aster Court, Leming, Oregon, 3719\","
-		"    \"about\": \"Culpa nostrud deserunt amet elit sint sint sint adipisicing. Minim ut nostrud nostrud aliquip sint ex veniam anim Lorem cupidatat. Enim officia esse qui pariatur ad consequat Lorem incididunt. Velit commodo laboris culpa non dolore id labore cupidatat cupidatat enim proident. Aliqua incididunt dolor ullamco duis esse nisi cupidatat ullamco labore dolor irure. Non eiusmod aute exercitation eu dolor consequat id.\\r\\n\","
-		"    \"registered\": \"2014-02-09T02:17:08 -01:00\","
-		"    \"latitude\": -67.981132,"
-		"    \"longitude\": -52.093976,"
-		"    \"tags\": ["
-		"      \"quis\","
-		"      \"qui\","
-		"      \"qui\","
-		"      \"laboris\","
-		"      \"culpa\","
-		"      \"laborum\","
-		"      \"amet\""
-		"    ],"
-		"    \"friends\": ["
-		"      {"
-		"        \"id\": 0,"
-		"        \"name\": \"Wagner Carson\""
-		"      },"
-		"      {"
-		"        \"id\": 1,"
-		"        \"name\": \"Deanne Mayo\""
-		"      },"
-		"      {"
-		"        \"id\": 2,"
-		"        \"name\": \"Bishop Sharpe\""
-		"      }"
-		"    ],"
-		"    \"greeting\": \"Hello, Janell Joyner! You have 7 unread messages.\","
-		"    \"favoriteFruit\": \"strawberry\""
-		"  },"
-		"  {"
-		"    \"_id\": \"54eb1e646253b1ecbc758503\","
-		"    \"index\": 2,"
-		"    \"guid\": \"370a2f60-dfce-47ab-aa29-f3d0f1bb6a01\","
-		"    \"isActive\": true,"
-		"    \"balance\": \"$3,862.54\","
-		"    \"picture\": \"http://placehold.it/32x32\","
-		"    \"age\": 40,"
-		"    \"eyeColor\": \"brown\","
-		"    \"name\": \"Dillard Bates\","
-		"    \"gender\": \"male\","
-		"    \"company\": \"MIXERS\","
-		"    \"email\": \"dillardbates@mixers.com\","
-		"    \"phone\": \"+1 (917) 432-3490\","
-		"    \"address\": \"847 Autumn Avenue, Mammoth, Pennsylvania, 516\","
-		"    \"about\": \"Quis irure nostrud ullamco nostrud et cupidatat veniam fugiat. Deserunt laboris dolor velit eiusmod. Aliqua sit in duis fugiat nulla sint eu aute et mollit ullamco quis cillum. Mollit commodo occaecat eu qui fugiat fugiat occaecat sit adipisicing.\\r\\n\","
-		"    \"registered\": \"2014-01-06T17:39:10 -01:00\","
-		"    \"latitude\": -78.973537,"
-		"    \"longitude\": -65.061173,"
-		"    \"tags\": ["
-		"      \"dolore\","
-		"      \"amet\","
-		"      \"minim\","
-		"      \"sunt\","
-		"      \"exercitation\","
-		"      \"amet\","
-		"      \"sit\""
-		"    ],"
-		"    \"friends\": ["
-		"      {"
-		"        \"id\": 0,"
-		"        \"name\": \"Orr Goodman\""
-		"      },"
-		"      {"
-		"        \"id\": 1,"
-		"        \"name\": \"Elvia Gonzalez\""
-		"      },"
-		"      {"
-		"        \"id\": 2,"
-		"        \"name\": \"Harriet Trujillo\""
-		"      }"
-		"    ],"
-		"    \"greeting\": \"Hello, Dillard Bates! You have 6 unread messages.\","
-		"    \"favoriteFruit\": \"apple\""
-		"  },"
-		"  {"
-		"    \"_id\": \"54eb1e645b48b851f11ec1af\","
-		"    \"index\": 3,"
-		"    \"guid\": \"60ebafa9-cbd4-4bcd-897c-9ead8b26d107\","
-		"    \"isActive\": false,"
-		"    \"balance\": \"$3,098.66\","
-		"    \"picture\": \"http://placehold.it/32x32\","
-		"    \"age\": 35,"
-		"    \"eyeColor\": \"brown\","
-		"    \"name\": \"Cantu Clemons\","
-		"    \"gender\": \"male\","
-		"    \"company\": \"SKINSERVE\","
-		"    \"email\": \"cantuclemons@skinserve.com\","
-		"    \"phone\": \"+1 (840) 429-3360\","
-		"    \"address\": \"311 Haring Street, Greer, Connecticut, 6229\","
-		"    \"about\": \"Dolor ut excepteur deserunt minim minim nisi ex elit duis cupidatat proident. Esse exercitation ea aliquip ipsum eu quis labore velit officia ad et est non adipisicing. Nulla ad consectetur aute incididunt enim sint mollit deserunt mollit eiusmod. Sint anim nisi et velit ullamco est irure ut. Sunt cillum elit pariatur consectetur.\\r\\n\","
-		"    \"registered\": \"2014-04-29T20:41:41 -02:00\","
-		"    \"latitude\": -36.361223,"
-		"    \"longitude\": 114.415184,"
-		"    \"tags\": ["
-		"      \"cupidatat\","
-		"      \"adipisicing\","
-		"      \"tempor\","
-		"      \"amet\","
-		"      \"tempor\","
-		"      \"irure\","
-		"      \"fugiat\""
-		"    ],"
-		"    \"friends\": ["
-		"      {"
-		"        \"id\": 0,"
-		"        \"name\": \"Pittman Lott\""
-		"      },"
-		"      {"
-		"        \"id\": 1,"
-		"        \"name\": \"Jane Woodard\""
-		"      },"
-		"      {"
-		"        \"id\": 2,"
-		"        \"name\": \"Larsen Tucker\""
-		"      }"
-		"    ],"
-		"    \"greeting\": \"Hello, Cantu Clemons! You have 4 unread messages.\","
-		"    \"favoriteFruit\": \"banana\""
-		"  },"
-		"  {"
-		"    \"_id\": \"54eb1e646c5405c98321e89f\","
-		"    \"index\": 4,"
-		"    \"guid\": \"0d5a15d5-7b45-46fc-92ab-9ed9217ca3d1\","
-		"    \"isActive\": true,"
-		"    \"balance\": \"$3,537.92\","
-		"    \"picture\": \"http://placehold.it/32x32\","
-		"    \"age\": 39,"
-		"    \"eyeColor\": \"green\","
-		"    \"name\": \"Lynn Gaines\","
-		"    \"gender\": \"female\","
-		"    \"company\": \"REALMO\","
-		"    \"email\": \"lynngaines@realmo.com\","
-		"    \"phone\": \"+1 (890) 563-3329\","
-		"    \"address\": \"504 Sumner Place, Berlin, Maine, 7999\","
-		"    \"about\": \"Et occaecat quis eu tempor reprehenderit anim eiusmod voluptate laborum eu. Qui deserunt velit qui in aliquip nisi irure non nisi duis non proident. Qui adipisicing elit sint sint ad exercitation deserunt in laborum reprehenderit do voluptate ut.\\r\\n\","
-		"    \"registered\": \"2014-05-18T23:21:08 -02:00\","
-		"    \"latitude\": 29.25769,"
-		"    \"longitude\": 45.335646,"
-		"    \"tags\": ["
-		"      \"nostrud\","
-		"      \"nulla\","
-		"      \"do\","
-		"      \"ea\","
-		"      \"proident\","
-		"      \"magna\","
-		"      \"aliqua\""
-		"    ],"
-		"    \"friends\": ["
-		"      {"
-		"        \"id\": 0,"
-		"        \"name\": \"Angelia Joyce\""
-		"      },"
-		"      {"
-		"        \"id\": 1,"
-		"        \"name\": \"Lyons Rosario\""
-		"      },"
-		"      {"
-		"        \"id\": 2,"
-		"        \"name\": \"Christa Torres\""
-		"      }"
-		"    ],"
-		"    \"greeting\": \"Hello, Lynn Gaines! You have 6 unread messages.\","
-		"    \"favoriteFruit\": \"apple\""
-		"  },"
-		"  {"
-		"    \"_id\": \"54eb1e64f1e5557bbc2737f1\","
-		"    \"index\": 5,"
-		"    \"guid\": \"c9efbfeb-68aa-4ec7-8b91-7fac25c74f8f\","
-		"    \"isActive\": true,"
-		"    \"balance\": \"$3,991.01\","
-		"    \"picture\": \"http://placehold.it/32x32\","
-		"    \"age\": 39,"
-		"    \"eyeColor\": \"blue\","
-		"    \"name\": \"Olive Stein\","
-		"    \"gender\": \"female\","
-		"    \"company\": \"ENERSOL\","
-		"    \"email\": \"olivestein@enersol.com\","
-		"    \"phone\": \"+1 (982) 470-3210\","
-		"    \"address\": \"948 Schroeders Avenue, Orick, Utah, 3872\","
-		"    \"about\": \"Nostrud exercitation mollit cillum aute. Amet exercitation adipisicing dolore voluptate nisi pariatur dolor sunt dolor nisi aute dolore officia aliqua. Exercitation dolor esse proident est mollit. Adipisicing magna eiusmod Lorem velit voluptate officia. Ut aliquip cupidatat tempor esse amet voluptate aute ad incididunt veniam mollit qui. Eu eu deserunt cupidatat cupidatat aute et do laboris officia cupidatat est nisi deserunt. Quis ad culpa velit sint labore ad sint nostrud ut veniam reprehenderit pariatur.\\r\\n\","
-		"    \"registered\": \"2014-05-21T01:28:24 -02:00\","
-		"    \"latitude\": 15.235882,"
-		"    \"longitude\": -122.289687,"
-		"    \"tags\": ["
-		"      \"dolor\","
-		"      \"ad\","
-		"      \"consequat\","
-		"      \"mollit\","
-		"      \"dolore\","
-		"      \"aliquip\","
-		"      \"eu\""
-		"    ],"
-		"    \"friends\": ["
-		"      {"
-		"        \"id\": 0,"
-		"        \"name\": \"Tanner Mercado\""
-		"      },"
-		"      {"
-		"        \"id\": 1,"
-		"        \"name\": \"Dionne Duke\""
-		"      },"
-		"      {"
-		"        \"id\": 2,"
-		"        \"name\": \"Latisha Neal\""
-		"      }"
-		"    ],"
-		"    \"greeting\": \"Hello, Olive Stein! You have 3 unread messages.\","
-		"    \"favoriteFruit\": \"banana\""
-		"  },"
-		"  {"
-		"    \"_id\": \"54eb1e64193013a491ddd233\","
-		"    \"index\": 6,"
-		"    \"guid\": \"bc989f8c-6409-4214-bd44-2d7a22cfafa0\","
-		"    \"isActive\": true,"
-		"    \"balance\": \"$1,289.89\","
-		"    \"picture\": \"http://placehold.it/32x32\","
-		"    \"age\": 24,"
-		"    \"eyeColor\": \"brown\","
-		"    \"name\": \"Shirley Beck\","
-		"    \"gender\": \"female\","
-		"    \"company\": \"UNIWORLD\","
-		"    \"email\": \"shirleybeck@uniworld.com\","
-		"    \"phone\": \"+1 (871) 479-2897\","
-		"    \"address\": \"385 Rost Place, Colton, Colorado, 5876\","
-		"    \"about\": \"Id ea laboris magna officia in enim. Sit qui non commodo ea amet excepteur. Aliquip deserunt velit exercitation aute eu et sint. Enim ut sunt cupidatat in et proident mollit proident. Minim incididunt aliqua anim aute consectetur do consequat mollit officia commodo. Officia labore pariatur adipisicing proident exercitation nostrud qui labore ipsum mollit officia dolore voluptate. Incididunt id dolore nostrud ex deserunt.\\r\\n\","
-		"    \"registered\": \"2014-03-23T13:05:57 -01:00\","
-		"    \"latitude\": -5.904744,"
-		"    \"longitude\": 19.535182,"
-		"    \"tags\": ["
-		"      \"excepteur\","
-		"      \"Lorem\","
-		"      \"cillum\","
-		"      \"deserunt\","
-		"      \"enim\","
-		"      \"quis\","
-		"      \"eiusmod\""
-		"    ],"
-		"    \"friends\": ["
-		"      {"
-		"        \"id\": 0,"
-		"        \"name\": \"Marilyn Short\""
-		"      },"
-		"      {"
-		"        \"id\": 1,"
-		"        \"name\": \"Janis Mccoy\""
-		"      },"
-		"      {"
-		"        \"id\": 2,"
-		"        \"name\": \"May Ward\""
-		"      }"
-		"    ],"
-		"    \"greeting\": \"Hello, Shirley Beck! You have 4 unread messages.\","
-		"    \"favoriteFruit\": \"strawberry\""
-		"  }"
-		"]";
 }
 

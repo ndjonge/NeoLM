@@ -2,19 +2,18 @@
 #include <string>
 #include <vector>
 
-#pragma warning(disable:4521)
+#pragma warning(disable : 4521)
 
 //#define BOOST_SPIRIT_X3_DEBUG
 
+#include <boost/container/stable_vector.hpp>
+#include <boost/fusion/include/std_pair.hpp>
 #include <boost/spirit/home/x3.hpp>
 #include <boost/spirit/home/x3/core/parser.hpp>
 #include <boost/spirit/home/x3/core/skip_over.hpp>
 #include <boost/spirit/home/x3/support/ast/variant.hpp>
 #include <boost/spirit/home/x3/support/context.hpp>
 #include <boost/spirit/home/x3/support/unused.hpp>
-#include <boost/container/stable_vector.hpp>
-#include <boost/fusion/include/std_pair.hpp>
-
 
 namespace json
 {
@@ -35,7 +34,7 @@ class value;
 using object_t = std::map<std::string, value>;
 using object_member_t = object_t::value_type;
 using member_pair_t = std::pair<object_t::key_type, object_t::mapped_type>;
-//using array_t = std::vector<value>;
+// using array_t = std::vector<value>;
 using array_t = boost::container::stable_vector<value>;
 
 class value : public x3::variant<null_t, bool_t, string_t, int_t, double_t, object_t, array_t>
@@ -45,44 +44,68 @@ public:
 	using base_type::base_type;
 	using base_type::operator=;
 
-	value(null_t val = null_t{}) : base_type(val) {}
-	value(const char* val) : base_type(string_t(val)) {}
+	value(null_t val = null_t{})
+		: base_type(val)
+	{
+	}
+	value(const char* val)
+		: base_type(string_t(val))
+	{
+	}
 
-	template<typename T>
-	value(T val, typename std::enable_if<std::is_floating_point<T>::value>::type) : base_type(double_t{ val }) {}
+	template <typename T>
+	value(T val, typename std::enable_if<std::is_floating_point<T>::value>::type)
+		: base_type(double_t{ val })
+	{
+	}
 
-	template<typename T>
-	value(T val, typename std::enable_if<std::is_integral<T>::value::type>) : base_type(int_t{ val }) {}
+	template <typename T>
+	value(T val, typename std::enable_if<std::is_integral<T>::value::type>)
+		: base_type(int_t{ val })
+	{
+	}
 };
 
 namespace parser
 {
-	auto const append = [](auto& ctx) { 
-		x3::_val(ctx) += x3::_attr(ctx); 
-	};
+	auto const append = [](auto& ctx) { x3::_val(ctx) += x3::_attr(ctx); };
 
 	using uchar = unsigned char;
 
 	x3::uint_parser<uchar, 16, 4, 4> const hex4 = {};
 
-	auto push_esc = [](auto& ctx)
-	{
+	auto push_esc = [](auto& ctx) {
 		auto& utf8 = _val(ctx);
 		switch (_attr(ctx))
 		{
-		case '"': utf8 += '"';   break;
-		case '\\': utf8 += '\\';  break;
-		case '/': utf8 += '/';   break;
-		case 'b': utf8 += '\b';  break;
-		case 'f': utf8 += '\f';  break;
-		case 'n': utf8 += '\n';  break;
-		case 'r': utf8 += '\r';  break;
-		case 't': utf8 += '\t';  break;
+		case '"':
+			utf8 += '"';
+			break;
+		case '\\':
+			utf8 += '\\';
+			break;
+		case '/':
+			utf8 += '/';
+			break;
+		case 'b':
+			utf8 += '\b';
+			break;
+		case 'f':
+			utf8 += '\f';
+			break;
+		case 'n':
+			utf8 += '\n';
+			break;
+		case 'r':
+			utf8 += '\r';
+			break;
+		case 't':
+			utf8 += '\t';
+			break;
 		}
 	};
 
-	auto push_utf8 = [](auto& ctx)
-	{
+	auto push_utf8 = [](auto& ctx) {
 		typedef std::back_insert_iterator<std::string> insert_iter;
 		insert_iter out_iter(x3::_val(ctx));
 		boost::utf8_output_iterator<insert_iter> utf8_iter(out_iter);
@@ -129,39 +152,69 @@ struct writer : public boost::static_visitor<>
 	{
 	}
 
-	template< typename T >
-	void operator()(T const & value) const
-	{
-		stream << value;
-	}
-	
-	void operator()(null_t const& val) const
-	{
-		stream << "null";
-	}
+	template <typename T> void operator()(T const& value) const { stream << value; }
+
+	void operator()(null_t const& val) const { stream << "null"; }
 
 	void operator()(bool_t const& b) const
 	{
-		if (b==true)
+		if (b == true)
 			stream << "true";
 		else
 			stream << "false";
 	}
 
-	void operator()(float_t const& f) const
-	{
-		stream << f;
-	}
+	void operator()(float_t const& f) const { stream << f; }
 
 	void operator()(std::string const& text) const
 	{
-		stream << "\"" << text << "\"";
+		stream << '"';
+
+		typedef ::boost::uint32_t ucs4_char;
+		typedef boost::u8_to_u32_iterator<std::string::const_iterator> iter_t;
+
+		iter_t f = text.begin();
+		iter_t l = text.end();
+
+		for (iter_t i = f; i != l; ++i)
+		{
+			ucs4_char c = *i;
+			switch (c)
+			{
+			case '"':
+				stream << "\\\"";
+				break;
+			case '\\':
+				stream << "\\\\";
+				break;
+			case '/':
+				stream << "\\/";
+				break;
+			case '\b':
+				stream << "\\b";
+				break;
+			case '\f':
+				stream << "\\f";
+				break;
+			case '\n':
+				stream << "\\n";
+				break;
+			case '\r':
+				stream << "\\r";
+				break;
+			case '\t':
+				stream << "\\t";
+				break;
+
+			default:
+				stream << boost::spirit::x3::to_utf8(c);
+			}
+		}
+
+		stream << '"';
 	}
 
-	void operator()(int_t const& i) const
-	{
-		stream << i;
-	}
+	void operator()(int_t const& i) const { stream << i; }
 
 	void operator()(array_t const& a) const
 	{
@@ -170,8 +223,7 @@ struct writer : public boost::static_visitor<>
 		{
 			boost::apply_visitor(*this, a[i]);
 
-			if (i < a.size()-1 )
-				stream << ',';
+			if (i < a.size() - 1) stream << ',';
 		}
 		stream << ']';
 	}
@@ -186,13 +238,122 @@ struct writer : public boost::static_visitor<>
 			stream << "\"" << object.first << "\" : ";
 			boost::apply_visitor(*this, object.second);
 
-			if (i < o.size() -1)
-				stream << ',';
+			if (i < o.size() - 1) stream << ',';
 
 			i++;
 		}
 		stream << '}';
 	}
 };
+
+namespace rpc
+{
+
+struct dispatcher : public boost::static_visitor<>
+{
+	typedef void result_type;
+
+	std::stringstream& stream;
+
+	dispatcher(std::stringstream& s)
+		: stream(s)
+	{
+	}
+
+	template <typename T> void operator()(T const& value) const { stream << value; }
+
+	void operator()(null_t const& val) const { stream << "null"; }
+
+	void operator()(bool_t const& b) const
+	{
+		if (b == true)
+			stream << "true";
+		else
+			stream << "false";
+	}
+
+	void operator()(float_t const& f) const { stream << f; }
+
+	void operator()(std::string const& text) const
+	{
+		stream << '"';
+
+		typedef ::boost::uint32_t ucs4_char;
+		typedef boost::u8_to_u32_iterator<std::string::const_iterator> iter_t;
+
+		iter_t f = text.begin();
+		iter_t l = text.end();
+
+		for (iter_t i = f; i != l; ++i)
+		{
+			ucs4_char c = *i;
+			switch (c)
+			{
+			case '"':
+				stream << "\\\"";
+				break;
+			case '\\':
+				stream << "\\\\";
+				break;
+			case '/':
+				stream << "\\/";
+				break;
+			case '\b':
+				stream << "\\b";
+				break;
+			case '\f':
+				stream << "\\f";
+				break;
+			case '\n':
+				stream << "\\n";
+				break;
+			case '\r':
+				stream << "\\r";
+				break;
+			case '\t':
+				stream << "\\t";
+				break;
+
+			default:
+				stream << boost::spirit::x3::to_utf8(c);
+			}
+		}
+
+		stream << '"';
+	}
+
+	void operator()(int_t const& i) const { stream << i; }
+
+	void operator()(array_t const& a) const
+	{
+		stream << '[';
+		for (auto i = 0; i != a.size(); ++i)
+		{
+			boost::apply_visitor(*this, a[i]);
+
+			if (i < a.size() - 1) stream << ',';
+		}
+		stream << ']';
+	}
+
+	void operator()(object_t const& o) const
+	{
+		stream << '{';
+		int i = 0;
+
+		for (auto& object : o)
+		{
+			stream << "\"" << object.first << "\" : ";
+			boost::apply_visitor(*this, object.second);
+
+			if (i < o.size() - 1) stream << ',';
+
+			i++;
+		}
+		stream << '}';
+	}
+};
+
+} // namespace rpc
 
 } // namespace json
