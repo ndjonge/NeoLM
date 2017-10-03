@@ -22,18 +22,14 @@ namespace application
 {
 	namespace routers
 	{
-		namespace json
+		namespace json_rpc
 		{
 			class router
 			{
 			public:
 				router() = default;
 			private:
-				std::map<const char*, std::function<double(double, double)> > dispTable{
-					{ "addRequest",[](double a, double b) { return a + b; } },
-					{ "concatRequest",[](double a, double b) { return a - b; } }
-				};
-
+				std::map<const char*, std::function<bool(json::array_t& args)> > dispTable;
 			};
 		}
 	}
@@ -60,9 +56,12 @@ int main(void)
 	auto p = parse(storage.begin(), storage.end(), json::parser::json, o);
 
 	std::stringstream s;
-	boost::apply_visitor((json::writer(s)), o);
+	boost::apply_visitor(json::writer(s), o);
 
-	boost::apply_visitor((json::rpc::dispatcher(application::routers::json::router())), o);
+	json::rpc::request::call_table_t table;
+
+	json::rpc::request call(table, o);
+
 
 	auto s2 = s.str();
 	std::cout << s2 << std::endl;

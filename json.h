@@ -249,110 +249,34 @@ struct writer : public boost::static_visitor<>
 namespace rpc
 {
 
-struct dispatcher : public boost::static_visitor<>
+class request 
 {
-	typedef void result_type;
+public:
+	using call_table_t = std::map<const char*, std::function<bool(json::array_t& args)>>;
+	call_table_t call_table_;
 
-	std::stringstream& stream;
+	json::value& value_;
 
-	dispatcher(std::stringstream& s)
-		: stream(s)
+	request(call_table_t& call_table, json::value& value)
+		: call_table_(call_table),
+		value_(value)
 	{
+		json::object_t call_object = boost::get<json::object_t>(value);
+
+		json::string_t method = boost::get<json::string_t>(call_object["method"]);
+		json::int_t id = boost::get<json::int_t>(call_object["id"]);
+
+		auto x = call_object["params"].var;
+
+		auto y = x.which();
+
+		json::array_t arguments = boost::get<json::array_t>(call_object["params"]);
 	}
 
-	template <typename T> void operator()(T const& value) const { stream << value; }
 
-	void operator()(null_t const& val) const { stream << "null"; }
-
-	void operator()(bool_t const& b) const
-	{
-		if (b == true)
-			stream << "true";
-		else
-			stream << "false";
-	}
-
-	void operator()(float_t const& f) const { stream << f; }
-
-	void operator()(std::string const& text) const
-	{
-		stream << '"';
-
-		typedef ::boost::uint32_t ucs4_char;
-		typedef boost::u8_to_u32_iterator<std::string::const_iterator> iter_t;
-
-		iter_t f = text.begin();
-		iter_t l = text.end();
-
-		for (iter_t i = f; i != l; ++i)
-		{
-			ucs4_char c = *i;
-			switch (c)
-			{
-			case '"':
-				stream << "\\\"";
-				break;
-			case '\\':
-				stream << "\\\\";
-				break;
-			case '/':
-				stream << "\\/";
-				break;
-			case '\b':
-				stream << "\\b";
-				break;
-			case '\f':
-				stream << "\\f";
-				break;
-			case '\n':
-				stream << "\\n";
-				break;
-			case '\r':
-				stream << "\\r";
-				break;
-			case '\t':
-				stream << "\\t";
-				break;
-
-			default:
-				stream << boost::spirit::x3::to_utf8(c);
-			}
-		}
-
-		stream << '"';
-	}
-
-	void operator()(int_t const& i) const { stream << i; }
-
-	void operator()(array_t const& a) const
-	{
-		stream << '[';
-		for (auto i = 0; i != a.size(); ++i)
-		{
-			boost::apply_visitor(*this, a[i]);
-
-			if (i < a.size() - 1) stream << ',';
-		}
-		stream << ']';
-	}
-
-	void operator()(object_t const& o) const
-	{
-		stream << '{';
-		int i = 0;
-
-		for (auto& object : o)
-		{
-			stream << "\"" << object.first << "\" : ";
-			boost::apply_visitor(*this, object.second);
-
-			if (i < o.size() - 1) stream << ',';
-
-			i++;
-		}
-		stream << '}';
-	}
 };
+
+
 
 } // namespace rpc
 
