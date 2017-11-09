@@ -5,7 +5,7 @@
 #include "json.h"
 
 
-/*int main(int argc, char* argv[])
+int main(int argc, char* argv[])
 {
 
 	http::server<http::connection_handler_http, http::connection_handler_https> server(
@@ -15,7 +15,9 @@
 	server.start_server();
 
 	return 0;
-}*/
+}
+
+/*
 
 
 namespace application
@@ -71,4 +73,4 @@ int main(void)
 
 	return 0;
 }
-
+*/
