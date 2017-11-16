@@ -30,7 +30,7 @@ protected:
 	http::session_handler session_handler_;
 
 public:
-	connection_handler_base(boost::asio::io_service& service, http::api::router& router)
+	connection_handler_base(boost::asio::io_service& service, http::api::router<>& router)
 		: service_(service)
 		, write_strand_(service)
 		, steady_timer_(service)
@@ -177,7 +177,7 @@ class connection_handler_https : public http::connection_handler_base<connection
 {
 
 public:
-	connection_handler_https(boost::asio::io_service& service, http::api::router& router, boost::asio::ssl::context& ssl_context)
+	connection_handler_https(boost::asio::io_service& service, http::api::router<>& router, boost::asio::ssl::context& ssl_context)
 		: connection_handler_base(service, router)
 		, ssl_context_(ssl_context)
 		, socket_(service, ssl_context)
@@ -210,7 +210,7 @@ private:
 class connection_handler_http : public http::connection_handler_base<connection_handler_http, boost::asio::ip::tcp::socket>
 {
 public:
-	connection_handler_http(boost::asio::io_service& service, http::api::router& router)
+	connection_handler_http(boost::asio::io_service& service, http::api::router<>& router)
 		: connection_handler_base(service, router)
 		, socket_(service)
 	{
