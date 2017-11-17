@@ -18,13 +18,13 @@
 
 #include <map>
 #include <type_traits>
+#include <algorithm>
 
 // #include <experimental/filesystem>
 // namespace fs = std::experimental::filesystem;
 
 namespace http
 {
-class session_handler;
 
 namespace util
 {
@@ -173,73 +173,89 @@ namespace stock_replies
 
 } // namespace stock_replies
 
-/*
-class header
+class field
 {
 public:
-	header() = default;
+	field() = default;
 
-	header(const std::string&& name, const std::string&& value = "")
-		: name(std::move(name))
-		, value(std::move(value)){};
+	field(const std::string& name, const std::string& value = "")
+		: name(name)
+		, value(value){};
 
 	std::string name;
 	std::string value;
-};*/
+};
+
 
 template<bool is_reqeust> class header;
-template<bool is_request> class message;
 
 template<> class header<true>
 {
 public:
 	std::string method_;
 	std::string uri_;
-	unsigned int version_ = 11;
+	std::string body_;
 
-	std::map<std::string, std::string> fields_;
+	unsigned int version_;
+	std::vector<http::field> fields_;
 
-	unsigned int& version() noexcept
-	{
-		return version_;
-	}
-
-	void version(unsigned int value) noexcept
-	{
-		version_ = value;
-	}
-
-	std::string& method() noexcept
+	std::string& method()
 	{
 		return method_;
 	}
 
-	void method(const std::string& value) noexcept
-	{
-		method_ = value;
-	}
-
-	std::string& uri() noexcept
+	std::string& uri()
 	{
 		return uri_;
 	}
 
-	void uri(const std::string& value) noexcept
+	unsigned int& version()
 	{
-		uri_ = value;
+		return version_;
 	}
 
+	std::vector<http::field>& fields()
+	{
+		return fields_;
+	}
 
+	void reset()
+	{
+		this->fields_.clear();
+		this->body_.clear();
+	}
 };
 
 template<> class header<false>
 {
 public:
+	enum status_type
+	{
+		ok = 200,
+		created = 201,
+		accepted = 202,
+		no_content = 204,
+		multiple_choices = 300,
+		moved_permanently = 301,
+		moved_temporarily = 302,
+		not_modified = 304,
+		bad_request = 400,
+		unauthorized = 401,
+		forbidden = 403,
+		not_found = 404,
+		internal_server_error = 500,
+		not_implemented = 501,
+		bad_gateway = 502,
+		service_unavailable = 503
+	} status_t;
+
 	std::string reason_;
-	int status_;
+	status_type status_;
 	unsigned int version_ = 11;
 
-	std::map<std::string, std::string> fields;
+	std::vector<http::field> fields_;
+
+	std::vector<http::field>& fields() { return fields_; }
 
 	unsigned int& version() noexcept
 	{
@@ -250,55 +266,62 @@ public:
 	{
 		version_ = value;
 	}
-	
-	int status() const noexcept
+
+	void reset()
 	{
-		return this->status_;
+		this->fields_.clear();
 	}
 
-	void status(int value) noexcept
+	void set(const std::string& name, const std::string& value)
 	{
-		status_ = value;
+		http::field field_(name, value);
+		fields_.emplace_back(std::move(field_));
 	}
 
-	const std::string& reason() const noexcept
-	{ 
-		return reason_; 
+	const std::string& operator[](const std::string& name) const
+	{
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
+		{
+			if (f.name == name)
+				return true;
+			else
+				return false;
+		});
+
+		if (i == std::end(fields_))
+			return "";
+		else
+			return i->value;
 	}
+
 };
+
+using request_header = header<true>;
+using reply_header = header<false>;
 
 template<bool is_request> class message : public header<is_request>
 {
 public:
-	std::vector<char> content_;
+	std::string body_;
+
+	/// Get a stock reply.
+	void stock_reply(reply_header::status_type status, const std::string& extension = "text/plain")
+	{		
+		status_ = status;
+
+		if (status != ok)
+		{
+			body_ = to_string(status);
+		}
+		reply_.fields().emplace_back(http::header("Server", "NeoLM / 0.01 (Windows)"));
+		reply_.fields().emplace_back(http::header("Content-Type", mime_types::extension_to_type(extension)));
+
+		return reply;
+	}
 };
 
-using request = message<true>;
-using response = message<false>;
-
-
-/*class request
-{
-public:
-	request() = default;
-
-	void reset()
-	{
-		method.clear();
-		uri.clear();
-		headers.clear();
-
-		http_version_major = 0;
-		http_version_minor = 0;
-	}
-
-	std::string method;
-	std::string uri;
-	int http_version_major;
-	int http_version_minor;
-
-	std::vector<http::header> headers;
-};*/
+using request = http::message<true>;
+using reply = http::message<false>;
 
 class request_parser
 {
@@ -336,7 +359,6 @@ public:
 	}
 
 private:
-
 	result_type consume(http::request& req, char input)
 	{
 		switch (state_)
@@ -425,8 +447,8 @@ private:
 		case http_version_slash:
 			if (input == '/')
 			{
-				//req.http_version_major = 0;
-				//req.http_version_minor = 0;
+//				req.http_version_major = 0;
+//				req.http_version_minor = 0;
 				state_ = http_version_major_start;
 				return indeterminate;
 			}
@@ -437,8 +459,8 @@ private:
 		case http_version_major_start:
 			if (is_digit(input))
 			{
-				//req.http_version_major = req.http_version_major * 10 + input - '0';
-				state_ = http_version_major;
+//				req.http_version_major = req.http_version_major * 10 + input - '0';
+//				state_ = http_version_major;
 				return indeterminate;
 			}
 			else
@@ -453,7 +475,7 @@ private:
 			}
 			else if (is_digit(input))
 			{
-				req.version(req.version() * 10 + input - '0');
+//				req.http_version_major = req.http_version_major * 10 + input - '0';
 				return indeterminate;
 			}
 			else
@@ -463,7 +485,7 @@ private:
 		case http_version_minor_start:
 			if (is_digit(input))
 			{
-				req.version(req.version() + input - '0');
+//				req.http_version_minor = req.http_version_minor * 10 + input - '0';
 				state_ = http_version_minor;
 				return indeterminate;
 			}
@@ -479,7 +501,7 @@ private:
 			}
 			else if (is_digit(input))
 			{
-				req.version(req.version() + input - '0');
+//				req.http_version_minor = req.http_version_minor * 10 + input - '0';
 				return indeterminate;
 			}
 			else
@@ -502,7 +524,7 @@ private:
 				state_ = expecting_newline_3;
 				return indeterminate;
 			}
-			else if (!req.fields_.empty() && (input == ' ' || input == '\t'))
+			else if (!req.fields().empty() && (input == ' ' || input == '\t'))
 			{
 				state_ = header_lws;
 				return indeterminate;
@@ -513,7 +535,8 @@ private:
 			}
 			else
 			{
-				req.fields_.insert(header());
+				req.fields().push_back(http::field());
+				req.fields().back().name.push_back(input);
 				state_ = header_name;
 				return indeterminate;
 			}
@@ -534,7 +557,7 @@ private:
 			else
 			{
 				state_ = header_value;
-				req.fields_.back().second.push_back(input);
+				req.fields().back().value.push_back(input);
 				return indeterminate;
 			}
 		case header_name:
@@ -549,7 +572,7 @@ private:
 			}
 			else
 			{
-				req.fields_.back().first.push_back(input);
+				req.fields().back().name.push_back(input);
 				return indeterminate;
 			}
 		case space_before_header_value:
@@ -574,7 +597,7 @@ private:
 			}
 			else
 			{
-				req.fields_.back().second.push_back(input);
+				req.fields().back().value.push_back(input);
 				return indeterminate;
 			}
 		case expecting_newline_2:
@@ -658,177 +681,6 @@ private:
 	} state_;
 };
 
-class reply
-{
-public:
-	reply()
-		: document_path_{ "" }
-		, keep_alive_{ false }
-		, chunked_encoding_{ false } {};
-
-	/// The status of the reply.
-	enum status_type
-	{
-		ok = 200,
-		created = 201,
-		accepted = 202,
-		no_content = 204,
-		multiple_choices = 300,
-		moved_permanently = 301,
-		moved_temporarily = 302,
-		not_modified = 304,
-		bad_request = 400,
-		unauthorized = 401,
-		forbidden = 403,
-		not_found = 404,
-		internal_server_error = 500,
-		not_implemented = 501,
-		bad_gateway = 502,
-		service_unavailable = 503
-	} status;
-
-	void reset()
-	{
-		headers.clear();
-		content.clear();
-	}
-
-	std::string& document_path() noexcept { return document_path_; }
-
-	bool& keep_alive() { return keep_alive_; }
-
-	bool& chunked_encoding() { return chunked_encoding_; }
-
-	std::string headers_to_string()
-	{
-		std::string result;
-		std::stringstream ss;
-
-		ss << http::reply::to_buffer(this->status);
-
-		for (std::size_t i = 0; i < headers.size(); ++i)
-		{
-			http::header& h = headers[i];
-			ss << h.name;
-			ss << misc_strings::name_value_separator;
-			ss << h.value;
-			ss << misc_strings::crlf;
-		}
-		ss << misc_strings::crlf;
-
-		return result = ss.str();
-	};
-
-	std::string content_to_string() { return content; };
-
-	/// The headers to be included in the reply.
-	std::vector<http::header> headers;
-
-	/// The content to be sent in the reply.
-	std::string content;
-
-	/// Get a stock reply.
-	static http::reply stock_reply(http::reply::status_type status)
-	{
-		http::reply reply;
-		reply.status = status;
-		reply.content = to_string(status);
-		reply.headers.resize(2);
-		reply.headers[0].name = "Content-Length";
-		reply.headers[0].value = std::to_string(reply.content.size());
-		reply.headers[1].name = "Content-Type";
-		reply.headers[1].value = "text/html";
-		return reply;
-	}
-
-private:
-	bool chunked_encoding_;
-	bool keep_alive_;
-	std::string document_path_;
-
-	static std::string to_string(http::reply::status_type status)
-	{
-		switch (status)
-		{
-		case http::reply::ok:
-			return http::status_strings::http_11::ok;
-		case http::reply::created:
-			return http::status_strings::http_11::created;
-		case http::reply::accepted:
-			return http::status_strings::http_11::accepted;
-		case http::reply::no_content:
-			return http::status_strings::http_11::no_content;
-		case http::reply::multiple_choices:
-			return http::status_strings::http_11::multiple_choices;
-		case http::reply::moved_permanently:
-			return http::status_strings::http_11::moved_permanently;
-		case http::reply::moved_temporarily:
-			return http::status_strings::http_11::moved_temporarily;
-		case http::reply::not_modified:
-			return http::status_strings::http_11::not_modified;
-		case http::reply::bad_request:
-			return http::status_strings::http_11::bad_request;
-		case http::reply::unauthorized:
-			return http::status_strings::http_11::unauthorized;
-		case http::reply::forbidden:
-			return http::status_strings::http_11::forbidden;
-		case http::reply::not_found:
-			return http::status_strings::http_11::not_found;
-		case http::reply::internal_server_error:
-			return http::status_strings::http_11::internal_server_error;
-		case http::reply::not_implemented:
-			return http::status_strings::http_11::not_implemented;
-		case http::reply::bad_gateway:
-			return http::status_strings::http_11::bad_gateway;
-		case http::reply::service_unavailable:
-			return http::status_strings::http_11::service_unavailable;
-		default:
-			return http::status_strings::http_11::internal_server_error;
-		}
-	}
-
-	static const std::string to_buffer(http::reply::status_type status)
-	{
-		switch (status)
-		{
-		case http::reply::ok:
-			return http::status_strings::http_11::ok;
-		case http::reply::created:
-			return http::status_strings::http_11::created;
-		case http::reply::accepted:
-			return http::status_strings::http_11::accepted;
-		case http::reply::no_content:
-			return http::status_strings::http_11::no_content;
-		case http::reply::multiple_choices:
-			return http::status_strings::http_11::multiple_choices;
-		case http::reply::moved_permanently:
-			return http::status_strings::http_11::moved_permanently;
-		case http::reply::moved_temporarily:
-			return http::status_strings::http_11::moved_temporarily;
-		case http::reply::not_modified:
-			return http::status_strings::http_11::not_modified;
-		case http::reply::bad_request:
-			return http::status_strings::http_11::bad_request;
-		case http::reply::unauthorized:
-			return http::status_strings::http_11::unauthorized;
-		case http::reply::forbidden:
-			return http::status_strings::http_11::forbidden;
-		case http::reply::not_found:
-			return http::status_strings::http_11::not_found;
-		case http::reply::internal_server_error:
-			return http::status_strings::http_11::internal_server_error;
-		case http::reply::not_implemented:
-			return http::status_strings::http_11::not_implemented;
-		case http::reply::bad_gateway:
-			return http::status_strings::http_11::bad_gateway;
-		case http::reply::service_unavailable:
-			return http::status_strings::http_11::service_unavailable;
-		default:
-			return http::status_strings::http_11::internal_server_error;
-		}
-	}
-};
-
 namespace mime_types
 {
 	struct mapping
@@ -855,12 +707,14 @@ namespace mime_types
 	}
 } // namespace mime_types
 
+class session_handler;
+
 namespace api
 {
 	template <class function_t = std::function<bool(http::session_handler& session)>> class router
 	{
 	public:
-		router(){};
+		router() {};
 
 		void add_route(const std::string& http_uri, function_t api_method)
 		{
@@ -886,6 +740,8 @@ namespace api
 
 } // namespace api
 
+
+
 class session_handler
 {
 
@@ -894,7 +750,7 @@ public:
 	session_handler& operator=(const session_handler&) = delete;
 
 	/// Construct with a directory containing files to be served.
-	explicit session_handler(const std::string& doc_root, http::api::router<>& router)
+	explicit session_handler(const std::string& doc_root, class http::api::router<>& router)
 		: doc_root_{ doc_root }
 		, router_(router)
 	{
@@ -913,16 +769,16 @@ public:
 		// Decode url to path.
 		std::string request_path;
 
-		if (!url_decode(request_.uri, request_path))
+		if (!url_decode(request_.uri(), request_path))
 		{
-			reply_ = http::reply::stock_reply(http::reply::bad_request);
+			reply_.stock_reply(http::reply::bad_request);
 			return;
 		}
 
 		// Request path must be absolute and not contain "..".
 		if (request_path.empty() || request_path[0] != '/' || request_path.find("..") != std::string::npos)
 		{
-			reply_ = http::reply::stock_reply(http::reply::bad_request);
+			reply_.stock_reply(http::reply::bad_request);
 			return;
 		}
 
@@ -943,33 +799,34 @@ public:
 		}
 
 		// Fill out the reply to be sent to the client.
-		reply_.status = http::reply::ok;
+		reply_.stock_reply(http::reply::ok);
 
-		for (auto& request_header : request_.headers)
+
+/*		for (auto& request_header : request_.fields())
 		{
 			if (http::util::case_insensitive_equal(request_header.name, "Content-Encoding")
 				&& http::util::case_insensitive_equal(request_header.name, "chunked"))
 				reply_.chunked_encoding() = true;
 
 			if (http::util::case_insensitive_equal(request_header.value, "Keep-Alive")) reply_.keep_alive() = true;
-		}
+		}*/
 
-		reply_.headers.emplace_back(http::header("Server", "NeoLM / 0.01 (Windows)"));
-		reply_.headers.emplace_back(http::header("Content-Type", mime_types::extension_to_type(extension)));
 
-		if (reply_.chunked_encoding())
+		if (request_["Content-Encoding"] == "chunked")
 		{
-			reply_.headers.emplace_back(http::header("Transfer-Encoding", "chunked"));
+			reply_.set("Transfer-Encoding", "chunked");
 		}
 
 		if (this->router_.call(*this))
 		{
-			reply_.headers.emplace_back(http::header("Content-Length", std::to_string(this->reply().content.size())));
+			reply_.set("Content-Length", std::to_string(reply_.body_.length()));
 		}
 		else
 		{
 			// not routed to an api. proceed as normal HTTP file request.
-			reply_.document_path() = doc_root_ + request_path;
+			// NDJ: from here...
+			reply_.uri() = doc_root_ + request_path;
+
 			size_t bytes_total = 0; // TODO fs::file_size(reply_.document_path());
 			reply_.headers.emplace_back(http::header("Content-Length", std::to_string(bytes_total)));
 		}
@@ -989,9 +846,12 @@ public:
 	int& keepalive_count() { return keepalive_count_; };
 	int& keepalive_max() { return keepalive_max_; };
 
-	class request_parser& request_parser() { return request_parser_; };
-	class reply& reply() { return reply_; };
-	class request& request() { return request_; };
+	using request = http::message<true>;
+	using reply = http::message<false>;
+
+	class http::request_parser& request_parser() { return request_parser_; };
+	http::reply& _reply() { return reply_; };
+	http::request& _request() { return request_; };
 
 	void reset()
 	{
@@ -1004,12 +864,11 @@ private:
 	/// The directory containing the files to be served.
 	std::string doc_root_;
 
-	http::
 	http::request request_;
 	http::reply reply_;
 	http::request_parser request_parser_;
-
 	http::api::router<>& router_;
+
 	int keepalive_count_;
 	int keepalive_max_;
 
@@ -1053,6 +912,7 @@ private:
 		}
 		return true;
 	}
+
 };
 
 } // namespace http
