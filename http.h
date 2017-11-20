@@ -210,8 +210,7 @@ private:
 		case http_version_slash:
 			if (input == '/')
 			{
-//				req.http_version_major = 0;
-//				req.http_version_minor = 0;
+				req.version_ = 0;
 				state_ = http_version_major_start;
 				return indeterminate;
 			}
@@ -222,8 +221,8 @@ private:
 		case http_version_major_start:
 			if (is_digit(input))
 			{
-//				req.http_version_major = req.http_version_major * 10 + input - '0';
-//				state_ = http_version_major;
+				req.version_ = (10 * (input - '0'));
+				state_ = http_version_major;
 				return indeterminate;
 			}
 			else
@@ -238,7 +237,7 @@ private:
 			}
 			else if (is_digit(input))
 			{
-//				req.http_version_major = req.http_version_major * 10 + input - '0';
+				req.version_ = (10 * (input - '0'));
 				return indeterminate;
 			}
 			else
@@ -248,7 +247,7 @@ private:
 		case http_version_minor_start:
 			if (is_digit(input))
 			{
-//				req.http_version_minor = req.http_version_minor * 10 + input - '0';
+				req.version_ = req.version() + (input - '0');
 				state_ = http_version_minor;
 				return indeterminate;
 			}
@@ -264,7 +263,7 @@ private:
 			}
 			else if (is_digit(input))
 			{
-//				req.http_version_minor = req.http_version_minor * 10 + input - '0';
+				req.version_ = req.version() + (input - '0');
 				return indeterminate;
 			}
 			else
