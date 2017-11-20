@@ -20,6 +20,8 @@
 #include <type_traits>
 #include <algorithm>
 
+#include "http_message.h"
+
 // #include <experimental/filesystem>
 // namespace fs = std::experimental::filesystem;
 
@@ -83,245 +85,6 @@ namespace status_strings
 	} // namespace http_11
 } // namespace status_strings
 
-namespace misc_strings
-{
-
-	const char name_value_separator[] = { ':', ' ' };
-	const char crlf[] = { '\r', '\n' };
-
-} // namespace misc_strings
-
-namespace stock_replies
-{
-
-	const char ok[] = "";
-	const char created[]
-		= "<html>"
-		  "<head><title>Created</title></head>"
-		  "<body><h1>201 Created</h1></body>"
-		  "</html>";
-	const char accepted[]
-		= "<html>"
-		  "<head><title>Accepted</title></head>"
-		  "<body><h1>202 Accepted</h1></body>"
-		  "</html>";
-	const char no_content[]
-		= "<html>"
-		  "<head><title>No Content</title></head>"
-		  "<body><h1>204 Content</h1></body>"
-		  "</html>";
-	const char multiple_choices[]
-		= "<html>"
-		  "<head><title>Multiple Choices</title></head>"
-		  "<body><h1>300 Multiple Choices</h1></body>"
-		  "</html>";
-	const char moved_permanently[]
-		= "<html>"
-		  "<head><title>Moved Permanently</title></head>"
-		  "<body><h1>301 Moved Permanently</h1></body>"
-		  "</html>";
-	const char moved_temporarily[]
-		= "<html>"
-		  "<head><title>Moved Temporarily</title></head>"
-		  "<body><h1>302 Moved Temporarily</h1></body>"
-		  "</html>";
-	const char not_modified[]
-		= "<html>"
-		  "<head><title>Not Modified</title></head>"
-		  "<body><h1>304 Not Modified</h1></body>"
-		  "</html>";
-	const char bad_request[]
-		= "<html>"
-		  "<head><title>Bad Request</title></head>"
-		  "<body><h1>400 Bad Request</h1></body>"
-		  "</html>";
-	const char unauthorized[]
-		= "<html>"
-		  "<head><title>Unauthorized</title></head>"
-		  "<body><h1>401 Unauthorized</h1></body>"
-		  "</html>";
-	const char forbidden[]
-		= "<html>"
-		  "<head><title>Forbidden</title></head>"
-		  "<body><h1>403 Forbidden</h1></body>"
-		  "</html>";
-	const char not_found[]
-		= "<html>"
-		  "<head><title>Not Found</title></head>"
-		  "<body><h1>404 Not Found</h1></body>"
-		  "</html>";
-	const char internal_server_error[]
-		= "<html>"
-		  "<head><title>Internal Server Error</title></head>"
-		  "<body><h1>500 Internal Server Error</h1></body>"
-		  "</html>";
-	const char not_implemented[]
-		= "<html>"
-		  "<head><title>Not Implemented</title></head>"
-		  "<body><h1>501 Not Implemented</h1></body>"
-		  "</html>";
-	const char bad_gateway[]
-		= "<html>"
-		  "<head><title>Bad Gateway</title></head>"
-		  "<body><h1>502 Bad Gateway</h1></body>"
-		  "</html>";
-	const char service_unavailable[]
-		= "<html>"
-		  "<head><title>Service Unavailable</title></head>"
-		  "<body><h1>503 Service Unavailable</h1></body>"
-		  "</html>";
-
-} // namespace stock_replies
-
-class field
-{
-public:
-	field() = default;
-
-	field(const std::string& name, const std::string& value = "")
-		: name(name)
-		, value(value){};
-
-	std::string name;
-	std::string value;
-};
-
-
-template<bool is_reqeust> class header;
-
-template<> class header<true>
-{
-public:
-	std::string method_;
-	std::string uri_;
-	std::string body_;
-
-	unsigned int version_;
-	std::vector<http::field> fields_;
-
-	std::string& method()
-	{
-		return method_;
-	}
-
-	std::string& uri()
-	{
-		return uri_;
-	}
-
-	unsigned int& version()
-	{
-		return version_;
-	}
-
-	std::vector<http::field>& fields()
-	{
-		return fields_;
-	}
-
-	void reset()
-	{
-		this->fields_.clear();
-		this->body_.clear();
-	}
-};
-
-template<> class header<false>
-{
-public:
-	enum status_type
-	{
-		ok = 200,
-		created = 201,
-		accepted = 202,
-		no_content = 204,
-		multiple_choices = 300,
-		moved_permanently = 301,
-		moved_temporarily = 302,
-		not_modified = 304,
-		bad_request = 400,
-		unauthorized = 401,
-		forbidden = 403,
-		not_found = 404,
-		internal_server_error = 500,
-		not_implemented = 501,
-		bad_gateway = 502,
-		service_unavailable = 503
-	} status_t;
-
-	std::string reason_;
-	status_type status_;
-	unsigned int version_ = 11;
-
-	std::vector<http::field> fields_;
-
-	std::vector<http::field>& fields() { return fields_; }
-
-	unsigned int& version() noexcept
-	{
-		return version_;
-	}
-
-	void version(unsigned int value) noexcept
-	{
-		version_ = value;
-	}
-
-	void reset()
-	{
-		this->fields_.clear();
-	}
-
-	void set(const std::string& name, const std::string& value)
-	{
-		http::field field_(name, value);
-		fields_.emplace_back(std::move(field_));
-	}
-
-	const std::string& operator[](const std::string& name) const
-	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
-		{
-			if (f.name == name)
-				return true;
-			else
-				return false;
-		});
-
-		if (i == std::end(fields_))
-			return "";
-		else
-			return i->value;
-	}
-
-};
-
-using request_header = header<true>;
-using reply_header = header<false>;
-
-template<bool is_request> class message : public header<is_request>
-{
-public:
-	std::string body_;
-
-	/// Get a stock reply.
-	void stock_reply(reply_header::status_type status, const std::string& extension = "text/plain")
-	{		
-		status_ = status;
-
-		if (status != ok)
-		{
-			body_ = to_string(status);
-		}
-		reply_.fields().emplace_back(http::header("Server", "NeoLM / 0.01 (Windows)"));
-		reply_.fields().emplace_back(http::header("Content-Type", mime_types::extension_to_type(extension)));
-
-		return reply;
-	}
-};
-
-using request = http::message<true>;
-using reply = http::message<false>;
 
 class request_parser
 {
@@ -724,7 +487,7 @@ namespace api
 
 		bool call(http::session_handler& session)
 		{
-			std::string key{ session.request().uri };
+			std::string key{ session._request().uri() };
 
 			auto i = api_router_table.find(key);
 
@@ -825,31 +588,31 @@ public:
 		{
 			// not routed to an api. proceed as normal HTTP file request.
 			// NDJ: from here...
-			reply_.uri() = doc_root_ + request_path;
+			//reply_.uri() = doc_root_ + request_path;
+			//reply_.
 
 			size_t bytes_total = 0; // TODO fs::file_size(reply_.document_path());
-			reply_.headers.emplace_back(http::header("Content-Length", std::to_string(bytes_total)));
+			reply_.set("Content-Length", std::to_string(bytes_total));
 		}
 
-		if (reply_.keep_alive() == true)
+		if (request_["Connection"] == "keep-alive") // || Version == 11)
 		{
-			reply_.headers.emplace_back(http::header("Connection", "Keep-Alive"));
-			reply_.headers.emplace_back(
-				http::header("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max_) + std::string(" max=") + std::to_string(keepalive_count_)));
+			reply_.set("Connection", "Keep-Alive");
+			reply_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max_) + std::string(" max=") + std::to_string(keepalive_count_));
 		}
 		else
 		{
-			reply_.headers.emplace_back(http::header("Connection", "close"));
+			reply_.set("Connection", "close");
 		}
 	}
 
 	int& keepalive_count() { return keepalive_count_; };
 	int& keepalive_max() { return keepalive_max_; };
 
-	using request = http::message<true>;
-	using reply = http::message<false>;
+	//using request = http::message<true>;
+	//using reply = http::message<false>;
 
-	class http::request_parser& request_parser() { return request_parser_; };
+	http::request_parser& request_parser() { return request_parser_; };
 	http::reply& _reply() { return reply_; };
 	http::request& _request() { return request_; };
 

@@ -15,6 +15,8 @@
 
 #include <boost/log/trivial.hpp>
 
+#include "http.h"
+
 namespace http
 {
 
@@ -85,13 +87,15 @@ public:
 			{
 				session_handler_.handle_request();
 
-				write_buffer_.push_back(reply().headers_to_string());
+				write_buffer_.push_back(session_handler_._reply().header_to_string());
 
 				do_write_header();
 			}
 			else if (result == http::request_parser::bad)
 			{
-				reply() = http::reply::stock_reply(http::reply::bad_request);
+				session_handler_._reply().stock_reply(http::reply::bad_request);
+				write_buffer_.push_back(session_handler_._reply().header_to_string());
+
 				do_write_header();
 			}
 			else
@@ -335,7 +339,7 @@ private:
 	boost::asio::io_service io_service;
 	boost::asio::ip::tcp::acceptor acceptor_;
 	boost::asio::ip::tcp::acceptor ssl_acceptor_;
-	http::api::router router_;
+	http::api::router<> router_;
 
 	boost::asio::ssl::context ssl_context;
 };
