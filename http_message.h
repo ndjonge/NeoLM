@@ -175,7 +175,7 @@ public:
 		fields_.emplace_back(std::move(field_));
 	}
 
-	const std::string& operator[](const std::string& name) const
+	const std::string operator[](const std::string& name) const
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
 		{
@@ -186,7 +186,7 @@ public:
 		});
 
 		if (i == std::end(fields_))
-			return "";
+			return {};
 		else
 			return i->value;
 	}
@@ -258,7 +258,7 @@ public:
 		fields_.emplace_back(std::move(field_));
 	}
 
-	const std::string& operator[](const std::string& name) const
+	const std::string operator[](const std::string& name) const
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
 		{
