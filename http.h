@@ -30,12 +30,7 @@ namespace http
 
 namespace util
 {
-	inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
-	{
-		return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) { return tolower(a) == tolower(b); });
-	}
-
-	template <typename block_container_t = std::array<char, 1024>>
+ 	template <typename block_container_t = std::array<char, 1024>>
 	bool read_from_disk(const std::string& file_path, const std::function<bool(block_container_t, size_t)>& read)
 	{
 
@@ -61,29 +56,6 @@ namespace util
 	}
 
 } // namespace util
-
-namespace status_strings
-{
-	namespace http_11
-	{
-		const std::string ok = "HTTP/1.1 200 OK\r\n";
-		const std::string created = "HTTP/1.1 201 Created\r\n";
-		const std::string accepted = "HTTP/1.1 202 Accepted\r\n";
-		const std::string no_content = "HTTP/1.1 204 No Content\r\n";
-		const std::string multiple_choices = "HTTP/1.1 300 Multiple Choices\r\n";
-		const std::string moved_permanently = "HTTP/1.1 301 Moved Permanently\r\n";
-		const std::string moved_temporarily = "HTTP/1.1 302 Moved Temporarily\r\n";
-		const std::string not_modified = "HTTP/1.1 304 Not Modified\r\n";
-		const std::string bad_request = "HTTP/1.1 400 Bad Request\r\n";
-		const std::string unauthorized = "HTTP/1.1 401 Unauthorized\r\n";
-		const std::string forbidden = "HTTP/1.1 403 Forbidden\r\n";
-		const std::string not_found = "HTTP/1.1 404 Not Found\r\n";
-		const std::string internal_server_error = "HTTP/1.1 500 Internal Server Error\r\n";
-		const std::string not_implemented = "HTTP/1.1 501 Not Implemented\r\n";
-		const std::string bad_gateway = "HTTP/1.1 502 Bad Gateway\r\n";
-		const std::string service_unavailable = "HTTP/1.1 503 Service Unavailable\r\n";
-	} // namespace http_11
-} // namespace status_strings
 
 
 class request_parser
@@ -140,7 +112,7 @@ private:
 		case method:
 			if (input == ' ')
 			{
-				state_ = uri;
+				state_ = target;
 				return indeterminate;
 			}
 			else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
@@ -152,7 +124,7 @@ private:
 				req.method().push_back(input);
 				return indeterminate;
 			}
-		case uri:
+		case target:
 			if (input == ' ')
 			{
 				state_ = http_version_h;
@@ -164,7 +136,7 @@ private:
 			}
 			else
 			{
-				req.uri().push_back(input);
+				req.target().push_back(input);
 				return indeterminate;
 			}
 		case http_version_h:
@@ -422,7 +394,7 @@ private:
 	{
 		method_start,
 		method,
-		uri,
+		target,
 		http_version_h,
 		http_version_t_1,
 		http_version_t_2,
@@ -486,7 +458,7 @@ namespace api
 
 		bool call(http::session_handler& session)
 		{
-			std::string key{ session._request().uri() };
+			std::string key{ session._request().target() };
 
 			auto i = api_router_table.find(key);
 
@@ -531,16 +503,16 @@ public:
 		// Decode url to path.
 		std::string request_path;
 
-		if (!url_decode(request_.uri(), request_path))
+		if (!url_decode(request_.target(), request_path))
 		{
-			reply_.stock_reply(http::reply::bad_request);
+			reply_.stock_reply(http::status::bad_request);
 			return;
 		}
 
 		// Request path must be absolute and not contain "..".
 		if (request_path.empty() || request_path[0] != '/' || request_path.find("..") != std::string::npos)
 		{
-			reply_.stock_reply(http::reply::bad_request);
+			reply_.stock_reply(http::status::bad_request);
 			return;
 		}
 
@@ -561,7 +533,7 @@ public:
 		}
 
 		// Fill out the reply to be sent to the client.
-		reply_.stock_reply(http::reply::ok);
+		reply_.stock_reply(http::status::ok);
 
 
 /*		for (auto& request_header : request_.fields())

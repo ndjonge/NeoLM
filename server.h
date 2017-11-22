@@ -87,13 +87,13 @@ public:
 			{
 				session_handler_.handle_request();
 
-				write_buffer_.push_back(session_handler_._reply().header_to_string());
+				
 
 				do_write_header();
 			}
 			else if (result == http::request_parser::bad)
 			{
-				session_handler_._reply().stock_reply(http::reply::bad_request);
+				session_handler_._reply().stock_reply(http::status::bad_request);
 				write_buffer_.push_back(session_handler_._reply().header_to_string());
 
 				do_write_header();
@@ -109,10 +109,11 @@ public:
 		}
 	}
 
-	void do_write_content()
+	void do_write_body()
 	{
 		auto result = http::util::read_from_disk<std::array<char, 16384>>(
-			request().uri(), [ this, chunked = (reply()["Transfer-Encoding"] == "chunked") ](std::array<char, 16384> & buffer, size_t bytes_in) {
+			request().target(), [ this, chunked = reply().chunked() ](std::array<char, 16384> & buffer, size_t bytes_in) 
+		{
 				std::stringstream ss;
 
 				if (!chunked)
@@ -148,16 +149,21 @@ public:
 			});
 	}
 
-	void do_write_content_done() { do_write_header_done(); }
+	void do_write_content_done() 
+	{ 
+		do_write_header_done(); 
+	}
 
 	void do_write_header()
 	{
+		write_buffer_.push_back(session_handler_._reply().header_to_string());
+
 		boost::asio::async_write(
 			socket_base(), boost::asio::buffer(this->write_buffer_.front()),
 			write_strand_.wrap([ this, me = shared_from_this() ](boost::system::error_code ec, std::size_t) {
 				me->write_buffer_.pop_front();
 
-				me->do_write_content();
+				me->do_write_body();
 			}));
 	}
 

@@ -25,95 +25,68 @@
 namespace http
 {
 
+namespace util
+{
+	inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
+	{
+		return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) { return tolower(a) == tolower(b); });
+	}
+}
+
+namespace status
+{
+	enum status_t
+	{
+		ok = 200,
+		created = 201,
+		accepted = 202,
+		no_content = 204,
+		multiple_choices = 300,
+		moved_permanently = 301,
+		moved_temporarily = 302,
+		not_modified = 304,
+		bad_request = 400,
+		unauthorized = 401,
+		forbidden = 403,
+		not_found = 404,
+		internal_server_error = 500,
+		not_implemented = 501,
+		bad_gateway = 502,
+		service_unavailable = 503
+	};
+
+	const char* to_string(status_t s)
+	{
+		switch (s)
+		{
+		case http::status::ok:						return "HTTP/1.1 200 OK\r\n";
+		case http::status::created:					return "HTTP/1.1 202 Accepted\r\n";
+		case http::status::accepted:				return "HTTP/1.1 204 No Content\r\n";
+		case http::status::no_content:				return "HTTP/1.1 204 No Content\r\n";
+		case http::status::multiple_choices:		return "HTTP/1.1 300 Multiple Choices\r\n";
+		case http::status::moved_permanently:		return "HTTP/1.1 301 Moved Permanently\r\n";
+		case http::status::moved_temporarily:		return "HTTP/1.1 302 Moved Temporarily\r\n";
+		case http::status::not_modified:			return "HTTP/1.1 304 Not Modified\r\n";
+		case http::status::bad_request:				return "HTTP/1.1 400 Bad Request\r\n";
+		case http::status::unauthorized:			return "HTTP/1.1 401 Unauthorized\r\n";
+		case http::status::forbidden:				return "HTTP/1.1 403 Forbidden\r\n";
+		case http::status::not_found:				return "HTTP/1.1 404 Not Found\r\n";
+		case http::status::internal_server_error:	return "HTTP/1.1 500 Internal Server Error\r\n";
+		case http::status::not_implemented:			return "HTTP/1.1 501 Not Implemented\r\n";
+		case http::status::bad_gateway:				return "HTTP/1.1 502 Bad Gateway\r\n";
+		case http::status::service_unavailable:		return "HTTP/1.1 503 Service Unavailable\r\n";
+		default:									return "";
+		}
+	}
+} // namespace status_strings
+
+
+
 namespace misc_strings
 {
-
 	const char name_value_separator[] = { ':', ' ' };
 	const char crlf[] = { '\r', '\n' };
-
 } // namespace misc_strings
-
-namespace stock_replies
-{
-
-	const char ok[] = "";
-	const char created[]
-		= "<html>"
-		"<head><title>Created</title></head>"
-		"<body><h1>201 Created</h1></body>"
-		"</html>";
-	const char accepted[]
-		= "<html>"
-		"<head><title>Accepted</title></head>"
-		"<body><h1>202 Accepted</h1></body>"
-		"</html>";
-	const char no_content[]
-		= "<html>"
-		"<head><title>No Content</title></head>"
-		"<body><h1>204 Content</h1></body>"
-		"</html>";
-	const char multiple_choices[]
-		= "<html>"
-		"<head><title>Multiple Choices</title></head>"
-		"<body><h1>300 Multiple Choices</h1></body>"
-		"</html>";
-	const char moved_permanently[]
-		= "<html>"
-		"<head><title>Moved Permanently</title></head>"
-		"<body><h1>301 Moved Permanently</h1></body>"
-		"</html>";
-	const char moved_temporarily[]
-		= "<html>"
-		"<head><title>Moved Temporarily</title></head>"
-		"<body><h1>302 Moved Temporarily</h1></body>"
-		"</html>";
-	const char not_modified[]
-		= "<html>"
-		"<head><title>Not Modified</title></head>"
-		"<body><h1>304 Not Modified</h1></body>"
-		"</html>";
-	const char bad_request[]
-		= "<html>"
-		"<head><title>Bad Request</title></head>"
-		"<body><h1>400 Bad Request</h1></body>"
-		"</html>";
-	const char unauthorized[]
-		= "<html>"
-		"<head><title>Unauthorized</title></head>"
-		"<body><h1>401 Unauthorized</h1></body>"
-		"</html>";
-	const char forbidden[]
-		= "<html>"
-		"<head><title>Forbidden</title></head>"
-		"<body><h1>403 Forbidden</h1></body>"
-		"</html>";
-	const char not_found[]
-		= "<html>"
-		"<head><title>Not Found</title></head>"
-		"<body><h1>404 Not Found</h1></body>"
-		"</html>";
-	const char internal_server_error[]
-		= "<html>"
-		"<head><title>Internal Server Error</title></head>"
-		"<body><h1>500 Internal Server Error</h1></body>"
-		"</html>";
-	const char not_implemented[]
-		= "<html>"
-		"<head><title>Not Implemented</title></head>"
-		"<body><h1>501 Not Implemented</h1></body>"
-		"</html>";
-	const char bad_gateway[]
-		= "<html>"
-		"<head><title>Bad Gateway</title></head>"
-		"<body><h1>502 Bad Gateway</h1></body>"
-		"</html>";
-	const char service_unavailable[]
-		= "<html>"
-		"<head><title>Service Unavailable</title></head>"
-		"<body><h1>503 Service Unavailable</h1></body>"
-		"</html>";
-
-} // namespace stock_replies
 
 class field
 {
@@ -137,7 +110,7 @@ template<> class header<true>
 {
 public:
 	std::string method_;
-	std::string uri_;
+	std::string target_;
 	std::string body_;
 
 	unsigned int version_;
@@ -148,9 +121,9 @@ public:
 		return method_;
 	}
 
-	std::string& uri()
+	std::string& target()
 	{
-		return uri_;
+		return target_;
 	}
 
 	unsigned int& version()
@@ -165,13 +138,16 @@ public:
 
 	void reset()
 	{
-		this->fields_.clear();
+		this->method_.clear();
+		this->target_.clear();
 		this->body_.clear();
+		this->fields_.clear();
 	}
 
 	void set(const std::string& name, const std::string& value)
 	{
 		http::field field_(name, value);
+
 		fields_.emplace_back(std::move(field_));
 	}
 
@@ -179,7 +155,7 @@ public:
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
 		{
-			if (f.name == name)
+			if (http::util::case_insensitive_equal(f.name, name))
 				return true;
 			else
 				return false;
@@ -196,28 +172,8 @@ public:
 template<> class header<false>
 {
 public:
-	enum status_type
-	{
-		ok = 200,
-		created = 201,
-		accepted = 202,
-		no_content = 204,
-		multiple_choices = 300,
-		moved_permanently = 301,
-		moved_temporarily = 302,
-		not_modified = 304,
-		bad_request = 400,
-		unauthorized = 401,
-		forbidden = 403,
-		not_found = 404,
-		internal_server_error = 500,
-		not_implemented = 501,
-		bad_gateway = 502,
-		service_unavailable = 503
-	} status_t;
-
 	std::string reason_;
-	status_type status_;
+	http::status::status_t status_;
 	unsigned int version_ = 11;
 
 	std::vector<http::field> fields_;
@@ -284,8 +240,47 @@ template<bool is_request> class message : public header<is_request>
 public:
 	std::string body_;
 
+	bool chunked() const
+	{		
+		return (*this["Transfer-Encoding"] == "chunked");
+	}
 
-	static header<is_request> create_stock_reply(reply_header::status_type status, const std::string& extension = "text/plain")
+	void chunked(bool value)
+	{
+		if (value)
+			this->set("Transfer-Encoding", "chunked")
+		else
+			this->set("Transfer-Encoding", "none")
+	}
+
+	bool has_content_lenght() const
+	{
+		if (*this["Content-Length"] != "")
+			return true;
+		else
+			return false;
+	}
+
+	void content_length(uint64_t const& length) const
+	{
+		this->set("Content-Length", std::to_string(lenght))
+	}
+
+	bool keep_alive() const
+	{
+		if (*this["Connection"] != "Keep-Alive")
+			return true;
+		else
+			return false;
+	}
+
+	void keep_alive(bool value)
+	{
+		if (value)
+			this->set("Connection", "Keep-Alive")
+	}
+
+	static header<is_request> create_stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
 	{
 		header<is_request> reply_;
 
@@ -295,14 +290,15 @@ public:
 	}
 
 	/// Get a stock reply.
-	void stock_reply(reply_header::status_type status, const std::string& extension = "text/plain")
+	void stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
 	{
 		status_ = status;
 
-		if (status != ok)
+		if (status != http::status::ok)
 		{
 			body_ = std::to_string(status_);
 		}
+
 		
 		set("Server", "NeoLM / 0.01 (Windows)");
 		set("Content-Type", mime_types::extension_to_type(extension));
