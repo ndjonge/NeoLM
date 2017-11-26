@@ -258,7 +258,7 @@ private:
 				state_ = expecting_newline_3;
 				return indeterminate;
 			}
-			else if (!req.fields().empty() && (input == ' ' || input == '\t'))
+			else if (!req.fields_empty() && (input == ' ' || input == '\t'))
 			{
 				state_ = header_lws;
 				return indeterminate;
@@ -269,8 +269,8 @@ private:
 			}
 			else
 			{
-				req.fields().push_back(http::field());
-				req.fields().back().name.push_back(input);
+				auto i = req.new_field();
+				i->name.push_back(input);
 				state_ = header_name;
 				return indeterminate;
 			}
@@ -291,7 +291,7 @@ private:
 			else
 			{
 				state_ = header_value;
-				req.fields().back().value.push_back(input);
+				req.last_new_field()->value.push_back(input);
 				return indeterminate;
 			}
 		case header_name:
@@ -306,7 +306,7 @@ private:
 			}
 			else
 			{
-				req.fields().back().name.push_back(input);
+				req.last_new_field()->name.push_back(input);
 				return indeterminate;
 			}
 		case space_before_header_value:
@@ -331,7 +331,7 @@ private:
 			}
 			else
 			{
-				req.fields().back().value.push_back(input);
+				req.last_new_field()->value.push_back(input);
 				return indeterminate;
 			}
 		case expecting_newline_2:

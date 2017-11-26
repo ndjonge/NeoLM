@@ -101,54 +101,42 @@ public:
 
 	std::string name;
 	std::string value;
-};
 
+};
 
 template<bool is_reqeust> class header;
 
-template<> class header<true>
+class fields
 {
-public:
-	std::string method_;
-	std::string target_;
-	std::string body_;
-
-	unsigned int version_;
+protected:
 	std::vector<http::field> fields_;
 
-	std::string& method()
-	{
-		return method_;
-	}
+public:
+	using iterator = std::vector<http::field>::iterator;
 
-	std::string& target()
-	{
-		return target_;
-	}
-
-	unsigned int& version()
-	{
-		return version_;
-	}
-
-	std::vector<http::field>& fields()
-	{
-		return fields_;
-	}
-
-	void reset()
-	{
-		this->method_.clear();
-		this->target_.clear();
-		this->body_.clear();
-		this->fields_.clear();
-	}
+	bool fields_empty() const { return this->fields_.empty(); };
 
 	void set(const std::string& name, const std::string& value)
 	{
 		http::field field_(name, value);
 
 		fields_.emplace_back(std::move(field_));
+	}
+
+	auto new_field()
+	{
+		fields_.push_back(field());
+		return fields_.rbegin();
+	}
+
+	auto last_new_field()
+	{
+		return fields_.rbegin();
+	}
+
+	const std::string get(const std::string& name) const
+	{
+		return this->operator[](name);
 	}
 
 	const std::string operator[](const std::string& name) const
@@ -166,19 +154,47 @@ public:
 		else
 			return i->value;
 	}
-
 };
 
-template<> class header<false>
+template<> class header<true> : public fields
+{
+public:
+	std::string method_;
+	std::string target_;
+	std::string body_;
+
+	unsigned int version_;
+
+	std::string& method()
+	{
+		return method_;
+	}
+
+	std::string& target()
+	{
+		return target_;
+	}
+
+	unsigned int& version()
+	{
+		return version_;
+	}
+
+	void reset()
+	{
+		this->method_.clear();
+		this->target_.clear();
+		this->body_.clear();
+		this->fields_.clear();
+	}
+};
+
+template<> class header<false> : public fields
 {
 public:
 	std::string reason_;
 	http::status::status_t status_;
 	unsigned int version_ = 11;
-
-	std::vector<http::field> fields_;
-
-	std::vector<http::field>& fields() { return fields_; }
 
 	unsigned int& version() noexcept
 	{
@@ -207,29 +223,6 @@ public:
 
 		return ss.str();
 	}
-
-	void set(const std::string& name, const std::string& value)
-	{
-		http::field field_(name, value);
-		fields_.emplace_back(std::move(field_));
-	}
-
-	const std::string operator[](const std::string& name) const
-	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
-		{
-			if (f.name == name)
-				return true;
-			else
-				return false;
-		});
-
-		if (i == std::end(fields_))
-			return "";
-		else
-			return i->value;
-	}
-
 };
 
 using request_header = header<true>;
@@ -238,24 +231,24 @@ using reply_header = header<false>;
 template<bool is_request> class message : public header<is_request>
 {
 public:
-	std::string body_;
+	std::string body_;	
 
 	bool chunked() const
-	{		
-		return (*this["Transfer-Encoding"] == "chunked");
+	{				
+		return (this->get("Transfer-Encoding") == "chunked");
 	}
 
 	void chunked(bool value)
 	{
 		if (value)
-			this->set("Transfer-Encoding", "chunked")
+			fields::set("Transfer-Encoding", "chunked")
 		else
-			this->set("Transfer-Encoding", "none")
+			fields::set("Transfer-Encoding", "none")
 	}
 
 	bool has_content_lenght() const
 	{
-		if (*this["Content-Length"] != "")
+		if (fields::operator["Content-Length"] != "")
 			return true;
 		else
 			return false;
@@ -263,12 +256,12 @@ public:
 
 	void content_length(uint64_t const& length) const
 	{
-		this->set("Content-Length", std::to_string(lenght))
+		fields::set("Content-Length", std::to_string(lenght))
 	}
 
 	bool keep_alive() const
 	{
-		if (*this["Connection"] != "Keep-Alive")
+		if (fields::["Connection"] != "Keep-Alive")
 			return true;
 		else
 			return false;

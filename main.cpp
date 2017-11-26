@@ -8,6 +8,12 @@
 int main(int argc, char* argv[])
 {
 
+	http::request request;
+
+	std::string agent = request["agent"];
+
+	//http::api::router router_;
+
 	http::server<http::connection_handler_http, http::connection_handler_https> server(
 		"C:\\Development Libraries\\ssl.crt", 
 		"C:\\Development Libraries\\ssl.key");
