@@ -7,14 +7,22 @@
 
 int main(int argc, char* argv[])
 {
-
 	http::request request;
+	http::api::router<> neolm_router;
+	
+	neolm_router.on_get("/index.html", [](http::session_handler& session) 
+	{
+		session._reply().body_ = "Hoi!\n";
+		return true;
+	});
 
-	std::string agent = request["agent"];
+	neolm_router.on_get("/about", [](http::session_handler& session)
+	{
+		return true;
+	});
 
-	//http::api::router router_;
-
-	http::server<http::connection_handler_http, http::connection_handler_https> server(
+	http::server<http::api::router<>, http::connection_handler_http, http::connection_handler_https> server(
+		neolm_router,
 		"C:\\Development Libraries\\ssl.crt", 
 		"C:\\Development Libraries\\ssl.key");
 

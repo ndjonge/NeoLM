@@ -450,15 +450,24 @@ namespace api
 	public:
 		router() {};
 
-		void add_route(const std::string& http_uri, function_t api_method)
+		void on_option(const std::string path, function_t api_method) { this->add_route("option", path, api_method); };
+		void on_get(const std::string path, function_t api_method) { this->add_route("GET", path, api_method); };
+		void on_head(const std::string path, function_t api_method) { this->add_route("head", path, api_method); };
+		void on_post(const std::string path, function_t api_method) { this->add_route("post", path, api_method); };
+		void on_put(const std::string path, function_t api_method) { this->add_route("put", path, api_method); };
+		void on_update(const std::string path, function_t api_method) { this->add_route("update", path, api_method); };
+		void on_delete(const std::string path, function_t api_method) { this->add_route("delete", path, api_method); };
+
+		void add_route(const std::string& http_request_method, const std::string& http_request_uri, function_t api_method)
 		{
-			std::string key{ http_uri };
-			api_router_table.insert(std::make_pair(key.c_str(), api_method));
+			std::string key{ http_request_method + ":" + http_request_uri };
+
+			api_router_table.insert(std::make_pair(key, api_method));
 		}
 
 		bool call(http::session_handler& session)
 		{
-			std::string key{ session._request().target() };
+			std::string key{ session._request().method() + ":" + session._request().target() };
 
 			auto i = api_router_table.find(key);
 
@@ -532,24 +541,10 @@ public:
 			extension = request_path.substr(last_dot_pos + 1);
 		}
 
+		request_.target() = request_path;
+
 		// Fill out the reply to be sent to the client.
 		reply_.stock_reply(http::status::ok);
-
-
-/*		for (auto& request_header : request_.fields())
-		{
-			if (http::util::case_insensitive_equal(request_header.name, "Content-Encoding")
-				&& http::util::case_insensitive_equal(request_header.name, "chunked"))
-				reply_.chunked_encoding() = true;
-
-			if (http::util::case_insensitive_equal(request_header.value, "Keep-Alive")) reply_.keep_alive() = true;
-		}*/
-
-
-		if (request_["Content-Encoding"] == "chunked")
-		{
-			reply_.set("Transfer-Encoding", "chunked");
-		}
 
 		if (this->router_.call(*this))
 		{

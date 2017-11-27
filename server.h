@@ -87,8 +87,6 @@ public:
 			{
 				session_handler_.handle_request();
 
-				
-
 				do_write_header();
 			}
 			else if (result == http::request_parser::bad)
@@ -111,6 +109,10 @@ public:
 
 	void do_write_body()
 	{
+		// body is already there....
+		// or request().target hold a valid file path...
+		__;
+
 		auto result = http::util::read_from_disk<std::array<char, 16384>>(
 			request().target(), [ this, chunked = reply().chunked() ](std::array<char, 16384> & buffer, size_t bytes_in) 
 		{
@@ -240,20 +242,22 @@ private:
 	boost::asio::ip::tcp::socket socket_;
 };
 
-template <typename connection_handler_http_t, typename ssl_connection_handler_t> class server
+template <typename router_t, typename connection_handler_http_t, typename ssl_connection_handler_t> class server
 {
 	using shared_connection_handler_http_t = std::shared_ptr<http::connection_handler_http>;
 	using shared_https_connection_handler_http_t = std::shared_ptr<http::connection_handler_https>;
 
 public:
 	server(
+		router_t& router,
 		const std::string& cert_file,
 		const std::string& private_key_file,
 		const std::string& verify_file = std::string(),
 		int thread_count = 10,
 		int keep_alive_count = 5,
 		int keepalive_timeout = 2)
-		: thread_count(thread_count)
+		: router_(router)
+		, thread_count(thread_count)
 		, keep_alive_count(keep_alive_count)
 		, keepalive_timeout(keepalive_timeout)
 		, acceptor_(io_service)
@@ -345,7 +349,7 @@ private:
 	boost::asio::io_service io_service;
 	boost::asio::ip::tcp::acceptor acceptor_;
 	boost::asio::ip::tcp::acceptor ssl_acceptor_;
-	http::api::router<> router_;
+	router_t& router_;
 
 	boost::asio::ssl::context ssl_context;
 };
