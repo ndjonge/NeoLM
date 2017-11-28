@@ -580,10 +580,9 @@ public:
 				reply_.content_length(fs::file_size(request_.target()));
 			}
 
-			if (request_.keep_alive()) 
+			if (request_.keep_alive() && this->keepalive_count() > 0)
 			{
-				reply_.keep_alive(true);
-				reply_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max_) + std::string(" max=") + std::to_string(keepalive_count_));
+				reply_.keep_alive(true, this->keepalive_max(), this->keepalive_count());
 			}
 			else
 			{

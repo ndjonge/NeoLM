@@ -178,7 +178,8 @@ public:
 
 	void do_write_header_done()
 	{
-		if ((reply()["Connection"] == "keep-alive") && session_handler_.keepalive_count() > 0)
+		if (session_handler_._reply().keep_alive() && 
+			session_handler_.keepalive_count() > 0)
 		{
 			session_handler_.keepalive_count()--;
 			session_handler_.reset();

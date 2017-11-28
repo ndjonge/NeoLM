@@ -284,16 +284,19 @@ public:
 
 	bool keep_alive() const
 	{
-		if (http::fields::operator[]("Connection") != "Keep-Alive")
+		if (http::fields::operator[]("Connection") == "keep-alive")
 			return true;
 		else
 			return false;
 	}
 
-	void keep_alive(bool value)
+	void keep_alive(bool value, int timeout = 0, int count = 0 )
 	{
 		if (value)
-			fields::set("Connection", "Keep-Alive");
+		{
+			fields::set("Connection", "keep-alive");
+			fields::set("Keep_Alive", "timeout=" + std::to_string(timeout) + ", max" + std::to_string(count));
+		}
 	}
 
 	static header<is_request> create_stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
