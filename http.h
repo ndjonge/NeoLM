@@ -587,14 +587,15 @@ public:
 			else
 			{
 				reply_.keep_alive(false);
-				reply_.set("Connection", "close");
 			}
+
 		}
 		else
 		{
 			// route has a invalid response
 			reply_.set("Connection", "close");
-		}	 
+		}
+
 	}
 
 	int& keepalive_count() { return keepalive_count_; };
