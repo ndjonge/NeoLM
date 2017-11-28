@@ -36,7 +36,7 @@ public:
 		: service_(service)
 		, write_strand_(service)
 		, steady_timer_(service)
-		, session_handler_("C:\\temp", router)
+		, session_handler_(router)
 	{
 	}
 
@@ -92,7 +92,7 @@ public:
 			else if (result == http::request_parser::bad)
 			{
 				session_handler_._reply().stock_reply(http::status::bad_request);
-				write_buffer_.push_back(session_handler_._reply().header_to_string());
+				write_buffer_.push_back(session_handler_._reply().headers_to_string());
 
 				do_write_header();
 			}
@@ -109,13 +109,19 @@ public:
 
 	void do_write_body()
 	{
-		// body is already there....
-		// or request().target hold a valid file path...
-		__;
-
-		auto result = http::util::read_from_disk<std::array<char, 16384>>(
-			request().target(), [ this, chunked = reply().chunked() ](std::array<char, 16384> & buffer, size_t bytes_in) 
+		if (!reply().body_.empty())
 		{
+			std::string& body = session_handler_._reply().body_;
+			boost::asio::write(socket_base(), boost::asio::buffer(session_handler_._reply().body_));
+
+			do_write_content_done();
+		}
+		else
+		{
+
+			auto result = http::util::read_from_disk<std::array<char, 16384>>(
+				session_handler_._request().target(), [this, chunked = session_handler_._reply().chunked()](std::array<char, 16384> & buffer, size_t bytes_in)
+			{
 				std::stringstream ss;
 
 				if (!chunked)
@@ -149,6 +155,7 @@ public:
 
 				return true;
 			});
+		}
 	}
 
 	void do_write_content_done() 
@@ -158,7 +165,7 @@ public:
 
 	void do_write_header()
 	{
-		write_buffer_.push_back(session_handler_._reply().header_to_string());
+		write_buffer_.emplace_back(session_handler_._reply().headers_to_string());
 
 		boost::asio::async_write(
 			socket_base(), boost::asio::buffer(this->write_buffer_.front()),
@@ -258,8 +265,8 @@ public:
 		int keepalive_timeout = 2)
 		: router_(router)
 		, thread_count(thread_count)
-		, keep_alive_count(keep_alive_count)
-		, keepalive_timeout(keepalive_timeout)
+		, keep_alive_count(15)
+		, keepalive_timeout(25)
 		, acceptor_(io_service)
 		, ssl_acceptor_(io_service)
 		, ssl_context(io_service, boost::asio::ssl::context::tlsv12)

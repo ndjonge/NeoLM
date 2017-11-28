@@ -134,12 +134,27 @@ public:
 		return fields_.rbegin();
 	}
 
-	const std::string get(const std::string& name) const
+	const std::string& operator[](std::string name) const
 	{
-		return this->operator[](name);
+		static const std::string not_found = "";
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
+		{
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
+
+		if (i == std::end(fields_))
+		{			
+			return not_found;
+		}
+		else
+			return i->value;
 	}
 
-	const std::string operator[](const std::string& name) const
+	std::string& operator[](const std::string& name)
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
 		{
@@ -150,10 +165,14 @@ public:
 		});
 
 		if (i == std::end(fields_))
-			return {};
+		{
+			fields_.emplace_back(http::field(name, ""));
+			return fields_.back().value;
+		}
 		else
 			return i->value;
 	}
+
 };
 
 template<> class header<true> : public fields
@@ -211,15 +230,19 @@ public:
 		this->fields_.clear();
 	}
 
-	std::string header_to_string()
+	std::string headers_to_string()
 	{
 		std::stringstream ss;
 
+		ss << status::to_string(status_);
+
 		for (auto&& field : fields_)
 		{
-			ss << "\"" << field.name << "\":";
-			ss << "\"" << field.value << "\"";
+			ss << field.name << ":";
+			ss << field.value << "\r\n";
 		}
+
+		ss << "\r\n";
 
 		return ss.str();
 	}
@@ -235,33 +258,33 @@ public:
 
 	bool chunked() const
 	{				
-		return (this->get("Transfer-Encoding") == "chunked");
+		return (http::fields::operator[]("Transfer-Encoding") == "chunked");
 	}
 
 	void chunked(bool value)
 	{
 		if (value)
-			fields::set("Transfer-Encoding", "chunked")
+			http::fields::operator[]("Transfer-Encoding") = "chunked";
 		else
-			fields::set("Transfer-Encoding", "none")
+			http::fields::operator[]("Transfer-Encoding") = "none";
 	}
 
 	bool has_content_lenght() const
 	{
-		if (fields::operator["Content-Length"] != "")
+		if (this->get("Content-Length") != "")
 			return true;
 		else
 			return false;
 	}
 
-	void content_length(uint64_t const& length) const
+	void content_length(uint64_t const& length)
 	{
-		fields::set("Content-Length", std::to_string(lenght))
+		http::fields::operator[]("Content-Length") = std::to_string(length);
 	}
 
 	bool keep_alive() const
 	{
-		if (fields::["Connection"] != "Keep-Alive")
+		if (http::fields::operator[]("Connection") != "Keep-Alive")
 			return true;
 		else
 			return false;
@@ -270,7 +293,7 @@ public:
 	void keep_alive(bool value)
 	{
 		if (value)
-			this->set("Connection", "Keep-Alive")
+			fields::set("Connection", "Keep-Alive");
 	}
 
 	static header<is_request> create_stock_reply(http::status::status_t status, const std::string& extension = "text/plain")

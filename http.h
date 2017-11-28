@@ -22,8 +22,8 @@
 
 #include "http_message.h"
 
-// #include <experimental/filesystem>
-// namespace fs = std::experimental::filesystem;
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
 
 namespace http
 {
@@ -448,7 +448,8 @@ namespace api
 	template <class function_t = std::function<bool(http::session_handler& session)>> class router
 	{
 	public:
-		router() {};
+		router() : doc_root("/var/www") {};
+		router(const std::string& doc_root) : doc_root_(doc_root) {};
 
 		void on_option(const std::string path, function_t api_method) { this->add_route("option", path, api_method); };
 		void on_get(const std::string path, function_t api_method) { this->add_route("GET", path, api_method); };
@@ -472,12 +473,31 @@ namespace api
 			auto i = api_router_table.find(key);
 
 			if (i != api_router_table.end())
-				return api_router_table[key](session);
+			{
+				auto ret = api_router_table[key](session);
+				printf("http::api::router::route %s : reply will return : %s", key.c_str(), http::status::to_string(session._reply().status_));				
+				return ret;
+			}
 			else
-				return false;
+			{
+				session._request().target() = doc_root_ + session._request().target();
+
+				if (fs::exists(session._request().target()))
+				{
+					printf("http::api::router::route %s reply will return : %s", session._request().target().c_str(), http::status::to_string(session._reply().status_));
+					return true;
+				}
+				else
+				{
+					session._reply().status_ = http::status::not_found;
+					printf("http::api::router::route %s : not found, reply will return : %s", key.c_str(), http::status::to_string(session._reply().status_));
+					return false;
+				}
+			}
 		}
 
 	protected:
+		std::string doc_root_;
 		std::map<const std::string, function_t> api_router_table;
 	};
 
@@ -493,9 +513,10 @@ public:
 	session_handler& operator=(const session_handler&) = delete;
 
 	/// Construct with a directory containing files to be served.
-	explicit session_handler(const std::string& doc_root, class http::api::router<>& router)
-		: doc_root_{ doc_root }
-		, router_(router)
+	explicit session_handler(class http::api::router<>& router) 
+		: router_(router)
+		, keepalive_count_(30)
+		, keepalive_max_(20)
 	{
 	}
 
@@ -543,33 +564,38 @@ public:
 
 		request_.target() = request_path;
 
-		// Fill out the reply to be sent to the client.
 		reply_.stock_reply(http::status::ok);
 
 		if (this->router_.call(*this))
 		{
-			reply_.set("Content-Length", std::to_string(reply_.body_.length()));
+			// route has a valid response (dynamic or static content)
+
+			if (request_.chunked())
+				reply_.chunked(true);
+
+			if (!reply_.body_.empty())
+				reply_.content_length(reply_.body_.length());
+			else
+			{
+				reply_.content_length(fs::file_size(request_.target()));
+			}
+
+			if (request_.keep_alive()) 
+			{
+				reply_.keep_alive(true);
+				reply_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max_) + std::string(" max=") + std::to_string(keepalive_count_));
+			}
+			else
+			{
+				reply_.keep_alive(false);
+				reply_.set("Connection", "close");
+			}
 		}
 		else
 		{
-			// not routed to an api. proceed as normal HTTP file request.
-			// NDJ: from here...
-			//reply_.uri() = doc_root_ + request_path;
-			//reply_.
-
-			size_t bytes_total = 0; // TODO fs::file_size(reply_.document_path());
-			reply_.set("Content-Length", std::to_string(bytes_total));
-		}
-
-		if (request_["Connection"] == "keep-alive") // || Version == 11)
-		{
-			reply_.set("Connection", "Keep-Alive");
-			reply_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max_) + std::string(" max=") + std::to_string(keepalive_count_));
-		}
-		else
-		{
+			// route has a invalid response
 			reply_.set("Connection", "close");
-		}
+		}	 
 	}
 
 	int& keepalive_count() { return keepalive_count_; };
@@ -590,9 +616,6 @@ public:
 	}
 
 private:
-	/// The directory containing the files to be served.
-	std::string doc_root_;
-
 	http::request request_;
 	http::reply reply_;
 	http::request_parser request_parser_;

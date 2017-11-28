@@ -8,9 +8,10 @@
 int main(int argc, char* argv[])
 {
 	http::request request;
-	http::api::router<> neolm_router;
+
+	http::api::router<> neolm_router("C:/Development Libraries/doc_root");
 	
-	neolm_router.on_get("/index.html", [](http::session_handler& session) 
+	neolm_router.on_get("/hoi", [](http::session_handler& session) 
 	{
 		session._reply().body_ = "Hoi!\n";
 		return true;
@@ -18,11 +19,12 @@ int main(int argc, char* argv[])
 
 	neolm_router.on_get("/about", [](http::session_handler& session)
 	{
+		session._reply().body_ = "NeoLM 0.01";
 		return true;
 	});
 
 	http::server<http::api::router<>, http::connection_handler_http, http::connection_handler_https> server(
-		neolm_router,
+		neolm_router,		
 		"C:\\Development Libraries\\ssl.crt", 
 		"C:\\Development Libraries\\ssl.key");
 
