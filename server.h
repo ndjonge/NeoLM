@@ -54,7 +54,9 @@ public:
 		steady_timer_.expires_from_now(std::chrono::seconds(session_handler_.keepalive_max()));
 
 		steady_timer_.async_wait([me = shared_from_this()](boost::system::error_code const& ec) {
-			if (!ec) me->stop();
+
+			if (!ec) 
+				me->stop();
 		});
 	}
 
@@ -109,7 +111,7 @@ public:
 
 	void do_write_body()
 	{
-		if (!reply().body_.empty())
+		if (!session_handler_._reply().body_.empty())
 		{
 			std::string& body = session_handler_._reply().body_;
 			boost::asio::write(socket_base(), boost::asio::buffer(session_handler_._reply().body_));
@@ -125,20 +127,22 @@ public:
 				std::stringstream ss;
 
 				if (!chunked)
-					ss << std::string(buffer.begin(), buffer.begin() + bytes_in);
-				else
-					ss << std::hex << bytes_in << misc_strings::crlf << std::string(buffer.begin(), buffer.begin() + bytes_in) << misc_strings::crlf;
-
-				if (bytes_in == buffer.size())
 				{
+					ss << std::string(buffer.begin(), buffer.begin() + bytes_in);
+
 					boost::asio::write(socket_base(), boost::asio::buffer(ss.str()));
+
+					if (bytes_in == buffer.size())
+						do_write_content_done();
 				}
 				else
-				{
-					if (!chunked)
+				{ 
+					std::stringstream ss;
+					ss << std::hex << bytes_in << misc_strings::crlf << std::string(buffer.begin(), buffer.begin() + bytes_in) << misc_strings::crlf;
+
+					if (bytes_in == buffer.size())
 					{
 						boost::asio::write(socket_base(), boost::asio::buffer(ss.str()));
-						do_write_content_done();
 					}
 					else
 					{
@@ -148,7 +152,6 @@ public:
 						ss << std::hex << 0 << misc_strings::crlf;
 
 						boost::asio::write(socket_base(), boost::asio::buffer(ss.str()));
-
 						do_write_content_done();
 					}
 				}
@@ -165,6 +168,9 @@ public:
 
 	void do_write_header()
 	{
+		printf("reply>\n%s", session_handler_._reply().headers_to_string().c_str());
+		printf("%s", session_handler_._reply().body_.c_str());
+
 		write_buffer_.emplace_back(session_handler_._reply().headers_to_string());
 
 		boost::asio::async_write(

@@ -46,7 +46,7 @@ namespace util
 
 		while (bytes_in > 0)
 		{
-
+			//printf("bytes_in %d\n", bytes_in);
 			if (!read(buffer, bytes_in)) break;
 
 			bytes_in = is.read(buffer.data(), buffer.size()).gcount();

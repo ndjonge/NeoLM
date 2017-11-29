@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
 
 	neolm_router.on_get("/about", [](http::session_handler& session)
 	{
-		session._reply().body_ = "NeoLM 0.01";
+		session._reply().body_ = "NeoLM 0.01\n";
 		return true;
 	});
 
