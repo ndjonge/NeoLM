@@ -271,15 +271,20 @@ public:
 
 	bool has_content_lenght() const
 	{
-		if (this->get("Content-Length") != "")
-			return true;
-		else
+		if (http::fields::operator[]("Content-Length").empty())
 			return false;
+		else
+			return true;
 	}
 
 	void content_length(uint64_t const& length)
 	{
 		http::fields::operator[]("Content-Length") = std::to_string(length);
+	}
+
+	const uint64_t content_length() const
+	{
+		return std::stoul(http::fields::operator[]("Content-Length"));
 	}
 
 	bool keep_alive() const

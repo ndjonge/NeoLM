@@ -17,6 +17,17 @@ int main(int argc, char* argv[])
 		return true;
 	});
 
+	neolm_router.on_post("/hoi", [](http::session_handler& session)
+	{
+		session._reply().body_ = "Hoi!: \n";
+
+		session._reply().body_ += session._request().body_;
+
+		session._reply().body_ += "/end\n";
+
+		return true;
+	});
+
 	neolm_router.on_get("/about", [](http::session_handler& session)
 	{
 		session._reply().body_ = "NeoLM 0.01\n";

@@ -145,7 +145,9 @@ public:
 		if (!ec)
 		{
 			auto b = std::string(boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_begin(in_packet_.data()) + bytes_transferred);
+
 			this->session_handler_._request().body_ += b;
+
 			in_packet_.consume(bytes_transferred);
 
 			printf("\n[%s]\n", b.c_str());

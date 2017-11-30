@@ -79,13 +79,10 @@ public:
 
 		while (begin != end)
 		{
-			/* trace << *begin; */
-
 			result_type result = consume(req, *begin++);
 
 			if (result == good || result == bad)
 			{
-				/* std::cout << trace.str(); */
 				return std::make_tuple(result, begin);
 			}
 		}
@@ -345,7 +342,8 @@ private:
 				return bad;
 			}
 		case expecting_newline_3:
-			return (input == '\n') ? good : bad;
+			if (input == '\n')
+				return (input == '\n') ? good : bad;
 		default:
 			return bad;
 		}
@@ -411,7 +409,9 @@ private:
 		space_before_header_value,
 		header_value,
 		expecting_newline_2,
-		expecting_newline_3
+		expecting_newline_3,
+		body_start,
+		body_end
 	} state_;
 };
 
@@ -451,13 +451,13 @@ namespace api
 		router() : doc_root("/var/www") {};
 		router(const std::string& doc_root) : doc_root_(doc_root) {};
 
-		void on_option(const std::string path, function_t api_method) { this->add_route("option", path, api_method); };
+		void on_option(const std::string path, function_t api_method) { this->add_route("OPTION", path, api_method); };
 		void on_get(const std::string path, function_t api_method) { this->add_route("GET", path, api_method); };
-		void on_head(const std::string path, function_t api_method) { this->add_route("head", path, api_method); };
-		void on_post(const std::string path, function_t api_method) { this->add_route("post", path, api_method); };
-		void on_put(const std::string path, function_t api_method) { this->add_route("put", path, api_method); };
-		void on_update(const std::string path, function_t api_method) { this->add_route("update", path, api_method); };
-		void on_delete(const std::string path, function_t api_method) { this->add_route("delete", path, api_method); };
+		void on_head(const std::string path, function_t api_method) { this->add_route("HEAD", path, api_method); };
+		void on_post(const std::string path, function_t api_method) { this->add_route("POST", path, api_method); };
+		void on_put(const std::string path, function_t api_method) { this->add_route("PUT", path, api_method); };
+		void on_update(const std::string path, function_t api_method) { this->add_route("UPDATE", path, api_method); };
+		void on_delete(const std::string path, function_t api_method) { this->add_route("DELETE", path, api_method); };
 
 		void add_route(const std::string& http_request_method, const std::string& http_request_uri, function_t api_method)
 		{
