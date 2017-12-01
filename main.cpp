@@ -10,6 +10,14 @@ int main(int argc, char* argv[])
 	http::request request;
 
 	http::api::router<> neolm_router("C:/Development Libraries/doc_root");
+
+
+	neolm_router.on_get_2("/users/:id(\\d+)", [](http::session_handler& session)
+	{		
+		session._reply().body_ = "Hoi!\n";
+
+		return true;
+	});
 	
 	neolm_router.on_get("/hoi", [](http::session_handler& session) 
 	{
@@ -28,7 +36,41 @@ int main(int argc, char* argv[])
 		return true;
 	});
 
-	neolm_router.on_get("/about", [](http::session_handler& session)
+	neolm_router.on_put("/hoi", [](http::session_handler& session)
+	{
+		session._reply().body_ = "Hoi!: \n";
+
+		session._reply().body_ += session._request().body_;
+
+		session._reply().body_ += "/end\n";
+
+		return true;
+	});
+
+	neolm_router.on_delete("/hoi", [](http::session_handler& session)
+	{
+		session._reply().body_ = "Hoi!: \n";
+
+		session._reply().body_ += session._request().body_;
+
+		session._reply().body_ += "/end\n";
+
+		return true;
+	});
+
+	neolm_router.on_patch("/hoi", [](http::session_handler& session)
+	{
+		session._reply().body_ = "Hoi!: \n";
+
+		session._reply().body_ += session._request().body_;
+
+		session._reply().body_ += "/end\n";
+
+		return true;
+	});
+
+
+	neolm_router.on_get("/about/param", [](http::session_handler& session)
 	{
 		session._reply().body_ = "NeoLM 0.01\n";
 		return true;

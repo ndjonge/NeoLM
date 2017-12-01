@@ -16,11 +16,14 @@
 
 #include <ctime>
 
+#include <algorithm>
 #include <map>
 #include <type_traits>
-#include <algorithm>
+
+#include "http_api.h"
 
 #include "http_message.h"
+
 
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
@@ -30,33 +33,31 @@ namespace http
 
 namespace util
 {
- 	template <typename block_container_t = std::array<char, 1024>>
-	bool read_from_disk(const std::string& file_path, const std::function<bool(block_container_t, size_t)>& read)
+template <typename block_container_t = std::array<char, 1024>> bool read_from_disk(const std::string& file_path, const std::function<bool(block_container_t, size_t)>& read)
+{
+
+	block_container_t buffer;
+	std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
+
+	is.seekg(0, std::ifstream::ios_base::beg);
+	is.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
+
+	std::streamsize bytes_in = is.read(buffer.data(), buffer.size()).gcount();
+
+	bool result = false;
+
+	while (bytes_in > 0)
 	{
+		// printf("bytes_in %d\n", bytes_in);
+		if (!read(buffer, bytes_in)) break;
 
-		block_container_t buffer;
-		std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
-
-		is.seekg(0, std::ifstream::ios_base::beg);
-		is.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
-
-		std::streamsize bytes_in = is.read(buffer.data(), buffer.size()).gcount();
-
-		bool result = false;
-
-		while (bytes_in > 0)
-		{
-			//printf("bytes_in %d\n", bytes_in);
-			if (!read(buffer, bytes_in)) break;
-
-			bytes_in = is.read(buffer.data(), buffer.size()).gcount();
-		}
-
-		return result;
+		bytes_in = is.read(buffer.data(), buffer.size()).gcount();
 	}
 
-} // namespace util
+	return result;
+}
 
+} // namespace util
 
 class request_parser
 {
@@ -342,8 +343,7 @@ private:
 				return bad;
 			}
 		case expecting_newline_3:
-			if (input == '\n')
-				return (input == '\n') ? good : bad;
+			if (input == '\n') return (input == '\n') ? good : bad;
 		default:
 			return bad;
 		}
@@ -424,8 +424,7 @@ namespace mime_types
 	}
 
 	mappings[]
-		= { { "ico", "image/x-icon" }, { "gif", "image/gif" },   { "htm", "text/html" }, { "html", "text/html" },
-			{ "jpg", "image/jpeg" },   { "jpeg", "image/jpeg" }, { "png", "image/png" } };
+		= { { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" } };
 
 	static std::string extension_to_type(const std::string& extension)
 	{
@@ -441,69 +440,6 @@ namespace mime_types
 	}
 } // namespace mime_types
 
-class session_handler;
-
-namespace api
-{
-	template <class function_t = std::function<bool(http::session_handler& session)>> class router
-	{
-	public:
-		router() : doc_root("/var/www") {};
-		router(const std::string& doc_root) : doc_root_(doc_root) {};
-
-		void on_option(const std::string path, function_t api_method) { this->add_route("OPTION", path, api_method); };
-		void on_get(const std::string path, function_t api_method) { this->add_route("GET", path, api_method); };
-		void on_head(const std::string path, function_t api_method) { this->add_route("HEAD", path, api_method); };
-		void on_post(const std::string path, function_t api_method) { this->add_route("POST", path, api_method); };
-		void on_put(const std::string path, function_t api_method) { this->add_route("PUT", path, api_method); };
-		void on_update(const std::string path, function_t api_method) { this->add_route("UPDATE", path, api_method); };
-		void on_delete(const std::string path, function_t api_method) { this->add_route("DELETE", path, api_method); };
-
-		void add_route(const std::string& http_request_method, const std::string& http_request_uri, function_t api_method)
-		{
-			std::string key{ http_request_method + ":" + http_request_uri };
-
-			api_router_table.insert(std::make_pair(key, api_method));
-		}
-
-		bool call(http::session_handler& session)
-		{
-			std::string key{ session._request().method() + ":" + session._request().target() };
-
-			auto i = api_router_table.find(key);
-
-			if (i != api_router_table.end())
-			{
-				auto ret = api_router_table[key](session);
-				printf("http::api::router::route %s : reply will return : %s", key.c_str(), http::status::to_string(session._reply().status_));				
-				return ret;
-			}
-			else
-			{
-				session._request().target() = doc_root_ + session._request().target();
-
-				if (fs::exists(session._request().target()))
-				{
-					printf("http::api::router::route %s reply will return : %s", session._request().target().c_str(), http::status::to_string(session._reply().status_));
-					return true;
-				}
-				else
-				{
-					session._reply().status_ = http::status::not_found;
-					printf("http::api::router::route %s : not found, reply will return : %s", key.c_str(), http::status::to_string(session._reply().status_));
-					return false;
-				}
-			}
-		}
-
-	protected:
-		std::string doc_root_;
-		std::map<const std::string, function_t> api_router_table;
-	};
-
-} // namespace api
-
-
 
 class session_handler
 {
@@ -513,7 +449,7 @@ public:
 	session_handler& operator=(const session_handler&) = delete;
 
 	/// Construct with a directory containing files to be served.
-	explicit session_handler(class http::api::router<>& router) 
+	explicit session_handler(class http::api::router<>& router)
 		: router_(router)
 		, keepalive_count_(30)
 		, keepalive_max_(20)
@@ -522,10 +458,7 @@ public:
 
 	/// Handle a request and produce a reply.
 
-	template <typename InputIterator> std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end)
-	{
-		return request_parser_.parse(request_, begin, end);
-	}
+	template <typename InputIterator> std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end) { return request_parser_.parse(request_, begin, end); }
 
 	/// Handle a request and produce a reply.
 	void handle_request()
@@ -570,8 +503,7 @@ public:
 		{
 			// route has a valid response (dynamic or static content)
 
-			if (request_.chunked())
-				reply_.chunked(true);
+			if (request_.chunked()) reply_.chunked(true);
 
 			if (!reply_.body_.empty())
 				reply_.content_length(reply_.body_.length());
@@ -588,21 +520,19 @@ public:
 			{
 				reply_.keep_alive(false);
 			}
-
 		}
 		else
 		{
 			// route has a invalid response
 			reply_.set("Connection", "close");
 		}
-
 	}
 
 	int& keepalive_count() { return keepalive_count_; };
 	int& keepalive_max() { return keepalive_max_; };
 
-	//using request = http::message<true>;
-	//using reply = http::message<false>;
+	// using request = http::message<true>;
+	// using reply = http::message<false>;
 
 	http::request_parser& request_parser() { return request_parser_; };
 	http::reply& _reply() { return reply_; };
@@ -664,7 +594,6 @@ private:
 		}
 		return true;
 	}
-
 };
 
 } // namespace http
