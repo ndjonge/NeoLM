@@ -259,6 +259,28 @@ namespace api
 	}
 
 
+
+	class params {
+	public:
+		bool insert(const std::string& name, const std::string& value) {
+			auto ret = parameters.emplace(std::make_pair(name, value));
+			return ret.second;
+		}
+
+		const std::string& get(const std::string& name) const {
+			auto it = parameters.find(name);
+			static std::string no_ret;
+
+			if (it != parameters.end()) // if found
+				return it->second;
+
+			return no_ret;
+		}
+
+	private:
+		std::map<std::string, std::string> parameters;
+	};  // < class Params
+
 	template <class function_t = std::function<bool(http::session_handler& session)>> class router
 	{
 	public:
@@ -290,6 +312,52 @@ namespace api
 
 			api_router_table.insert(std::make_pair(key, api_method));
 		}
+
+
+		bool match(http::session_handler& session) 
+		{
+			std::string path = session._request().target();
+			std::string method = session._request().method();
+
+
+			auto routes = api_router_table_regex[method];
+
+			if (routes.empty()) {
+				return false;
+			}
+
+			for (auto& route : routes) {
+				if (std::regex_match(path, route.expr_)) {
+					++route.hits_;
+
+					// Set the pairs in params:
+					params params_;
+					std::smatch res;
+
+					for (std::sregex_iterator i = std::sregex_iterator{ path.begin(), path.end(), route.expr_ };
+						i != std::sregex_iterator{}; ++i) {
+						res = *i;
+					}
+
+					// First parameter/value is in res[1], second in res[2], and so on
+					for (size_t i = 0; i < route.keys_.size(); i++)
+						params_.insert(route.keys_[i].name, res[i + 1]);
+
+
+/*					ParsedRoute parsed_route;
+					parsed_route.job = route.end_point;
+					parsed_route.parsed_values = params;
+
+					return parsed_route;*/
+				}
+			}
+			return false;
+
+		}
+
+
+
+
 
 		bool call(http::session_handler& session)
 		{

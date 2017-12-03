@@ -499,6 +499,10 @@ public:
 
 		reply_.stock_reply(http::status::ok);
 
+		if (this->router_.match(*this))
+		{
+		}
+
 		if (this->router_.call(*this))
 		{
 			// route has a valid response (dynamic or static content)
