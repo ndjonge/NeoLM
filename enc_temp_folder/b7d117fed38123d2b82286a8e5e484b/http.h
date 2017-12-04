@@ -451,6 +451,7 @@ public:
 	session_handler(const session_handler&) = delete;
 	session_handler& operator=(const session_handler&) = delete;
 
+	/// Construct with a directory containing files to be served.
 	explicit session_handler(class http::api::router<>& router)
 		: router_(router)
 		, keepalive_count_(30)
@@ -458,10 +459,14 @@ public:
 	{
 	}
 
+	/// Handle a request and produce a reply.
+
 	template <typename InputIterator> std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end) { return request_parser_.parse(request_, begin, end); }
 
+	/// Handle a request and produce a reply.
 	void handle_request()
 	{
+		// Decode url to path.
 		std::string request_path;
 
 		if (!url_decode(request_.target(), request_path))
@@ -470,17 +475,20 @@ public:
 			return;
 		}
 
+		// Request path must be absolute and not contain "..".
 		if (request_path.empty() || request_path[0] != '/' || request_path.find("..") != std::string::npos)
 		{
 			reply_.stock_reply(http::status::bad_request);
 			return;
 		}
 
+		// If path ends in slash (i.e. is a directory) then add "index.html".
 		if (request_path[request_path.size() - 1] == '/')
 		{
 			request_path += "index.html";
 		}
 
+		// Determine the file extension.
 		std::size_t last_slash_pos = request_path.find_last_of("/");
 		std::size_t last_dot_pos = request_path.find_last_of(".");
 		std::string extension;
@@ -497,6 +505,7 @@ public:
 		if (this->router_.call(*this))
 		{
 			// route has a valid response (dynamic or static content)
+
 			if (request_.chunked()) reply_.chunked(true);
 
 			if (!reply_.body_.empty())
@@ -524,6 +533,9 @@ public:
 
 	int& keepalive_count() { return keepalive_count_; };
 	int& keepalive_max() { return keepalive_max_; };
+
+	// using request = http::message<true>;
+	// using reply = http::message<false>;
 
 	http::request_parser& request_parser() { return request_parser_; };
 	http::reply& _reply() { return reply_; };
