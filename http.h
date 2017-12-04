@@ -24,9 +24,13 @@
 
 #include "http_message.h"
 
-
+#if defined(_USE_CPP17_STD_FILESYSTEM)
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
+#else
+#include "filesystem.h"
+namespace fs = filesystem;
+#endif
 
 namespace http
 {
@@ -35,7 +39,6 @@ namespace util
 {
 template <typename block_container_t = std::array<char, 1024>> bool read_from_disk(const std::string& file_path, const std::function<bool(block_container_t, size_t)>& read)
 {
-
 	block_container_t buffer;
 	std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
 
@@ -498,10 +501,6 @@ public:
 		request_.target() = request_path;
 
 		reply_.stock_reply(http::status::ok);
-
-		if (this->router_.match(*this))
-		{
-		}
 
 		if (this->router_.call(*this))
 		{

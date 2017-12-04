@@ -1,7 +1,7 @@
 #include "http.h"
+
 #include "server.h"
-#include <sstream>
-#include <functional>
+
 #include "json.h"
 
 
@@ -11,71 +11,21 @@ int main(int argc, char* argv[])
 
 	http::api::router<> neolm_router("C:/Development Libraries/doc_root");
 
-
-	neolm_router.on_get_2("/users/:id(\\d+)", [](http::session_handler& session)
+	neolm_router.on_get("/users/:id(\\d+)", [](http::session_handler& session, const http::api::params& params)
 	{		
-		session._reply().body_ = "Hoi!\n";
+		session._reply().body_ = "User:" + std::string(params.get("id"));
 
 		return true;
 	});
+
+	neolm_router.on_get("/users", [](http::session_handler& session, const http::api::params& params)
+	{
+		session._reply().body_ = "User:";
+
+		return true;
+	});
+
 	
-	neolm_router.on_get("/hoi", [](http::session_handler& session) 
-	{
-		session._reply().body_ = "Hoi!\n";
-		return true;
-	});
-
-	neolm_router.on_post("/hoi", [](http::session_handler& session)
-	{
-		session._reply().body_ = "Hoi!: \n";
-
-		session._reply().body_ += session._request().body_;
-
-		session._reply().body_ += "/end\n";
-
-		return true;
-	});
-
-	neolm_router.on_put("/hoi", [](http::session_handler& session)
-	{
-		session._reply().body_ = "Hoi!: \n";
-
-		session._reply().body_ += session._request().body_;
-
-		session._reply().body_ += "/end\n";
-
-		return true;
-	});
-
-	neolm_router.on_delete("/hoi", [](http::session_handler& session)
-	{
-		session._reply().body_ = "Hoi!: \n";
-
-		session._reply().body_ += session._request().body_;
-
-		session._reply().body_ += "/end\n";
-
-		return true;
-	});
-
-	neolm_router.on_patch("/hoi", [](http::session_handler& session)
-	{
-		session._reply().body_ = "Hoi!: \n";
-
-		session._reply().body_ += session._request().body_;
-
-		session._reply().body_ += "/end\n";
-
-		return true;
-	});
-
-
-	neolm_router.on_get("/about/param", [](http::session_handler& session)
-	{
-		session._reply().body_ = "NeoLM 0.01\n";
-		return true;
-	});
-
 	http::server<http::api::router<>, http::connection_handler_http, http::connection_handler_https> server(
 		neolm_router,		
 		"C:\\Development Libraries\\ssl.crt", 

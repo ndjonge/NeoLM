@@ -234,7 +234,9 @@ namespace api
 
 	} // namespace path_to_regex
 
-	template<class function_t = std::function<bool(http::session_handler& session)>>
+	class params;
+
+	template<class function_t = std::function<bool(http::session_handler& session, const http::api::params& params)>>
 	class route
 	{
 	public:
@@ -281,7 +283,7 @@ namespace api
 		std::map<std::string, std::string> parameters;
 	};  // < class Params
 
-	template <class function_t = std::function<bool(http::session_handler& session)>> class router
+	template <class function_t = std::function<bool(http::session_handler& session, const http::api::params& params)>> class router
 	{
 	public:
 		router()
@@ -292,19 +294,19 @@ namespace api
 
 		//router.on_get("", [](http::session_handler& session) {});
 
-		void on_get_2(const std::string& route, function_t api_method)
+		void on_get(const std::string& route, function_t api_method)
 		{ 
 			api_router_table_regex["GET"].emplace_back(api::route<>(route, api_method));
 		};
 
-		void on_option(const std::string path, function_t api_method) { this->add_route("OPTION", path, api_method); };
+/*		void on_option(const std::string path, function_t api_method) { this->add_route("OPTION", path, api_method); };
 		void on_get(const std::string path, function_t api_method) { this->add_route("GET", path, api_method); };
 		void on_head(const std::string path, function_t api_method) { this->add_route("HEAD", path, api_method); };
 		void on_post(const std::string path, function_t api_method) { this->add_route("POST", path, api_method); };
 		void on_put(const std::string path, function_t api_method) { this->add_route("PUT", path, api_method); };
 		void on_update(const std::string path, function_t api_method) { this->add_route("UPDATE", path, api_method); };
 		void on_delete(const std::string path, function_t api_method) { this->add_route("DELETE", path, api_method); };
-		void on_patch(const std::string path, function_t api_method) { this->add_route("PATCH", path, api_method); };
+		void on_patch(const std::string path, function_t api_method) { this->add_route("PATCH", path, api_method); };*/
 
 		void add_route(const std::string& http_request_method, const std::string& http_request_uri, function_t api_method)
 		{
@@ -314,11 +316,10 @@ namespace api
 		}
 
 
-		bool match(http::session_handler& session) 
+		bool call(http::session_handler& session)
 		{
 			std::string path = session._request().target();
 			std::string method = session._request().method();
-
 
 			auto routes = api_router_table_regex[method];
 
@@ -343,23 +344,16 @@ namespace api
 					for (size_t i = 0; i < route.keys_.size(); i++)
 						params_.insert(route.keys_[i].name, res[i + 1]);
 
+					route.endpoint_(session, params_);
 
-/*					ParsedRoute parsed_route;
-					parsed_route.job = route.end_point;
-					parsed_route.parsed_values = params;
-
-					return parsed_route;*/
+					return true;
 				}
 			}
 			return false;
 
 		}
 
-
-
-
-
-		bool call(http::session_handler& session)
+/*		bool call(http::session_handler& session)
 		{
 			std::string key{ session._request().method() + ":" + session._request().target() };
 
@@ -387,7 +381,7 @@ namespace api
 					return false;
 				}
 			}
-		}
+		}*/
 
 	protected:
 		std::string doc_root_;
