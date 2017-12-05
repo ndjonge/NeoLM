@@ -104,9 +104,6 @@ public:
 
 };
 
-template<bool is_reqeust> class header;
-
-
 class fields
 {
 protected:
@@ -176,7 +173,15 @@ public:
 
 };
 
-template<> class header<true> : public fields
+enum message_specializations {
+	request_specialization,
+	response_specialization
+};
+
+template<message_specializations> class header;
+
+
+template<> class header<request_specialization> : public fields
 {
 public:
 	std::string method_;
@@ -209,7 +214,7 @@ public:
 	}
 };
 
-template<> class header<false> : public fields
+template<> class header<response_specialization> : public fields
 {
 public:
 	std::string reason_;
@@ -249,13 +254,23 @@ public:
 	}
 };
 
-using request_header = header<true>;
-using reply_header = header<false>;
+using request_header = header<request_specialization>;
+using response_header = header<response_specialization>;
 
-template<bool is_request> class message : public header<is_request>
+template<message_specializations specialization> class message : public header<specialization>
 {
+private:
+	std::string body_;
 public:
-	std::string body_;	
+	std::string& body()
+	{
+		return body_;
+	}
+
+	const std::string& body() const
+	{
+		return body_;
+	}
 
 	bool chunked() const
 	{				
@@ -305,9 +320,11 @@ public:
 		}
 	}
 
-	static header<is_request> create_stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
+	static header<specialization> create_stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
 	{
-		header<is_request> reply_;
+		// move to header<request> specialization?
+
+		header<specialization> reply_;
 
 		reply.stock_reply(status, extension);
 
@@ -330,7 +347,7 @@ public:
 	}
 };
 
-using request = http::message<true>;
-using reply = http::message<false>;
+using request_message = http::message<request_specialization>;
+using response_message = http::message<response_specialization>;
 
 } // namespace http

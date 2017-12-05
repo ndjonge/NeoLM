@@ -318,8 +318,8 @@ namespace api
 
 		bool call(http::session_handler& session)
 		{
-			std::string path = session._request().target();
-			std::string method = session._request().method();
+			std::string path = session.request().target();
+			std::string method = session.request().method();
 
 			auto routes = api_router_table_regex[method];
 

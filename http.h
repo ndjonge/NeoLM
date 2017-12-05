@@ -35,33 +35,6 @@ namespace fs = filesystem;
 namespace http
 {
 
-namespace util
-{
-template <typename block_container_t = std::array<char, 1024>> bool read_from_disk(const std::string& file_path, const std::function<bool(block_container_t, size_t)>& read)
-{
-	block_container_t buffer;
-	std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
-
-	is.seekg(0, std::ifstream::ios_base::beg);
-	is.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
-
-	std::streamsize bytes_in = is.read(buffer.data(), buffer.size()).gcount();
-
-	bool result = false;
-
-	while (bytes_in > 0)
-	{
-		// printf("bytes_in %d\n", bytes_in);
-		if (!read(buffer, bytes_in)) break;
-
-		bytes_in = is.read(buffer.data(), buffer.size()).gcount();
-	}
-
-	return result;
-}
-
-} // namespace util
-
 class request_parser
 {
 public:
@@ -77,7 +50,7 @@ public:
 		indeterminate
 	};
 
-	template <typename InputIterator> std::tuple<result_type, InputIterator> parse(http::request& req, InputIterator begin, InputIterator end)
+	template <typename InputIterator> std::tuple<result_type, InputIterator> parse(http::request_message& req, InputIterator begin, InputIterator end)
 	{
 		std::stringstream trace;
 
@@ -95,7 +68,7 @@ public:
 	}
 
 private:
-	result_type consume(http::request& req, char input)
+	result_type consume(http::request_message& req, char input)
 	{
 		switch (state_)
 		{
@@ -443,7 +416,6 @@ namespace mime_types
 	}
 } // namespace mime_types
 
-
 class session_handler
 {
 
@@ -466,13 +438,13 @@ public:
 
 		if (!url_decode(request_.target(), request_path))
 		{
-			reply_.stock_reply(http::status::bad_request);
+			response_.stock_reply(http::status::bad_request);
 			return;
 		}
 
 		if (request_path.empty() || request_path[0] != '/' || request_path.find("..") != std::string::npos)
 		{
-			reply_.stock_reply(http::status::bad_request);
+			response_.stock_reply(http::status::bad_request);
 			return;
 		}
 
@@ -492,33 +464,33 @@ public:
 
 		request_.target() = request_path;
 
-		reply_.stock_reply(http::status::ok);
+		response_.stock_reply(http::status::ok);
 
 		if (this->router_.call(*this))
 		{
 			// route has a valid response (dynamic or static content)
-			if (request_.chunked()) reply_.chunked(true);
+			if (request_.chunked()) response_.chunked(true);
 
-			if (!reply_.body_.empty())
-				reply_.content_length(reply_.body_.length());
+			if (!response_.body().empty())
+				response_.content_length(response_.body().length());
 			else
 			{
-				reply_.content_length(fs::file_size(request_.target()));
+				response_.content_length(fs::file_size(request_.target()));
 			}
 
 			if (request_.keep_alive() && this->keepalive_count() > 0)
 			{
-				reply_.keep_alive(true, this->keepalive_max(), this->keepalive_count());
+				response_.keep_alive(true, this->keepalive_max(), this->keepalive_count());
 			}
 			else
 			{
-				reply_.keep_alive(false);
+				response_.keep_alive(false);
 			}
 		}
 		else
 		{
 			// route has a invalid response
-			reply_.set("Connection", "close");
+			response_.set("Connection", "close");
 		}
 	}
 
@@ -526,19 +498,19 @@ public:
 	int& keepalive_max() { return keepalive_max_; };
 
 	http::request_parser& request_parser() { return request_parser_; };
-	http::reply& _reply() { return reply_; };
-	http::request& _request() { return request_; };
+	http::response_message& response() { return response_; };
+	http::request_message& request() { return request_; };
 
 	void reset()
 	{
 		request_parser_.reset();
 		request_.reset();
-		reply_.reset();
+		response_.reset();
 	}
 
 private:
-	http::request request_;
-	http::reply reply_;
+	http::request_message request_;
+	http::response_message response_;
 	http::request_parser request_parser_;
 	http::api::router<>& router_;
 
@@ -586,5 +558,32 @@ private:
 		return true;
 	}
 };
+
+namespace util
+{
+	template <typename block_container_t = std::array<char, 1024>> bool read_from_disk(const std::string& file_path, const std::function<bool(block_container_t, size_t)>& read)
+	{
+		block_container_t buffer;
+		std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
+
+		is.seekg(0, std::ifstream::ios_base::beg);
+		is.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
+
+		std::streamsize bytes_in = is.read(buffer.data(), buffer.size()).gcount();
+
+		bool result = false;
+
+		while (bytes_in > 0)
+		{
+			// printf("bytes_in %d\n", bytes_in);
+			if (!read(buffer, bytes_in)) break;
+
+			bytes_in = is.read(buffer.data(), buffer.size()).gcount();
+		}
+
+		return result;
+	}
+
+} // namespace util
 
 } // namespace http

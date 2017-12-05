@@ -90,9 +90,9 @@ public:
 			if (result == http::request_parser::good)
 			{
 				this->cancel_timeout();
-				if (session_handler_._request().has_content_lenght())
+				if (session_handler_.request().has_content_lenght())
 				{
-					this->session_handler_._request().body_ += std::string(boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_end(in_packet_.data()));
+					this->session_handler_.request().body() += std::string(boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_end(in_packet_.data()));
 					auto s = boost::asio::buffers_end(in_packet_.data()) - boost::asio::buffers_begin(in_packet_.data());
 
 					in_packet_.consume(s);
@@ -107,8 +107,8 @@ public:
 			}
 			else if (result == http::request_parser::bad)
 			{
-				session_handler_._reply().stock_reply(http::status::bad_request);
-				write_buffer_.push_back(session_handler_._reply().headers_to_string());
+				session_handler_.response().stock_reply(http::status::bad_request);
+				write_buffer_.push_back(session_handler_.response().headers_to_string());
 
 				do_write_header();
 			}
@@ -125,7 +125,7 @@ public:
 
 	void do_read_body()
 	{		
-		if (this->session_handler_._request().body_.length() <= this->session_handler_._request().content_length())
+		if (this->session_handler_.request().body().length() <= this->session_handler_.request().content_length())
 		{
 			boost::asio::async_read(
 				this->socket_base(), in_packet_, boost::asio::transfer_at_least(1), [me = shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer)
@@ -145,12 +145,12 @@ public:
 		if (!ec)
 		{
 			auto b = std::string(boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_begin(in_packet_.data()) + bytes_transferred);
-			this->session_handler_._request().body_ += b;
+			this->session_handler_.request().body() += b;
 			in_packet_.consume(bytes_transferred);
 
 			printf("\n[%s]\n", b.c_str());
 
-			if (this->session_handler_._request().body_.length() < this->session_handler_._request().content_length())
+			if (this->session_handler_.request().body().length() < this->session_handler_.request().content_length())
 			{
 				do_read_body();
 			}
@@ -164,10 +164,10 @@ public:
 
 	void do_write_body()
 	{
-		if (!session_handler_._reply().body_.empty())
+		if (!session_handler_.response().body().empty())
 		{
-			std::string& body = session_handler_._reply().body_;
-			boost::asio::write(socket_base(), boost::asio::buffer(session_handler_._reply().body_));
+			std::string& body = session_handler_.response().body();
+			boost::asio::write(socket_base(), boost::asio::buffer(session_handler_.response().body()));
 
 			do_write_content_done();
 		}
@@ -175,7 +175,7 @@ public:
 		{
 
 			auto result = http::util::read_from_disk<std::array<char, 16384>>(
-				session_handler_._request().target(), [this, chunked = session_handler_._reply().chunked()](std::array<char, 16384> & buffer, size_t bytes_in)
+				session_handler_.request().target(), [this, chunked = session_handler_.response().chunked()](std::array<char, 16384> & buffer, size_t bytes_in)
 			{
 				std::stringstream ss;
 
@@ -221,10 +221,10 @@ public:
 
 	void do_write_header()
 	{
-		printf("reply>\n%s", session_handler_._reply().headers_to_string().c_str());
-		printf("%s", session_handler_._reply().body_.c_str());
+		printf("reply>\n%s", session_handler_.response().headers_to_string().c_str());
+		printf("%s", session_handler_.response().body().c_str());
 
-		write_buffer_.emplace_back(session_handler_._reply().headers_to_string());
+		write_buffer_.emplace_back(session_handler_.response().headers_to_string());
 
 		boost::asio::async_write(
 			socket_base(), boost::asio::buffer(this->write_buffer_.front()),
@@ -237,7 +237,7 @@ public:
 
 	void do_write_header_done()
 	{
-		if (session_handler_._reply().keep_alive() && 
+		if (session_handler_.response().keep_alive() && 
 			session_handler_.keepalive_count() > 0)
 		{
 			session_handler_.keepalive_count()--;

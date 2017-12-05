@@ -7,20 +7,20 @@
 
 int main(int argc, char* argv[])
 {
-	http::request request;
+	http::request_message request;
 
 	http::api::router<> neolm_router("C:/Development Libraries/doc_root");
 
 	neolm_router.on_get("/users/:id(\\d+)", [](http::session_handler& session, const http::api::params& params)
 	{		
-		session._reply().body_ = "User:" + std::string(params.get("id"));
+		session.response().body() = "User:" + std::string(params.get("id"));
 
 		return true;
 	});
 
 	neolm_router.on_get("/users", [](http::session_handler& session, const http::api::params& params)
 	{
-		session._reply().body_ = "User:";
+		session.response().body() = "User:";
 
 		return true;
 	});
