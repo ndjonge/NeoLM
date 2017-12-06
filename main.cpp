@@ -7,10 +7,10 @@
 namespace neolm
 {
 
-class neolm_rest_server : public http_c::http_api_server
+class neolm_api_server : public http_c::http_api_server
 {
 public:
-	neolm_rest_server()
+	neolm_api_server()
 	{
 		router.on_get("/healthcheck", [](http::session_handler& session, const http::api::params& params) {
 			if (1)
@@ -27,6 +27,7 @@ public:
 		});
 	}
 private:
+
 };
 
 }; // namespace neolm
@@ -35,16 +36,20 @@ private:
 
 typedef void* http_server_ptr;
 
-#define http_server_create(derived_http_server)	\
-extern "C" http_server_ptr http_server_create()		\
-{													\
-	return new derived_http_server();				\
-}													
+extern "C" http_server_ptr neolm_http_server_create()
+{
+	return static_cast<http_server_ptr>(new neolm::neolm_api_server());
+}											
+
+extern "C" void neolm_http_server_destroy(http_server_ptr server)
+{
+	delete static_cast<neolm::neolm_api_server*>(server);
+}
 
 
 int main(int argc, char* argv[])
 {
-	http_server_ptr server = http_server_create(neolm_rest_server);
+	http_server_ptr server = neolm_http_server_create();
 }
 
 
