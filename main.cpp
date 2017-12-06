@@ -1,13 +1,55 @@
 #include "http.h"
-
 #include "server.h"
-
 #include "json.h"
+
+#include "http_c_wrapper.h"
+
+namespace neolm
+{
+
+class neolm_rest_server : public http_c::http_api_server
+{
+public:
+	neolm_rest_server()
+	{
+		router.on_get("/healthcheck", [](http::session_handler& session, const http::api::params& params) {
+			if (1)
+				session.response().body() = "HealthCheck: OK";
+			else
+				session.response().body() = "HealthCheck: FAILED";
+
+			return true;
+		});
+
+		router.on_get("/info", [](http::session_handler& session, const http::api::params& params) {
+			session.response().body() = "NEOLM - 1.1.01";
+			return true;
+		});
+	}
+private:
+};
+
+}; // namespace neolm
+
+/***********************************************************************/
+
+typedef void* http_server_ptr;
+
+#define http_server_create(derived_http_server)	\
+extern "C" http_server_ptr http_server_create()		\
+{													\
+	return new derived_http_server();				\
+}													
 
 
 int main(int argc, char* argv[])
 {
-	http::request_message request;
+	http_server_ptr server = http_server_create(neolm_rest_server);
+}
+
+
+
+	/*http::request_message request;
 
 	http::api::router<> neolm_router("C:/Development Libraries/doc_root");
 
@@ -34,7 +76,7 @@ int main(int argc, char* argv[])
 	server.start_server();
 
 	return 0;
-}
+}*/
 
 /*
 
