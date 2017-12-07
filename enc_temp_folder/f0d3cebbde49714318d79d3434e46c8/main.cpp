@@ -39,6 +39,7 @@ int main(int argc, char* argv[])
 	char buffer_out[1024];
 
 	http_server_ptr server_ptr = http_server_create();
+
 	http_session_ptr session_ptr = http_open_session(server_ptr);
 
 	http_feed_session_data(session_ptr, buffer_in, sizeof(buffer_in));
