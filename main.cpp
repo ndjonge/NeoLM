@@ -1,16 +1,13 @@
+#include "http_basic_server.h"
 #include "http.h"
-#include "server.h"
-#include "json.h"
-
-#include "http_c_wrapper.h"
 
 namespace neolm
 {
 
-class neolm_api_server : public http_c::http_api_server
+class neolm_api_server : public http::basic::server
 {
 public:
-	neolm_api_server()
+	neolm_api_server() : http::basic::server{{"server", "neo_lm 0.0.01"}, {"timeout", "15"}, {"doc_root", "/var/www"}}
 	{
 		router.on_get("/healthcheck", [](http::session_handler& session, const http::api::params& params) {
 			if (1)
@@ -25,6 +22,11 @@ public:
 			session.response().body() = "NEOLM - 1.1.01";
 			return true;
 		});
+
+		router.on_get("/.*", [](http::session_handler& session, const http::api::params& params) {
+			session.response().body() = "Index!";
+			return true;
+		});
 	}
 private:
 
@@ -35,32 +37,26 @@ private:
 
 int main(int argc, char* argv[])
 {
-	const char buffer_in[] = "GET /index.html HTTP/1.1\r\nAccept: */*\r\n\r\n";
-	char buffer_out[1024];
+	const char buffer_in[] = "GET /afile HTTP/1.1\r\nAccept: */*\r\n\r\n";
 
-	http_server_ptr server_ptr = http_server_create();
-	http_session_ptr session_ptr = http_open_session(server_ptr);
+	neolm::neolm_api_server neolm_server;
 
-	http_feed_session_data(session_ptr, buffer_in, sizeof(buffer_in));
+	auto session = neolm_server.open_session();
 
-	auto result = http_parse_session(server_ptr, session_ptr);
+	session->store_data(buffer_in, sizeof(buffer_in));
 
-	if (result == 0)
+	auto result = neolm_server.parse_session_data(session);
+
+	if (result == http::request_parser::good)
 	{
-		http_handle_session(server_ptr, session_ptr);
-	}
-	else if (result == 2)
-	{
-		http_feed_session_data(session_ptr, buffer_in, sizeof(buffer_in));
-	}
-	else
-	{
-		// bad
+		auto response = neolm_server.handle_session(session);		
+
+		printf("%s\n", response.headers_to_string().c_str());
+		printf("%s\n", response.body().c_str());
+
 	}
 
-	http_close_session(server_ptr, session_ptr);
-
-	http_server_destroy(server_ptr);
+	neolm_server.close_session(session);
 }
 
 
@@ -92,26 +88,6 @@ int main(int argc, char* argv[])
 	server.start_server();
 
 	return 0;
-}*/
-
-/*
-
-
-namespace application
-{
-	namespace routers
-	{
-		namespace json_rpc
-		{
-			class router
-			{
-			public:
-				router() = default;
-			private:
-				std::map<const char*, std::function<bool(json::array_t& args)> > dispTable;
-			};
-		}
-	}
 }
 
 int main(void)

@@ -104,13 +104,21 @@ public:
 
 };
 
+
 class fields
 {
-protected:
-	std::vector<http::field> fields_;
 
 public:
 	using iterator = std::vector<http::field>::iterator;
+	using value_type = http::field;
+
+protected:
+	std::vector<fields::value_type> fields_;
+
+public:
+	fields() = default;
+
+	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list) {};
 
 	bool fields_empty() const { return this->fields_.empty(); };
 
@@ -172,6 +180,8 @@ public:
 	}
 
 };
+
+using configuration = class http::fields;
 
 enum message_specializations {
 	request_specialization,
