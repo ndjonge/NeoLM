@@ -1,26 +1,14 @@
 #pragma once
 
 #define __STDC_WANT_LIB_EXT1__ 1
+
 #include <sstream>
 #include <string>
-#include <time.h>
-
-#include <chrono>
-#include <fstream>
-#include <iostream>
-#include <memory>
-
+#include <algorithm>
+#include <functional>
 #include <deque>
 #include <thread>
 #include <vector>
-
-#include <ctime>
-
-#include <map>
-#include <type_traits>
-#include <algorithm>
-
-#include "http.h"
 
 namespace http
 {
@@ -246,7 +234,7 @@ public:
 		this->fields_.clear();
 	}
 
-	std::string headers_to_string()
+	std::string header_to_string() const
 	{
 		std::stringstream ss;
 
@@ -355,7 +343,21 @@ public:
 		set("Server", "NeoLM / 0.01 (Windows)");
 		set("Content-Type", mime_types::extension_to_type(extension));
 	}
+
+	static std::string to_string(const http::message<specialization>& message)
+	{
+		std::string ret = message.header_to_string();
+		ret += message.body();
+
+		return ret;
+	}
 };
+
+template <message_specializations specialization>
+std::string to_string(const http::message<specialization>& message)
+{
+	return http::message<specialization>::to_string(message);
+}
 
 using request_message = http::message<request_specialization>;
 using response_message = http::message<response_specialization>;

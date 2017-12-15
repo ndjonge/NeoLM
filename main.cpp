@@ -9,7 +9,7 @@ class neolm_api_server : public http::basic::server
 public:
 	neolm_api_server() : http::basic::server{{"server", "neo_lm 0.0.01"}, {"timeout", "15"}, {"doc_root", "/var/www"}}
 	{
-		router.on_get("/healthcheck", [](http::session_handler& session, const http::api::params& params) {
+		router_.on_get("/healthcheck", [](http::session_handler& session, const http::api::params& params) {
 			if (1)
 				session.response().body() = "HealthCheck: OK";
 			else
@@ -18,16 +18,18 @@ public:
 			return true;
 		});
 
-		router.on_get("/info", [](http::session_handler& session, const http::api::params& params) {
+		router_.on_get("/info", [](http::session_handler& session, const http::api::params& params) {
 			session.response().body() = "NEOLM - 1.1.01";
 			return true;
 		});
 
-		router.on_get("/.*", [](http::session_handler& session, const http::api::params& params) {
+		router_.on_get("/.*", [](http::session_handler& session, const http::api::params& params) {
 			session.response().body() = "Index!";
 			return true;
 		});
 	}
+
+	neolm_api_server(neolm_api_server& ) = default;
 private:
 
 };
@@ -37,13 +39,13 @@ private:
 
 int main(int argc, char* argv[])
 {
-	const char buffer_in[] = "GET /afile HTTP/1.1\r\nAccept: */*\r\n\r\n";
+	auto buffer_in = "GET /healthcheck HTTP/1.1\r\nAccept: */*\r\n\r\n";
 
-	neolm::neolm_api_server neolm_server;
+	auto neolm_server = neolm::neolm_api_server{};
 
 	auto session = neolm_server.open_session();
 
-	session->store_data(buffer_in, sizeof(buffer_in));
+	session->store_data(buffer_in, std::strlen(buffer_in));
 
 	auto result = neolm_server.parse_session_data(session);
 
@@ -51,9 +53,9 @@ int main(int argc, char* argv[])
 	{
 		auto response = neolm_server.handle_session(session);		
 
-		printf("%s\n", response.headers_to_string().c_str());
-		printf("%s\n", response.body().c_str());
+		std::string data = http::to_string(response);
 
+		printf("%s\n", data.c_str());
 	}
 
 	neolm_server.close_session(session);

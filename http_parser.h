@@ -1,27 +1,14 @@
 #pragma once
 
 #define __STDC_WANT_LIB_EXT1__ 1
-#include <sstream>
 #include <string>
-#include <time.h>
-
-#include <chrono>
-#include <fstream>
-#include <iostream>
-#include <memory>
 
 #include <deque>
-#include <thread>
 #include <vector>
-
-#include <ctime>
-
 #include <algorithm>
 #include <map>
-#include <type_traits>
 
-#include "http_api.h"
-
+#include "http_api_router.h"
 #include "http_message.h"
 
 #if defined(_USE_CPP17_STD_FILESYSTEM)
@@ -420,8 +407,8 @@ class session_handler
 {
 
 public:
-	session_handler(const session_handler&) = delete;
-	session_handler& operator=(const session_handler&) = delete;
+	session_handler(const session_handler&) = default;
+	session_handler& operator=(const session_handler&) = default;
 
 	explicit session_handler(class http::api::router<>& router)
 		: router_(router)

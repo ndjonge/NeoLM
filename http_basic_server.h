@@ -2,8 +2,8 @@
 
 #include <stddef.h>
 
-#include "http.h"
-#include "http_api.h"
+#include "http_parser.h"
+#include "http_api_router.h"
 
 
 namespace http
@@ -31,18 +31,20 @@ private:
 class server
 {
 public:
-	server(std::initializer_list<http::configuration::value_type> init_list) : session_handler_(router), router(""), configuration_(init_list) {};
+	server(std::initializer_list<http::configuration::value_type> init_list) : session_handler_(router_), router_(""), configuration_(init_list) {};
+	
+	server(server& ) = default;
 
 	session_data* open_session() 
 	{
-		session_datas.push_back(new session_data);
+		session_datas_.push_back(new session_data);
 
-		return session_datas.back();
+		return session_datas_.back();
 	};
 
 	void close_session(session_data* session)
 	{
-		session_datas.erase(std::find(std::begin(session_datas), std::end(session_datas), session));
+		session_datas_.erase(std::find(std::begin(session_datas_), std::end(session_datas_), session));
 	};
 
 	http::request_parser::result_type parse_session_data(session_data* session)
