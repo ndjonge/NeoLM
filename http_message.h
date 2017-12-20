@@ -8,6 +8,8 @@
 #include <thread>
 #include <vector>
 
+#include "http_parser.h"
+
 namespace http
 {
 
