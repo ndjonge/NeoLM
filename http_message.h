@@ -330,11 +330,9 @@ public:
 	/// Get a stock reply.
 	void stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
 	{
-		status_ = status;
-
 		if (status != http::status::ok)
 		{
-			body_ = std::to_string(status_);
+			body_ = std::to_string(status);
 		}
 
 		
