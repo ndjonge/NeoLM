@@ -325,8 +325,8 @@ public:
 		}
 
 		
-		set("Server", "NeoLM / 0.01 (Windows)");
-		set("Content-Type", mime_types::extension_to_type(extension));
+		fields::set("Server", "NeoLM / 0.01 (Windows)");
+		fields::set("Content-Type", mime_types::extension_to_type(extension));
 	}
 
 	static std::string to_string(const http::message<specialization>& message)
