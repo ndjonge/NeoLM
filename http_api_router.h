@@ -288,7 +288,7 @@ template <class function_t = std::function<bool(http::session_handler& session, 
 {
 public:
 	router()
-		: doc_root("/var/www"){};
+		: doc_root_("/var/www"){};
 
 	router(const std::string& doc_root)	: doc_root_(doc_root){};
 
