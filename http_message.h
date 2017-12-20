@@ -316,17 +316,6 @@ public:
 		}
 	}
 
-	static header<specialization> create_stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
-	{
-		// move to header<request> specialization?
-
-		header<request> reply_;
-
-		reply_.stock_reply(status, extension);
-
-		return reply_;
-	}
-
 	/// Get a stock reply.
 	void stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
 	{
