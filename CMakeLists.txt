@@ -23,7 +23,7 @@ set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Boost 1.64 REQUIRED system thread)
-find_package(openssl REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
