@@ -8,8 +8,6 @@
 #include <thread>
 #include <vector>
 
-#include "http_parser.h"
-
 namespace http
 {
 
@@ -20,6 +18,32 @@ namespace util
 		return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) { return tolower(a) == tolower(b); });
 	}
 }
+
+namespace mime_types
+{
+	struct mapping
+	{
+		const char* extension;
+		const char* mime_type;
+	}
+
+	mappings[]
+		= { { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" } };
+
+	static std::string extension_to_type(const std::string& extension)
+	{
+		for (mapping m : mappings)
+		{
+			if (m.extension == extension)
+			{
+				return m.mime_type;
+			}
+		}
+
+		return "text/plain";
+	}
+} // namespace mime_types
+
 
 namespace status
 {
