@@ -169,7 +169,7 @@ public:
 
 };
 
-using configuration = class http::fields;
+using configuration = http::fields;
 
 enum message_specializations {
 	request_specialization,
@@ -322,9 +322,9 @@ public:
 	{
 		// move to header<request> specialization?
 
-		header<specialization> reply_;
+		header<request> reply_;
 
-		reply.stock_reply(status, extension);
+		reply_.stock_reply(status, extension);
 
 		return reply_;
 	}

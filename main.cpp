@@ -1,5 +1,4 @@
 #include "http_basic_server.h"
-#include "http.h"
 
 namespace neolm
 {
