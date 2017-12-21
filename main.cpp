@@ -1,5 +1,7 @@
 #include "http_basic.h"
 
+#include <boost/iostreams/filter/gzip.hpp>
+
 namespace neolm
 {
 
@@ -38,6 +40,13 @@ private:
 
 int main(int argc, char* argv[])
 {
+	boost::iostreams::gzip_compressor compressor;
+
+	compressor << "TEST";
+
+
+
+
 	auto buffer_in = "GET /healthcheck HTTP/1.1\r\nAccept: */*\r\n\r\n";
 
 	auto neolm_server = neolm::neolm_api_server();
