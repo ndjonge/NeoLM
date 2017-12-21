@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
 {
 	auto buffer_in = "GET /healthcheck HTTP/1.1\r\nAccept: */*\r\n\r\n";
 
-	auto neolm_server = neolm::neolm_api_server{};
+	auto neolm_server = neolm::neolm_api_server();
 
 	auto session = neolm_server.open_session();
 
