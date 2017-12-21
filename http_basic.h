@@ -1291,7 +1291,7 @@ class server
 public:
 	server(std::initializer_list<http::configuration::value_type> init_list) : router_(""), configuration_(init_list) {};
 	
-	server(server& ) = default;
+	server(const server& ) = default;
 
 	session_data* open_session() 
 	{

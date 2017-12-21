@@ -28,7 +28,7 @@ public:
 		});
 	}
 
-	neolm_api_server(neolm_api_server& ) = default;
+	neolm_api_server(const neolm_api_server& ) = default;
 private:
 
 };
