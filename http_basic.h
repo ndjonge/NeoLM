@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <map>
 #include <functional>
-#include <regex>
+#include <boost/regex.hpp>
 
 #if defined(_USE_CPP17_STD_FILESYSTEM)
 	#include <experimental/filesystem>
@@ -935,7 +935,7 @@ namespace api
 
 namespace path2regex
 {
-	const std::regex PATH_REGEXP = std::regex{ "((\\\\.)|(([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^\\\\()])+)\\))?|\\(((?:\\\\.|[^\\\\()])+)\\))([+*?])?|(\\*))))" };
+	const boost::regex PATH_REGEXP = boost::regex{ "((\\\\.)|(([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^\\\\()])+)\\))?|\\(((?:\\\\.|[^\\\\()])+)\\))([+*?])?|(\\*))))" };
 
 	struct token
 	{
@@ -969,9 +969,9 @@ namespace path2regex
 		int key = 0;
 		size_t index = 0;
 		std::string path = "";
-		std::smatch res;
+		boost::smatch res;
 
-		for (std::sregex_iterator i = std::sregex_iterator{ str.begin(), str.end(), PATH_REGEXP }; i != std::sregex_iterator{}; ++i)
+		for (boost::sregex_iterator i = boost::sregex_iterator{ str.begin(), str.end(), PATH_REGEXP }; i != boost::sregex_iterator{}; ++i)
 		{
 
 			res = *i;
@@ -1051,9 +1051,9 @@ namespace path2regex
 	}
 
 	// Creates a regex based on the given tokens and options (optional)
-	std::regex tokens_to_regex(const tokens& tokens, const options& options_ = options{})
+	boost::regex tokens_to_regex(const tokens& tokens, const options& options_ = options{})
 	{
-		if (tokens.empty()) return std::regex{ "" };
+		if (tokens.empty()) return boost::regex{ "" };
 
 		// Set default values for options:
 		bool strict = false;
@@ -1074,8 +1074,8 @@ namespace path2regex
 
 		std::string route = "";
 		token lastToken = tokens[tokens.size() - 1];
-		std::regex re{ "(.*\\/$)" };
-		bool endsWithSlash = lastToken.is_string && std::regex_match(lastToken.name, re);
+		boost::regex re{ "(.*\\/$)" };
+		bool endsWithSlash = lastToken.is_string && boost::regex_match(lastToken.name, re);
 		// endsWithSlash if the last char in lastToken's name is a slash
 
 		// Iterate over the tokens and create our regexp string
@@ -1134,9 +1134,9 @@ namespace path2regex
 			if (!(strict && endsWithSlash)) route += "(?=\\/|$)";
 		}
 
-		if (sensitive) return std::regex{ "^" + route };
+		if (sensitive) return boost::regex{ "^" + route };
 
-		return std::regex{ "^" + route, std::regex_constants::ECMAScript | std::regex_constants::icase };
+		return boost::regex{ "^" + route, boost::regex_constants::ECMAScript | boost::regex_constants::icase };
 	}
 
 	void tokens_to_keys(const tokens& tokens, keys& keys)
@@ -1145,14 +1145,14 @@ namespace path2regex
 			if (!token.is_string) keys.push_back(token);
 	}
 
-	std::regex path_to_regex(const std::string& path, keys& keys, const options& options_ = options{})
+	boost::regex path_to_regex(const std::string& path, keys& keys, const options& options_ = options{})
 	{
 		tokens all_tokens = parse(path);
 		tokens_to_keys(all_tokens, keys); // fill keys with relevant tokens
 		return tokens_to_regex(all_tokens, options_);
 	}
 
-	std::regex path_to_regex(const std::string& path, const options& options_ = options{}) { return tokens_to_regex(parse(path), options_); }
+	boost::regex path_to_regex(const std::string& path, const options& options_ = options{}) { return tokens_to_regex(parse(path), options_); }
 
 
 } // namespace path_to_regex
@@ -1196,7 +1196,7 @@ public:
 	function_t endpoint_;
 
 	path2regex::keys keys_;
-	std::regex expr_;
+	boost::regex expr_;
 
 	size_t hits_{ 0U };
 };
@@ -1234,20 +1234,20 @@ public:
 		}
 
 		for (auto& route : routes) {
-			if (std::regex_match(path, route.expr_)) {
+			if (boost::regex_match(path, route.expr_)) {
 				++route.hits_;
 
 				// Set the pairs in params:
 				params params_;
-				std::smatch res;
+				boost::smatch res;
 
-				for (std::sregex_iterator i = std::sregex_iterator{ path.begin(), path.end(), route.expr_ };
-					i != std::sregex_iterator{}; ++i) {
+				for (boost::sregex_iterator i = boost::sregex_iterator{ path.begin(), path.end(), route.expr_ };
+					i != boost::sregex_iterator{}; ++i) {
 					res = *i;
 				}
 
 				// First parameter/value is in res[1], second in res[2], and so on
-				for (size_t i = 0; i < route.keys_.size(); i++)
+				for (auto i = 0; i < route.keys_.size(); i++)
 					params_.insert(route.keys_[i].name, res[i + 1]);
 
 				route.endpoint_(session, params_);
