@@ -267,6 +267,31 @@ public:
 using request_header = header<request_specialization>;
 using response_header = header<response_specialization>;
 
+namespace mime_types
+{
+	struct mapping
+	{
+		const char* extension;
+		const char* mime_type;
+	}
+
+	mappings[]
+		= { { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" } };
+
+	static std::string extension_to_type(const std::string& extension)
+	{
+		for (mapping m : mappings)
+		{
+			if (m.extension == extension)
+			{
+				return m.mime_type;
+			}
+		}
+
+		return "text/plain";
+	}
+} // namespace mime_types
+
 template<message_specializations specialization> class message : public header<specialization>
 {
 private:
@@ -360,31 +385,6 @@ std::string to_string(const http::message<specialization>& message)
 
 using request_message = http::message<request_specialization>;
 using response_message = http::message<response_specialization>;
-
-namespace mime_types
-{
-	struct mapping
-	{
-		const char* extension;
-		const char* mime_type;
-	}
-
-	mappings[]
-		= { { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" } };
-
-	static std::string extension_to_type(const std::string& extension)
-	{
-		for (mapping m : mappings)
-		{
-			if (m.extension == extension)
-			{
-				return m.mime_type;
-			}
-		}
-
-		return "text/plain";
-	}
-} // namespace mime_types
 
 class request_parser
 {
