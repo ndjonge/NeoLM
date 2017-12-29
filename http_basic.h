@@ -1,5 +1,9 @@
 #pragma once
 
+
+#include <cstdint>
+#include <sys/stat.h>
+
 #include <cstddef>
 #include <cstring>
 
@@ -15,11 +19,30 @@
 
 #if defined(_USE_CPP17_STD_FILESYSTEM)
 	#include <experimental/filesystem>
+#endif
+
+namespace filesystem
+{
+	std::uintmax_t 	file_size(const std::string& path)
+	{
+		struct stat t;
+
+		int ret = stat(path.c_str(), &t);
+
+		if (ret != 0)
+			return t.st_size;
+		else
+			return -1;
+	}
+}
+
+#if defined(_USE_CPP17_STD_FILESYSTEM)
 	namespace fs = std::experimental::filesystem;
 #else
-	#include "filesystem.h"
 	namespace fs = filesystem;
 #endif
+
+
 
 namespace http
 {
