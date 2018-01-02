@@ -8,7 +8,7 @@ namespace neolm
 class neolm_api_server : public http::basic::server
 {
 public:
-	neolm_api_server() : http::basic::server{{"server", "neo_lm 0.0.01"}, {"timeout", "15"}, {"doc_root", "/var/www"}}
+	neolm_api_server() : http::basic::server(http::configuration::value_type("server", "neo_lm 0.0.01"), http::configuration::value_type("timeout", "15"), http::configuration::value_type("doc_root", "/var/www"))
 	{
 		router_.on_get("/healthcheck", [](http::session_handler& session, const http::api::params& params) {
 			if (1)

@@ -138,12 +138,30 @@ public:
 protected:
 	std::vector<fields::value_type> fields_;
 
+
 public:
 	fields() = default;
 
-	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list) {};
+	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list) {}
 
-	bool fields_empty() const { return this->fields_.empty(); };
+	template<typename T, typename... R> void push_back(T& t, R&&... r) 
+	{ 
+		fields_.push_back(t); 
+		push_back(r...); 
+	}
+
+	template<typename T> void push_back(T& t) { fields_.push_back(t); }
+
+
+	template<typename T, typename... R> 
+	fields(T& t, R&&... r)
+	{ 
+		fields_.push_back(t); 
+		push_back(r...);
+	}
+
+
+	bool fields_empty() const { return this->fields_.empty(); }
 
 	void set(const std::string& name, const std::string& value)
 	{
@@ -167,7 +185,7 @@ public:
 	{
 		static const std::string not_found = "";
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
+		auto i = std::find_if(fields_.begin(), fields_.end(), [name](const http::field& f)
 		{
 			if (http::util::case_insensitive_equal(f.name, name))
 				return true;
@@ -185,7 +203,7 @@ public:
 
 	std::string& operator[](const std::string& name)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
+		auto i = std::find_if(fields_.begin(), fields_.end(), [name](const http::field& f)
 		{
 			if (http::util::case_insensitive_equal(f.name, name))
 				return true;
@@ -1312,8 +1330,11 @@ private:
 class server
 {
 public:
-	server(std::initializer_list<http::configuration::value_type> init_list) : router_(""), configuration_(init_list) {};
+	//server(std::initializer_list<http::configuration::value_type> init_list) : router_(""), configuration_(init_list) {};
 	
+	template<typename T, typename... R>
+	server(T& t, R&&... r) { configuration_.push_back(t); configuration_.push_back(r...); };
+		
 	server(const server& ) = default;
 
 	session_data* open_session() 
@@ -1325,14 +1346,14 @@ public:
 
 	void close_session(session_data* session)
 	{
-		session_datas_.erase(std::find(std::begin(session_datas_), std::end(session_datas_), session));
+		session_datas_.erase(std::find(session_datas_.begin(), session_datas_.end(), session));
 	};
 	
 	http::session_handler::result_type parse_session_data(session_data* session)
 	{
 		http::session_handler::result_type result;
 
-		std::tie(result, std::ignore) = session_handler_.parse_request(std::begin(session->data_received()), std::end(session->data_received()));
+		std::tie(result, std::ignore) = session_handler_.parse_request(session->data_received().begin(), session->data_received().end());
 
 		return result;
 	}
