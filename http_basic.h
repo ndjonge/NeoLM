@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <cstdint>
 #include <sys/stat.h>
 
@@ -15,7 +14,12 @@
 #include <algorithm>
 #include <map>
 #include <functional>
-#include <boost/regex.hpp>
+
+#if !defined(_USE_BOOST_REGEX)
+	#include <regex>
+#else
+	#include <boost/regex.hpp>
+#endif
 
 #if defined(_USE_CPP17_STD_FILESYSTEM)
 	#include <experimental/filesystem>
@@ -23,6 +27,7 @@
 
 namespace filesystem
 {
+	inline 
 	std::uintmax_t 	file_size(const std::string& path)
 	{
 		struct stat t;
@@ -32,7 +37,7 @@ namespace filesystem
 		if (ret != 0)
 			return t.st_size;
 		else
-			return -1;
+			return 0;
 	}
 }
 
@@ -41,8 +46,6 @@ namespace filesystem
 #else
 	namespace fs = filesystem;
 #endif
-
-
 
 namespace http
 {
@@ -79,6 +82,7 @@ namespace status
 		service_unavailable = 503
 	};
 
+	inline
 	const char* to_string(status_t s)
 	{
 		switch (s)
@@ -138,31 +142,17 @@ public:
 protected:
 	std::vector<fields::value_type> fields_;
 
-
 public:
 	fields() = default;
 
-	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list) {}
+	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list) {};
 
-	template<typename T, typename... R> void push_back(T& t, R&&... r) 
-	{ 
-		fields_.push_back(t); 
-		push_back(r...); 
-	}
+	fields(const http::fields& f) : fields_(f.fields_){};
 
-	template<typename T> void push_back(T& t) { fields_.push_back(t); }
+	inline
+	bool fields_empty() const { return this->fields_.empty(); };
 
-
-	template<typename T, typename... R> 
-	fields(T& t, R&&... r)
-	{ 
-		fields_.push_back(t); 
-		push_back(r...);
-	}
-
-
-	bool fields_empty() const { return this->fields_.empty(); }
-
+	inline
 	void set(const std::string& name, const std::string& value)
 	{
 		http::field field_(name, value);
@@ -170,22 +160,25 @@ public:
 		fields_.emplace_back(std::move(field_));
 	}
 
+	inline
 	auto new_field()
 	{
 		fields_.push_back(field());
 		return fields_.rbegin();
 	}
 
+	inline
 	auto last_new_field()
 	{
 		return fields_.rbegin();
 	}
 
+	inline
 	const std::string& operator[](std::string name) const
 	{
 		static const std::string not_found = "";
 
-		auto i = std::find_if(fields_.begin(), fields_.end(), [name](const http::field& f)
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
 		{
 			if (http::util::case_insensitive_equal(f.name, name))
 				return true;
@@ -201,9 +194,10 @@ public:
 			return i->value;
 	}
 
+	inline
 	std::string& operator[](const std::string& name)
 	{
-		auto i = std::find_if(fields_.begin(), fields_.end(), [name](const http::field& f)
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f)
 		{
 			if (http::util::case_insensitive_equal(f.name, name))
 				return true;
@@ -316,6 +310,7 @@ namespace mime_types
 		const char* mime_type;
 	}
 
+	const
 	mappings[]
 		= { { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" } };
 
@@ -381,7 +376,7 @@ public:
 
 	bool keep_alive() const
 	{
-		if (http::fields::operator[]("Connection") == "keep-alive")
+		if (http::fields::operator[]("Connection") == "Keep-Alive")
 			return true;
 		else
 			return false;
@@ -849,7 +844,7 @@ public:
 
 			if (request_.keep_alive() && this->keepalive_count() > 0)
 			{
-				response_.keep_alive(true, this->keepalive_max(), this->keepalive_count());
+				response_.keep_alive(true, this->keepalive_max(), this->keepalive_count()--);
 			}
 			else
 			{
@@ -954,21 +949,6 @@ template <typename block_container_t = std::array<char, 1024>> bool read_from_di
 	return result;
 }
 
-namespace filesystem
-{
-	std::uintmax_t 	file_size(const std::string& path)
-	{
-		struct stat t;
-
-		int ret = stat(path.c_str(), &t);
-
-		if (ret != 0)
-			return t.st_size;
-		else
-			return -1;
-	}
-} // namespace filesystem
-
 } // namespace util
 
 namespace api
@@ -976,7 +956,7 @@ namespace api
 
 namespace path2regex
 {
-	const boost::regex PATH_REGEXP = boost::regex{ "((\\\\.)|(([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^\\\\()])+)\\))?|\\(((?:\\\\.|[^\\\\()])+)\\))([+*?])?|(\\*))))" };
+	const std::regex PATH_REGEXP = std::regex{ "((\\\\.)|(([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^\\\\()])+)\\))?|\\(((?:\\\\.|[^\\\\()])+)\\))([+*?])?|(\\*))))" };
 
 	struct token
 	{
@@ -1002,6 +982,7 @@ namespace path2regex
 	using tokens = std::vector<token>;
 	using options = std::map<std::string, bool>;
 
+	inline
 	std::vector<token> parse(const std::string& str)
 	{
 		if (str.empty()) return {};
@@ -1010,9 +991,9 @@ namespace path2regex
 		int key = 0;
 		size_t index = 0;
 		std::string path = "";
-		boost::smatch res;
+		std::smatch res;
 
-		for (boost::sregex_iterator i = boost::sregex_iterator{ str.begin(), str.end(), PATH_REGEXP }; i != boost::sregex_iterator{}; ++i)
+		for (std::sregex_iterator i = std::sregex_iterator{ str.begin(), str.end(), PATH_REGEXP }; i != std::sregex_iterator{}; ++i)
 		{
 
 			res = *i;
@@ -1092,9 +1073,10 @@ namespace path2regex
 	}
 
 	// Creates a regex based on the given tokens and options (optional)
-	boost::regex tokens_to_regex(const tokens& tokens, const options& options_ = options{})
+	inline
+	std::regex tokens_to_regex(const tokens& tokens, const options& options_ = options{})
 	{
-		if (tokens.empty()) return boost::regex{ "" };
+		if (tokens.empty()) return std::regex{ "" };
 
 		// Set default values for options:
 		bool strict = false;
@@ -1115,8 +1097,8 @@ namespace path2regex
 
 		std::string route = "";
 		token lastToken = tokens[tokens.size() - 1];
-		boost::regex re{ "(.*\\/$)" };
-		bool endsWithSlash = lastToken.is_string && boost::regex_match(lastToken.name, re);
+		std::regex re{ "(.*\\/$)" };
+		bool endsWithSlash = lastToken.is_string && std::regex_match(lastToken.name, re);
 		// endsWithSlash if the last char in lastToken's name is a slash
 
 		// Iterate over the tokens and create our regexp string
@@ -1175,36 +1157,42 @@ namespace path2regex
 			if (!(strict && endsWithSlash)) route += "(?=\\/|$)";
 		}
 
-		if (sensitive) return boost::regex{ "^" + route };
+		if (sensitive) return std::regex{ "^" + route };
 
-		return boost::regex{ "^" + route, boost::regex_constants::ECMAScript | boost::regex_constants::icase };
+		return std::regex{ "^" + route, std::regex_constants::ECMAScript | std::regex_constants::icase };
 	}
 
+	inline
 	void tokens_to_keys(const tokens& tokens, keys& keys)
 	{
 		for (const auto& token : tokens)
 			if (!token.is_string) keys.push_back(token);
 	}
 
-	boost::regex path_to_regex(const std::string& path, keys& keys, const options& options_ = options{})
+	inline
+	std::regex path_to_regex(const std::string& path, keys& keys, const options& options_ = options{})
 	{
 		tokens all_tokens = parse(path);
 		tokens_to_keys(all_tokens, keys); // fill keys with relevant tokens
 		return tokens_to_regex(all_tokens, options_);
 	}
 
-	boost::regex path_to_regex(const std::string& path, const options& options_ = options{}) { return tokens_to_regex(parse(path), options_); }
+	inline
+	std::regex path_to_regex(const std::string& path, const options& options_ = options{}) { return tokens_to_regex(parse(path), options_); }
 
 
 } // namespace path_to_regex
 
 class params {
 public:
+
+	inline
 	bool insert(const std::string& name, const std::string& value) {
 		auto ret = parameters.emplace(std::make_pair(name, value));
 		return ret.second;
 	}
 
+	inline
 	const std::string& get(const std::string& name) const {
 		auto it = parameters.find(name);
 		static std::string no_ret;
@@ -1220,6 +1208,7 @@ private:
 };  // < class Params
 
 using session_handler_type = http::session_handler;
+
 using function_type = std::function<bool(session_handler_type& session, const http::api::params& params)>;
 
 template<class function_t = function_type>
@@ -1237,11 +1226,12 @@ public:
 	function_t endpoint_;
 
 	path2regex::keys keys_;
-	boost::regex expr_;
+	std::regex expr_;
 
 	size_t hits_{ 0U };
 };
 
+inline
 bool operator < (const route<>& lhs, const route<>& rhs) noexcept {
 	return lhs.hits_ < rhs.hits_;
 }
@@ -1275,15 +1265,15 @@ public:
 		}
 
 		for (auto& route : routes) {
-			if (boost::regex_match(path, route.expr_)) {
+			if (std::regex_match(path, route.expr_)) {
 				++route.hits_;
 
 				// Set the pairs in params:
 				params params_;
-				boost::smatch res;
+				std::smatch res;
 
-				for (boost::sregex_iterator i = boost::sregex_iterator{ path.begin(), path.end(), route.expr_ };
-					i != boost::sregex_iterator{}; ++i) {
+				for (std::sregex_iterator i = std::sregex_iterator{ path.begin(), path.end(), route.expr_ };
+					i != std::sregex_iterator{}; ++i) {
 					res = *i;
 				}
 
@@ -1316,25 +1306,32 @@ class session_data
 public:
 	session_data() {};
 
-	void store_data(const char* data, size_t size)
+	void store_request_data(const char* data, size_t size)
 	{
-		data_received_.insert(std::end(data_received_), &data[0], &data[0] + size);
+		data_request_.insert(std::end(data_request_), &data[0], &data[0] + size);
 	}
 
-	std::vector<char>& data_received() { return data_received_; }
+	void store_response_data(const std::string& response_string)
+	{
+		data_response_.insert(std::end(data_response_), response_string.begin(), response_string.end());
+	}
+
+	std::vector<char>& request_data() { return data_request_; }
+	std::vector<char>& response_data() { return data_response_; }
 
 private:
-	std::vector<char> data_received_;
+	std::vector<char> data_request_;
+	std::vector<char> data_response_;
+
 };
 
 class server
 {
 public:
-	//server(std::initializer_list<http::configuration::value_type> init_list) : router_(""), configuration_(init_list) {};
-	
-	template<typename T, typename... R>
-	server(T& t, R&&... r) { configuration_.push_back(t); configuration_.push_back(r...); };
-		
+	server(std::initializer_list<http::configuration::value_type> init_list) : router_(""), configuration_(init_list) {};
+
+	server(const http::configuration& configuration) : router_(""), configuration_(configuration) {};
+
 	server(const server& ) = default;
 
 	session_data* open_session() 
@@ -1346,14 +1343,14 @@ public:
 
 	void close_session(session_data* session)
 	{
-		session_datas_.erase(std::find(session_datas_.begin(), session_datas_.end(), session));
+		session_datas_.erase(std::find(std::begin(session_datas_), std::end(session_datas_), session));
 	};
 	
 	http::session_handler::result_type parse_session_data(session_data* session)
 	{
 		http::session_handler::result_type result;
 
-		std::tie(result, std::ignore) = session_handler_.parse_request(session->data_received().begin(), session->data_received().end());
+		std::tie(result, std::ignore) = session_handler_.parse_request(std::begin(session->request_data()), std::end(session->request_data()));
 
 		return result;
 	}

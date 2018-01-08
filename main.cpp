@@ -8,7 +8,7 @@ namespace neolm
 class neolm_api_server : public http::basic::server
 {
 public:
-	neolm_api_server() : http::basic::server(http::configuration::value_type("server", "neo_lm 0.0.01"), http::configuration::value_type("timeout", "15"), http::configuration::value_type("doc_root", "/var/www"))
+	neolm_api_server() : http::basic::server{{"server", "neo_lm 0.0.01"}, {"timeout", "15"}, {"doc_root", "/var/www"}}
 	{
 		router_.on_get("/healthcheck", [](http::session_handler& session, const http::api::params& params) {
 			if (1)
@@ -40,19 +40,24 @@ private:
 
 int main(int argc, char* argv[])
 {
-	boost::iostreams::gzip_compressor compressor;
-
-	auto buffer_in = "GET /healthcheck HTTP/1.1\r\nAccept: */*\r\n\r\n";
+	auto buffer_in = "GET /healthcheck HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
 
 	auto neolm_server = neolm::neolm_api_server();
 
 	auto session = neolm_server.open_session();
 
-	session->store_data(buffer_in, std::strlen(buffer_in));
+	session->store_request_data(buffer_in, std::strlen(buffer_in));
 
-	auto result = neolm_server.parse_session_data(session);
+	if (neolm_server.parse_session_data(session) == http::request_parser::good)
+	{
+		auto response = neolm_server.handle_session(session);		
 
-	if (result == http::request_parser::good)
+		std::string data = http::to_string(response);
+
+		printf("%s\n", data.c_str());
+	}
+
+	if (neolm_server.parse_session_data(session) == http::request_parser::good)
 	{
 		auto response = neolm_server.handle_session(session);		
 
@@ -63,7 +68,6 @@ int main(int argc, char* argv[])
 
 	neolm_server.close_session(session);
 }
-
 
 
 	/*http::request_message request;
