@@ -57,6 +57,9 @@ int main(int argc, char* argv[])
 		printf("%s\n", data.c_str());
 	}
 
+	neolm_server.reset_session(session);
+	session->store_request_data(buffer_in, std::strlen(buffer_in));
+
 	if (neolm_server.parse_session_data(session) == http::request_parser::good)
 	{
 		auto response = neolm_server.handle_session(session);		
