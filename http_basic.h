@@ -1,3 +1,7 @@
+/*
+TODO: insert copyrights and MIT license.
+*/
+
 #pragma once
 
 #include <cstdint>
@@ -170,13 +174,13 @@ public:
 		fields_.emplace_back(std::move(field_));
 	}
 
-	inline auto new_field()
+	inline std::vector<fields::value_type>::reverse_iterator new_field()
 	{
 		fields_.push_back(field());
 		return fields_.rbegin();
 	}
 
-	inline auto last_new_field() { return fields_.rbegin(); }
+	inline std::vector<fields::value_type>::reverse_iterator last_new_field() { return fields_.rbegin(); }
 
 	inline const std::string& operator[](std::string name) const
 	{
@@ -316,7 +320,7 @@ private:
 
 public:
 	message() = default;
-	message(const message&) = default;
+	message(const message& ) = default;
 
 	std::string& body() { return body_; }
 
@@ -342,7 +346,7 @@ public:
 
 	void content_length(uint64_t const& length) { http::fields::operator[]("Content-Length") = std::to_string(length); }
 
-	const uint64_t content_length() const { return std::stoul(http::fields::operator[]("Content-Length")); }
+	uint64_t content_length() const { return std::stoul(http::fields::operator[]("Content-Length")); }
 
 	bool keep_alive() const
 	{
@@ -368,7 +372,7 @@ public:
 	/// Get a stock reply.
 	void stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
 	{
-		status_ = status;
+		http::header<specialization>::status_ = status;
 		if (status != http::status::ok)
 		{
 			body_ = std::to_string(status);
