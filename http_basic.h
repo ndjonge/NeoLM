@@ -19,10 +19,11 @@ TODO: insert copyrights and MIT license.
 #include <string>
 #include <vector>
 
-#if !defined(_USE_BOOST_REGEX)
+#if defined(_USE_CPP17_STD_REGEX)
 #include <regex>
-#else
+#elseif defined(_USE_BOOST_REGEX)
 #include <boost/regex.hpp>
+#elseif defined(_USE_NO_REGEX)
 #endif
 
 #if defined(_USE_CPP17_STD_FILESYSTEM)
