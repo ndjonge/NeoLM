@@ -14,6 +14,9 @@ IF (WIN32)
                     -D_WIN32_WINDOWS=0x502
                     -D_SETUPAPI_VER=0x502
 					-DBOOST_ASIO_ENABLE_HANDLER_TRACKING)
+ELSE()
+	set (BOOST_ROOT "~/boost")
+	set (OPENSSL_ROOT_DIR "~/openssl-dev")
 ENDIF()
 
 
