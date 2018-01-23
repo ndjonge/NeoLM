@@ -928,9 +928,9 @@ template <typename block_container_t = std::array<char, 1024>> bool read_from_di
 namespace api
 {
 
+
 namespace path2regex
 {
-const std::regex PATH_REGEXP = std::regex{ "((\\\\.)|(([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^\\\\()])+)\\))?|\\(((?:\\\\.|[^\\\\()])+)\\))([+*?])?|(\\*))))" };
 
 struct token
 {
@@ -955,6 +955,10 @@ struct token
 using keys = std::vector<token>;
 using tokens = std::vector<token>;
 using options = std::map<std::string, bool>;
+
+#if !defined(_USE_NO_REGEX)
+
+const std::regex PATH_REGEXP = std::regex{ "((\\\\.)|(([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^\\\\()])+)\\))?|\\(((?:\\\\.|[^\\\\()])+)\\))([+*?])?|(\\*))))" };
 
 inline std::vector<token> parse(const std::string& str)
 {
@@ -1149,7 +1153,10 @@ inline std::regex path_to_regex(const std::string& path, keys& keys, const optio
 
 inline std::regex path_to_regex(const std::string& path, const options& options_ = options{}) { return tokens_to_regex(parse(path), options_); }
 
+#endif
+
 } // namespace path2regex
+
 
 class params
 {
@@ -1186,15 +1193,19 @@ public:
 		: path_(path)
 		, endpoint_(endpoint)
 	{
+#if !defined(_USE_NO_REGEX)
 		expr_ = path_to_regex(path_, keys_);
+#endif
 	};
 
 	std::string path_;
 	function_t endpoint_;
 
 	path2regex::keys keys_;
-	std::regex expr_;
 
+#if !defined(_USE_NO_REGEX)
+	std::regex expr_;
+#endif
 	size_t hits_{ 0U };
 };
 
@@ -1232,6 +1243,7 @@ public:
 
 		for (auto& route : routes)
 		{
+#if !defined(_USE_NO_REGEX)
 			if (std::regex_match(path, route.expr_))
 			{
 				++route.hits_;
@@ -1253,6 +1265,14 @@ public:
 
 				return true;
 			}
+#else
+			if (path == route.path_)
+			{
+				params params_;
+				route.endpoint_(session, params_);
+				return true;		
+			}
+#endif
 		}
 		return false;
 	}
