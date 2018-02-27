@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.8)
 set (PROJECT_NAME "NeoLM" CXX)
 project (${PROJECT_NAME})
 
+set (CMAKE_C_COMPILER "clang")
 
 IF (WIN32)
 	set (BOOST_ROOT "C:/Development Libraries/boost_1_64_0")

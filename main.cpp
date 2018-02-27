@@ -4,88 +4,9 @@
 #include <iostream>
 
 #include "http_basic.h"
-#include "picosha2.h"
 
 namespace neolm
 {
-
-class block
-{
-public:
-	block(const long int ts, const std::string& data, const std::string& prev_hash)
-		: _ts(ts)
-		, _data(data)
-		, _prev_hash(prev_hash)
-	{
-	}
-
-	std::string hash(void) const
-	{
-		std::stringstream ss;
-
-		ss << _ts << _data << _prev_hash;
-
-		std::string src = ss.str();
-		std::vector<unsigned char> hash(32);
-		picosha2::hash256(src.begin(), src.end(), hash.begin(), hash.end());
-
-		return picosha2::bytes_to_hex_string(hash.begin(), hash.end());
-	}
-
-	static block create_seed(void)
-	{
-		auto temp_ts = std::chrono::system_clock::now().time_since_epoch();
-
-		return block(temp_ts.count(), "Seed block", "");
-	}
-
-	static block create_next(const block& b, const std::string& data)
-	{
-		auto temp_ts = std::chrono::system_clock::now().time_since_epoch();
-
-		return block(temp_ts.count(), data, b.hash());
-	}
-
-public:
-	const long ts() const { return _ts; }
-	const std::string& data() const { return _data; }
-	const std::string& prev_hash() const { return _prev_hash; }
-
-private:
-	long _ts;
-	std::string _data;
-	std::string _prev_hash;
-};
-
-void print_chain(std::vector<block> chain)
-{
-
-	int i = 0;
-
-	for (block& b : chain)
-	{
-
-		std::cout << "index: " << i << std::endl << "ts: " << b.ts() << std::endl << "data: " << b.data() << std::endl << "this: " << b.hash() << std::endl << "prev: " << b.prev_hash() << std::endl << "-------------------------------------" << std::endl;
-
-		i++;
-	}
-}
-
-std::string make_data()
-{
-
-	std::stringstream ss;
-
-	int a = std::rand();
-	int b = std::rand();
-	int c = std::rand();
-
-	ss << "{ \"a\": " << a << ","
-	   << "\"b\": " << b << ","
-	   << "\"c\": " << c << " }";
-
-	return ss.str();
-}
 
 class neolm_api_server : public http::basic::server
 {
@@ -152,29 +73,6 @@ int main(int argc, char* argv[])
 	}
 
 	neolm_server.close_session(session);
-
-	std::string src_str = "Neolm record 1";
-
-	std::vector<unsigned char> hash(32);
-	
-	picosha2::hash256(src_str.begin(), src_str.end(), hash.begin(), hash.end());
-
-	std::string hex_str = picosha2::bytes_to_hex_string(hash.begin(), hash.end());
-
-	printf("%s\n", hex_str.c_str());
-
-	std::vector<neolm::block> chain = { neolm::block::create_seed() };
-
-	for (int i = 0; i < 5; i++)
-	{
-		// get the last block in the chain
-		auto last = chain[chain.size() - 1];
-
-		// create the next block
-		chain.push_back(neolm::block::create_next(last, neolm::make_data()));
-	}
-
-	print_chain(chain);
 }
 
 
