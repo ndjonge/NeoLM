@@ -21,9 +21,14 @@ TODO: insert copyrights and MIT license.
 
 #if defined(_USE_CPP17_STD_REGEX)
 #include <regex>
-#elseif defined(_USE_BOOST_REGEX)
+namespace regexlib = std;
+#elif defined(_USE_BOOST_REGEX)
 #include <boost/regex.hpp>
-#elseif defined(_USE_NO_REGEX)
+namespace regexlib = boost;
+#else 
+#if !defined(_USE_NO_REGEX)
+#define _USE_NO_REGEX
+#endif
 #endif
 
 #if defined(_USE_CPP17_STD_FILESYSTEM)
@@ -50,6 +55,7 @@ namespace fs = std::experimental::filesystem;
 #else
 namespace fs = filesystem;
 #endif
+
 
 namespace http
 {
@@ -958,7 +964,7 @@ using options = std::map<std::string, bool>;
 
 #if !defined(_USE_NO_REGEX)
 
-const std::regex PATH_REGEXP = std::regex{ "((\\\\.)|(([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^\\\\()])+)\\))?|\\(((?:\\\\.|[^\\\\()])+)\\))([+*?])?|(\\*))))" };
+const regexlib::regex PATH_REGEXP = regexlib::regex{ "((\\\\.)|(([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^\\\\()])+)\\))?|\\(((?:\\\\.|[^\\\\()])+)\\))([+*?])?|(\\*))))" };
 
 inline std::vector<token> parse(const std::string& str)
 {
@@ -968,9 +974,9 @@ inline std::vector<token> parse(const std::string& str)
 	int key = 0;
 	size_t index = 0;
 	std::string path = "";
-	std::smatch res;
+	regexlib::smatch res;
 
-	for (std::sregex_iterator i = std::sregex_iterator{ str.begin(), str.end(), PATH_REGEXP }; i != std::sregex_iterator{}; ++i)
+	for (regexlib::sregex_iterator i = regexlib::sregex_iterator{ str.begin(), str.end(), PATH_REGEXP }; i != regexlib::sregex_iterator{}; ++i)
 	{
 
 		res = *i;
@@ -1050,9 +1056,9 @@ inline std::vector<token> parse(const std::string& str)
 }
 
 // Creates a regex based on the given tokens and options (optional)
-inline std::regex tokens_to_regex(const tokens& tokens, const options& options_ = options{})
+inline regexlib::regex tokens_to_regex(const tokens& tokens, const options& options_ = options{})
 {
-	if (tokens.empty()) return std::regex{ "" };
+	if (tokens.empty()) return regexlib::regex{ "" };
 
 	// Set default values for options:
 	bool strict = false;
@@ -1073,8 +1079,8 @@ inline std::regex tokens_to_regex(const tokens& tokens, const options& options_ 
 
 	std::string route = "";
 	token lastToken = tokens[tokens.size() - 1];
-	std::regex re{ "(.*\\/$)" };
-	bool endsWithSlash = lastToken.is_string && std::regex_match(lastToken.name, re);
+	regexlib::regex re{ "(.*\\/$)" };
+	bool endsWithSlash = lastToken.is_string && regexlib::regex_match(lastToken.name, re);
 	// endsWithSlash if the last char in lastToken's name is a slash
 
 	// Iterate over the tokens and create our regexp string
@@ -1133,9 +1139,9 @@ inline std::regex tokens_to_regex(const tokens& tokens, const options& options_ 
 		if (!(strict && endsWithSlash)) route += "(?=\\/|$)";
 	}
 
-	if (sensitive) return std::regex{ "^" + route };
+	if (sensitive) return regexlib::regex{ "^" + route };
 
-	return std::regex{ "^" + route, std::regex_constants::ECMAScript | std::regex_constants::icase };
+	return regexlib::regex{ "^" + route, regexlib::regex_constants::ECMAScript | regexlib::regex_constants::icase };
 }
 
 inline void tokens_to_keys(const tokens& tokens, keys& keys)
@@ -1144,14 +1150,14 @@ inline void tokens_to_keys(const tokens& tokens, keys& keys)
 		if (!token.is_string) keys.push_back(token);
 }
 
-inline std::regex path_to_regex(const std::string& path, keys& keys, const options& options_ = options{})
+inline regexlib::regex path_to_regex(const std::string& path, keys& keys, const options& options_ = options{})
 {
 	tokens all_tokens = parse(path);
 	tokens_to_keys(all_tokens, keys); // fill keys with relevant tokens
 	return tokens_to_regex(all_tokens, options_);
 }
 
-inline std::regex path_to_regex(const std::string& path, const options& options_ = options{}) { return tokens_to_regex(parse(path), options_); }
+inline regexlib::regex path_to_regex(const std::string& path, const options& options_ = options{}) { return tokens_to_regex(parse(path), options_); }
 
 #endif
 
@@ -1244,15 +1250,15 @@ public:
 		for (auto& route : routes)
 		{
 #if !defined(_USE_NO_REGEX)
-			if (std::regex_match(path, route.expr_))
+			if (regexlib::regex_match(path, route.expr_))
 			{
 				++route.hits_;
 
 				// Set the pairs in params:
 				params params_;
-				std::smatch res;
+				regexlib::smatch res;
 
-				for (std::sregex_iterator i = std::sregex_iterator{ path.begin(), path.end(), route.expr_ }; i != std::sregex_iterator{}; ++i)
+				for (regexlib::sregex_iterator i = regexlib::sregex_iterator{ path.begin(), path.end(), route.expr_ }; i != regexlib::sregex_iterator{}; ++i)
 				{
 					res = *i;
 				}
