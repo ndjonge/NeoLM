@@ -19,18 +19,6 @@ TODO: insert copyrights and MIT license.
 #include <string>
 #include <vector>
 
-#if defined(_USE_CPP17_STD_REGEX)
-#include <regex>
-namespace regexlib = std;
-#elif defined(_USE_BOOST_REGEX)
-#include <boost/regex.hpp>
-namespace regexlib = boost;
-#else 
-#if !defined(_USE_NO_REGEX)
-#define _USE_NO_REGEX
-#endif
-#endif
-
 #if defined(_USE_CPP17_STD_FILESYSTEM)
 #include <experimental/filesystem>
 #endif
@@ -934,236 +922,6 @@ template <typename block_container_t = std::array<char, 1024>> bool read_from_di
 namespace api
 {
 
-
-namespace path2regex
-{
-
-struct token
-{
-	std::string name{};
-	std::string prefix{};
-	std::string delimiter{};
-	std::string pattern{};
-
-	bool optional{ false };
-	bool repeat{ false };
-	bool partial{ false };
-	bool asterisk{ false };
-	bool is_string{ false };
-
-	void set_string_token(const std::string& name_)
-	{
-		name = name_;
-		is_string = true;
-	}
-}; //< struct Token
-
-using keys = std::vector<token>;
-using tokens = std::vector<token>;
-using options = std::map<std::string, bool>;
-
-#if !defined(_USE_NO_REGEX)
-
-const regexlib::regex PATH_REGEXP = regexlib::regex{ "((\\\\.)|(([\\/.])?(?:(?:\\:(\\w+)(?:\\(((?:\\\\.|[^\\\\()])+)\\))?|\\(((?:\\\\.|[^\\\\()])+)\\))([+*?])?|(\\*))))" };
-
-inline std::vector<token> parse(const std::string& str)
-{
-	if (str.empty()) return {};
-
-	tokens tokens;
-	int key = 0;
-	size_t index = 0;
-	std::string path = "";
-	regexlib::smatch res;
-
-	for (regexlib::sregex_iterator i = regexlib::sregex_iterator{ str.begin(), str.end(), PATH_REGEXP }; i != regexlib::sregex_iterator{}; ++i)
-	{
-
-		res = *i;
-
-		std::string m = res[0]; // the parameter, f.ex. /:test
-		std::string escaped = res[2];
-		size_t offset = res.position();
-
-		// JS: path += str.slice(index, offset); from and included index to and included offset-1
-		path += str.substr(index, (offset - index)); // from index, number of chars: offset - index
-
-		index = offset + m.size();
-
-		if (!escaped.empty())
-		{
-			path += escaped[1]; // if escaped == \a, escaped[1] == a (if str is "/\\a" f.ex.)
-			continue;
-		}
-
-		std::string next = ((size_t)index < str.size()) ? std::string{ str.at(index) } : "";
-
-		std::string prefix = res[4]; // f.ex. /
-		std::string name = res[5]; // f.ex. test
-		std::string capture = res[6]; // f.ex. \d+
-		std::string group = res[7]; // f.ex. (users|admins)
-		std::string modifier = res[8]; // f.ex. ?
-		std::string asterisk = res[9]; // * if path is /*
-
-		// Push the current path onto the tokens
-		if (!path.empty())
-		{
-			token stringToken;
-			stringToken.set_string_token(path);
-			tokens.push_back(stringToken);
-			path = "";
-		}
-
-		bool partial = (!prefix.empty()) && (!next.empty()) && (next != prefix);
-		bool repeat = (modifier == "+") || (modifier == "*");
-		bool optional = (modifier == "?") || (modifier == "*");
-
-		std::string delimiter = (!prefix.empty()) ? prefix : "/";
-		std::string pattern;
-
-		if (!capture.empty())
-			pattern = capture;
-		else if (!group.empty())
-			pattern = group;
-		else
-			pattern = (!asterisk.empty()) ? ".*" : ("[^" + delimiter + "]+?");
-
-		token t;
-		t.name = (!name.empty()) ? name : std::to_string(key++);
-		t.prefix = prefix;
-		t.delimiter = delimiter;
-		t.optional = optional;
-		t.repeat = repeat;
-		t.partial = partial;
-		t.asterisk = (asterisk == "*");
-		t.pattern = pattern;
-		t.is_string = false;
-		tokens.push_back(t);
-	}
-
-	// Match any characters still remaining
-	if ((size_t)index < str.size()) path += str.substr(index);
-
-	// If the path exists, push it onto the end
-	if (!path.empty())
-	{
-		token stringToken;
-		stringToken.set_string_token(path);
-		tokens.push_back(stringToken);
-	}
-
-	return tokens;
-}
-
-// Creates a regex based on the given tokens and options (optional)
-inline regexlib::regex tokens_to_regex(const tokens& tokens, const options& options_ = options{})
-{
-	if (tokens.empty()) return regexlib::regex{ "" };
-
-	// Set default values for options:
-	bool strict = false;
-	bool sensitive = false;
-	bool end = true;
-
-	if (!options_.empty())
-	{
-		auto it = options_.find("strict");
-		strict = (it != options_.end()) ? options_.find("strict")->second : false;
-
-		it = options_.find("sensitive");
-		sensitive = (it != options_.end()) ? options_.find("sensitive")->second : false;
-
-		it = options_.find("end");
-		end = (it != options_.end()) ? options_.find("end")->second : true;
-	}
-
-	std::string route = "";
-	token lastToken = tokens[tokens.size() - 1];
-	regexlib::regex re{ "(.*\\/$)" };
-	bool endsWithSlash = lastToken.is_string && regexlib::regex_match(lastToken.name, re);
-	// endsWithSlash if the last char in lastToken's name is a slash
-
-	// Iterate over the tokens and create our regexp string
-	for (size_t i = 0; i < tokens.size(); i++)
-	{
-		token token = tokens[i];
-
-		if (token.is_string)
-		{
-			route += token.name;
-		}
-		else
-		{
-			std::string prefix = token.prefix;
-			std::string capture = "(?:" + token.pattern + ")";
-
-			if (token.repeat) capture += "(?:" + prefix + capture + ")*";
-
-			if (token.optional)
-			{
-
-				if (!token.partial)
-					capture = "(?:" + prefix + "(" + capture + "))?";
-				else
-					capture = prefix + "(" + capture + ")?";
-			}
-			else
-			{
-				capture = prefix + "(" + capture + ")";
-			}
-
-			route += capture;
-		}
-	}
-
-	// In non-strict mode we allow a slash at the end of match. If the path to
-	// match already ends with a slash, we remove it for consistency. The slash
-	// is valid at the end of a path match, not in the middle. This is important
-	// in non-ending mode, where "/test/" shouldn't match "/test//route".
-
-	if (!strict)
-	{
-		if (endsWithSlash) route = route.substr(0, (route.size() - 1));
-
-		route += "(?:\\/(?=$))?";
-	}
-
-	if (end)
-	{
-		route += "$";
-	}
-	else
-	{
-		// In non-ending mode, we need the capturing groups to match as much as
-		// possible by using a positive lookahead to the end or next path segment
-		if (!(strict && endsWithSlash)) route += "(?=\\/|$)";
-	}
-
-	if (sensitive) return regexlib::regex{ "^" + route };
-
-	return regexlib::regex{ "^" + route, regexlib::regex_constants::ECMAScript | regexlib::regex_constants::icase };
-}
-
-inline void tokens_to_keys(const tokens& tokens, keys& keys)
-{
-	for (const auto& token : tokens)
-		if (!token.is_string) keys.push_back(token);
-}
-
-inline regexlib::regex path_to_regex(const std::string& path, keys& keys, const options& options_ = options{})
-{
-	tokens all_tokens = parse(path);
-	tokens_to_keys(all_tokens, keys); // fill keys with relevant tokens
-	return tokens_to_regex(all_tokens, options_);
-}
-
-inline regexlib::regex path_to_regex(const std::string& path, const options& options_ = options{}) { return tokens_to_regex(parse(path), options_); }
-
-#endif
-
-} // namespace path2regex
-
-
 class params
 {
 public:
@@ -1199,19 +957,74 @@ public:
 		: path_(path)
 		, endpoint_(endpoint)
 	{
-#if !defined(_USE_NO_REGEX)
-		expr_ = path_to_regex(path_, keys_);
-#endif
 	};
 
 	std::string path_;
 	function_t endpoint_;
 
-	path2regex::keys keys_;
+	static bool match(const std::string& route, const std::string& url, params& params)
+	{
 
-#if !defined(_USE_NO_REGEX)
-	std::regex expr_;
-#endif
+		// route: /route/:param1/subroute/:param2/subroute
+		// url:   /route/parameter
+
+		std::vector<std::string> tokens;
+		int offset = 0;
+		bool ret = false;
+
+		std::size_t found = route.find_first_of("/", offset + 1);
+
+		while(found != std::string::npos)
+		{
+			tokens.push_back(route.substr(offset+1, found - offset -1));
+			offset = found;
+			found=route.find_first_of("/", offset +1);
+			std::cout << tokens.back() << "\n";
+
+
+			if (found == std::string::npos)
+			{
+				tokens.push_back(route.substr(offset+1));
+				std::cout << tokens.back() << "\n";
+			}
+		}
+
+		offset = 0;
+		found = url.find_first_of("/", offset + 1);
+		int token = 0;
+
+		while(tokens.size() && found != std::string::npos)
+		{
+			std::string test = url.substr(offset+1, found - offset -1);
+
+			if (tokens[token][0] == ':')
+			{
+				params.insert(tokens[token].substr(1), url.substr(offset+1, found - offset -1));
+				offset = found;
+				found=url.find_first_of("/", offset +1);				
+
+				token++;
+			}
+			else if (url.substr(offset+1, found - offset -1) == tokens[token])
+			{
+				offset = found;
+				found=url.find_first_of("/", offset +1);				
+				token++;
+			}
+
+			if (found == std::string::npos && url.substr(offset+1) == tokens[token])
+			{
+				token++;
+			}
+		}
+
+
+		return (tokens.size() - token) == 0;
+	}
+
+
+/*	path2regex::keys keys_;*/
+
 	size_t hits_{ 0U };
 };
 
@@ -1272,9 +1085,9 @@ public:
 				return true;
 			}
 #else
-			if (path == route.path_)
+			params params_;
+			if (api::route<>::match(route.path_, path, params_))
 			{
-				params params_;
 				route.endpoint_(session, params_);
 				return true;		
 			}
