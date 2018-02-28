@@ -13,24 +13,15 @@ class neolm_api_server : public http::basic::server
 public:
 	neolm_api_server() : http::basic::server{{"server", "neo_lm 0.0.01"}, {"timeout", "15"}, {"doc_root", "/var/www"}}
 	{
-		router_.on_get("/healthcheck", [](http::session_handler& session, const http::api::params& params) {
-			if (1)
-				session.response().body() = "HealthCheck: OK";
-			else
-				session.response().body() = "HealthCheck: FAILED";
-
-			return true;
-		});
-
-		router_.on_get("/info", [](http::session_handler& session, const http::api::params& params) {
+		router_.on_get("/named-users-licenes/:product/:user/name", [](http::session_handler& session, const http::api::params& params) {
 			session.response().body() = "NEOLM - 1.1.01";
 			return true;
 		});
 
-		router_.on_get("/.*", [](http::session_handler& session, const http::api::params& params) {
-			session.response().body() = "Index!";
+		/*router_.on_get("/", [](http::session_handler& session, const http::api::params& params) {
+			session.response().body() = "index!";
 			return true;
-		});
+		});*/
 	}
 
 	neolm_api_server(const neolm_api_server& ) = default;
@@ -43,7 +34,7 @@ private:
 
 int main(int argc, char* argv[])
 {
-	auto buffer_in = "GET /healthcheck HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
+	auto buffer_in = "GET /named-users-licenes/10996/ndjonge/name HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
 
 	auto neolm_server = neolm::neolm_api_server();
 
