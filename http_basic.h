@@ -947,7 +947,6 @@ private:
 }; // < class Params
 
 using session_handler_type = http::session_handler;
-
 using function_type = std::function<bool(session_handler_type& session, const http::api::params& params)>;
 
 template <class function_t = function_type> class route
@@ -969,7 +968,7 @@ public:
 		// url:   /route/parameter
 
 		std::vector<std::string> tokens;
-		int offset = 0;
+		size_t offset = 0;
 		bool ret = false;
 
 		std::size_t found = route.find_first_of("/", offset + 1);
@@ -979,13 +978,10 @@ public:
 			tokens.push_back(route.substr(offset+1, found - offset -1));
 			offset = found;
 			found=route.find_first_of("/", offset +1);
-			std::cout << tokens.back() << "\n";
-
 
 			if (found == std::string::npos)
 			{
 				tokens.push_back(route.substr(offset+1));
-				std::cout << tokens.back() << "\n";
 			}
 		}
 
@@ -1039,21 +1035,18 @@ public:
 	router(const std::string& doc_root)
 		: doc_root_(doc_root){};
 
-	void on_get(const std::string& route, function_t api_method) { api_router_table_regex["GET"].emplace_back(api::route<>(route, api_method)); };
-	void on_post(const std::string& route, function_t api_method) { api_router_table_regex["POST"].emplace_back(api::route<>(route, api_method)); };
-	void on_head(const std::string& route, function_t api_method) { api_router_table_regex["HEAD"].emplace_back(api::route<>(route, api_method)); };
-	void on_put(const std::string& route, function_t api_method) { api_router_table_regex["PUT"].emplace_back(api::route<>(route, api_method)); };
-	void on_update(const std::string& route, function_t api_method) { api_router_table_regex["UPDATE"].emplace_back(api::route<>(route, api_method)); };
-	void on_delete(const std::string& route, function_t api_method) { api_router_table_regex["DELETE"].emplace_back(api::route<>(route, api_method)); };
-	void on_patch(const std::string& route, function_t api_method) { api_router_table_regex["PATCH"].emplace_back(api::route<>(route, api_method)); };
-	void on_option(const std::string& route, function_t api_method) { api_router_table_regex["OPTION"].emplace_back(api::route<>(route, api_method)); };
+	void on_get(const std::string& route, function_t api_method) { api_router_table["GET"].emplace_back(api::route<>(route, api_method)); };
+	void on_post(const std::string& route, function_t api_method) { api_router_table["POST"].emplace_back(api::route<>(route, api_method)); };
+	void on_head(const std::string& route, function_t api_method) { api_router_table["HEAD"].emplace_back(api::route<>(route, api_method)); };
+	void on_put(const std::string& route, function_t api_method) { api_router_table["PUT"].emplace_back(api::route<>(route, api_method)); };
+	void on_update(const std::string& route, function_t api_method) { api_router_table["UPDATE"].emplace_back(api::route<>(route, api_method)); };
+	void on_delete(const std::string& route, function_t api_method) { api_router_table["DELETE"].emplace_back(api::route<>(route, api_method)); };
+	void on_patch(const std::string& route, function_t api_method) { api_router_table["PATCH"].emplace_back(api::route<>(route, api_method)); };
+	void on_option(const std::string& route, function_t api_method) { api_router_table["OPTION"].emplace_back(api::route<>(route, api_method)); };
 
 	bool call(session_handler_type& session)
 	{
-		std::string path = session.request().target();
-		std::string method = session.request().method();
-
-		auto routes = api_router_table_regex[method];
+		auto routes = api_router_table[session.request().method()];
 
 		if (routes.empty())
 		{
@@ -1062,36 +1055,12 @@ public:
 
 		for (auto& route : routes)
 		{
-#if !defined(_USE_NO_REGEX)
-			if (regexlib::regex_match(path, route.expr_))
-			{
-				++route.hits_;
-
-				// Set the pairs in params:
-				params params_;
-				regexlib::smatch res;
-
-				for (regexlib::sregex_iterator i = regexlib::sregex_iterator{ path.begin(), path.end(), route.expr_ }; i != regexlib::sregex_iterator{}; ++i)
-				{
-					res = *i;
-				}
-
-				// First parameter/value is in res[1], second in res[2], and so on
-				for (auto i = 0; i < route.keys_.size(); i++)
-					params_.insert(route.keys_[i].name, res[i + 1]);
-
-				route.endpoint_(session, params_);
-
-				return true;
-			}
-#else
 			params params_;
-			if (api::route<>::match(route.path_, path, params_))
+
+			if (api::route<>::match(route.path_, session.request().target(), params_))
 			{
-				route.endpoint_(session, params_);
-				return true;		
+				return route.endpoint_(session, params_);
 			}
-#endif
 		}
 		return false;
 	}
@@ -1099,7 +1068,7 @@ public:
 protected:
 	std::string doc_root_;
 
-	std::map<const std::string, std::vector<api::route<>>> api_router_table_regex;
+	std::map<const std::string, std::vector<api::route<>>> api_router_table;
 };
 } // namespace api
 

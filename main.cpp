@@ -18,10 +18,15 @@ public:
 			return true;
 		});
 
-		/*router_.on_get("/", [](http::session_handler& session, const http::api::params& params) {
+		router_.on_get("/concurrent-users-licenes/:product/inuse", [](http::session_handler& session, const http::api::params& params) {
+			session.response().body() = "NEOLM - 1.1.01";
+			return true;
+		});
+
+		router_.on_get("/", [](http::session_handler& session, const http::api::params& params) {
 			session.response().body() = "index!";
 			return true;
-		});*/
+		});
 	}
 
 	neolm_api_server(const neolm_api_server& ) = default;
