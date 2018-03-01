@@ -987,35 +987,40 @@ public:
 
 		offset = 0;
 		found = url.find_first_of("/", offset + 1);
-		int token = 0;
+		size_t token = 0;
 
-		while(tokens.size() && found != std::string::npos)
+		if (url == route)
 		{
-			std::string test = url.substr(offset+1, found - offset -1);
-
-			if (tokens[token][0] == ':')
-			{
-				params.insert(tokens[token].substr(1), url.substr(offset+1, found - offset -1));
-				offset = found;
-				found=url.find_first_of("/", offset +1);				
-
-				token++;
-			}
-			else if (url.substr(offset+1, found - offset -1) == tokens[token])
-			{
-				offset = found;
-				found=url.find_first_of("/", offset +1);				
-				token++;
-			}
-
-			if (found == std::string::npos && url.substr(offset+1) == tokens[token])
-			{
-				token++;
-			}
+			return true;
 		}
+		else
+		{
+			while(tokens.size() && found != std::string::npos)
+			{
+				std::string test = url.substr(offset+1, found - offset -1);
 
+				if (tokens[token][0] == ':')
+				{
+					params.insert(tokens[token].substr(1), url.substr(offset+1, found - offset -1));
+					offset = found;
+					found=url.find_first_of("/", offset +1);				
 
-		return (tokens.size() - token) == 0;
+					token++;
+				}
+				else if (url.substr(offset+1, found - offset -1) == tokens[token])
+				{
+					offset = found;
+					found=url.find_first_of("/", offset +1);				
+					token++;
+				}
+
+				if (found == std::string::npos && url.substr(offset+1) == tokens[token])
+				{
+					token++;
+				}
+			}
+			return (tokens.size() - token) == 0;
+		}
 	}
 
 
