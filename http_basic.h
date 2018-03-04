@@ -974,27 +974,51 @@ public:
 
 		std::vector<std::string> tokens;
 		size_t offset = 0;
+		size_t token = 0;
 		bool ret = false;
 
-		std::size_t found = route.find_first_of("/", offset );
 
-		while(found != std::string::npos)
-		{			
-			offset = found;
-			found = route.find_first_of("/", offset+1 );
-			tokens.push_back(route.substr(offset, found - offset));
+		// token = /-----
+
+		size_t b = route.find_first_of("/");
+		size_t e = route.find_first_of("/", b+1);
+
+		for (token = 0; b != std::string::npos; token++ )
+		{
+			std::string current_token = route.substr(b, e);
+			tokens.emplace_back(std::move(current_token));
+
+			if (e==std::string::npos)
+				break;
+
+			b = route.find_first_of("/", e);
+			e = route.find_first_of("/", b+1);
 		}
 
-		offset = 0;
+		b = url.find_first_of("/");
+		e = url.find_first_of("/", b+1);
 
-		found = url.find_first_of("/", offset);
-		size_t token = 0;
 
-		while(tokens.size() && found != std::string::npos && token < tokens.size())
+		bool ret = false;
+
+		for (token = 0; b != std::string::npos && token < tokens.size(); token++ )
+		{
+			std::string current_token = url.substr(b, e);
+
+			if(tokens[token] != current_token)
+				break;
+
+			b = url.find_first_of("/", e);
+			e = url.find_first_of("/", b+1);
+		}
+
+
+
+
+		/*while(tokens.size() && found != std::string::npos && token < tokens.size())
 		{
 			found = url.find_first_of("/", offset + 1 );
 
-			std::string current_token = url.substr(offset, found - offset);
 
 			if (current_token == tokens[token])
 			{
@@ -1012,8 +1036,9 @@ public:
 			{
 				return false;
 			}
-		}
-		return (tokens.size() - token) == 0;
+		}*/
+
+		return false;
 	}
 
 };
