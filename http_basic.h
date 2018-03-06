@@ -985,7 +985,7 @@ public:
 
 		for (token = 0; b != std::string::npos; token++ )
 		{
-			std::string current_token = route.substr(b, e);
+			std::string current_token = route.substr(b, e - b);
 			tokens.emplace_back(std::move(current_token));
 
 			if (e==std::string::npos)
@@ -999,46 +999,41 @@ public:
 		e = url.find_first_of("/", b+1);
 
 
-		bool ret = false;
+		bool match = false;
 
-		for (token = 0; b != std::string::npos && token < tokens.size(); token++ )
+		for (token = 0; ((b != std::string::npos) && (token < tokens.size())); token++)
 		{
-			std::string current_token = url.substr(b, e);
+			std::string current_token = url.substr(b, e - b);
 
-			if(tokens[token] != current_token)
+			if (tokens[token].size() > 2 && tokens[token][1] == ':')
+			{
+				params.insert(tokens[token].substr(2), current_token.substr(1));
+			}
+			else if(tokens[token] != current_token) 
+			{
+				match = false; 
 				break;
+			}
+			else if (tokens.size()-1 == token)
+			{
+				//still matches, this is the last token 
+				match = true;
+			}
 
 			b = url.find_first_of("/", e);
 			e = url.find_first_of("/", b+1);
+
+			if ((b == std::string::npos) && (tokens.size()-1 == token))
+			{
+				match = true; 
+				break;
+			}
 		}
 
 
 
 
-		/*while(tokens.size() && found != std::string::npos && token < tokens.size())
-		{
-			found = url.find_first_of("/", offset + 1 );
-
-
-			if (current_token == tokens[token])
-			{
-				offset = found;
-				token++;
-			}
-			else if (tokens[token].size() > 1 && tokens[token][1] == ':')
-			{
-				params.insert(tokens[token].substr(1), url.substr(offset+1, found - offset -1));
-				offset = found;
-				found=url.find_first_of("/", offset +1);				
-				token++;
-			}
-			else 
-			{
-				return false;
-			}
-		}*/
-
-		return false;
+		return match;
 	}
 
 };

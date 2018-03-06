@@ -18,6 +18,7 @@ public:
 			return true;
 		});
 
+		/*
 		router_.on_get("/about", [](http::session_handler& session, const http::api::params& params) {
 			session.response().body() = "NeoLM 1.0";
 			return true;
@@ -31,14 +32,17 @@ public:
 		router_.on_get("/about/company", [](http::session_handler& session, const http::api::params& params) {
 			session.response().body() = "small software company inc.";
 			return true;
-		});
+		});*/
 
-/*		router_.on_get("/named-users-licenes/:product/:user/name", [](http::session_handler& session, const http::api::params& params) {
-			session.response().body() = "NEOLM - 1.1.01";
+		router_.on_get("/named-users-licenes/:product/:..", [](http::session_handler& session, const http::api::params& params) {
+
+			session.response().body() = "product: ";
+			session.response().body() += params.get("product");
+
 			return true;
 		});
 
-		router_.on_get("/concurrent-users-licenes/:product/inuse", [](http::session_handler& session, const http::api::params& params) {
+/*		router_.on_get("/concurrent-users-licenes/:product/inuse", [](http::session_handler& session, const http::api::params& params) {
 			session.response().body() = "NEOLM - 1.1.01";
 			return true;
 		});*/
@@ -55,7 +59,7 @@ private:
 
 int main(int argc, char* argv[])
 {
-	auto buffer_in = "GET /about/company HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
+	auto buffer_in = "GET /named-users-licenes/99999/name HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
 
 	auto neolm_server = neolm::neolm_api_server();
 
@@ -71,18 +75,6 @@ int main(int argc, char* argv[])
 
 		printf("%s\n", data.c_str());
 	}
-
-/*	neolm_server.reset_session(session);
-	session->store_request_data(buffer_in, std::strlen(buffer_in));
-
-	if (neolm_server.parse_session_data(session) == http::request_parser::good)
-	{
-		auto response = neolm_server.handle_session(session);		
-
-		std::string data = http::to_string(response);
-
-		printf("%s\n", data.c_str());
-	}*/
 
 	neolm_server.close_session(session);
 }
