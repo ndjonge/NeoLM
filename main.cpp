@@ -18,22 +18,6 @@ public:
 			return true;
 		});
 
-		/*
-		router_.on_get("/about", [](http::session_handler& session, const http::api::params& params) {
-			session.response().body() = "NeoLM 1.0";
-			return true;
-		});
-
-		router_.on_get("/info", [](http::session_handler& session, const http::api::params& params) {
-			session.response().body() = "Just some info!";
-			return true;
-		});
-
-		router_.on_get("/about/company", [](http::session_handler& session, const http::api::params& params) {
-			session.response().body() = "small software company inc.";
-			return true;
-		});*/
-
 		router_.on_get("/named-users-licenes/:product/:..", [](http::session_handler& session, const http::api::params& params) {
 
 			session.response().body() = "product: ";
