@@ -34,7 +34,7 @@ public:
 			return true;
 		});*/
 
-		router_.on_get("/named-users-licenes/:product/:..", [](http::session_handler& session, const http::api::params& params) {
+		router_.on_get("/named-users-licenes/:product/:name", [](http::session_handler& session, const http::api::params& params) {
 
 			session.response().body() = "product: ";
 			session.response().body() += params.get("product");
@@ -59,7 +59,7 @@ private:
 
 int main(int argc, char* argv[])
 {
-	auto buffer_in = "GET /named-users-licenes/99999/name HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
+	auto buffer_in = "GET /named-users-licenes/99999/ndejonge/?query1=\"1\"&query2=\"2\"; HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
 
 	auto neolm_server = neolm::neolm_api_server();
 
