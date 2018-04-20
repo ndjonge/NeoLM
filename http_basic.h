@@ -227,10 +227,14 @@ template <message_specializations> class header;
 
 template <> class header<request_specialization> : public fields
 {
+using query_params=http::fields;
+
 public:
 	std::string method_;
 	std::string target_;
 	std::string body_;
+	query_params params_;
+
 
 	unsigned int version_;
 
@@ -239,6 +243,8 @@ public:
 	std::string& target() { return target_; }
 
 	unsigned int& version() { return version_; }
+
+	query_params& query() { return params_; };
 
 	void reset()
 	{
@@ -785,6 +791,8 @@ public:
 			request_path += "index.html";
 		}
 
+
+		std::size_t query_pos = request_path.find_last_of("?");
 		std::size_t last_slash_pos = request_path.find_last_of("/");
 		std::size_t last_dot_pos = request_path.find_last_of(".");
 		std::string extension;
@@ -792,6 +800,33 @@ public:
 		if (last_dot_pos != std::string::npos && last_dot_pos > last_slash_pos)
 		{
 			extension = request_path.substr(last_dot_pos + 1);
+		}
+
+		if (query_pos != std::string::npos)
+		{
+			std::string str = request_path.substr(query_pos + 1);
+			std::string::size_type current = str.find_first_of("&");
+			std::string::size_type previous = 0;
+
+			while (current != std::string::npos) 
+			{
+				std::string token = str.substr(previous, current - previous);
+				previous = current + 1;
+				std::string::size_type current2 = str.find_first_of("=", previous);
+				
+				if ((current2 != std::string::npos) && (str[current2] == '='))
+				{
+					request_.query().set(token, "");
+					previous = current2;
+					current2 = str.find_first_of("&", previous);
+					request_.query().last_new_field()->value = str.substr(previous+1, current2 - previous-1);
+				}
+				else
+					request_.query().set(token,"");
+
+			}
+			//cont.push_back(str.substr(previous, current - previous));
+
 		}
 
 		request_.target() = request_path;
