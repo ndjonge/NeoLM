@@ -820,7 +820,6 @@ public:
 		}
 
 
-		std::size_t query_pos = request_path.find_last_of("?");
 		std::size_t last_slash_pos = request_path.find_last_of("/");
 		std::size_t last_dot_pos = request_path.find_last_of(".");
 		std::string extension;
@@ -830,11 +829,22 @@ public:
 			extension = request_path.substr(last_dot_pos + 1);
 		}
 
+		std::size_t query_pos = request_path.find_last_of("?");
+
 		if (query_pos != std::string::npos)
 		{
 			std::vector<std::string> tokens;
-			// NDJ
-			http::util::split(tokens, request_path.substr(query_pos), "?=&");
+
+			http::util::split(tokens, request_path.substr(query_pos+1), "&");
+
+			for (auto& token : tokens)
+			{
+				std::vector<std::string> name_value;
+				
+				http::util::split(name_value, token, "=");
+
+				request_.query().set(name_value[0], name_value[1]);
+			}
 
 
 
