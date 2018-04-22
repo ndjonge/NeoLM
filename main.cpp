@@ -4,6 +4,8 @@
 #include <iostream>
 
 #include "http_basic.h"
+#include "json.h"
+
 
 namespace neolm
 {
@@ -37,7 +39,10 @@ public:
 		router_.on_get("/named-users-licenes/:product/:name", [](http::session_handler& session, const http::api::params& params) {
 
 			session.response().body() = "product: ";
+
 			session.response().body() += params.get("product");
+
+			session.response().body() += session.request().query()["query1"];
 
 			return true;
 		});
@@ -59,7 +64,11 @@ private:
 
 int main(int argc, char* argv[])
 {
-	auto buffer_in = "GET /named-users-licenes/99999/ndejonge/?query1=1&query2=2; HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
+	mainjson();
+	exit (0);
+
+
+	auto buffer_in = "GET /named-users-licenes/99999/ndejonge#query1=1&query2=2 HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
 
 	auto neolm_server = neolm::neolm_api_server();
 

@@ -79,7 +79,7 @@ T& split(T& result, const typename T::value_type& s, const typename T::value_typ
     }
     current = next + 1;
     next = s.find_first_of( delimiters, current );
-    result.push_back( s.substr( current, next - current +1) );
+    result.push_back( s.substr( current, next - current) );
   }
   while (next != T::value_type::npos);
   return result;
@@ -829,7 +829,7 @@ public:
 			extension = request_path.substr(last_dot_pos + 1);
 		}
 
-		std::size_t query_pos = request_path.find_last_of("?");
+		std::size_t query_pos = request_path.find_first_of("?#");
 
 		if (query_pos != std::string::npos)
 		{
@@ -837,6 +837,7 @@ public:
 
 			http::util::split(tokens, request_path.substr(query_pos+1), "&");
 
+			request_path = request_path.substr(0, query_pos);
 			for (auto& token : tokens)
 			{
 				std::vector<std::string> name_value;
