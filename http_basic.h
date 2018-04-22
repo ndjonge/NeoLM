@@ -56,6 +56,34 @@ inline bool case_insensitive_equal(const std::string& str1, const std::string& s
 {
 	return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) { return tolower(a) == tolower(b); });
 }
+
+
+namespace split_opt
+{
+  enum empties_t { empties_ok, no_empties };
+};
+
+template <typename T>
+T& split(T& result, const typename T::value_type& s, const typename T::value_type& delimiters, split_opt::empties_t empties = split_opt::empties_ok )
+{
+  result.clear();
+  size_t current;
+  size_t next = -1;
+  do
+  {
+    if (empties == split_opt::no_empties)
+    {
+      next = s.find_first_not_of( delimiters, next + 1 );
+      if (next == T::value_type::npos) break;
+      next -= 1;
+    }
+    current = next + 1;
+    next = s.find_first_of( delimiters, current );
+    result.push_back( s.substr( current, next - current +1) );
+  }
+  while (next != T::value_type::npos);
+  return result;
+}
 } // namespace util
 
 namespace status
@@ -804,28 +832,11 @@ public:
 
 		if (query_pos != std::string::npos)
 		{
-			std::string str = request_path.substr(query_pos + 1);
-			std::string::size_type current = str.find_first_of("&");
-			std::string::size_type previous = 0;
+			std::vector<std::string> tokens;
+			// NDJ
+			http::util::split(tokens, request_path.substr(query_pos), "?=&");
 
-			while (current != std::string::npos) 
-			{
-				std::string token = str.substr(previous, current - previous);
-				previous = current + 1;
-				std::string::size_type current2 = str.find_first_of("=", previous);
-				
-				if ((current2 != std::string::npos) && (str[current2] == '='))
-				{
-					request_.query().set(token, "");
-					previous = current2;
-					current2 = str.find_first_of("&", previous);
-					request_.query().last_new_field()->value = str.substr(previous+1, current2 - previous-1);
-				}
-				else
-					request_.query().set(token,"");
 
-			}
-			//cont.push_back(str.substr(previous, current - previous));
 
 		}
 
