@@ -12,12 +12,12 @@ namespace json
 
 // Forward declarations:
 class value;
-class null_t;
-class string_t;
-class number_t;
-class boolean_t;
-class object_t;
-class array_t;
+class null;
+class string;
+class number;
+class boolean;
+class object;
+class array;
 
 
 enum result_type
@@ -30,69 +30,69 @@ enum result_type
 class value
 {
 public:
-	virtual bool isNull(void) const { return false; }
-	virtual bool isString(void) const { return false; }
-	virtual bool isNumber(void) const { return false; }
-	virtual bool isBoolean(void) const { return false; }
-	virtual bool isObject(void) const { return false; }
-	virtual bool isArray(void) const { return false; }
+	virtual bool is_null(void) const { return false; }
+	virtual bool is_string(void) const { return false; }
+	virtual bool is_number(void) const { return false; }
+	virtual bool is_boolean(void) const { return false; }
+	virtual bool is_object(void) const { return false; }
+	virtual bool is_array(void) const { return false; }
 
-	virtual void toStream(std::ostream& ost) const = 0;
+	virtual void to_stream(std::ostream& ost) const = 0;
 
 private:
 };
 
-class null_t : public value
+class null : public value
 {
 public:
-	bool isNull(void) const { return true; }
-	virtual void toStream(std::ostream& ost) const { ost << "null"; }
+	bool is_null(void) const { return true; }
+	virtual void to_stream(std::ostream& ost) const { ost << "null"; }
 };
 
-class string_t : public value
+class string : public value
 {
 public:
-	string_t(const std::string& str)
+	string(const std::string& str)
 		: _string(str)
 	{
 	}
-	bool isString(void) const { return true; }
-	const std::string& getString(void) const { return _string; }
-	virtual void toStream(std::ostream& ost) const { ost << "\"" << _string << "\""; }
+	bool is_string(void) const { return true; }
+	const std::string& get_string(void) const { return _string; }
+	virtual void to_stream(std::ostream& ost) const { ost << "\"" << _string << "\""; }
 
 private:
 	std::string _string;
 };
 
-class number_t : public value
+class number : public value
 {
 public:
-	number_t(const std::string& value)
+	number(const std::string& value)
 		: _value(value)
 	{
 	}
-	bool isNumber(void) const { return true; }
-	virtual void toStream(std::ostream& ost) const { ost << _value; }
+	bool is_number(void) const { return true; }
+	virtual void to_stream(std::ostream& ost) const { ost << _value; }
 
 private:
 	std::string _value;
 };
 
-class boolean_t : public value
+class boolean : public value
 {
 public:
-	boolean_t(bool value)
+	boolean(bool value)
 		: _value(value)
 	{
 	}
-	bool isBoolean(void) const { return true; }
-	virtual void toStream(std::ostream& ost) const { ost << _value; }
+	bool is_boolean(void) const { return true; }
+	virtual void to_stream(std::ostream& ost) const { ost << _value; }
 
 private:
 	bool _value;
 };
 
-class object_t : public value
+class object : public value
 {
 public:
 	bool isObject(void) const { return true; }
@@ -112,20 +112,21 @@ public:
 			return ptrNull;
 		}
 	}
-	virtual void toStream(std::ostream& ost) const
+
+	virtual void to_stream(std::ostream& ost) const
 	{
 		ost << "{";
 		std::map<std::string, value*>::const_iterator i = _map.begin();
 		if (i != _map.end())
 		{
 			ost << '"' << i->first << '"' << ':';
-			i->second->toStream(ost);
+			i->second->to_stream(ost);
 			i++;
 		}
 		while (i != _map.end())
 		{
 			ost << ',' << '"' << i->first << '"' << ':';
-			i->second->toStream(ost);
+			i->second->to_stream(ost);
 			i++;
 		}
 		ost << "}";
@@ -135,7 +136,7 @@ private:
 	std::map<std::string, value*> _map;
 };
 
-class array_t : public value
+class array : public value
 {
 public:
 	bool isArray(void) const { return true; }
@@ -155,18 +156,18 @@ public:
 		}
 	}
 
-	virtual void toStream(std::ostream& ost) const
+	virtual void to_stream(std::ostream& ost) const
 	{
 		ost << "[";
 		std::vector<value*>::const_iterator i = _array.begin();
 		if (i != _array.end())
 		{
-			(*i++)->toStream(ost);
+			(*i++)->to_stream(ost);
 		}
 		while (i != _array.end())
 		{
 			ost << ',';
-			(*i++)->toStream(ost);
+			(*i++)->to_stream(ost);
 		}
 		ost << "]";
 	}
@@ -179,12 +180,12 @@ namespace parser
 {
 void skipWhiteSpace(const std::string& str, std::string::const_iterator& i);
 static bool charIsDigit(char c);
-static null_t* parseNull(const std::string& str, std::string::const_iterator& i);
-static string_t* parseString(const std::string& str, std::string::const_iterator& i);
-static number_t* parseNumber(const std::string& str, std::string::const_iterator& i);
-static boolean_t* parseBoolean(const std::string& str, std::string::const_iterator& i);
-static object_t* parseObject(const std::string& str, std::string::const_iterator& i);
-static array_t* parseArray(const std::string& str, std::string::const_iterator& i);
+static null* parseNull(const std::string& str, std::string::const_iterator& i);
+static string* parseString(const std::string& str, std::string::const_iterator& i);
+static number* parseNumber(const std::string& str, std::string::const_iterator& i);
+static boolean* parseBoolean(const std::string& str, std::string::const_iterator& i);
+static object* parseObject(const std::string& str, std::string::const_iterator& i);
+static array* parseArray(const std::string& str, std::string::const_iterator& i);
 static void parseString(const std::string& str, std::string::const_iterator& i, std::string& result, bool& containsEscape);
 
 static bool charIsDigit(char c) { return !!isdigit((unsigned int)c); }
@@ -326,6 +327,7 @@ static value* parseValue(const std::string& str, std::string::const_iterator& i)
 
 	switch (*i)
 	{
+	default:
 	case 'n':
 		return parseNull(str, i);
 	case '"':
@@ -366,7 +368,7 @@ static value* parse(const std::string& str)
 
 std::tuple<json::result_type, value*> parse_new(const std::string& str)
 {
-	std::tuple<json::result_type, object_t*> result(json::result_type::bad, nullptr);
+	std::tuple<json::result_type, object*> result(json::result_type::bad, nullptr);
 
 	auto i = str.begin();
 	json::value* ptrValue = parseValue(str, i);
@@ -382,7 +384,7 @@ std::tuple<json::result_type, value*> parse_new(const std::string& str)
 
 
 
-string_t* parseString(const std::string& str, std::string::const_iterator& i)
+string* parseString(const std::string& str, std::string::const_iterator& i)
 {
 	std::string result;
 	bool containsEscape;
@@ -390,13 +392,13 @@ string_t* parseString(const std::string& str, std::string::const_iterator& i)
 	parseString(str, i, result, containsEscape);
 
 #ifdef USE_SGM_PTR
-	return myScope.newObject<string_t>(result);
+	return myScope.newObject<string>(result);
 #else
-	return new string_t(result);
+	return new string(result);
 #endif
 }
 
-number_t* parseNumber(const std::string& str, std::string::const_iterator& i)
+number* parseNumber(const std::string& str, std::string::const_iterator& i)
 {
 
 	std::string::const_iterator begin = i;
@@ -441,13 +443,13 @@ number_t* parseNumber(const std::string& str, std::string::const_iterator& i)
 	}
 
 #ifdef USE_SGM_PTR
-	return myScope.newObject<number_t>(str.substr(begin - str.begin(), i - begin));
+	return myScope.newObject<number>(str.substr(begin - str.begin(), i - begin));
 #else
-	return new number_t(str.substr(begin - str.begin(), i - begin));
+	return new number(str.substr(begin - str.begin(), i - begin));
 #endif
 }
 
-null_t* parseNull(const std::string& str, std::string::const_iterator& i)
+null* parseNull(const std::string& str, std::string::const_iterator& i)
 {
 	static const std::string sNull = std::string("null");
 
@@ -455,17 +457,18 @@ null_t* parseNull(const std::string& str, std::string::const_iterator& i)
 	{
 		i += 4;
 #ifdef USE_SGM_PTR
-		return myScope.newObject<null_t>();
+		return myScope.newObject<null>();
 #else
-		return new null_t;
+		return new null;
 #endif
 	}
 	else
 	{
+		return nullptr;
 	}
 }
 
-boolean_t* parseBoolean(const std::string& str, std::string::const_iterator& i)
+boolean* parseBoolean(const std::string& str, std::string::const_iterator& i)
 {
 	static const std::string sTrue = std::string("true");
 	static const std::string sFalse = std::string("false");
@@ -474,34 +477,35 @@ boolean_t* parseBoolean(const std::string& str, std::string::const_iterator& i)
 	{
 		i += 4;
 #ifdef USE_SGM_PTR
-		return myScope.newObject<boolean_t>(true);
+		return myScope.newObject<boolean>(true);
 #else
-		return new boolean_t(true);
+		return new boolean(true);
 #endif
 	}
 	else if (sFalse.compare(str.substr(i - str.begin(), 5)) == 0)
 	{
 		i += 5;
 #ifdef USE_SGM_PTR
-		return myScope.newObject<boolean_t>(false);
+		return myScope.newObject<boolean>(false);
 #else
-		return new boolean_t(false);
+		return new boolean(false);
 #endif
 	}
 	else
 	{
+		return nullptr;
 	}
 }
 
-object_t* parseObject(const std::string& str, std::string::const_iterator& i)
+object* parseObject(const std::string& str, std::string::const_iterator& i)
 {
 
 	i++;
 
 #ifdef USE_SGM_PTR
-	object_t* ptrObject = myScope.newObject<object_t>();
+	object* ptrObject = myScope.newObject<object>();
 #else
-	object_t* ptrObject = new object_t;
+	object* ptrObject = new object;
 #endif
 
 	while (*i != '}')
@@ -538,12 +542,12 @@ object_t* parseObject(const std::string& str, std::string::const_iterator& i)
 	return ptrObject;
 }
 
-array_t* parseArray(const std::string& str, std::string::const_iterator& i)
+array* parseArray(const std::string& str, std::string::const_iterator& i)
 {
 
 	i++;
 
-	array_t* ptrArray = new array_t;
+	array* ptrArray = new array;
 
 	while (*i != ']')
 	{
@@ -581,42 +585,42 @@ std::ostream& operator<<(std::ostream& ost, value* const& v)
 	}
 	else
 	{
-		v->toStream(ost);
+		v->to_stream(ost);
 	}
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, null_t* const& v)
+std::ostream& operator<<(std::ostream& ost, null* const& v)
 {
 	ost << (value*)v;
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, string_t* const& v)
+std::ostream& operator<<(std::ostream& ost, string* const& v)
 {
 	ost << (value*)v;
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, number_t* const& v)
+std::ostream& operator<<(std::ostream& ost, number* const& v)
 {
 	ost << (value*)v;
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, boolean_t* const& v)
+std::ostream& operator<<(std::ostream& ost, boolean* const& v)
 {
 	ost << (value*)v;
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, object_t* const& v)
+std::ostream& operator<<(std::ostream& ost, object* const& v)
 {
 	ost << (value*)v;
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, array_t* const& v)
+std::ostream& operator<<(std::ostream& ost, array* const& v)
 {
 	ost << (value*)v;
 	return ost;
@@ -653,13 +657,13 @@ int mainjson(void)
 	std::cout << "Parsed value: " << ptrValue << std::endl;
 
 	// dynamicCast to subclass is allowed
-	object_t* ptrObject;
+	object* ptrObject;
 
 #ifdef USE_SGM_PTR
 	ptrValue.dynamicCast(ptrObject);
-	ptrObject = ptrValue.dynamicCast<object_t>();
+	ptrObject = ptrValue.dynamicCast<object>();
 #else
-	ptrObject = dynamic_cast<object_t*>(ptrValue);
+	ptrObject = dynamic_cast<object*>(ptrValue);
 #endif
 
 	std::cout << "ptrValue : " << ptrValue << std::endl;
@@ -670,9 +674,9 @@ int mainjson(void)
 	std::cout << "value of key1: " << ptrKey1Value << std::endl;
 
 #ifdef USE_SGM_PTR
-	array_t* ptrArray = ptrKey1Value.dynamicCast<array_t>();
+	array* ptrArray = ptrKey1Value.dynamicCast<array>();
 #else
-	array_t* ptrArray = dynamic_cast<array_t*>(ptrKey1Value);
+	array* ptrArray = dynamic_cast<array*>(ptrKey1Value);
 #endif
 
 	value* ptrArrayElement = (*ptrArray)[0];
@@ -681,7 +685,7 @@ int mainjson(void)
 	std::cout << "value of element 1 in key1 array: " << (*ptrArray)[1] << std::endl;
 	std::cout << "value of element 2 in key1 array: " << (*ptrArray)[2] << std::endl;
 
-	std::cout << "key1: " << (*dynamic_cast<object_t*>(ptrValue))["key1"] << std::endl;
+	std::cout << "key1: " << (*dynamic_cast<object*>(ptrValue))["key1"] << std::endl;
 
 	///////////
 
@@ -691,30 +695,30 @@ int mainjson(void)
 	ptrValue.dynamicCast(ptrArray);
 	ASSERT(ptrArray.isNull());
 #else
-	ptrArray = dynamic_cast<array_t*>(ptrValue);
+	ptrArray = dynamic_cast<array*>(ptrValue);
 #endif
 
 #ifdef USE_SGM_PTR
-	ptrArray = myScope.newObject<array_t>();
+	ptrArray = myScope.newObject<array>();
 #else
-	ptrArray = new array_t;
+	ptrArray = new array;
 #endif
 
 	// Conversion from subclass to superclass is supported:
 #ifdef USE_SGM_PTR
-	value* px = myScope.newObject<string_t>(std::string("teun"));
+	value* px = myScope.newObject<string>(std::string("teun"));
 #else
-	value* px = new string_t(std::string("teun"));
+	value* px = new string(std::string("teun"));
 #endif
 
 	ptrArray->add(px);
 
 #ifdef USE_SGM_PTR
-	ptrArray->add(myScope.newObject<string_t>(std::string("vuur")));
-	ptrArray->add(myScope.newObject<string_t>(std::string("gijs")));
+	ptrArray->add(myScope.newObject<string>(std::string("vuur")));
+	ptrArray->add(myScope.newObject<string>(std::string("gijs")));
 #else
-	ptrArray->add(new string_t(std::string("vuur")));
-	ptrArray->add(new string_t(std::string("gijs")));
+	ptrArray->add(new string(std::string("vuur")));
+	ptrArray->add(new string(std::string("gijs")));
 #endif
 
 	std::cout << "ptrArray: " << ptrArray << std::endl;
