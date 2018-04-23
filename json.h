@@ -4,8 +4,10 @@
 #include <map>
 #include <string>
 #include <vector>
-
+#include <variant>
 #include <tuple>
+
+using namespace std::literals;
 
 namespace json
 {
@@ -631,12 +633,58 @@ std::ostream& operator<<(std::ostream& ost, array* const& v)
 static const char* small_JSON(void);
 static const char* big_JSON(void);
 
+
+using string_t = std::string;
+using double_t = double;
+using float__t = double;
+using int_t = int64_t;
+using bool_t = bool;
+
+struct null_t
+{
+};
+class value2;
+
+using object_t = std::map<std::string, value2>;
+using object_member_t = object_t::value_type;
+using member_pair_t = std::pair<object_t::key_type, object_t::mapped_type>;
+using array_t = std::vector<value2>;
+
+
+class value2 : public std::variant<null_t, bool_t, string_t, int_t, double_t, object_t, array_t>
+{
+};
+
 int mainjson(void)
 {
 	using namespace json;
+
 	value* ptrValue;
 
 	std::tuple<json::result_type, json::value*> result = json::parser::parse_new("\"a\\\"b\"");
+
+	value2 x;
+
+	std::variant<null_t, bool_t, string_t, int_t, double_t, object_t, array_t> y;
+
+
+	y = "test"s;
+	auto y2 = sizeof(y);
+
+	auto s0 = sizeof(value2);
+	auto s1 = sizeof(json::value);
+	auto s2 = sizeof(json::object);
+	auto s3 = sizeof(json::array);
+	auto s4 = sizeof(json::null);
+	auto s5 = sizeof(json::number);
+	auto s6 = sizeof(json::boolean);
+	auto s7 = sizeof(json::string);
+
+
+	
+
+
+
 
 	ptrValue = json::parser::parse("\"a\\\"b\"");
 
