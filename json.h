@@ -19,15 +19,6 @@ class boolean_t;
 class object_t;
 class array_t;
 
-typedef value* pvalue;
-typedef null_t* pnull_t;
-typedef string_t* pstring_t;
-typedef number_t* pnumber_t;
-typedef boolean_t* pboolean_t;
-typedef object_t* pobject_t;
-typedef array_t* parray_t;
-
-// Parser -> Json
 
 enum result_type
 {
@@ -105,11 +96,11 @@ class object_t : public value
 {
 public:
 	bool isObject(void) const { return true; }
-	void add(const std::string& key, const pvalue& value) { _map[key] = value; }
+	void add(const std::string& key, value* value) { _map[key] = value; }
 	size_t size(void) const { return _map.size(); }
-	const pvalue operator[](const std::string& key)
+	value* operator[](const std::string& key)
 	{
-		std::map<std::string, pvalue>::const_iterator i = _map.find(key);
+		std::map<std::string, value*>::const_iterator i = _map.find(key);
 		if (i != _map.end())
 		{
 			return i->second;
@@ -117,14 +108,14 @@ public:
 		else
 		{
 			// TODO: Should class Ptr have a NULL?
-			static pvalue ptrNull = pvalue();
+			static value* ptrNull = nullptr;
 			return ptrNull;
 		}
 	}
 	virtual void toStream(std::ostream& ost) const
 	{
 		ost << "{";
-		std::map<std::string, pvalue>::const_iterator i = _map.begin();
+		std::map<std::string, value*>::const_iterator i = _map.begin();
 		if (i != _map.end())
 		{
 			ost << '"' << i->first << '"' << ':';
@@ -141,16 +132,16 @@ public:
 	}
 
 private:
-	std::map<std::string, pvalue> _map;
+	std::map<std::string, value*> _map;
 };
 
 class array_t : public value
 {
 public:
 	bool isArray(void) const { return true; }
-	void add(const pvalue& value) { _array.push_back(value); }
+	void add(value* value) { _array.push_back(value); }
 	size_t size(void) const { return _array.size(); }
-	const pvalue& operator[](size_t idx)
+	value* const& operator[](size_t idx)
 	{
 		if (idx < _array.size())
 		{
@@ -159,7 +150,7 @@ public:
 		else
 		{
 			// TODO: Should class Ptr have a NULL?
-			static pvalue ptrNull = pvalue();
+			static value* ptrNull = nullptr;
 			return ptrNull;
 		}
 	}
@@ -167,7 +158,7 @@ public:
 	virtual void toStream(std::ostream& ost) const
 	{
 		ost << "[";
-		std::vector<pvalue>::const_iterator i = _array.begin();
+		std::vector<value*>::const_iterator i = _array.begin();
 		if (i != _array.end())
 		{
 			(*i++)->toStream(ost);
@@ -181,19 +172,19 @@ public:
 	}
 
 private:
-	std::vector<pvalue> _array;
+	std::vector<value*> _array;
 };
 
 namespace parser
 {
 void skipWhiteSpace(const std::string& str, std::string::const_iterator& i);
 static bool charIsDigit(char c);
-static pnull_t parseNull(const std::string& str, std::string::const_iterator& i);
-static pstring_t parseString(const std::string& str, std::string::const_iterator& i);
-static pnumber_t parseNumber(const std::string& str, std::string::const_iterator& i);
-static pboolean_t parseBoolean(const std::string& str, std::string::const_iterator& i);
-static pobject_t parseObject(const std::string& str, std::string::const_iterator& i);
-static parray_t parseArray(const std::string& str, std::string::const_iterator& i);
+static null_t* parseNull(const std::string& str, std::string::const_iterator& i);
+static string_t* parseString(const std::string& str, std::string::const_iterator& i);
+static number_t* parseNumber(const std::string& str, std::string::const_iterator& i);
+static boolean_t* parseBoolean(const std::string& str, std::string::const_iterator& i);
+static object_t* parseObject(const std::string& str, std::string::const_iterator& i);
+static array_t* parseArray(const std::string& str, std::string::const_iterator& i);
 static void parseString(const std::string& str, std::string::const_iterator& i, std::string& result, bool& containsEscape);
 
 static bool charIsDigit(char c) { return !!isdigit((unsigned int)c); }
@@ -329,7 +320,7 @@ void parseString(const std::string& str, std::string::const_iterator& i, std::st
 }
 
 
-static pvalue parseValue(const std::string& str, std::string::const_iterator& i)
+static value* parseValue(const std::string& str, std::string::const_iterator& i)
 {
 	skipWhiteSpace(str, i);
 
@@ -362,11 +353,11 @@ static pvalue parseValue(const std::string& str, std::string::const_iterator& i)
 }
 
 
-static pvalue parse(const std::string& str)
+static value* parse(const std::string& str)
 {
 	std::string::const_iterator i = str.begin();
 
-	pvalue ptrValue = parser::parseValue(str, i);
+	value* ptrValue = parser::parseValue(str, i);
 
 	parser::skipWhiteSpace(str, i);
 
@@ -378,7 +369,7 @@ std::tuple<json::result_type, value*> parse_new(const std::string& str)
 	std::tuple<json::result_type, object_t*> result(json::result_type::bad, nullptr);
 
 	auto i = str.begin();
-	json::pvalue ptrValue = parseValue(str, i);
+	json::value* ptrValue = parseValue(str, i);
 
 	skipWhiteSpace(str, i);
 
@@ -391,7 +382,7 @@ std::tuple<json::result_type, value*> parse_new(const std::string& str)
 
 
 
-pstring_t parseString(const std::string& str, std::string::const_iterator& i)
+string_t* parseString(const std::string& str, std::string::const_iterator& i)
 {
 	std::string result;
 	bool containsEscape;
@@ -405,7 +396,7 @@ pstring_t parseString(const std::string& str, std::string::const_iterator& i)
 #endif
 }
 
-pnumber_t parseNumber(const std::string& str, std::string::const_iterator& i)
+number_t* parseNumber(const std::string& str, std::string::const_iterator& i)
 {
 
 	std::string::const_iterator begin = i;
@@ -456,7 +447,7 @@ pnumber_t parseNumber(const std::string& str, std::string::const_iterator& i)
 #endif
 }
 
-pnull_t parseNull(const std::string& str, std::string::const_iterator& i)
+null_t* parseNull(const std::string& str, std::string::const_iterator& i)
 {
 	static const std::string sNull = std::string("null");
 
@@ -474,7 +465,7 @@ pnull_t parseNull(const std::string& str, std::string::const_iterator& i)
 	}
 }
 
-pboolean_t parseBoolean(const std::string& str, std::string::const_iterator& i)
+boolean_t* parseBoolean(const std::string& str, std::string::const_iterator& i)
 {
 	static const std::string sTrue = std::string("true");
 	static const std::string sFalse = std::string("false");
@@ -502,15 +493,15 @@ pboolean_t parseBoolean(const std::string& str, std::string::const_iterator& i)
 	}
 }
 
-pobject_t parseObject(const std::string& str, std::string::const_iterator& i)
+object_t* parseObject(const std::string& str, std::string::const_iterator& i)
 {
 
 	i++;
 
 #ifdef USE_SGM_PTR
-	pobject_t ptrObject = myScope.newObject<object_t>();
+	object_t* ptrObject = myScope.newObject<object_t>();
 #else
-	pobject_t ptrObject = new object_t;
+	object_t* ptrObject = new object_t;
 #endif
 
 	while (*i != '}')
@@ -547,12 +538,12 @@ pobject_t parseObject(const std::string& str, std::string::const_iterator& i)
 	return ptrObject;
 }
 
-parray_t parseArray(const std::string& str, std::string::const_iterator& i)
+array_t* parseArray(const std::string& str, std::string::const_iterator& i)
 {
 
 	i++;
 
-	parray_t ptrArray = new array_t;
+	array_t* ptrArray = new array_t;
 
 	while (*i != ']')
 	{
@@ -578,7 +569,7 @@ parray_t parseArray(const std::string& str, std::string::const_iterator& i)
 
 }; //namespace parser
 
-std::ostream& operator<<(std::ostream& ost, const pvalue& v)
+std::ostream& operator<<(std::ostream& ost, value* const& v)
 {
 #ifdef USE_SGM_PTR
 	if (v.isNull())
@@ -595,39 +586,39 @@ std::ostream& operator<<(std::ostream& ost, const pvalue& v)
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, const pnull_t& v)
+std::ostream& operator<<(std::ostream& ost, null_t* const& v)
 {
-	ost << (pvalue)v;
+	ost << (value*)v;
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, const pstring_t& v)
+std::ostream& operator<<(std::ostream& ost, string_t* const& v)
 {
-	ost << (pvalue)v;
+	ost << (value*)v;
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, const pnumber_t& v)
+std::ostream& operator<<(std::ostream& ost, number_t* const& v)
 {
-	ost << (pvalue)v;
+	ost << (value*)v;
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, const pboolean_t& v)
+std::ostream& operator<<(std::ostream& ost, boolean_t* const& v)
 {
-	ost << (pvalue)v;
+	ost << (value*)v;
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, const pobject_t& v)
+std::ostream& operator<<(std::ostream& ost, object_t* const& v)
 {
-	ost << (pvalue)v;
+	ost << (value*)v;
 	return ost;
 }
 
-std::ostream& operator<<(std::ostream& ost, const parray_t& v)
+std::ostream& operator<<(std::ostream& ost, array_t* const& v)
 {
-	ost << (pvalue)v;
+	ost << (value*)v;
 	return ost;
 }
 
@@ -639,7 +630,7 @@ static const char* big_JSON(void);
 int mainjson(void)
 {
 	using namespace json;
-	pvalue ptrValue;
+	value* ptrValue;
 
 	std::tuple<json::result_type, json::value*> result = json::parser::parse_new("\"a\\\"b\"");
 
@@ -647,7 +638,7 @@ int mainjson(void)
 
 	std::cout << ptrValue << std::endl;
 
-	//	pvalue pv = value::parse( "12345.6E0123 3" );
+	//	value* pv = value::parse( "12345.6E0123 3" );
 	//	std::cout << "pv: " << pv << std::endl;
 	//
 
@@ -662,35 +653,35 @@ int mainjson(void)
 	std::cout << "Parsed value: " << ptrValue << std::endl;
 
 	// dynamicCast to subclass is allowed
-	pobject_t ptrObject;
+	object_t* ptrObject;
 
 #ifdef USE_SGM_PTR
 	ptrValue.dynamicCast(ptrObject);
 	ptrObject = ptrValue.dynamicCast<object_t>();
 #else
-	ptrObject = dynamic_cast<pobject_t>(ptrValue);
+	ptrObject = dynamic_cast<object_t*>(ptrValue);
 #endif
 
 	std::cout << "ptrValue : " << ptrValue << std::endl;
 	std::cout << "ptrObject: " << ptrObject << std::endl;
 
-	pvalue ptrKey1Value = (*ptrObject)["key1"];
+	value* ptrKey1Value = (*ptrObject)["key1"];
 
 	std::cout << "value of key1: " << ptrKey1Value << std::endl;
 
 #ifdef USE_SGM_PTR
-	parray_t ptrArray = ptrKey1Value.dynamicCast<array_t>();
+	array_t* ptrArray = ptrKey1Value.dynamicCast<array_t>();
 #else
-	parray_t ptrArray = dynamic_cast<parray_t>(ptrKey1Value);
+	array_t* ptrArray = dynamic_cast<array_t*>(ptrKey1Value);
 #endif
 
-	pvalue ptrArrayElement = (*ptrArray)[0];
+	value* ptrArrayElement = (*ptrArray)[0];
 
 	std::cout << "value of element 0 in key1 array: " << ptrArrayElement << std::endl;
 	std::cout << "value of element 1 in key1 array: " << (*ptrArray)[1] << std::endl;
 	std::cout << "value of element 2 in key1 array: " << (*ptrArray)[2] << std::endl;
 
-	std::cout << "key1: " << (*dynamic_cast<pobject_t>(ptrValue))["key1"] << std::endl;
+	std::cout << "key1: " << (*dynamic_cast<object_t*>(ptrValue))["key1"] << std::endl;
 
 	///////////
 
@@ -700,7 +691,7 @@ int mainjson(void)
 	ptrValue.dynamicCast(ptrArray);
 	ASSERT(ptrArray.isNull());
 #else
-	ptrArray = dynamic_cast<parray_t>(ptrValue);
+	ptrArray = dynamic_cast<array_t*>(ptrValue);
 #endif
 
 #ifdef USE_SGM_PTR
@@ -711,9 +702,9 @@ int mainjson(void)
 
 	// Conversion from subclass to superclass is supported:
 #ifdef USE_SGM_PTR
-	pvalue px = myScope.newObject<string_t>(std::string("teun"));
+	value* px = myScope.newObject<string_t>(std::string("teun"));
 #else
-	pvalue px = new string_t(std::string("teun"));
+	value* px = new string_t(std::string("teun"));
 #endif
 
 	ptrArray->add(px);
