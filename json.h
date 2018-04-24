@@ -8,8 +8,6 @@
 #include <tuple>
 #include <memory>
 
-using namespace std::literals;
-
 namespace json
 {
 
@@ -22,32 +20,6 @@ class boolean;
 class object;
 class array;
 
-namespace json_
-{ 
-
-class value
-{
-	value(int x) : value_(std::make_unique<int>(x)) {std::cout << "ctor";};
-
-
-
-
-private:
-	std::unique_ptr<int> value_;
-
-	class string_value
-	{
-	}
-
-	class int_value
-	{
-	}
-
-};
-
-};
-
-
 enum result_type
 {
 	bad,
@@ -58,23 +30,16 @@ enum result_type
 class value
 {
 public:
-	virtual bool is_null(void) const { return false; }
+	virtual bool is_null(void) const { return true; }
 	virtual bool is_string(void) const { return false; }
 	virtual bool is_number(void) const { return false; }
 	virtual bool is_boolean(void) const { return false; }
 	virtual bool is_object(void) const { return false; }
 	virtual bool is_array(void) const { return false; }
 
-	virtual void to_stream(std::ostream& ost) const = 0;
+	virtual void to_stream(std::ostream& ost) const { ost << "null"; }
 
 private:
-};
-
-class null : public value
-{
-public:
-	bool is_null(void) const { return true; }
-	virtual void to_stream(std::ostream& ost) const { ost << "null"; }
 };
 
 class string : public value
@@ -681,9 +646,14 @@ class value2 : public std::variant<null_t, bool_t, string_t, int_t, double_t, ob
 {
 };
 
+
+
+
 int mainjson(void)
 {
 	using namespace json;
+
+	json::value val = {10};
 
 	value* ptrValue;
 
