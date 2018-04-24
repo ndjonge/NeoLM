@@ -34,6 +34,15 @@ class value
 
 private:
 	std::unique_ptr<int> value_;
+
+	class string_value
+	{
+	}
+
+	class int_value
+	{
+	}
+
 };
 
 };
