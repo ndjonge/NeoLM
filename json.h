@@ -669,7 +669,7 @@ int mainjson(void)
 	json::val x2{10};
 	json::val x3{10.0};
 	json::val x4{std::string("test")};
-	json::val x5{{"naam"},{10.0}};
+	json::val x5{{"naam"}};
 
 
 	value* ptrValue;
