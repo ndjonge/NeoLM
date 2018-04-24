@@ -27,19 +27,33 @@ enum result_type
 	indeterminate
 };
 
+
+
+
 class value
 {
 public:
-	virtual bool is_null(void) const { return true; }
+	virtual bool is_null(void) const { return false; }
 	virtual bool is_string(void) const { return false; }
 	virtual bool is_number(void) const { return false; }
 	virtual bool is_boolean(void) const { return false; }
 	virtual bool is_object(void) const { return false; }
 	virtual bool is_array(void) const { return false; }
 
-	virtual void to_stream(std::ostream& ost) const { ost << "null"; }
+	virtual void to_stream(std::ostream& ost) const { ost << "null"; };
 
 private:
+};
+
+
+
+
+
+class null : public value
+{
+public:
+	bool is_null(void) const { return true; }
+	virtual void to_stream(std::ostream& ost) const { ost << "null"; }
 };
 
 class string : public value
@@ -49,6 +63,7 @@ public:
 		: _string(str)
 	{
 	}
+
 	bool is_string(void) const { return true; }
 	const std::string& get_string(void) const { return _string; }
 	virtual void to_stream(std::ostream& ost) const { ost << "\"" << _string << "\""; }
@@ -88,6 +103,13 @@ private:
 class object : public value
 {
 public:
+	object() = default;
+
+	object(std::initializer_list<std::pair<std::string, std::string>>()) {};
+	object(std::initializer_list<std::pair<std::string, double>>()) {};
+	object(std::initializer_list<std::pair<std::string, int>>()) {};
+
+
 	bool isObject(void) const { return true; }
 	void add(const std::string& key, value* value) { _map[key] = value; }
 	size_t size(void) const { return _map.size(); }
@@ -167,6 +189,21 @@ public:
 
 private:
 	std::vector<value*> _array;
+};
+
+class val 
+{
+public:
+	explicit val(bool v) : value_(std::make_unique<json::boolean>(std::move(v))) {} ;
+	explicit val(int v) : value_(std::make_unique<json::number>(std::move(std::to_string(v)))) {} ;
+	explicit val(double v) : value_(std::make_unique<json::number>(std::move(std::to_string(v)))) {} ;
+	explicit val(std::string v) : value_(std::make_unique<json::string>(std::move(v))) {} ;
+	//explicit val(std::initializer_list<std::pair<std::string, std::string>>()) : value_(std::make_unique<json::array>(std::move(v))) {} ;
+	explicit val(std::initializer_list<std::pair<std::string, std::string>> v) : value_(std::make_unique<json::object>(std::move(v))) {} ;
+	explicit val(std::initializer_list<std::pair<std::string, int>> v) : value_(std::make_unique<json::object>(std::move(v))) {} ;
+	explicit val(std::initializer_list<std::pair<std::string, double>> v) : value_(std::make_unique<json::object>(std::move(v))) {} ;
+
+	std::unique_ptr<value> value_;
 };
 
 namespace parser
@@ -624,50 +661,21 @@ std::ostream& operator<<(std::ostream& ost, array* const& v)
 static const char* small_JSON(void);
 static const char* big_JSON(void);
 
-
-using string_t = std::string;
-using double_t = double;
-using float__t = double;
-using int_t = int64_t;
-using bool_t = bool;
-
-struct null_t
-{
-};
-class value2;
-
-using object_t = std::map<std::string, value2>;
-using object_member_t = object_t::value_type;
-using member_pair_t = std::pair<object_t::key_type, object_t::mapped_type>;
-using array_t = std::vector<value2>;
-
-
-class value2 : public std::variant<null_t, bool_t, string_t, int_t, double_t, object_t, array_t>
-{
-};
-
-
-
-
 int mainjson(void)
 {
 	using namespace json;
 
-	json::value val = {10};
+	json::val x1{true};
+	json::val x2{10};
+	json::val x3{10.0};
+	json::val x4{std::string("test")};
+	json::val x5{{"naam"},{10.0}};
+
 
 	value* ptrValue;
 
 	std::tuple<json::result_type, json::value*> result = json::parser::parse_new("\"a\\\"b\"");
 
-	value2 x;
-
-	std::variant<null_t, bool_t, string_t, int_t, double_t, object_t, array_t> y;
-
-
-	y = "test"s;
-	auto y2 = sizeof(y);
-
-	auto s0 = sizeof(value2);
 	auto s1 = sizeof(json::value);
 	auto s2 = sizeof(json::object);
 	auto s3 = sizeof(json::array);
