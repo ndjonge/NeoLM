@@ -6,6 +6,7 @@
 #include <vector>
 #include <variant>
 #include <tuple>
+#include <memory>
 
 using namespace std::literals;
 
@@ -20,6 +21,22 @@ class number;
 class boolean;
 class object;
 class array;
+
+namespace json_
+{ 
+
+class value
+{
+	value(int x) : value_(std::make_unique<int>(x)) {std::cout << "ctor";};
+
+
+
+
+private:
+	std::unique_ptr<int> value_;
+};
+
+};
 
 
 enum result_type
