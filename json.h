@@ -9,7 +9,7 @@
 
 using namespace std::literals;
 
-namespace json
+namespace lazyjson
 {
 
 // Forward declarations:
@@ -368,12 +368,12 @@ static value* parse(const std::string& str)
 	return ptrValue;
 }
 
-std::tuple<json::result_type, value*> parse_new(const std::string& str)
+std::tuple<lazyjson::result_type, value*> parse_new(const std::string& str)
 {
-	std::tuple<json::result_type, object*> result(json::result_type::bad, nullptr);
+	std::tuple<lazyjson::result_type, object*> result(lazyjson::result_type::bad, nullptr);
 
 	auto i = str.begin();
-	json::value* ptrValue = parseValue(str, i);
+	lazyjson::value* ptrValue = parseValue(str, i);
 
 	skipWhiteSpace(str, i);
 
@@ -381,7 +381,7 @@ std::tuple<json::result_type, value*> parse_new(const std::string& str)
 
 
 
-	return std::make_tuple(sucess ? json::result_type::good : json::result_type::bad, ptrValue);
+	return std::make_tuple(sucess ? lazyjson::result_type::good : lazyjson::result_type::bad, ptrValue);
 }
 
 
@@ -634,59 +634,664 @@ static const char* small_JSON(void);
 static const char* big_JSON(void);
 
 
-using string_t = std::string;
-using double_t = double;
-using float__t = double;
-using int_t = int64_t;
-using bool_t = bool;
 
-struct null_t
+namespace json
 {
-};
-class value2;
 
-using object_t = std::map<std::string, value2>;
-using object_member_t = object_t::value_type;
-using member_pair_t = std::pair<object_t::key_type, object_t::mapped_type>;
-using array_t = std::vector<value2>;
+class value;
 
-
-class value2 : public std::variant<null_t, bool_t, string_t, int_t, double_t, object_t, array_t>
+enum type
 {
+	null_type,
+	string_type,
+	boolean_type,
+	number_type,
+	array_type,
+	object_type
 };
+using boolean = bool;
+using number = double;
+using string = std::string;
+using array = std::vector<json::value>;
+using object = std::map<json::string, json::value>;
+
+class value
+{
+public:
+	value() : type_(json::type::null_type) {}
+	~value() {};
+
+	value(const char* char_value) : type_(json::type::string_type), string_value(std::make_unique<json::string>(char_value)) {}
+	value(const std::string& string_value) : type_(json::type::string_type), string_value(std::make_unique<std::string>(string_value))  {}
+
+	value(bool bool_value) : type_(json::type::boolean_type), boolean_value(bool_value) {}
+	value(double number_value) : type_(json::type::number_type), number_value(number_value) {}
+	value(int integer_value) : type_(json::type::number_type), number_value(integer_value) {}
+	value(const json::array& array_value) : type_(json::type::array_type), array_value(std::make_unique<json::array>(array_value)) {}
+	value(const json::object& object_value) : type_(json::type::object_type), object_value(std::make_unique<json::object>(object_value)) {} 
+
+
+	value(json::value&& source) noexcept : 
+		type_(source.type_)
+	{
+		using std::swap;
+
+		switch (type_)
+		{
+			case null_type:
+				break;
+			case string_type:
+				swap(string_value, source.string_value);
+				break;
+			case boolean_type:
+				boolean_value = source.boolean_value;
+				break;
+			case number_type:
+				number_value = source.number_value;
+				break;
+			case array_type:
+				swap(array_value, source.array_value);
+				break;
+			case object_type:
+				swap(object_value, source.object_value);
+				break;
+			default:
+				break;
+		}
+
+		//source.type_ = json::null_type;
+	}
+
+	value(const json::value& source) : 
+		type_(source.type_)
+	{
+		switch (type_)
+		{
+			case null_type:
+				break;
+			case string_type:
+				string_value.release();
+				string_value = std::make_unique<std::string>(*source.string_value);
+				break;
+			case boolean_type:
+				boolean_value = source.boolean_value;
+				break;
+			case number_type:
+				number_value = source.number_value;
+				break;
+			case array_type:
+				array_value.release();
+				array_value = std::make_unique<json::array>(*source.array_value);
+				break;
+			case object_type:
+			{
+				object_value.release();
+				object_value = std::make_unique<json::object>(*source.object_value);
+				break;
+			}
+			default:
+				break;
+		}
+	}
+
+	bool is_null() const { return type_ == json::type::null_type; }
+	bool is_string() const { return type_ == json::type::string_type; }
+	bool is_bool() const { return type_ == json::type::boolean_type; }
+	bool is_number() const { return type_ == json::type::number_type; }
+	bool is_array() const { return type_ == json::type::array_type; }
+	bool is_object() const { return type_ == json::type::object_type; }
+
+	const json::string& as_string() const { return *string_value; }
+	bool as_bool() const  { return boolean_value; }
+	double as_number() const { return number_value; }
+	const json::array& as_array() const { return *array_value; }
+	const json::object& as_object() const { return *object_value; };
+
+	std::size_t count() const {};
+
+	json::value& operator = (const json::value& source)
+	{
+		using std::copy;
+
+		if (source.type_ == type_)
+		{
+			switch (type_)
+			{
+				case null_type:
+					break;
+				case string_type:
+					string_value.reset(new std::string(*source.string_value));
+					break;
+				case boolean_type:
+					boolean_value = source.boolean_value;
+					break;
+				case number_type:
+					number_value = source.number_value;
+					break;
+				case array_type:
+					array_value.reset(new json::array(*source.array_value));
+					break;
+				case object_type:
+				{
+					object_value.reset(nullptr);
+		
+					json::object tmp(*source.object_value);
+					object_value = std::make_unique<json::object>(tmp);
+
+					break;
+				}
+				default:
+					break;
+			}
+		}
+		else
+		{		
+			switch (type_)
+			{
+				case string_type:
+					string_value.release();
+					break;
+				case array_type:
+					array_value.release();
+					break;
+				case object_type:
+					object_value.release();
+					break;
+				default:
+					break;
+			}
+
+
+			switch (type_)
+			{
+				case null_type:
+					break;
+				case string_type:
+					string_value = std::make_unique<std::string>(*source.string_value);
+					break;
+				case boolean_type:
+					boolean_value = source.boolean_value;
+					break;
+				case number_type:
+					number_value = source.number_value;
+					break;
+				case array_type:
+					array_value = std::make_unique<json::array>(*source.array_value);
+					break;
+				case object_type:
+					object_value = std::make_unique<json::object>(*source.object_value);
+					break;
+				default:
+					break;
+			}
+		}
+
+		return *this;
+	}
+
+protected:
+
+private:
+	json::type type_;
+
+	union {
+		bool boolean_value;
+		double number_value;
+
+		std::unique_ptr<json::string> string_value;		 
+		std::unique_ptr<json::array> array_value;		 
+		std::unique_ptr<json::object> object_value;		 
+	};
+};
+
+
+namespace parser
+{
+void skipWhiteSpace(const std::string& str, std::string::const_iterator& i);
+static json::boolean charIsDigit(char c);
+static json::value parseNull(const std::string& str, std::string::const_iterator& i);
+static json::string parseString(const std::string& str, std::string::const_iterator& i);
+static json::number parseNumber(const std::string& str, std::string::const_iterator& i);
+static json::boolean parseBoolean(const std::string& str, std::string::const_iterator& i);
+static json::object parseObject(const std::string& str, std::string::const_iterator& i);
+static json::array parseArray(const std::string& str, std::string::const_iterator& i);
+static void parseString(const std::string& str, std::string::const_iterator& i, std::string& result, bool& containsEscape);
+static bool charIsDigit(char c) { return !!isdigit((unsigned int)c); }
+
+static void expectChar(char c, char expectedChar)
+{
+	if (c != expectedChar)
+	{
+	}
+}
+
+static void expectChar(char c, bool (*fExpectedChars)(char))
+{
+	if (!fExpectedChars(c))
+	{
+	}
+}
+
+void skipWhiteSpace(const std::string& str, std::string::const_iterator& i)
+{
+	while (i != str.end())
+	{
+		switch (*i)
+		{
+		case 0x20:
+		case 0x09:
+		case 0x0A:
+		case 0x0D:
+			i++;
+			break;
+		default:
+			return;
+		}
+	}
+}
+
+void parseString(const std::string& str, std::string::const_iterator& i, std::string& result, bool& containsEscape)
+{
+	result = "";
+	containsEscape = false;
+
+	i++;
+
+	std::string::const_iterator begin = i;
+
+	while (i != str.end() && *i != '"')
+	{
+		switch (*i)
+		{
+		case 0x01:
+		case 0x02:
+		case 0x03:
+		case 0x04:
+		case 0x05:
+		case 0x06:
+		case 0x07:
+		case 0x08:
+		case 0x09:
+		case 0x0a:
+		case 0x0b:
+		case 0x0c:
+		case 0x0d:
+		case 0x0e:
+		case 0x0f:
+		case 0x10:
+		case 0x11:
+		case 0x12:
+		case 0x13:
+		case 0x14:
+		case 0x15:
+		case 0x16:
+		case 0x17:
+		case 0x18:
+		case 0x19:
+		case 0x1a:
+		case 0x1b:
+		case 0x1c:
+		case 0x1d:
+		case 0x1e:
+		case 0x1f:
+
+		case '\\':
+			containsEscape = true;
+			result.append(begin, i);
+			i++;
+			switch (*i)
+			{
+			// Escapes: ", \, /, b, f, n, r, t, uXXXX
+			case '"':
+				result.append("\"", 1);
+				break;
+			case '\\':
+				result.append("\\", 1);
+				break;
+			case '/':
+				result.append("/", 1);
+				break;
+			case 'b':
+				result.append("\b", 1);
+				break;
+			case 'f':
+				result.append("\f", 1);
+				break;
+			case 'n':
+				result.append("\n", 1);
+				break;
+			case 'r':
+				result.append("\r", 1);
+				break;
+			case 't':
+				result.append("\t", 1);
+				break;
+
+			case 'u':
+
+			default:
+				break;
+			}
+			i++;
+			begin = i;
+			break;
+		default:
+			i++;
+			break;
+		}
+	}
+
+	result.append(begin, i);
+
+	expectChar(*i, '"');
+
+	i++;
+}
+
+
+static json::value parseValue(const std::string& str, std::string::const_iterator& i)
+{
+	skipWhiteSpace(str, i);
+
+	switch (*i)
+	{
+	default:
+	case 'n':
+		return parseNull(str, i);
+	case '"':
+		return parseString(str, i);
+	case '{':
+		return parseObject(str, i);
+	case '[':
+		return parseArray(str, i);
+	case '-':
+	case '0':
+	case '1':
+	case '2':
+	case '3':
+	case '4':
+	case '5':
+	case '6':
+	case '7':
+	case '8':
+	case '9':
+		return parseNumber(str, i);
+	case 'f':
+	case 't':
+		return parseBoolean(str, i);
+	}
+}
+
+
+static json::value parse(const std::string& str)
+{
+	std::string::const_iterator i = str.begin();
+	value rval = parser::parseValue(str, i);
+
+
+
+	parser::skipWhiteSpace(str, i);
+
+	return rval;
+}
+
+/*
+std::tuple<lazyjson::result_type, value> parse_new(const std::string& str)
+{
+	std::tuple<lazyjson::result_type, object*> result(lazyjson::result_type::bad, nullptr);
+
+	auto i = str.begin();
+	value rval = parseValue(str, i);
+
+	skipWhiteSpace(str, i);
+
+	bool sucess = (ptrValue != nullptr) && !(i != str.end());
+
+
+
+	return std::make_tuple(sucess ? lazyjson::result_type::good : lazyjson::result_type::bad, ptrValue);
+}*/
+
+
+
+json::string parseString(const std::string& str, std::string::const_iterator& i)
+{
+	json::string result;
+	bool containsEscape;
+
+	parseString(str, i, result, containsEscape);
+
+	return result;
+}
+
+json::number parseNumber(const std::string& str, std::string::const_iterator& i)
+{
+	std::string::const_iterator begin = i;
+
+	if (*i == '-') i++;
+
+	if (*i == '0')
+	{
+		i++;
+	}
+	else
+	{
+		expectChar(*i, charIsDigit);
+		do
+		{
+			i++;
+		} while (i != str.end() && charIsDigit(*i));
+	}
+
+	if (*i == '.')
+	{
+		i++;
+		expectChar(*i, charIsDigit);
+		do
+		{
+			i++;
+		} while (i != str.end() && charIsDigit(*i));
+	}
+
+	if (i != str.end() && (*i == 'e' || *i == 'E'))
+	{
+		i++;
+		if (i != str.end() && (*i == '-' || *i == '+'))
+		{
+			i++;
+		}
+		expectChar(*i, charIsDigit);
+		do
+		{
+			i++;
+		} while (i != str.end() && charIsDigit(*i));
+	}
+
+	return number(std::stod(str.substr(begin - str.begin(), i - begin)));
+}
+
+json::value parseNull(const std::string& str, std::string::const_iterator& i)
+{
+	json::value rval;
+
+	static const std::string sNull = std::string("null");
+
+	if (sNull.compare(str.substr(i - str.begin(), 4)) == 0)
+	{
+		i += 4;
+		return rval;
+	}
+	else
+	{
+		return nullptr;
+	}
+}
+
+json::boolean parseBoolean(const std::string& str, std::string::const_iterator& i)
+{
+	json::boolean rval(true);
+
+	static const std::string sTrue = std::string("true");
+	static const std::string sFalse = std::string("false");
+
+	if (sTrue.compare(str.substr(i - str.begin(), 4)) == 0)
+	{
+		i += 4;
+		rval = true;
+	}
+	else if (sFalse.compare(str.substr(i - str.begin(), 5)) == 0)
+	{
+		i += 5;
+		rval = false;
+	}
+	else
+	{
+		// parse error.
+		//return nullptr;
+	}
+
+	return rval;
+}
+
+json::object parseObject(const std::string& str, std::string::const_iterator& i)
+{
+	json::object rval;
+
+	i++;
+
+	while (*i != '}')
+	{
+
+		std::string key;
+		bool containsEscape;
+
+		skipWhiteSpace(str, i);
+
+		parseString(str, i, key, containsEscape);
+
+		skipWhiteSpace(str, i);
+
+		expectChar(*i, ':');
+		i++;
+
+		rval.insert(std::pair<std::string, json::value>(key, parseValue(str, i)));
+
+		skipWhiteSpace(str, i);
+
+		if (*i == ',')
+		{
+			i++;
+		}
+		else
+		{
+			expectChar(*i, '}');
+		}
+	}
+
+	i++;
+
+	return rval;
+}
+
+json::array parseArray(const std::string& str, std::string::const_iterator& i)
+{
+	array rval;
+	i++;
+
+	while (*i != ']')
+	{
+		rval.emplace_back(parseValue(str, i));
+
+		skipWhiteSpace(str, i);
+
+		if (*i == ',')
+		{
+			i++;
+		}
+		else
+		{
+			expectChar(*i, ']');
+		}
+	}
+
+	i++;
+
+	return rval;
+}
+} // namespace parser
+
+
+} // namespace json
+
+
 
 int mainjson(void)
 {
-	using namespace json;
+	json::value value0;
+	json::value value1{10.0};
+	json::value value2{"aaap"};
+	json::value value3{json::array{1,2,3,4,5,6,7,8}};
+	json::value value4{
+		json::object{
+			std::make_pair<std::string, json::value>(std::string("naam1"), json::value(1)), 
+			std::make_pair<std::string, json::value>(std::string("naam2"), json::value(20))
+		}
+	};
+
+	auto s8=sizeof(json::value);
+
+	for (auto& i : value3.as_array())
+	{
+		std::cout << i.as_number() << "\n";
+	}
+	
+	for (auto& i : value4.as_object())
+	{
+		std::cout << i.first << "=" << i.second.as_number() << "\n";
+	}
+
+	json::value value5{value4};
+
+	for (auto& i : value5.as_object())
+	{
+		std::cout << i.first << "=" << i.second.as_number() << "\n";
+	}
+
+
+	json::value value6{std::move(value5)};
+
+	for (auto& i : value6.as_object())
+	{
+		std::cout << i.first << "=" << i.second.as_number() << "\n";
+	}
+
+	auto value7 = value4;
+
+	json::string ss1{"test1"};
+	json::string ss2{"test2"};
+
+	std::swap(ss1, ss2);
+
+	auto parse1 = json::parser::parse("\"a\\\"b\"");
+	auto parse2 = json::parser::parse("0.3");
+	auto parse3 = json::parser::parse("{ \"xxx\" : 123 }");
+	auto parse4 = json::parser::parse(big_JSON());
+
+
+
+	using namespace lazyjson;
 
 	value* ptrValue;
 
-	std::tuple<json::result_type, json::value*> result = json::parser::parse_new("\"a\\\"b\"");
+	auto s1 = sizeof(lazyjson::value);
+	auto s2 = sizeof(lazyjson::object);
+	auto s3 = sizeof(lazyjson::array);
+	auto s4 = sizeof(lazyjson::null);
+	auto s5 = sizeof(lazyjson::number);
+	auto s6 = sizeof(lazyjson::boolean);
+	auto s7 = sizeof(lazyjson::string);
 
-	value2 x;
-
-	std::variant<null_t, bool_t, string_t, int_t, double_t, object_t, array_t> y;
-
-
-	y = "test"s;
-	auto y2 = sizeof(y);
-
-	auto s0 = sizeof(value2);
-	auto s1 = sizeof(json::value);
-	auto s2 = sizeof(json::object);
-	auto s3 = sizeof(json::array);
-	auto s4 = sizeof(json::null);
-	auto s5 = sizeof(json::number);
-	auto s6 = sizeof(json::boolean);
-	auto s7 = sizeof(json::string);
-
-
-	
-
-
-
-
-	ptrValue = json::parser::parse("\"a\\\"b\"");
+	ptrValue = lazyjson::parser::parse("\"a\\\"b\"");
 
 	std::cout << ptrValue << std::endl;
 
@@ -696,10 +1301,10 @@ int mainjson(void)
 
 	// return 0;
 
-	json::parser::parse("0.3");
-	json::parser::parse("{ \"xxx\" : 123 }");
+	lazyjson::parser::parse("0.3");
+	lazyjson::parser::parse(big_JSON());
 
-	ptrValue = json::parser::parse(small_JSON());
+	ptrValue = lazyjson::parser::parse(big_JSON());
 
 	std::cout << "JSON doc    : " << small_JSON() << std::endl;
 	std::cout << "Parsed value: " << ptrValue << std::endl;
@@ -779,7 +1384,7 @@ int mainjson(void)
 
 	for (size_t i = 0; i < 10; i++)
 	{
-		ptrValue = json::parser::parse(big_JSON());
+		ptrValue = lazyjson::parser::parse(small_JSON());
 
 		std::cout << "big_JSON: " << ptrValue << std::endl;
 	}
@@ -788,23 +1393,6 @@ int mainjson(void)
 	return 0;
 }
 
-static const char* small_JSON(void)
-{
-	return "{"
-		   "\"key1\":"
-		   "[\"aap\",\"noot\",null],"
-		   "\"key2\":"
-		   "\"string value\","
-		   "\"key3\":"
-		   "{"
-		   "},"
-		   "\"key4\":"
-		   "{\"key4a\":"
-		   "["
-		   "]"
-		   "}"
-		   "}";
-}
 
 static const char* big_JSON(void)
 {
@@ -1131,3 +1719,22 @@ static const char* big_JSON(void)
 		   "  }"
 		   "]";
 }
+
+static const char* small_JSON(void)
+{
+	return "{"
+		   "\"key1\":"
+		   "[\"aap\",\"noot\",null],"
+		   "\"key2\":"
+		   "\"string value\","
+		   "\"key3\":"
+		   "{"
+		   "},"
+		   "\"key4\":"
+		   "{\"key4a\":"
+		   "["
+		   "]"
+		   "}"
+		   "}";
+}
+
