@@ -6,7 +6,6 @@
 #include <vector>
 #include <variant>
 
-#include "json_lazy.h"
 
 static const char* small_JSON(void);
 static const char* big_JSON(void);
@@ -754,7 +753,7 @@ std::stringstream serialize(const json::value& v, std::int16_t indent_depth = 0)
 
 
 
-int mainjson(void)
+int test_json(void)
 {
 	json::value value0;
 	json::value value1{10.0};
@@ -822,118 +821,7 @@ int mainjson(void)
 
 	auto parse6 = json::parser::parse(json::serializer::serialize(parse5, 0).str());
 
-	return 0;
-
-	using namespace lazyjson;
-
-	value* ptrValue;
-
-	auto s1 = sizeof(lazyjson::value);
-	auto s2 = sizeof(lazyjson::object);
-	auto s3 = sizeof(lazyjson::array);
-	auto s4 = sizeof(lazyjson::null);
-	auto s5 = sizeof(lazyjson::number);
-	auto s6 = sizeof(lazyjson::boolean);
-	auto s7 = sizeof(lazyjson::string);
-
-	ptrValue = lazyjson::parser::parse("\"a\\\"b\"");
-
-	std::cout << ptrValue << std::endl;
-
-	//	value* pv = value::parse( "12345.6E0123 3" );
-	//	std::cout << "pv: " << pv << std::endl;
-	//
-
-	// return 0;
-
-	lazyjson::parser::parse("0.3");
-	lazyjson::parser::parse(big_JSON());
-
-	ptrValue = lazyjson::parser::parse(big_JSON());
-
-	std::cout << "JSON doc    : " << small_JSON() << std::endl;
-	std::cout << "Parsed value: " << ptrValue << std::endl;
-
-	// dynamicCast to subclass is allowed
-	object* ptrObject;
-
-#ifdef USE_SGM_PTR
-	ptrValue.dynamicCast(ptrObject);
-	ptrObject = ptrValue.dynamicCast<object>();
-#else
-	ptrObject = dynamic_cast<object*>(ptrValue);
-#endif
-
-	std::cout << "ptrValue : " << ptrValue << std::endl;
-	std::cout << "ptrObject: " << ptrObject << std::endl;
-
-	value* ptrKey1Value = (*ptrObject)["key1"];
-
-	std::cout << "value of key1: " << ptrKey1Value << std::endl;
-
-#ifdef USE_SGM_PTR
-	array* ptrArray = ptrKey1Value.dynamicCast<array>();
-#else
-	array* ptrArray = dynamic_cast<array*>(ptrKey1Value);
-#endif
-
-	value* ptrArrayElement = (*ptrArray)[0];
-
-	std::cout << "value of element 0 in key1 array: " << ptrArrayElement << std::endl;
-	std::cout << "value of element 1 in key1 array: " << (*ptrArray)[1] << std::endl;
-	std::cout << "value of element 2 in key1 array: " << (*ptrArray)[2] << std::endl;
-
-	std::cout << "key1: " << (*dynamic_cast<object*>(ptrValue))["key1"] << std::endl;
-
-	///////////
-
-	// dynamicCast to non-subclass is not allowed and results in NULL
-
-#ifdef USE_SGM_PTR
-	ptrValue.dynamicCast(ptrArray);
-	ASSERT(ptrArray.isNull());
-#else
-	ptrArray = dynamic_cast<array*>(ptrValue);
-#endif
-
-#ifdef USE_SGM_PTR
-	ptrArray = myScope.newObject<array>();
-#else
-	ptrArray = new array;
-#endif
-
-	// Conversion from subclass to superclass is supported:
-#ifdef USE_SGM_PTR
-	value* px = myScope.newObject<string>(std::string("teun"));
-#else
-	value* px = new string(std::string("teun"));
-#endif
-
-	ptrArray->add(px);
-
-#ifdef USE_SGM_PTR
-	ptrArray->add(myScope.newObject<string>(std::string("vuur")));
-	ptrArray->add(myScope.newObject<string>(std::string("gijs")));
-#else
-	ptrArray->add(new string(std::string("vuur")));
-	ptrArray->add(new string(std::string("gijs")));
-#endif
-
-	std::cout << "ptrArray: " << ptrArray << std::endl;
-
-#ifdef USE_SGM_PTR
-	Sgm::Allocater::deleteObject(ptrArray);
-#else
-	delete ptrArray;
-#endif
-
-	for (size_t i = 0; i < 10; i++)
-	{
-		ptrValue = lazyjson::parser::parse(small_JSON());
-
-		std::cout << "big_JSON: " << ptrValue << std::endl;
-	}
-	fprintf(stderr, "done\n");
+	
 
 	return 0;
 }

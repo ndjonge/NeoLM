@@ -64,8 +64,7 @@ private:
 
 int main(int argc, char* argv[])
 {
-	mainjson();
-	exit (0);
+	test_json();
 
 
 	auto buffer_in = "GET /named-users-licenes/99999/ndejonge#query1=1&query2=2 HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
