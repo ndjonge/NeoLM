@@ -9,6 +9,8 @@
 #include <deque>
 #include <thread>
 
+#include "http_basic.h"
+
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/asio/steady_timer.hpp>
@@ -29,13 +31,15 @@ protected:
 
 	std::deque<std::string> write_buffer_;
 	http::session_handler session_handler_;
+	http::api::router<>& router_;
 
 public:
 	connection_handler_base(boost::asio::io_service& service, http::api::router<>& router)
 		: service_(service)
 		, write_strand_(service)
 		, steady_timer_(service)
-		, session_handler_(router)
+		, session_handler_()
+		, router_(router)
 	{
 	}
 
@@ -100,14 +104,14 @@ public:
 				}
 				else
 				{
-					session_handler_.handle_request();
+					session_handler_.handle_request(router_);
 					do_write_header();
 				}
 			}
 			else if (result == http::request_parser::bad)
 			{
 				session_handler_.response().stock_reply(http::status::bad_request);
-				write_buffer_.push_back(session_handler_.response().headers_to_string());
+				write_buffer_.push_back(http::to_string(session_handler_.response()));
 
 				do_write_header();
 			}
@@ -134,7 +138,7 @@ public:
 		}
 		else
 		{
-			session_handler_.handle_request();
+			session_handler_.handle_request(router_);
 			do_write_header();
 		}
 	}
@@ -155,7 +159,7 @@ public:
 			}
 			else
 			{
-				session_handler_.handle_request();
+				session_handler_.handle_request(router_);
 				do_write_header();
 			}
 		}
@@ -220,10 +224,9 @@ public:
 
 	void do_write_header()
 	{
-		printf("reply>\n%s", session_handler_.response().headers_to_string().c_str());
-		printf("%s", session_handler_.response().body().c_str());
+		printf("reply>\n%s", http::to_string(session_handler_.response()).c_str());
 
-		write_buffer_.emplace_back(session_handler_.response().headers_to_string());
+		write_buffer_.emplace_back(http::to_string(session_handler_.response()));
 
 		boost::asio::async_write(
 			socket_base(), boost::asio::buffer(this->write_buffer_.front()),

@@ -84,6 +84,10 @@ T& split(T& result, const typename T::value_type& s, const typename T::value_typ
   while (next != T::value_type::npos);
   return result;
 }
+
+
+
+
 } // namespace util
 
 namespace status
@@ -855,7 +859,11 @@ public:
 
 		response_.stock_reply(http::status::ok);
 
-		if (router_.call(*this))
+		if (router_.serve_static_content(*this))
+		{
+
+		}
+		else if (router_.call(*this))
 		{
 			// route has a valid response (dynamic or static content)
 			if (request_.chunked()) response_.chunked(true);
@@ -879,6 +887,7 @@ public:
 		else
 		{
 			// route has a invalid response
+			response_.stock_reply(http::status::not_found);
 			response_.set("Connection", "close");
 		}
 	}
@@ -1104,6 +1113,9 @@ public:
 	router(const std::string& doc_root)
 		: doc_root_(doc_root){};
 
+	void use(const std::string& path) { static_content_routes.emplace_back("/" + path); }
+
+
 	void on_get(const std::string& route, function_t api_method) { api_router_table["GET"].emplace_back(api::route<>(route, api_method)); };
 	void on_post(const std::string& route, function_t api_method) { api_router_table["POST"].emplace_back(api::route<>(route, api_method)); };
 	void on_head(const std::string& route, function_t api_method) { api_router_table["HEAD"].emplace_back(api::route<>(route, api_method)); };
@@ -1112,6 +1124,17 @@ public:
 	void on_delete(const std::string& route, function_t api_method) { api_router_table["DELETE"].emplace_back(api::route<>(route, api_method)); };
 	void on_patch(const std::string& route, function_t api_method) { api_router_table["PATCH"].emplace_back(api::route<>(route, api_method)); };
 	void on_option(const std::string& route, function_t api_method) { api_router_table["OPTION"].emplace_back(api::route<>(route, api_method)); };
+
+	bool serve_static_content(session_handler_type& session)
+	{
+		auto static_path = std::find(std::begin(this->static_content_routes), std::end(this->static_content_routes), session.request().target());
+		if (static_path != std::end(this->static_content_routes))
+		{
+			return true;
+		}
+		
+		return false;
+	}
 
 	bool call(session_handler_type& session)
 	{
@@ -1136,6 +1159,8 @@ public:
 
 protected:
 	std::string doc_root_;
+
+	std::vector<std::string> static_content_routes;
 
 	std::map<const std::string, std::vector<api::route<>>> api_router_table;
 };
@@ -1220,5 +1245,6 @@ protected:
 };
 
 } // namespace basic
+
 
 } // namespace http

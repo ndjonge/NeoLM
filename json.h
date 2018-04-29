@@ -1,10 +1,12 @@
-//
+#pragma once
 
+#include <memory>
 #include <iostream>
 #include <map>
 #include <string>
 #include <vector>
-#include <variant>
+
+
 
 
 static const char* small_JSON(void);

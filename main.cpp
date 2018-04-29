@@ -3,7 +3,7 @@
 #include <ctime>
 #include <iostream>
 
-#include "http_basic.h"
+#include "http_advanced_server.h"
 #include "json.h"
 
 
@@ -59,14 +59,8 @@ private:
 
 };
 
-}; // namespace neolm
-
-
-int main(int argc, char* argv[])
+void test_basic_server()
 {
-	test_json();
-
-
 	auto buffer_in = "GET /named-users-licenes/99999/ndejonge#query1=1&query2=2 HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
 
 	auto neolm_server = neolm::neolm_api_server();
@@ -88,9 +82,22 @@ int main(int argc, char* argv[])
 }
 
 
-	/*http::request_message request;
+}; // namespace neolm
+
+
+int main(int argc, char* argv[])
+{
+	test_json();
+
+	http::request_message request;
 
 	http::api::router<> neolm_router("C:/Development Libraries/doc_root");
+
+	neolm_router.use("index.html");
+	neolm_router.use("static");
+	neolm_router.use("images");
+	neolm_router.use("styles");
+
 
 	neolm_router.on_get("/users/:id(\\d+)", [](http::session_handler& session, const http::api::params& params)
 	{		
@@ -106,6 +113,13 @@ int main(int argc, char* argv[])
 		return true;
 	});
 
+	neolm_router.on_get("/", [](http::session_handler& session, const http::api::params& params)
+	{
+		session.response().body() = "/";
+
+		return true;
+	});
+
 	
 	http::server<http::api::router<>, http::connection_handler_http, http::connection_handler_https> server(
 		neolm_router,		
@@ -116,41 +130,3 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
-
-int main(void)
-{
-	const char addRequest[] = "{\"jsonrpc\":\"2.0\",\"method\":\"add\",\"id\":0,\"params\":[3,2]}";
-	const char concatRequest[] = "{\"jsonrpc\":\"2.0\",\"method\":\"concat\",\"id\":1,\"params\":[\"Hello, \",\"World!\"]}";
-	const char addArrayRequest[] = "{\"jsonrpc\":\"2.0\",\"method\":\"add_array\",\"id\":2,\"params\":[[1000,2147483647]]}";
-	const char toStructRequest[] = "{\"jsonrpc\":\"2.0\",\"method\":\"to_struct\",\"id\":5,\"params\":[[12,\"foobar\",[12,\"foobar\"]]]}";
-	const char printNotificationRequest[] = "{\"jsonrpc\":\"2.0\",\"method\":\"print_notification\",\"params\":[\"This is just a notification, no response expected!\"]}";
-
-
-	namespace x3 = boost::spirit::x3;
-
-	std::string storage = addRequest;
-
-	std::string::const_iterator iter = storage.begin();
-	std::string::const_iterator iter_end = storage.end();
-
-	json::value o;
-
-	auto p = parse(storage.begin(), storage.end(), json::parser::json, o);
-
-	std::stringstream s;
-	boost::apply_visitor(json::writer(s), o);
-
-	json::rpc::request::call_table_t table;
-
-	json::rpc::request call(table, o);
-
-
-	auto s2 = s.str();
-	std::cout << s2 << std::endl;
-
-	json::value o2;
-	p = parse(s2.begin(), s2.end(), json::parser::json, o2);
-
-	return 0;
-}
-*/
