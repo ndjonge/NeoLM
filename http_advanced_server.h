@@ -188,7 +188,7 @@ public:
 
 					boost::asio::write(socket_base(), boost::asio::buffer(ss.str()));
 
-					if (bytes_in == buffer.size())
+					if (bytes_in != buffer.size())
 						do_write_content_done();
 				}
 				else
@@ -249,7 +249,7 @@ public:
 		}
 		else
 		{
-			// socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both);
+			//socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both);
 		}
 	}
 };

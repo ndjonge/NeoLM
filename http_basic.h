@@ -85,8 +85,28 @@ T& split(T& result, const typename T::value_type& s, const typename T::value_typ
   return result;
 }
 
+template <typename block_container_t = std::array<char, 1024>> bool read_from_disk(const std::string& file_path, const std::function<bool(block_container_t, size_t)>& read)
+{
+	block_container_t buffer;
+	std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
 
+	is.seekg(0, std::ifstream::ios_base::beg);
+	is.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
 
+	std::streamsize bytes_in = is.read(buffer.data(), buffer.size()).gcount();
+
+	bool result = false;
+
+	while (bytes_in > 0)
+	{
+
+		if (!read(buffer, bytes_in)) break;
+
+		bytes_in = is.read(buffer.data(), buffer.size()).gcount();
+	}
+
+	return result;
+}
 
 } // namespace util
 
@@ -375,6 +395,11 @@ public:
 			return false;
 		else
 			return true;
+	}
+
+	void content_type(std::string& content_type)
+	{
+		http::fields::operator[]("Content-Length") = content_type;
 	}
 
 	void content_length(uint64_t const& length) { http::fields::operator[]("Content-Length") = std::to_string(length); }
@@ -856,12 +881,11 @@ public:
 		}
 
 		request_.target() = request_path;
-
-		response_.stock_reply(http::status::ok);
+		response_.stock_reply(http::status::ok, extension);
 
 		if (router_.serve_static_content(*this))
 		{
-
+			response_.set("Connection", "close");
 		}
 		else if (router_.call(*this))
 		{
@@ -957,33 +981,6 @@ private:
 	}
 };
 
-namespace util
-{
-
-template <typename block_container_t = std::array<char, 1024>> bool read_from_disk(const std::string& file_path, const std::function<bool(block_container_t, size_t)>& read)
-{
-	block_container_t buffer;
-	std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
-
-	is.seekg(0, std::ifstream::ios_base::beg);
-	is.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
-
-	std::streamsize bytes_in = is.read(buffer.data(), buffer.size()).gcount();
-
-	bool result = false;
-
-	while (bytes_in > 0)
-	{
-		// printf("bytes_in %d\n", bytes_in);
-		if (!read(buffer, bytes_in)) break;
-
-		bytes_in = is.read(buffer.data(), buffer.size()).gcount();
-	}
-
-	return result;
-}
-
-} // namespace util
 
 namespace api
 {
@@ -1130,6 +1127,9 @@ public:
 		auto static_path = std::find(std::begin(this->static_content_routes), std::end(this->static_content_routes), session.request().target());
 		if (static_path != std::end(this->static_content_routes))
 		{
+			auto file_path = doc_root_ + session.request().target();
+
+			session.request().target() = file_path;
 			return true;
 		}
 		
