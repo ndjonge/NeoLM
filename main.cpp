@@ -110,7 +110,7 @@ int main(int argc, char* argv[])
 
 		printf("get call for product>\n%s\n", session.response().body().c_str());
 
-		session.response().status_ = http::status::ok;
+		session.response().stock_reply(http::status::ok, "application/json");
 
 		return true;
 	});
@@ -124,7 +124,8 @@ int main(int argc, char* argv[])
 
 
 		session.response().body() = s.str();
-		session.response().status_ = http::status::ok;
+		session.response().stock_reply(http::status::ok, "application/text");
+
 
 		return true;
 	});
@@ -142,7 +143,7 @@ int main(int argc, char* argv[])
 
 		products.insert(std::pair<int,std::string>(static_cast<int>(y.as_number()), z.as_string()));
 
-		session.response().status_ = http::status::ok;
+		session.response().stock_reply(http::status::ok, "application/json");
 
 		return true;
 	});

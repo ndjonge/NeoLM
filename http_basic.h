@@ -914,6 +914,7 @@ public:
 			// Route has a valid handler, response body is set.
 			// Check bodys size and set headers.
 			response_.content_length(response_.body().length());
+
 		}
 		else if (router_.serve_static_content(*this))
 		{
