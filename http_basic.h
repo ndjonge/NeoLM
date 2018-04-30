@@ -31,7 +31,7 @@ inline std::uintmax_t file_size(const std::string& path)
 
 	int ret = stat(path.c_str(), &t);
 
-	if (ret != 0)
+	if (ret == 0)
 		return t.st_size;
 	else
 		return 0;
@@ -216,9 +216,17 @@ public:
 
 	inline void set(const std::string& name, const std::string& value)
 	{
-		http::field field_(name, value);
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return f.name == name; });
 
-		fields_.emplace_back(std::move(field_));
+		if (i!= std::end(fields_))
+		{
+			i->value = value;
+		}
+		else
+		{
+			http::field field_(name, value);
+			fields_.emplace_back(std::move(field_));
+		}
 	}
 
 	inline std::vector<fields::value_type>::reverse_iterator new_field()
@@ -430,10 +438,12 @@ public:
 	/// Get a stock reply.
 	void stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
 	{
+		status_ = status;
+
 		http::header<specialization>::status_ = status;
-		if (status != http::status::ok)
+		if (status_ != http::status::ok)
 		{
-			body_ = std::to_string(status);
+			body_ = std::to_string(status_);
 		}
 
 		fields::set("Server", "NeoLM / 0.01 (Windows)");
@@ -881,39 +891,46 @@ public:
 		}
 
 		request_.target() = request_path;
-		response_.stock_reply(http::status::ok, extension);
 
 		if (router_.serve_static_content(*this))
 		{
-			response_.set("Connection", "close");
+			// Static content route.
+			// Check filesize and set headers.
+			auto content_size = fs::file_size(request_.target());
+			response_.content_length(content_size);
+
+			if (content_size == 0)
+			{ 
+ 				response_.stock_reply(http::status::not_found);
+			}
+			else
+			{
+				response_.stock_reply(http::status::ok, extension);
+			}
 		}
 		else if (router_.call(*this))
 		{
-			// route has a valid response (dynamic or static content)
-			if (request_.chunked()) response_.chunked(true);
-
-			if (!response_.body().empty())
-				response_.content_length(response_.body().length());
-			else
-			{
-				response_.content_length(fs::file_size(request_.target()));
-			}
-
-			if (request_.keep_alive() && this->keepalive_count() > 0)
-			{
-				response_.keep_alive(true, this->keepalive_max(), this->keepalive_count()--);
-			}
-			else
-			{
-				response_.keep_alive(false);
-			}
+			// Route has a valid handler, response body is set.
+			// Check bodys size and set headers.
+			response_.content_length(response_.body().length());
 		}
 		else
 		{
 			// route has a invalid response
 			response_.stock_reply(http::status::not_found);
+
+		}
+
+		if ((request_.keep_alive() && this->keepalive_count() > 0) && response_.status_ == http::status::ok)
+		{
+			response_.keep_alive(true, this->keepalive_max(), this->keepalive_count()--);
+		}
+		else
+		{
+			response_.keep_alive(false);
 			response_.set("Connection", "close");
 		}
+
 	}
 
 	int& keepalive_count() { return keepalive_count_; };

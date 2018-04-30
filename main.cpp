@@ -93,6 +93,7 @@ int main(int argc, char* argv[])
 
 	http::api::router<> neolm_router("C:/Development Libraries/doc_root");
 
+	neolm_router.use("favicon.ico");
 	neolm_router.use("index.html");
 	neolm_router.use("static");
 	neolm_router.use("images");
@@ -102,6 +103,7 @@ int main(int argc, char* argv[])
 	neolm_router.on_get("/users/:id(\\d+)", [](http::session_handler& session, const http::api::params& params)
 	{		
 		session.response().body() = "User:" + std::string(params.get("id"));
+		session.response().status_ = http::status::ok;
 
 		return true;
 	});
@@ -109,6 +111,7 @@ int main(int argc, char* argv[])
 	neolm_router.on_get("/users", [](http::session_handler& session, const http::api::params& params)
 	{
 		session.response().body() = "User:";
+		session.response().status_ = http::status::ok;
 
 		return true;
 	});

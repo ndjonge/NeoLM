@@ -226,7 +226,7 @@ public:
 	{
 		printf("reply>\n%s", http::to_string(session_handler_.response()).c_str());
 
-		write_buffer_.emplace_back(http::to_string(session_handler_.response()));
+		write_buffer_.emplace_back(session_handler_.response().header_to_string());
 
 		boost::asio::async_write(
 			socket_base(), boost::asio::buffer(this->write_buffer_.front()),
