@@ -313,6 +313,23 @@ public:
 		this->body_.clear();
 		this->fields_.clear();
 	}
+
+	std::string header_to_string() const
+	{
+		std::stringstream ss;
+
+		ss << method_ << " " << target_ << "\n";
+		
+		for (auto&& field : fields_)
+		{
+			ss << field.name << ":";
+			ss << field.value << "\r\n";
+		}
+
+		ss << "\r\n";
+
+		return ss.str();
+	}
 };
 
 template <> class header<response_specialization> : public fields
@@ -892,12 +909,17 @@ public:
 
 		request_.target() = request_path;
 
-		if (router_.serve_static_content(*this))
+		if (router_.call(*this))
+		{
+			// Route has a valid handler, response body is set.
+			// Check bodys size and set headers.
+			response_.content_length(response_.body().length());
+		}
+		else if (router_.serve_static_content(*this))
 		{
 			// Static content route.
 			// Check filesize and set headers.
 			auto content_size = fs::file_size(request_.target());
-			response_.content_length(content_size);
 
 			if (content_size == 0)
 			{ 
@@ -906,18 +928,14 @@ public:
 			else
 			{
 				response_.stock_reply(http::status::ok, extension);
+				response_.content_length(content_size);
 			}
-		}
-		else if (router_.call(*this))
-		{
-			// Route has a valid handler, response body is set.
-			// Check bodys size and set headers.
-			response_.content_length(response_.body().length());
+
 		}
 		else
 		{
-			// route has a invalid response
-			response_.stock_reply(http::status::not_found);
+			// route not found
+			response_.stock_reply(http::status::not_implemented);
 
 		}
 
@@ -1127,7 +1145,7 @@ public:
 	router(const std::string& doc_root)
 		: doc_root_(doc_root){};
 
-	void use(const std::string& path) { static_content_routes.emplace_back("/" + path); }
+	void use(const std::string& path) { static_content_routes.emplace_back(path); }
 
 
 	void on_get(const std::string& route, function_t api_method) { api_router_table["GET"].emplace_back(api::route<>(route, api_method)); };
@@ -1141,15 +1159,19 @@ public:
 
 	bool serve_static_content(session_handler_type& session)
 	{
-		auto static_path = std::find(std::begin(this->static_content_routes), std::end(this->static_content_routes), session.request().target());
-		if (static_path != std::end(this->static_content_routes))
-		{
-			auto file_path = doc_root_ + session.request().target();
+		//auto static_path = std::find(std::begin(this->static_content_routes), std::end(this->static_content_routes), session.request().target());
 
-			session.request().target() = file_path;
-			return true;
+
+		for (auto static_route : static_content_routes)
+		{
+			if (session.request().target().find(static_route) == 0)
+			{
+				auto file_path = doc_root_ + session.request().target();
+				session.request().target() = file_path;
+
+				return true;
+			}
 		}
-		
 		return false;
 	}
 

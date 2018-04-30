@@ -93,20 +93,10 @@ int main(int argc, char* argv[])
 
 	http::api::router<> neolm_router("C:/Development Libraries/doc_root");
 
-	neolm_router.use("favicon.ico");
-	neolm_router.use("index.html");
-	neolm_router.use("static");
-	neolm_router.use("images");
-	neolm_router.use("styles");
-
-
-	neolm_router.on_get("/users/:id(\\d+)", [](http::session_handler& session, const http::api::params& params)
-	{		
-		session.response().body() = "User:" + std::string(params.get("id"));
-		session.response().status_ = http::status::ok;
-
-		return true;
-	});
+	neolm_router.use("/static/");
+	neolm_router.use("/images/");
+	neolm_router.use("/styles/");
+	neolm_router.use("/");
 
 	neolm_router.on_get("/users", [](http::session_handler& session, const http::api::params& params)
 	{
@@ -116,14 +106,20 @@ int main(int argc, char* argv[])
 		return true;
 	});
 
-	neolm_router.on_get("/", [](http::session_handler& session, const http::api::params& params)
+	neolm_router.on_get("/echo", [](http::session_handler& session, const http::api::params& params)
 	{
-		session.response().body() = "/";
+		std::stringstream s;
+		s << "request:\n";
+		s << "--------\n";
+		s << http::to_string(session.request());
+
+
+		session.response().body() = s.str();
+		session.response().status_ = http::status::ok;
 
 		return true;
 	});
 
-	
 	http::server<http::api::router<>, http::connection_handler_http, http::connection_handler_https> server(
 		neolm_router,		
 		"C:\\Development Libraries\\ssl.crt", 
