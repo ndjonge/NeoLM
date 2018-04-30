@@ -847,8 +847,8 @@ public:
 	session_handler& operator=(const session_handler&) = default;
 
 	explicit session_handler()
-		: keepalive_count_(30)
-		, keepalive_max_(20)
+		: keepalive_count_(5)
+		, keepalive_max_(5)
 	{
 	}
 
@@ -1160,8 +1160,6 @@ public:
 	bool serve_static_content(session_handler_type& session)
 	{
 		//auto static_path = std::find(std::begin(this->static_content_routes), std::end(this->static_content_routes), session.request().target());
-
-
 		for (auto static_route : static_content_routes)
 		{
 			if (session.request().target().find(static_route) == 0)

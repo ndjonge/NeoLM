@@ -127,6 +127,12 @@ public:
 	const json::array& as_array() const { return *array_value; }
 	const json::object& as_object() const { return *object_value; };
 
+	json::string& get_string() { return *string_value; }
+	bool get_bool() { return boolean_value; }
+	double get_number() { return number_value; }
+	json::array& get_array() { return *array_value; }
+	json::object& get_object() { return *object_value; };
+
 	std::size_t count() const {};
 
 	json::value& operator = (const json::value& source)
@@ -407,8 +413,6 @@ static json::value parse(const std::string& str)
 {
 	std::string::const_iterator i = str.begin();
 	value rval = parser::parseValue(str, i);
-
-
 
 	parser::skipWhiteSpace(str, i);
 

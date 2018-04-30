@@ -92,7 +92,7 @@ public:
 
 			if (result == http::request_parser::good)
 			{
-				this->cancel_timeout();
+				//this->cancel_timeout();
 				if (session_handler_.request().has_content_lenght())
 				{
 					this->session_handler_.request().body() += std::string(boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_end(in_packet_.data()));
@@ -150,8 +150,6 @@ public:
 			auto b = std::string(boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_begin(in_packet_.data()) + bytes_transferred);
 			this->session_handler_.request().body() += b;
 			in_packet_.consume(bytes_transferred);
-
-			printf("\n[%s]\n", b.c_str());
 
 			if (this->session_handler_.request().body().length() < this->session_handler_.request().content_length())
 			{
@@ -224,8 +222,6 @@ public:
 
 	void do_write_header()
 	{
-		printf("reply>\n%s", http::to_string(session_handler_.response()).c_str());
-
 		write_buffer_.emplace_back(session_handler_.response().header_to_string());
 
 		boost::asio::async_write(

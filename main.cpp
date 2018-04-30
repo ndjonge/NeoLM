@@ -74,7 +74,6 @@ void test_basic_server()
 		auto response = neolm_server.handle_session(session);		
 
 		std::string data = http::to_string(response);
-
 		printf("%s\n", data.c_str());
 	}
 
@@ -90,17 +89,27 @@ int main(int argc, char* argv[])
 	test_json();
 
 	http::request_message request;
-
 	http::api::router<> neolm_router("C:/Development Libraries/doc_root");
+	std::map<int, std::string> products;
 
 	neolm_router.use("/static/");
 	neolm_router.use("/images/");
 	neolm_router.use("/styles/");
 	neolm_router.use("/");
 
-	neolm_router.on_get("/users", [](http::session_handler& session, const http::api::params& params)
+	neolm_router.on_get("/products", [&products](http::session_handler& session, const http::api::params& params)
 	{
-		session.response().body() = "User:";
+		json::value result{json::array{}};
+
+		for (auto p : products)
+		{
+			result.get_array().push_back(json::object{std::pair<json::string, json::number>{json::string(p.second), json::number(p.first)}});
+		}
+
+		session.response().body() = json::serializer::serialize(result, 1).str();
+
+		printf("get call for product>\n%s\n", session.response().body().c_str());
+
 		session.response().status_ = http::status::ok;
 
 		return true;
@@ -119,6 +128,25 @@ int main(int argc, char* argv[])
 
 		return true;
 	});
+
+	neolm_router.on_post("/products", [&products](http::session_handler& session, const http::api::params& params)
+	{
+		json::value new_product = json::parser::parse(session.request().body());
+
+		auto x = new_product.as_object();
+
+		auto y = x["id"];
+		auto z = x["name"];
+
+		printf("post call for product> %d %s\n", static_cast<int>(y.as_number()), z.as_string().c_str());
+
+		products.insert(std::pair<int,std::string>(static_cast<int>(y.as_number()), z.as_string()));
+
+		session.response().status_ = http::status::ok;
+
+		return true;
+	});
+
 
 	http::server<http::api::router<>, http::connection_handler_http, http::connection_handler_https> server(
 		neolm_router,		
