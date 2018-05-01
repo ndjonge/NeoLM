@@ -38,7 +38,8 @@ class value
 {
 public:
 	value() : type_(json::type::null_type) {}
-	~value() {};
+	~value() {
+	};
 
 	value(const char* char_value) : type_(json::type::string_type), string_value(std::make_unique<json::string>(char_value)) {}
 	value(const std::string& string_value) : type_(json::type::string_type), string_value(std::make_unique<std::string>(string_value))  {}
@@ -773,6 +774,18 @@ int test_json(void)
 			std::make_pair<std::string, json::value>(std::string("naam4"), json::value(21)),
 			std::make_pair<std::string, json::value>(std::string("array1"), json::value{json::array{1,2,3,4,5,6,7,8}})
 	}};
+
+	{
+		json::value value9{
+			json::object{
+				std::make_pair<std::string, json::value>(std::string("naam1"), json::value(1)), 
+				std::make_pair<std::string, json::value>(std::string("naam2"), json::value(20)),
+				std::make_pair<std::string, json::value>(std::string("naam3"), json::value(22)),
+				std::make_pair<std::string, json::value>(std::string("naam4"), json::value(21)),
+				std::make_pair<std::string, json::value>(std::string("array1"), json::value{json::array{1,2,3,4,5,6,7,8}})
+	}};
+
+	}
 
 
 	auto s8=sizeof(json::value);

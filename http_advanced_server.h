@@ -49,6 +49,8 @@ public:
 	void operator==(connection_handler_base const&) = delete;
 
 	socket_t& socket_base() { return static_cast<connection_handler_derived*>(this)->socket(); };
+	std::string remote_address_base() { return static_cast<connection_handler_derived*>(this)->remote_address(); };
+
 
 	void stop() {}
 
@@ -93,6 +95,8 @@ public:
 			if (result == http::request_parser::good)
 			{
 				//this->cancel_timeout();
+				session_handler_.request()["Remote-Adress"] = this->remote_address_base();
+
 				if (session_handler_.request().has_content_lenght())
 				{
 					this->session_handler_.request().body() += std::string(boost::asio::buffers_begin(in_packet_.data()), boost::asio::buffers_end(in_packet_.data()));
@@ -263,6 +267,8 @@ public:
 
 	boost::asio::ssl::stream<boost::asio::ip::tcp::socket>& socket() { return socket_; };
 
+	std::string remote_address() { return socket_.lowest_layer().remote_endpoint().address().to_string(); }
+	
 	void start()
 	{
 
@@ -293,6 +299,8 @@ public:
 	}
 
 	boost::asio::ip::tcp::socket& socket() { return socket_; }
+	
+	std::string remote_address() { return socket_.remote_endpoint().address().to_string(); }
 
 	void start()
 	{

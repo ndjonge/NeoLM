@@ -97,6 +97,25 @@ int main(int argc, char* argv[])
 	neolm_router.use("/styles/");
 	neolm_router.use("/");
 
+	neolm_router.use("/", [&products](http::session_handler& session, const http::api::params& params)
+	{
+
+		std::cout 
+			<< "127.0.0.1"
+			<< " - \"" 
+			<< session.request().method()
+			<< " "
+			<< session.request().target()
+			<< " " 
+			<< "HTTP " << std::to_string(session.request().version())
+			<< "\" - \""
+			<< session.request()["User-Agent"] 
+			<< "\"\n";
+		
+		return true;
+	});
+
+
 	neolm_router.on_get("/products", [&products](http::session_handler& session, const http::api::params& params)
 	{
 		json::value result{json::array{}};

@@ -909,14 +909,27 @@ public:
 
 		request_.target() = request_path;
 
-		if (router_.call(*this))
+		bool proceed = false;
+
+		if (router_.call_middleware(*this))
+		{
+			proceed = true;
+		}
+		else
+		{
+			proceed = false;
+
+			response_.stock_reply(http::status::bad_request);
+		}
+
+		if (proceed && router_.call_route(*this))
 		{
 			// Route has a valid handler, response body is set.
 			// Check bodys size and set headers.
 			response_.content_length(response_.body().length());
 
 		}
-		else if (router_.serve_static_content(*this))
+		else if (proceed && router_.serve_static_content(*this))
 		{
 			// Static content route.
 			// Check filesize and set headers.
@@ -937,8 +950,8 @@ public:
 		{
 			// route not found
 			response_.stock_reply(http::status::not_implemented);
-
 		}
+
 
 		if ((request_.keep_alive() && this->keepalive_count() > 0) && response_.status_ == http::status::ok)
 		{
@@ -1046,19 +1059,21 @@ private:
 }; // < class Params
 
 using session_handler_type = http::session_handler;
-using function_type = std::function<bool(session_handler_type& session, const http::api::params& params)>;
 
-template <class function_t = function_type> class route
+using route_function_t = std::function<bool(session_handler_type& session, const http::api::params& params)>;
+using middleware_function_t = std::function<bool(session_handler_type& session, const http::api::params& params)>;
+
+template <typename R = route_function_t> class route
 {
 public:
-	route(const std::string& path, function_t endpoint)
+	route(const std::string& path, R endpoint)
 		: path_(path)
 		, endpoint_(endpoint)
 	{
 	};
 
 	std::string path_;
-	function_t endpoint_;
+	R endpoint_;
 
 	static bool match(const std::string& route, const std::string& url, params& params)
 	{
@@ -1137,7 +1152,92 @@ public:
 
 };
 
-template <typename function_t = function_type> class router
+template <typename M = middleware_function_t> class middelware
+{
+public:
+	middelware(const std::string& path, M endpoint)
+		: path_(path)
+		, endpoint_(endpoint)
+	{
+	};
+
+	std::string path_;
+	M endpoint_;
+
+	static bool match(const std::string& route, const std::string& url, params& params)
+	{
+		// route: /route/:param1/subroute/:param2/subroute
+		// url:   /route/parameter
+
+		if (url.find(route) == 0) // url starts with route
+		{
+			return true;
+		}
+
+		std::vector<std::string> tokens;
+		size_t offset = 0;
+		size_t token = 0;
+		bool ret = false;
+
+
+		// token = /-----
+
+		size_t b = route.find_first_of("/");
+		size_t e = route.find_first_of("/", b+1);
+
+		for (token = 0; b != std::string::npos; token++ )
+		{
+			std::string current_token = route.substr(b, e - b);
+			tokens.emplace_back(std::move(current_token));
+
+			if (e==std::string::npos)
+				break;
+
+			b = route.find_first_of("/", e);
+			e = route.find_first_of("/", b+1);
+		}
+
+		b = url.find_first_of("/");
+		e = url.find_first_of("/", b+1);
+
+
+		bool match = false;
+
+		for (token = 0; ((b != std::string::npos) && (token < tokens.size())); token++)
+		{
+			std::string current_token = url.substr(b, e - b);
+
+			if (tokens[token].size() > 2 && tokens[token][1] == ':')
+			{
+				params.insert(tokens[token].substr(2), current_token.substr(1));
+			}
+			else if(tokens[token] != current_token) 
+			{
+				match = false; 
+				break;
+			}
+			else if (tokens.size()-1 == token)
+			{
+				//still matches, this is the last token 
+				match = true;
+			}
+
+			b = url.find_first_of("/", e);
+			e = url.find_first_of("/", b+1);
+
+			if ((b == std::string::npos) && (tokens.size()-1 == token))
+			{
+				match = true; 
+				break;
+			}
+		}
+		return match;
+	}
+
+};
+
+
+template <typename R = route_function_t, typename M = middleware_function_t> class router
 {
 public:
 	router()
@@ -1148,15 +1248,16 @@ public:
 
 	void use(const std::string& path) { static_content_routes.emplace_back(path); }
 
+	void on_get(const std::string& route, R api_method) { api_router_table["GET"].emplace_back(route, api_method); };
+	void on_post(const std::string& route, R api_method) { api_router_table["POST"].emplace_back(route, api_method); };
+	void on_head(const std::string& route, R api_method) { api_router_table["HEAD"].emplace_back(route, api_method); };
+	void on_put(const std::string& route, R api_method) { api_router_table["PUT"].emplace_back(route, api_method); };
+	void on_update(const std::string& route, R api_method) { api_router_table["UPDATE"].emplace_back(route, api_method); };
+	void on_delete(const std::string& route, R api_method) { api_router_table["DELETE"].emplace_back(route, api_method); };
+	void on_patch(const std::string& route, R api_method) { api_router_table["PATCH"].emplace_back(route, api_method); };
+	void on_option(const std::string& route, R api_method) { api_router_table["OPTION"].emplace_back(route, api_method); };
 
-	void on_get(const std::string& route, function_t api_method) { api_router_table["GET"].emplace_back(api::route<>(route, api_method)); };
-	void on_post(const std::string& route, function_t api_method) { api_router_table["POST"].emplace_back(api::route<>(route, api_method)); };
-	void on_head(const std::string& route, function_t api_method) { api_router_table["HEAD"].emplace_back(api::route<>(route, api_method)); };
-	void on_put(const std::string& route, function_t api_method) { api_router_table["PUT"].emplace_back(api::route<>(route, api_method)); };
-	void on_update(const std::string& route, function_t api_method) { api_router_table["UPDATE"].emplace_back(api::route<>(route, api_method)); };
-	void on_delete(const std::string& route, function_t api_method) { api_router_table["DELETE"].emplace_back(api::route<>(route, api_method)); };
-	void on_patch(const std::string& route, function_t api_method) { api_router_table["PATCH"].emplace_back(api::route<>(route, api_method)); };
-	void on_option(const std::string& route, function_t api_method) { api_router_table["OPTION"].emplace_back(api::route<>(route, api_method)); };
+	void use(const std::string& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
 
 	bool serve_static_content(session_handler_type& session)
 	{
@@ -1174,7 +1275,22 @@ public:
 		return false;
 	}
 
-	bool call(session_handler_type& session)
+	bool call_middleware(session_handler_type& session)
+	{
+		for (auto& middleware : api_middleware_table)
+		{
+			params params_;
+
+			if (api::middelware<>::match(middleware.path_, session.request().target(), params_))
+			{
+				return middleware.endpoint_(session, params_);
+			}
+		}
+
+		return true;
+	}
+
+	bool call_route(session_handler_type& session)
 	{
 		auto routes = api_router_table[session.request().method()];
 
@@ -1197,10 +1313,9 @@ public:
 
 protected:
 	std::string doc_root_;
-
 	std::vector<std::string> static_content_routes;
-
-	std::map<const std::string, std::vector<api::route<>>> api_router_table;
+	std::map<const std::string, std::vector<api::route<route_function_t>>> api_router_table;
+	std::vector<api::middelware<middleware_function_t>> api_middleware_table;
 };
 } // namespace api
 
