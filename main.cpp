@@ -86,7 +86,7 @@ void test_basic_server()
 
 int main(int argc, char* argv[])
 {
-	test_json();
+	//test_json();
 
 	http::request_message request;
 	http::api::router<> neolm_router("C:/Development Libraries/doc_root");
@@ -99,9 +99,9 @@ int main(int argc, char* argv[])
 
 	neolm_router.use("/", [&products](http::session_handler& session, const http::api::params& params)
 	{
-
-		std::cout 
-			<< "127.0.0.1"
+		std::stringstream s;
+		s
+			<< "\"" << session.request()["Remote_Addr"] << "\""
 			<< " - \"" 
 			<< session.request().method()
 			<< " "
@@ -111,6 +111,8 @@ int main(int argc, char* argv[])
 			<< "\" - \""
 			<< session.request()["User-Agent"] 
 			<< "\"\n";
+
+		std::cout << s.str();
 		
 		return true;
 	});
@@ -122,7 +124,7 @@ int main(int argc, char* argv[])
 
 		for (auto p : products)
 		{
-			result.get_array().push_back(json::object{std::pair<json::string, json::number>{json::string(p.second), json::number(p.first)}});
+			result.get_array().push_back(json::object{std::pair<json::string, json::number_signed_integer>{json::string(p.second), json::number_signed_integer(p.first)}});
 		}
 
 		session.response().body() = json::serializer::serialize(result, 1).str();
@@ -158,9 +160,13 @@ int main(int argc, char* argv[])
 		auto y = x["id"];
 		auto z = x["name"];
 
-		printf("post call for product> %d %s\n", static_cast<int>(y.as_number()), z.as_string().c_str());
+		auto u = json::get<std::int64_t>(x["id"]);
+		auto t = json::get<std::string>(x["name"]);
 
-		products.insert(std::pair<int,std::string>(static_cast<int>(y.as_number()), z.as_string()));
+
+		printf("post call for product> %d %s\n", static_cast<int>(y.as_number_unsigned_integer()), z.as_string().c_str());
+
+		products.insert(std::pair<int,std::string>(static_cast<int>(y.as_number_unsigned_integer()), z.as_string()));
 
 		session.response().stock_reply(http::status::ok, "application/json");
 

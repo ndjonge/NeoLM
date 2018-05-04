@@ -95,7 +95,7 @@ public:
 			if (result == http::request_parser::good)
 			{
 				//this->cancel_timeout();
-				session_handler_.request()["Remote-Adress"] = this->remote_address_base();
+				session_handler_.request()["Remote_Addr"] = this->remote_address_base();
 
 				if (session_handler_.request().has_content_lenght())
 				{
