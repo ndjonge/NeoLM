@@ -18,6 +18,7 @@ TODO: insert copyrights and MIT license.
 #include <sstream>
 #include <string>
 #include <vector>
+#include <array>
 
 #if defined(_USE_CPP17_STD_FILESYSTEM)
 #include <experimental/filesystem>

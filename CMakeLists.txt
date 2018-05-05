@@ -17,17 +17,19 @@ IF (WIN32)
 #					-DBOOST_ASIO_ENABLE_HANDLER_TRACKING
 					-D_USE_NO_REGEX
 	)
+	set (Boost_USE_STATIC_LIBS ON)
 ELSE()
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     set( BOOST_ROOT "/home/ndjonge/boost_1_64_0" CACHE PATH "Boost library path" )
     set( BOOST_NO_SYSTEM_PATHS on CACHE BOOL "Do not search system for Boost" )
     set( BOOST_INCLUDEDIR "/home/ndjonge/boost_1_64/include")
     set (OPENSSL_ROOT_DIR "~/openssl-dev")
+	set (Boost_USE_STATIC_LIBS OFF)
 ENDIF()
 
 
 set (Boost_USE_MULTITHREADED ON)
-set (Boost_USE_STATIC_LIBS OFF)
+
 set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 set (CMAKE_CXX_EXTENSIONS OFF)
