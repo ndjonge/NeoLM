@@ -16,7 +16,6 @@
 #include <boost/asio/steady_timer.hpp>
 #include <boost/log/trivial.hpp>
 
-#include "http.h"
 
 namespace http
 {
