@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 #include <utility>
-
+#include <cmath>
 
 
 static const char* small_JSON(void);
@@ -90,7 +90,7 @@ public:
 	value(const json::array& array_value) : type_(json::type::array_type), array_value(std::make_unique<json::array>(array_value)) {}
 	value(const json::object& object_value) : type_(json::type::object_type), object_value(std::make_unique<json::object>(object_value)) {} 
 
-	type type() const noexcept {return type_;}
+	type ttype() const noexcept {return type_;}
 
 	value(json::value&& source) noexcept : 
 		type_(source.type_)
@@ -833,7 +833,7 @@ std::stringstream serialize(const json::value& v, std::int16_t indent_depth = 0)
 	std::string const indent_str = serializer::indent(indent_depth);
 	std::string const indent_str1 = serializer::indent(indent_depth1);
 
-	switch (v.type())
+	switch (v.ttype())
 	{
 	case json::null_type:
 			result << "null";
@@ -863,7 +863,7 @@ std::stringstream serialize(const json::value& v, std::int16_t indent_depth = 0)
 
 		case json::number_float_type:
 		{
-			if (isinf(v.as_number()) || isnan(v.as_number()))
+			if (std::isinf(v.as_number()) || std::isnan(v.as_number()))
 				result << "null";
 			else
 			{

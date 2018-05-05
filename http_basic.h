@@ -85,9 +85,9 @@ T& split(T& result, const typename T::value_type& s, const typename T::value_typ
   return result;
 }
 
-template <typename block_container_t = std::array<char, 1024>> bool read_from_disk(const std::string& file_path, const std::function<bool(block_container_t, size_t)>& read)
+bool read_from_disk(const std::string& file_path, const std::function<bool(std::array<char, 8192>&, size_t)>& read)
 {
-	block_container_t buffer;
+    std::array<char, 8192> buffer;
 	std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
 
 	is.seekg(0, std::ifstream::ios_base::beg);

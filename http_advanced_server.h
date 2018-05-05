@@ -57,7 +57,7 @@ public:
 	{
 		steady_timer_.expires_from_now(std::chrono::seconds(session_handler_.keepalive_max()));
 
-		steady_timer_.async_wait([me = shared_from_this()](boost::system::error_code const& ec) {
+		steady_timer_.async_wait([me = this->shared_from_this()](boost::system::error_code const& ec) {
 
 			if (!ec) 
 				me->stop();
@@ -75,7 +75,7 @@ public:
 		// Header
 		boost::asio::async_read_until(
 			this->socket_base(), in_packet_,
-			"\r\n\r\n", [me = shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer) 
+			"\r\n\r\n", [me = this->shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer) 
 		{ 
 			me->do_read_header_done(ec, bytes_xfer);
 		});
@@ -134,7 +134,7 @@ public:
 		if (this->session_handler_.request().body().length() <= this->session_handler_.request().content_length())
 		{
 			boost::asio::async_read(
-				this->socket_base(), in_packet_, boost::asio::transfer_at_least(1), [me = shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer)
+				this->socket_base(), in_packet_, boost::asio::transfer_at_least(1), [me = this->shared_from_this()](boost::system::error_code const& ec, std::size_t bytes_xfer)
 			{
 				me->do_read_body_done(ec, bytes_xfer);
 			});
@@ -178,8 +178,8 @@ public:
 		else
 		{
 
-			auto result = http::util::read_from_disk<std::array<char, 16384>>(
-				session_handler_.request().target(), [this, chunked = session_handler_.response().chunked()](std::array<char, 16384> & buffer, size_t bytes_in)
+			auto result = http::util::read_from_disk(
+				session_handler_.request().target(), [this, chunked = session_handler_.response().chunked()](std::array<char, 8192> & buffer, size_t bytes_in)
 			{
 				std::stringstream ss;
 
@@ -229,7 +229,7 @@ public:
 
 		boost::asio::async_write(
 			socket_base(), boost::asio::buffer(this->write_buffer_.front()),
-			write_strand_.wrap([ this, me = shared_from_this() ](boost::system::error_code ec, std::size_t) {
+			write_strand_.wrap([ this, me = this->shared_from_this() ](boost::system::error_code ec, std::size_t) {
 				me->write_buffer_.pop_front();
 
 				me->do_write_body();
@@ -271,7 +271,7 @@ public:
 	void start()
 	{
 
-		socket_.async_handshake(boost::asio::ssl::stream_base::server, [me = shared_from_this()](boost::system::error_code const& ec) {
+		socket_.async_handshake(boost::asio::ssl::stream_base::server, [me = this->shared_from_this()](boost::system::error_code const& ec) {
 			if (ec)
 			{
 			}

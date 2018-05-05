@@ -18,15 +18,20 @@ IF (WIN32)
 					-D_USE_NO_REGEX
 	)
 ELSE()
-	set (BOOST_ROOT "~/boost")
-	set (OPENSSL_ROOT_DIR "~/openssl-dev")
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    set( BOOST_ROOT "/home/ndjonge/boost_1_64_0" CACHE PATH "Boost library path" )
+    set( BOOST_NO_SYSTEM_PATHS on CACHE BOOL "Do not search system for Boost" )
+    set( BOOST_INCLUDEDIR "/home/ndjonge/boost_1_64/include")
+    set (OPENSSL_ROOT_DIR "~/openssl-dev")
 ENDIF()
 
 
 set (Boost_USE_MULTITHREADED ON)
-set (Boost_USE_STATIC_LIBS ON)
-set (CMAKE_CXX_STANDARD 11)
+set (Boost_USE_STATIC_LIBS OFF)
+set (CMAKE_CXX_STANDARD 14)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
+set (CMAKE_CXX_EXTENSIONS OFF)
+
 
 find_package(Boost 1.64 REQUIRED system thread)
 find_package(OpenSSL REQUIRED)

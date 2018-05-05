@@ -160,7 +160,7 @@ int main(int argc, char* argv[])
 
 		auto o = json::get<json::object>(new_product);
 
-		printf("post call for product> %I64d %s\n", u, t.c_str());
+		printf("post call for product> %ld %s\n", (long)u, t.c_str());
 
 		products.insert(std::pair<std::int64_t,std::string>(u, t));
 
@@ -172,8 +172,8 @@ int main(int argc, char* argv[])
 
 	http::server<http::api::router<>, http::connection_handler_http, http::connection_handler_https> server(
 		neolm_router,		
-		"C:\\Development Libraries\\ssl.crt", 
-		"C:\\Development Libraries\\ssl.key");
+		"ssl.crt", 
+		"ssl.key");
 
 	server.start_server();
 
