@@ -80,17 +80,17 @@ void test_basic_server()
 	neolm_server.close_session(session);
 }
 
-
 }; // namespace neolm
 
 
 int main(int argc, char* argv[])
 {
 	//test_json();
+	neolm::test_basic_server();
 
 	http::request_message request;
 	http::api::router<> neolm_router("C:/Development Libraries/doc_root");
-	std::map<int, std::string> products;
+	std::map<std::int64_t, std::string> products;
 
 	neolm_router.use("/static/");
 	neolm_router.use("/images/");
@@ -107,7 +107,7 @@ int main(int argc, char* argv[])
 			<< " "
 			<< session.request().target()
 			<< " " 
-			<< "HTTP " << std::to_string(session.request().version())
+			<< session.request().version()
 			<< "\" - \""
 			<< session.request()["User-Agent"] 
 			<< "\"\n";
@@ -155,18 +155,14 @@ int main(int argc, char* argv[])
 	{
 		json::value new_product = json::parser::parse(session.request().body());
 
-		auto x = new_product.as_object();
+		auto u = json::get<std::int64_t>(new_product.get_object()["id"]);
+		auto t = json::get<std::string>(new_product.get_object()["name"]);
 
-		auto y = x["id"];
-		auto z = x["name"];
+		auto o = json::get<json::object>(new_product);
 
-		auto u = json::get<std::int64_t>(x["id"]);
-		auto t = json::get<std::string>(x["name"]);
+		printf("post call for product> %I64d %s\n", u, t.c_str());
 
-
-		printf("post call for product> %d %s\n", static_cast<int>(y.as_number_unsigned_integer()), z.as_string().c_str());
-
-		products.insert(std::pair<int,std::string>(static_cast<int>(y.as_number_unsigned_integer()), z.as_string()));
+		products.insert(std::pair<std::int64_t,std::string>(u, t));
 
 		session.response().stock_reply(http::status::ok, "application/json");
 

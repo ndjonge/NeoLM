@@ -293,21 +293,24 @@ public:
 	std::string method_;
 	std::string target_;
 	std::string body_;
+
 	query_params params_;
 
-
-	unsigned int version_;
+	unsigned int version_nr_;
 
 	std::string& method() { return method_; }
 
 	std::string& target() { return target_; }
 
-	unsigned int& version() { return version_; }
+	unsigned int& version_nr() { return version_nr_; }
+
+	std::string version() const { return std::string("HTTP ") + (version_nr_ == 10 ? "1.0" : "1.1"); }
 
 	query_params& query() { return params_; };
 
 	void reset()
 	{
+		this->version_nr_ = 0;
 		this->method_.clear();
 		this->target_.clear();
 		this->body_.clear();
@@ -455,12 +458,10 @@ public:
 	/// Get a stock reply.
 	void stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
 	{
-		status_ = status;
-
 		http::header<specialization>::status_ = status;
-		if (status_ != http::status::ok)
+		if (http::header<specialization>::status_ != http::status::ok)
 		{
-			body_ = std::to_string(status_);
+			body_ = std::to_string(http::header<specialization>::status_);
 		}
 
 		fields::set("Server", "NeoLM / 0.01 (Windows)");
@@ -602,7 +603,7 @@ private:
 		case http_version_slash:
 			if (input == '/')
 			{
-				req.version_ = 0;
+				req.version_nr_ = 0;
 				state_ = http_version_major_start;
 				return indeterminate;
 			}
@@ -613,7 +614,7 @@ private:
 		case http_version_major_start:
 			if (is_digit(input))
 			{
-				req.version_ = (10 * (input - '0'));
+				req.version_nr_ = (10 * (input - '0'));
 				state_ = http_version_major;
 				return indeterminate;
 			}
@@ -629,7 +630,7 @@ private:
 			}
 			else if (is_digit(input))
 			{
-				req.version_ = (10 * (input - '0'));
+				req.version_nr_ = (10 * (input - '0'));
 				return indeterminate;
 			}
 			else
@@ -639,7 +640,7 @@ private:
 		case http_version_minor_start:
 			if (is_digit(input))
 			{
-				req.version_ = req.version() + (input - '0');
+				req.version_nr_ = req.version_nr_ + (input - '0');
 				state_ = http_version_minor;
 				return indeterminate;
 			}
@@ -655,7 +656,7 @@ private:
 			}
 			else if (is_digit(input))
 			{
-				req.version_ = req.version() + (input - '0');
+				req.version_nr_ = req.version_nr_ + (input - '0');
 				return indeterminate;
 			}
 			else

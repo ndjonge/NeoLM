@@ -42,8 +42,35 @@ class value
 {
 public:
 	value() : type_(json::type::null_type) {}
-	~value() {
-	};
+	~value()
+	{
+		switch (type_)
+		{
+			case null_type:
+				break;
+			case string_type:
+				string_value.release();
+				break;
+			case boolean_type:
+				break;
+			case number_unsigned_integer_type:
+				break;
+			case number_signed_integer_type:
+				break;
+			case number_float_type:
+				break;
+			case array_type:
+				array_value.release();
+				break;
+			case object_type:
+			{
+				object_value.release();
+				break;
+			}
+			default:
+				break;
+		}
+	}
 
 	value(const char* char_value) : type_(json::type::string_type), string_value(std::make_unique<json::string>(char_value)) {}
 	value(const std::string& string_value) : type_(json::type::string_type), string_value(std::make_unique<std::string>(string_value))  {}
@@ -312,6 +339,11 @@ template<typename T> auto get(json::value v) -> T&
 		return static_cast<T&>(v.get_string());
 }
 
+template<> auto get(json::value v) -> bool&
+{
+	return v.get_bool();
+}
+
 template<> auto get(json::value v) -> std::uint64_t&
 {
 	return v.get_number_unsigned_integer();
@@ -332,6 +364,16 @@ template<> auto get(json::value v) -> std::string&
 	return v.get_string();
 }
 
+
+template<> auto get(json::value v) -> json::object&
+{
+	return v.get_object();
+}
+
+template<> auto get(json::value v) -> json::array&
+{
+	return v.get_array();
+}
 
 
 namespace parser
