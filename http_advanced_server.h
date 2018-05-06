@@ -319,18 +319,10 @@ template <typename router_t, typename connection_handler_http_t, typename ssl_co
 	using shared_https_connection_handler_http_t = std::shared_ptr<http::connection_handler_https>;
 
 public:
-	server(
-		router_t& router,
-		const std::string& cert_file,
-		const std::string& private_key_file,
-		const std::string& verify_file = std::string(),
-		int thread_count = 10,
-		int keep_alive_count = 5,
-		int keepalive_timeout = 2)
+	server(router_t& router, http::configuration& configuration)
 		: router_(router)
-		, thread_count(thread_count)
-		, keep_alive_count(15)
-		, keepalive_timeout(25)
+		, configuration_(configuration)
+		, thread_count(10)
 		, acceptor_(io_service)
 		, ssl_acceptor_(io_service)
 		, ssl_context(io_service, boost::asio::ssl::context::tlsv12)
@@ -421,6 +413,7 @@ private:
 	boost::asio::ip::tcp::acceptor acceptor_;
 	boost::asio::ip::tcp::acceptor ssl_acceptor_;
 	router_t& router_;
+	http::configuration& configuration_;
 
 	boost::asio::ssl::context ssl_context;
 };

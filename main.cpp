@@ -170,10 +170,11 @@ int main(int argc, char* argv[])
 	});
 
 
-	http::server<http::api::router<>, http::connection_handler_http, http::connection_handler_https> server(
-		neolm_router,		
-		"ssl.crt", 
-		"ssl.key");
+	http::configuration configuration{{"server", "neo_lm 0.0.01"}, {"timeout", "15"}, {"doc_root", "/var/www"}, {"ssl_certificate", "ssl.crt"}, {"ssl_certificate_key", "ssl.key"}};
+
+
+	http::server<http::api::router<>, http::connection_handler_http, http::connection_handler_https> server{
+		neolm_router, configuration};
 
 	server.start_server();
 
