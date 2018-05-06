@@ -327,12 +327,12 @@ public:
 		, ssl_acceptor_(io_service)
 		, ssl_context(io_service, boost::asio::ssl::context::tlsv12)
 	{
-		ssl_context.use_certificate_chain_file(cert_file);
-		ssl_context.use_private_key_file(private_key_file, boost::asio::ssl::context::pem);
+		ssl_context.use_certificate_chain_file(configuration_["ssl_certificate"]);
+		ssl_context.use_private_key_file(configuration_["ssl_certificate_key"], boost::asio::ssl::context::pem);
 
-		if (verify_file.size() > 0)
+		if (configuration_["ssl_certificate_verify"].size() > 0)
 		{
-			ssl_context.load_verify_file(verify_file);
+			ssl_context.load_verify_file(configuration_["ssl_certificate_verify"]);
 			ssl_context.set_verify_mode(boost::asio::ssl::verify_peer | boost::asio::ssl::verify_fail_if_no_peer_cert | boost::asio::ssl::verify_client_once);
 			// set_session_id_context = true;
 		}
