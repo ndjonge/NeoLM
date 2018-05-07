@@ -170,8 +170,17 @@ int main(int argc, char* argv[])
 	});
 
 
-	http::configuration configuration{{"server", "neo_lm 0.0.01"}, {"timeout", "15"}, {"doc_root", "/var/www"}, {"ssl_certificate", "ssl.crt"}, {"ssl_certificate_key", "ssl.key"}};
+	http::configuration configuration{
+		{"server", "http 0.0.1"}, 
+		{"timeout", "11"}, 
+		{"keepalive", "5"}, 
+		{"doc_root", "C:/Development Libraries/doc_root"}, 
+		{"ssl_certificate", "C:/Development Libraries/ssl.crt"}, 
+		{"ssl_certificate_key", "C:/Development Libraries/ssl.key"}
+	};
 
+	auto x = configuration.get<int>("timeout", 6);
+	auto y = configuration.get<std::string>("timeout", "10");
 
 	http::server<http::api::router<>, http::connection_handler_http, http::connection_handler_https> server{
 		neolm_router, configuration};

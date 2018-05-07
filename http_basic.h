@@ -236,8 +236,44 @@ public:
 		return fields_.rbegin();
 	}
 
-	inline std::vector<fields::value_type>::reverse_iterator last_new_field() { return fields_.rbegin(); }
+	//get<int>("variable")
 
+	template <typename T> typename std::enable_if<std::is_integral<T>::value, std::int64_t>::type get(const std::string& name, const T value = T())
+	{
+		T returnvalue = value;
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
+
+		if (i!=std::end(fields_))
+			returnvalue = std::stoi(i->value);
+
+		return static_cast<T>(returnvalue);
+	}
+
+	template <typename T> typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type get(const std::string& name, const T& value = T())
+	{
+		T returnvalue = value;
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
+
+		if (i!=std::end(fields_))
+			returnvalue = i->value;
+
+		return returnvalue;
+	}
+
+	inline std::vector<fields::value_type>::reverse_iterator last_new_field() { return fields_.rbegin(); }
+		
 	inline const std::string& operator[](std::string name) const
 	{
 		static const std::string not_found = "";
