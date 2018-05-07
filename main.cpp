@@ -13,7 +13,7 @@ namespace neolm
 class neolm_api_server : public http::basic::server
 {
 public:
-	neolm_api_server() : http::basic::server{{"server", "neo_lm 0.0.01"}, {"timeout", "15"}, {"doc_root", "/var/www"}}
+	neolm_api_server(http::configuration configuration) : http::basic::server{configuration}
 	{
 		router_.on_get("/", [](http::session_handler& session, const http::api::params& params) {
 			session.response().body() = "index!";
@@ -63,7 +63,17 @@ void test_basic_server()
 {
 	auto buffer_in = "GET /named-users-licenes/99999/ndejonge#query1=1&query2=2 HTTP/1.1\r\nAccept: */*\r\nConnection: Keep-Alive\r\n\r\n";
 
-	auto neolm_server = neolm::neolm_api_server();
+	http::configuration configuration{
+		{"server", "http 0.0.1"}, 
+		{"keepalive_count", "7"}, 
+		{"keepalive_timeout", "9"}, 
+		{"thread_count", "10"},
+		{"doc_root", "C:/Development Libraries/doc_root"}, 
+		{"ssl_certificate", "C:/Development Libraries/ssl.crt"}, 
+		{"ssl_certificate_key", "C:/Development Libraries/ssl.key"}
+	};
+
+	auto neolm_server = neolm::neolm_api_server(configuration);
 
 	auto session = neolm_server.open_session();
 
@@ -172,15 +182,13 @@ int main(int argc, char* argv[])
 
 	http::configuration configuration{
 		{"server", "http 0.0.1"}, 
-		{"timeout", "11"}, 
-		{"keepalive", "5"}, 
+		{"keepalive_count", "7"}, 
+		{"keepalive_timeout", "9"}, 
+		{"thread_count", "10"},
 		{"doc_root", "C:/Development Libraries/doc_root"}, 
 		{"ssl_certificate", "C:/Development Libraries/ssl.crt"}, 
 		{"ssl_certificate_key", "C:/Development Libraries/ssl.key"}
 	};
-
-	auto x = configuration.get<int>("timeout", 6);
-	auto y = configuration.get<std::string>("timeout", "10");
 
 	http::server<http::api::router<>, http::connection_handler_http, http::connection_handler_https> server{
 		neolm_router, configuration};

@@ -33,11 +33,11 @@ protected:
 	http::api::router<>& router_;
 
 public:
-	connection_handler_base(boost::asio::io_service& service, http::api::router<>& router)
+	connection_handler_base(boost::asio::io_service& service, http::api::router<>& router, http::configuration& configuration)
 		: service_(service)
 		, write_strand_(service)
 		, steady_timer_(service)
-		, session_handler_()
+		, session_handler_(configuration)
 		, router_(router)
 	{
 	}
@@ -241,7 +241,7 @@ public:
 		if (session_handler_.response().keep_alive() && 
 			session_handler_.keepalive_count() > 0)
 		{
-			session_handler_.keepalive_count()--;
+			//session_handler_.keepalive_count()--;
 			session_handler_.reset();
 
 			static_cast<connection_handler_derived*>(this)->start();
@@ -257,8 +257,8 @@ class connection_handler_https : public http::connection_handler_base<connection
 {
 
 public:
-	connection_handler_https(boost::asio::io_service& service, http::api::router<>& router, boost::asio::ssl::context& ssl_context)
-		: connection_handler_base(service, router)
+	connection_handler_https(boost::asio::io_service& service, http::api::router<>& router, http::configuration& configuration, boost::asio::ssl::context& ssl_context)
+		: connection_handler_base(service, router, configuration)
 		, ssl_context_(ssl_context)
 		, socket_(service, ssl_context)
 	{
@@ -291,8 +291,8 @@ private:
 class connection_handler_http : public http::connection_handler_base<connection_handler_http, boost::asio::ip::tcp::socket>
 {
 public:
-	connection_handler_http(boost::asio::io_service& service, http::api::router<>& router)
-		: connection_handler_base(service, router)
+	connection_handler_http(boost::asio::io_service& service, http::api::router<>& router, http::configuration& configuration)
+		: connection_handler_base(service, router, configuration)
 		, socket_(service)
 	{
 	}
@@ -322,7 +322,7 @@ public:
 	server(router_t& router, http::configuration& configuration)
 		: router_(router)
 		, configuration_(configuration)
-		, thread_count(10)
+		, thread_count(configuration.get<int>("thread_count", 10))
 		, acceptor_(io_service)
 		, ssl_acceptor_(io_service)
 		, ssl_context(io_service, boost::asio::ssl::context::tlsv12)
@@ -340,8 +340,8 @@ public:
 
 	void start_server()
 	{
-		auto http_handler = std::make_shared<http::connection_handler_http>(io_service, router_);
-		auto https_handler = std::make_shared<http::connection_handler_https>(io_service, router_, ssl_context);
+		auto http_handler = std::make_shared<http::connection_handler_http>(io_service, router_, configuration_);
+		auto https_handler = std::make_shared<http::connection_handler_https>(io_service, router_, configuration_, ssl_context);
 
 		boost::asio::ip::tcp::endpoint http_endpoint(boost::asio::ip::tcp::v4(), 60005);
 		boost::asio::ip::tcp::endpoint https_endpoint(boost::asio::ip::tcp::v4(), 60006);
@@ -383,7 +383,7 @@ private:
 
 		handler->start();
 
-		auto new_handler = std::make_shared<http::connection_handler_http>(io_service, router_);
+		auto new_handler = std::make_shared<http::connection_handler_http>(io_service, router_, configuration_);
 
 		acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error) { this->handle_new_connection(new_handler, error); });
 	}
@@ -397,7 +397,7 @@ private:
 
 		handler->start();
 
-		auto new_handler = std::make_shared<http::connection_handler_https>(io_service, router_, ssl_context);
+		auto new_handler = std::make_shared<http::connection_handler_https>(io_service, router_, configuration_, ssl_context);
 
 		ssl_acceptor_.async_accept(
 			new_handler->socket().lowest_layer(), [this, new_handler](auto error) { this->handle_new_https_connection(new_handler, error); });

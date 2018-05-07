@@ -236,9 +236,24 @@ public:
 		return fields_.rbegin();
 	}
 
-	//get<int>("variable")
+	template <typename T> typename std::enable_if<std::is_same<T, bool>::value, bool>::type get(const std::string& name, const T value = T())
+	{
+		T returnvalue = value;
 
-	template <typename T> typename std::enable_if<std::is_integral<T>::value, std::int64_t>::type get(const std::string& name, const T value = T())
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
+
+		if (i!=std::end(fields_))
+			returnvalue = i->value == "true";
+
+		return static_cast<T>(returnvalue);
+	}
+
+	template <typename T> typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
 	{
 		T returnvalue = value;
 
@@ -501,7 +516,6 @@ public:
 			body_ = std::to_string(http::header<specialization>::status_);
 		}
 
-		fields::set("Server", "NeoLM / 0.01 (Windows)");
 		fields::set("Content-Type", mime_types::extension_to_type(extension));
 	}
 
@@ -884,9 +898,10 @@ public:
 	session_handler(const session_handler&) = default;
 	session_handler& operator=(const session_handler&) = default;
 
-	explicit session_handler()
-		: keepalive_count_(5)
-		, keepalive_max_(5)
+	session_handler(http::configuration& configuration)
+		: configuration_(configuration)
+		, keepalive_count_(configuration.get<int>("keepalive_count", 10))
+		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
 	{
 	}
 
@@ -895,6 +910,8 @@ public:
 	template <typename router_t> void handle_request(router_t& router_)
 	{
 		std::string request_path;
+
+		response_.set("Server", configuration_.get<std::string>("server", "a http server 0.0"));
 
 		if (!url_decode(request_.target(), request_path))
 		{
@@ -1021,7 +1038,7 @@ private:
 	http::request_message request_;
 	http::response_message response_;
 	http::request_parser request_parser_;
-	// http::api::router<>& router_;
+	http::configuration& configuration_;
 
 	int keepalive_count_;
 	int keepalive_max_;
@@ -1386,13 +1403,11 @@ private:
 class server
 {
 public:
-	server(std::initializer_list<http::configuration::value_type> init_list)
+	server(http::configuration& configuration)
 		: router_("")
-		, configuration_(init_list){};
-
-	server(const http::configuration& configuration)
-		: router_("")
-		, configuration_(configuration){};
+		, configuration_(configuration)
+		, session_handler_(configuration)
+	{};
 
 	server(const server&) = default;
 
