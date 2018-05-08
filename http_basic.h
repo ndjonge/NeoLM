@@ -340,24 +340,23 @@ template <message_specializations> class header;
 template <> class header<request_specialization> : public fields
 {
 using query_params=http::fields;
+friend class http::session_handler;
+friend class http::request_parser;
 
-public:
+private:
 	std::string method_;
 	std::string target_;
 	std::string body_;
-
 	query_params params_;
-
 	unsigned int version_nr_;
 
-	std::string& method() { return method_; }
 
-	std::string& target() { return target_; }
-
-	unsigned int& version_nr() { return version_nr_; }
-
-	std::string version() const { return std::string("HTTP ") + (version_nr_ == 10 ? "1.0" : "1.1"); }
-
+public:
+	const std::string& method() const { return method_; }
+	const std::string& target() const { return target_; }
+	const unsigned int& version_nr() const { return version_nr_; }
+	const std::string version() const { return std::string("HTTP ") + (version_nr_ == 10 ? "1.0" : "1.1"); }
+	void target(const std::string& target) { target_ = target; }
 	query_params& query() { return params_; };
 
 	void reset()
@@ -389,14 +388,16 @@ public:
 
 template <> class header<response_specialization> : public fields
 {
-public:
+private:
 	std::string reason_;
 	http::status::status_t status_;
 	unsigned int version_ = 11;
 
-	unsigned int& version() noexcept { return version_; }
-
+public:
+	const unsigned int& version() const noexcept { return version_; }
 	void version(unsigned int value) noexcept { version_ = value; }
+	void status(http::status::status_t status) { status_ = status; }
+	http::status::status_t status() const { return status_; }
 
 	void reset() { this->fields_.clear(); }
 
@@ -510,10 +511,10 @@ public:
 	/// Get a stock reply.
 	void stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
 	{
-		http::header<specialization>::status_ = status;
-		if (http::header<specialization>::status_ != http::status::ok)
+		http::header<specialization>::status(status);
+		if (http::header<specialization>::status() != http::status::ok)
 		{
-			body_ = std::to_string(http::header<specialization>::status_);
+			body_ = std::to_string(http::header<specialization>::status());
 		}
 
 		fields::set("Content-Type", mime_types::extension_to_type(extension));
@@ -578,7 +579,7 @@ private:
 			else
 			{
 				state_ = method;
-				req.method().push_back(input);
+				req.method_.push_back(input);
 				return indeterminate;
 			}
 		case method:
@@ -593,7 +594,7 @@ private:
 			}
 			else
 			{
-				req.method().push_back(input);
+				req.method_.push_back(input);
 				return indeterminate;
 			}
 		case target:
@@ -608,7 +609,7 @@ private:
 			}
 			else
 			{
-				req.target().push_back(input);
+				req.target_.push_back(input);
 				return indeterminate;
 			}
 		case http_version_h:
@@ -962,7 +963,7 @@ public:
 
 		}
 
-		request_.target() = request_path;
+		request_.target_ = request_path;
 
 		bool proceed = false;
 
@@ -1007,10 +1008,11 @@ public:
 			response_.stock_reply(http::status::not_implemented);
 		}
 
-
-		if ((request_.keep_alive() && this->keepalive_count() > 0) && response_.status_ == http::status::ok)
+		// set connection headers in the response.
+		if ((request_.keep_alive() && this->keepalive_count() > 0) && response_.status() == http::status::ok)
 		{
-			response_.keep_alive(true, this->keepalive_max(), this->keepalive_count()--);
+			response_.keep_alive(true, this->keepalive_max(), this->keepalive_count());
+			this->keepalive_count((this->keepalive_count() - 1));
 		}
 		else
 		{
@@ -1020,8 +1022,12 @@ public:
 
 	}
 
-	int& keepalive_count() { return keepalive_count_; };
-	int& keepalive_max() { return keepalive_max_; };
+	void keepalive_count(const int& keepalive_count) { keepalive_count_ = keepalive_count_; };
+	int keepalive_count() const { return keepalive_count_; };
+
+	void keepalive_max(const int& keepalive_max) { keepalive_max_ = keepalive_max; };
+	int keepalive_max() const { return keepalive_max_; };
+
 
 	http::request_parser& request_parser() { return request_parser_; };
 	http::response_message& response() { return response_; };
@@ -1322,7 +1328,7 @@ public:
 			if (session.request().target().find(static_route) == 0)
 			{
 				auto file_path = doc_root_ + session.request().target();
-				session.request().target() = file_path;
+				session.request().target(file_path);
 
 				return true;
 			}
