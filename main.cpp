@@ -81,7 +81,7 @@ void test_basic_server()
 
 	if (neolm_server.parse_session_data(session) == http::request_parser::good)
 	{
-		auto response = neolm_server.handle_session(session);		
+		auto& response = neolm_server.handle_session(session);		
 
 		std::string data = http::to_string(response);
 		printf("%s\n", data.c_str());

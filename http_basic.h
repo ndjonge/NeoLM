@@ -552,7 +552,10 @@ public:
 	request_parser()
 		: state_(method_start){};
 
-	void reset() { state_ = method_start; };
+	void reset() 
+	{ 
+		state_ = method_start; 
+	};
 
 	enum result_type
 	{
@@ -569,10 +572,17 @@ public:
 		{
 			result_type result = consume(req, *begin++);
 
-			if (result == good || result == bad)
+			if (result == good )
 			{
+				state_ = method_start; 
 				return std::make_tuple(result, begin);
 			}
+			else if (result == bad)
+			{
+				state_ = method_start; 
+				return std::make_tuple(result, begin);
+			}
+
 		}
 
 		return std::make_tuple(indeterminate, begin);
