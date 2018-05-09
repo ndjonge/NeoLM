@@ -402,6 +402,7 @@ public:
 
 	void reset() { 
 		this->fields_.clear(); 
+		version_ = 0;
 	}
 
 	std::string header_to_string() const
@@ -1461,6 +1462,8 @@ public:
 	{
 		session_handler_.reset();
 		session->reset();
+
+
 	}
 
 	http::response_message& handle_session(session_data* session)
