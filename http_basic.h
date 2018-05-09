@@ -68,8 +68,9 @@ template <typename T>
 T& split(T& result, const typename T::value_type& s, const typename T::value_type& delimiters, split_opt::empties_t empties = split_opt::empties_ok )
 {
   result.clear();
-  size_t current;
-  size_t next = -1;
+  T::size_type next = T::value_type::npos;
+  auto current = next;
+
   do
   {
     if (empties == split_opt::no_empties)
@@ -346,7 +347,7 @@ friend class http::request_parser;
 private:
 	std::string method_;
 	std::string target_;
-	std::string body_;
+
 	query_params params_;
 	unsigned int version_nr_;
 
@@ -364,7 +365,7 @@ public:
 		this->version_nr_ = 0;
 		this->method_.clear();
 		this->target_.clear();
-		this->body_.clear();
+
 		this->fields_.clear();
 	}
 
@@ -399,7 +400,9 @@ public:
 	void status(http::status::status_t status) { status_ = status; }
 	http::status::status_t status() const { return status_; }
 
-	void reset() { this->fields_.clear(); }
+	void reset() { 
+		this->fields_.clear(); 
+	}
 
 	std::string header_to_string() const
 	{
@@ -435,6 +438,9 @@ const mappings[]
 
 static std::string extension_to_type(const std::string& extension)
 {
+	if (extension.find_first_of("/") != std::string::npos)
+		return extension;
+	else
 	for (mapping m : mappings)
 	{
 		if (m.extension == extension)
@@ -455,6 +461,12 @@ private:
 public:
 	message() = default;
 	message(const message& ) = default;
+
+	void reset()
+	{
+		header<specialization>::reset();
+		this->body_.clear();
+	}
 
 	std::string& body() { return body_; }
 
@@ -1410,7 +1422,7 @@ class server
 {
 public:
 	server(http::configuration& configuration)
-		: router_("")
+		: router_(configuration.get<std::string>("doc_root", "/var/www"))
 		, configuration_(configuration)
 		, session_handler_(configuration)
 	{};
@@ -1453,7 +1465,7 @@ protected:
 	http::session_handler session_handler_;
 
 	http::api::router<> router_;
-	http::configuration configuration_;
+	http::configuration& configuration_;
 };
 
 } // namespace basic

@@ -177,7 +177,6 @@ public:
 		}
 		else
 		{
-
 			auto result = http::util::read_from_disk(
 				session_handler_.request().target(), [this, chunked = session_handler_.response().chunked()](std::array<char, 8192> & buffer, size_t bytes_in)
 			{
