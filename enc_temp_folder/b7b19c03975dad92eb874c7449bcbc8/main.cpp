@@ -183,7 +183,6 @@ public:
 					{
 						int count = 0;
 						{
-							//tcp.port eq 60005
 							std::string headers = response.header_to_string();
 
 							ret = send(client_socket_, &headers[0], static_cast<int>(headers.length()), 0);

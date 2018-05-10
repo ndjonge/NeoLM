@@ -10,10 +10,10 @@ IF (WIN32)
 	set (BOOST_LIBRARYDIR "C:/Development Libraries/boost_1_64_0/lib64-msvc-14.1")
 	set (OPENSSL_ROOT_DIR "C:/Development Libraries/openssl-bld-lib/")
 	link_directories("C:/Development Libraries/boost_1_64_0/lib64-msvc-14.1")
-	add_definitions(-DWINVER=0x502
-                    -D_WIN32_WINNT=0x502
-                    -D_WIN32_WINDOWS=0x502
-                    -D_SETUPAPI_VER=0x502
+	add_definitions(-DWINVER=0x0A00 
+                    -D_WIN32_WINNT=0x0A00 
+                    -D_WIN32_WINDOWS=0x0A00 
+                    -D_SETUPAPI_VER=0x0A00 
 #					-DBOOST_ASIO_ENABLE_HANDLER_TRACKING
 					-D_USE_NO_REGEX
 	)
