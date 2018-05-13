@@ -181,14 +181,13 @@ public:
 
 					if (response.body().empty())
 					{
-						int count = 0;
 						{
 							//tcp.port eq 60005
 							std::string headers = response.header_to_string();
 
 							ret = send(client_socket_, &headers[0], static_cast<int>(headers.length()), 0);
 
-							std::array<char, 8192> file_buffer;
+							std::array<char, 8192 * 8> file_buffer;
 							std::ifstream is(session_handler_.request().target(), std::ios::in | std::ios::binary);
 
 							is.seekg(0, std::ifstream::ios_base::beg);

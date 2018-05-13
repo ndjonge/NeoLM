@@ -377,7 +377,7 @@ public:
 		
 		for (auto&& field : fields_)
 		{
-			ss << field.name << ":";
+			ss << field.name << ": ";
 			ss << field.value << "\r\n";
 		}
 
@@ -413,7 +413,7 @@ public:
 
 		for (auto&& field : fields_)
 		{
-			ss << field.name << ":";
+			ss << field.name << ": ";
 			ss << field.value << "\r\n";
 		}
 
@@ -512,8 +512,8 @@ public:
 	{
 		if (value && count > 0)
 		{
-			fields::set("Connection", "keep-alive");
-			fields::set("Keep-Alive", "timeout=" + std::to_string(timeout) + ", max=" + std::to_string(count));
+			fields::set("Connection", "Keep-Alive");
+			//fields::set("Keep-Alive", "timeout=" + std::to_string(timeout) + ", max=" + std::to_string(count));
 		}
 		else
 		{
