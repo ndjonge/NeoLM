@@ -347,7 +347,6 @@ friend class http::request_parser;
 private:
 	std::string method_;
 	std::string target_;
-
 	query_params params_;
 	unsigned int version_nr_;
 
@@ -358,6 +357,7 @@ public:
 	const unsigned int& version_nr() const { return version_nr_; }
 	const std::string version() const { return std::string("HTTP ") + (version_nr_ == 10 ? "1.0" : "1.1"); }
 	void target(const std::string& target) { target_ = target; }
+
 	query_params& query() { return params_; };
 
 	void reset()
@@ -510,15 +510,15 @@ public:
 
 	void keep_alive(bool value, int timeout = 0, int count = 0)
 	{
-		if (value && count > 0)
+		/*if (value && count >= 0)
 		{
 			fields::set("Connection", "Keep-Alive");
-			//fields::set("Keep-Alive", "timeout=" + std::to_string(timeout) + ", max=" + std::to_string(count));
+			fields::set("Keep-Alive", "timeout=" + std::to_string(timeout) + ", max=" + std::to_string(count));
 		}
 		else
 		{
 			fields::set("Connection", "close");
-		}
+		}*/
 	}
 
 	/// Get a stock reply.
@@ -1032,15 +1032,18 @@ public:
 		}
 
 		// set connection headers in the response.
-		if ((request_.keep_alive() && this->keepalive_count() > 0) && response_.status() == http::status::ok)
+		if ((request_.keep_alive() && this->keepalive_count()-1 > 0) && response_.status() == http::status::ok)
 		{
-			response_.keep_alive(true, this->keepalive_max(), this->keepalive_count());
-			this->keepalive_count((this->keepalive_count() - 1));
+			keepalive_count(keepalive_count() - 1);
+			response_["Connection"] = "Keep-Alive";
+			response_["Keep-Alive"] = 
+				std::string("timeout=") + std::to_string(keepalive_max()) 
+				+ ", max=" + 
+				std::to_string(keepalive_count());	
 		}
 		else
 		{
-			response_.keep_alive(false);
-			response_.set("Connection", "close");
+			response_["Connection"] = "close";
 		}
 
 	}
