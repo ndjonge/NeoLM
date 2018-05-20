@@ -20,7 +20,6 @@ TODO: insert copyrights and MIT license.
 #include <vector>
 #include <array>
 
-
 #if defined(_USE_CPP17_STD_FILESYSTEM)
 #include <experimental/filesystem>
 #endif
@@ -117,6 +116,7 @@ namespace status
 {
 enum status_t
 {
+	not_set = 0,
 	ok = 200,
 	created = 201,
 	accepted = 202,
@@ -492,9 +492,19 @@ public:
 			return true;
 	}
 
-	void content_type(std::string& content_type)
+	void type(const std::string& content_type)
 	{
-		http::fields::operator[]("Content-Length") = content_type;
+		http::fields::operator[]("Content-Type") = mime_types::extension_to_type(content_type);
+	}
+
+	void result(http::status::status_t status)
+	{
+		http::header<specialization>::status(status);
+
+		if (http::header<specialization>::status() != http::status::ok)
+		{
+			body_ += "Error: " + std::to_string(http::header<specialization>::status());
+		}
 	}
 
 	void content_length(uint64_t const& length) { http::fields::operator[]("Content-Length") = std::to_string(length); }
@@ -507,31 +517,6 @@ public:
 			return true;
 		else
 			return false;
-	}
-
-	void keep_alive(bool value, int timeout = 0, int count = 0)
-	{
-		/*if (value && count >= 0)
-		{
-			fields::set("Connection", "Keep-Alive");
-			fields::set("Keep-Alive", "timeout=" + std::to_string(timeout) + ", max=" + std::to_string(count));
-		}
-		else
-		{
-			fields::set("Connection", "close");
-		}*/
-	}
-
-	/// Get a stock reply.
-	void stock_reply(http::status::status_t status, const std::string& extension = "text/plain")
-	{
-		http::header<specialization>::status(status);
-		if (http::header<specialization>::status() != http::status::ok)
-		{
-			body_ = std::to_string(http::header<specialization>::status());
-		}
-
-		fields::set("Content-Type", mime_types::extension_to_type(extension));
 	}
 
 	static std::string to_string(const http::message<specialization>& message)
@@ -935,18 +920,20 @@ public:
 	template <typename router_t> void handle_request(router_t& router_)
 	{
 		std::string request_path;
-
+		response_.type("text");
+		response_.result(http::status::ok);
 		response_.set("Server", configuration_.get<std::string>("server", "a http server 0.0"));
+
 
 		if (!url_decode(request_.target(), request_path))
 		{
-			response_.stock_reply(http::status::bad_request);
+			response_.result(http::status::bad_request);
 			return;
 		}
 
 		if (request_path.empty() || request_path[0] != '/' || request_path.find("..") != std::string::npos)
 		{
-			response_.stock_reply(http::status::bad_request);
+			response_.result(http::status::bad_request);
 			return;
 		}
 
@@ -982,54 +969,47 @@ public:
 
 				request_.query().set(name_value[0], name_value[1]);
 			}
-
-
-
 		}
 
 		request_.target_ = request_path;
 
-		bool proceed = false;
-
 		if (router_.call_middleware(*this))
 		{
-			proceed = true;
 		}
 		else
 		{
-			proceed = false;
-
-			response_.stock_reply(http::status::bad_request);
+			response_.result(http::status::bad_request);
 		}
 
-		if (proceed && router_.call_route(*this))
+		if (response_.body().empty())
 		{
-			// Route has a valid handler, response body is set.
-			// Check bodys size and set headers.
-			response_.content_length(response_.body().length());
-
-		}
-		else if (proceed && router_.serve_static_content(*this))
-		{
-			// Static content route.
-			// Check filesize and set headers.
-			auto content_size = fs::file_size(request_.target());
-
-			if (content_size == 0)
-			{ 
- 				response_.stock_reply(http::status::not_found);
-			}
-			else
+			if (router_.call_route(*this))
 			{
-				response_.stock_reply(http::status::ok, extension);
-				response_.content_length(content_size);
-			}
+				// Route has a valid handler, response body is set.
+				// Check bodys size and set headers.
+				response_.content_length(response_.body().length());
 
+			}
+			else if (router_.serve_static_content(*this))
+			{
+				// Static content route.
+				// Check filesize and set headers.
+				auto content_size = fs::file_size(request_.target());
+
+				if (content_size == 0)
+				{ 
+					response_.result(http::status::not_found);
+				}
+				else
+				{
+					response_.type(extension);
+					response_.content_length(content_size);
+				}
+			}
 		}
-		else
+		else 
 		{
-			// route not found
-			response_.stock_reply(http::status::not_implemented);
+			response_.content_length(response_.body().length());
 		}
 
 		// set connection headers in the response.
@@ -1154,8 +1134,8 @@ private:
 
 using session_handler_type = http::session_handler;
 
-using route_function_t = std::function<bool(session_handler_type& session, const http::api::params& params)>;
-using middleware_function_t = std::function<bool(session_handler_type& session, const http::api::params& params)>;
+using route_function_t = std::function<void(session_handler_type& session, const http::api::params& params)>;
+using middleware_function_t = std::function<void(session_handler_type& session, const http::api::params& params)>;
 
 template <typename R = route_function_t> class route
 {
@@ -1371,37 +1351,40 @@ public:
 
 	bool call_middleware(session_handler_type& session)
 	{
+		auto result = false;
 		for (auto& middleware : api_middleware_table)
 		{
 			params params_;
 
 			if (api::middelware<>::match(middleware.path_, session.request().target(), params_))
 			{
-				return middleware.endpoint_(session, params_);
+				result = true;
+				middleware.endpoint_(session, params_);
 			}
 		}
 
-		return true;
+		return result;
 	}
 
 	bool call_route(session_handler_type& session)
 	{
+		auto result = false;
 		auto routes = api_router_table[session.request().method()];
 
-		if (routes.empty())
+		if (!routes.empty())
 		{
-			return false;
-		}
-
-		for (auto& route : routes)
-		{
-			params params_;
-
-			if (api::route<>::match(route.path_, session.request().target(), params_))
+			for (auto& route : routes)
 			{
-				return route.endpoint_(session, params_);
+				params params_;
+
+				if (api::route<>::match(route.path_, session.request().target(), params_))
+				{
+					route.endpoint_(session, params_);
+					return true;
+				}
 			}
 		}
+
 		return false;
 	}
 
