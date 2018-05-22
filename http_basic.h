@@ -19,10 +19,23 @@ TODO: insert copyrights and MIT license.
 #include <string>
 #include <vector>
 #include <array>
+#include <mutex>
+#include <future>
+#include <deque>
+#include <thread>
+
+
+
 
 #if defined(_USE_CPP17_STD_FILESYSTEM)
 #include <experimental/filesystem>
 #endif
+
+#if defined(WIN32)
+#include <Ws2tcpip.h>
+#include <winsock2.h>
+#endif
+
 
 namespace filesystem
 {
@@ -1483,6 +1496,10 @@ public:
 
 	void start_server()
 	{
+		WSADATA wsaData;
+		WSAStartup(MAKEWORD(2, 2), &wsaData);
+
+
 		std::thread connection_thread([this]() { listener_handler(); });
 		// al_so_create(&sync_, AL_SYNC_TYPE_SEMAPHORE|AL_SYNC_LOCKED, FALSE);
 		// al_so_add_to_ipcwait(sync_, callback, sync_);
