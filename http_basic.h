@@ -347,6 +347,7 @@ friend class http::request_parser;
 
 private:
 	std::string method_;
+	std::string url_requested_;
 	std::string target_;
 	query_params params_;
 	unsigned int version_nr_;
@@ -355,6 +356,7 @@ private:
 public:
 	const std::string& method() const { return method_; }
 	const std::string& target() const { return target_; }
+	const std::string& url_requested() const { return url_requested_; }
 	const unsigned int& version_nr() const { return version_nr_; }
 	const std::string version() const { return std::string("HTTP ") + (version_nr_ == 10 ? "1.0" : "1.1"); }
 	void target(const std::string& target) { target_ = target; }
@@ -366,6 +368,7 @@ public:
 		this->version_nr_ = 0;
 		this->method_.clear();
 		this->target_.clear();
+		this->url_requested_.clear();
 
 		this->fields_.clear();
 	}
@@ -509,7 +512,14 @@ public:
 
 	void content_length(uint64_t const& length) { http::fields::operator[]("Content-Length") = std::to_string(length); }
 
-	uint64_t content_length() const { return std::stoul(http::fields::operator[]("Content-Length")); }
+	uint64_t content_length() const { 
+		auto content_length_ = http::fields::operator[]("Content-Length");
+
+		if (content_length_.empty()) 
+			return 0;
+		else
+			return std::stoul(content_length_); 
+	}
 
 	bool keep_alive() const
 	{
@@ -553,8 +563,6 @@ public:
 
 	template <typename InputIterator> std::tuple<result_type, InputIterator> parse(http::request_message& req, InputIterator begin, InputIterator end)
 	{
-		std::stringstream trace;
-
 		while (begin != end)
 		{
 			result_type result = consume(req, *begin++);
@@ -971,7 +979,9 @@ public:
 			}
 		}
 
+		request_.url_requested_ = request_.target_;
 		request_.target_ = request_path;
+
 
 		if (router_.call_middleware(*this))
 		{
@@ -999,6 +1009,7 @@ public:
 				if (content_size == 0)
 				{ 
 					response_.result(http::status::not_found);
+					response_.content_length(response_.body().length());
 				}
 				else
 				{
@@ -1013,7 +1024,9 @@ public:
 		}
 
 		// set connection headers in the response.
-		if ((request_.keep_alive() && this->keepalive_count()-1 > 0) && response_.status() == http::status::ok)
+		if (request_.keep_alive() || (request_.version_nr() == 11 && (http::util::case_insensitive_equal(request_["Connection"], "close")==false))  && 
+
+			(this->keepalive_count()-1 > 0 && (response_.status() == http::status::ok)))
 		{
 			keepalive_count(keepalive_count() - 1);
 			response_["Connection"] = "Keep-Alive";
@@ -1351,7 +1364,7 @@ public:
 
 	bool call_middleware(session_handler_type& session)
 	{
-		auto result = false;
+		auto result = true;
 		for (auto& middleware : api_middleware_table)
 		{
 			params params_;
@@ -1449,6 +1462,354 @@ protected:
 	http::api::router<> router_;
 	http::configuration& configuration_;
 };
+
+namespace threaded
+{
+
+class server : public http::basic::server
+{
+	using socket_t = SOCKET;
+
+public:
+	server(http::configuration& configuration)
+		: http::basic::server{ configuration }
+		, thread_count_(configuration.get<int>("thread_count", 5))
+		, listen_port_(configuration.get<int>("listen_port_", 3000))
+		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
+	{
+	}
+
+	server(const server&) = default;
+
+	void start_server()
+	{
+		std::thread connection_thread([this]() { listener_handler(); });
+		// al_so_create(&sync_, AL_SYNC_TYPE_SEMAPHORE|AL_SYNC_LOCKED, FALSE);
+		// al_so_add_to_ipcwait(sync_, callback, sync_);
+
+		connection_thread.detach();
+	}
+
+	static std::string get_client_info(SOCKET client_socket)
+	{
+		sockaddr_in6 sa = { 0 };
+		socklen_t sl = sizeof(sa);
+		char c[INET6_ADDRSTRLEN];
+
+		getpeername(client_socket, (sockaddr*)&sa, &sl);
+
+		inet_ntop(AF_INET6, &(sa.sin6_addr), c, INET6_ADDRSTRLEN);
+
+		return c;
+	}
+
+	void listener_handler()
+	{
+		try
+		{
+			SOCKET sockfd = ::socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+
+			sockaddr_in6 serv_addr;
+			memset(&serv_addr, 0, sizeof(serv_addr));
+
+			serv_addr.sin6_family = AF_INET6;
+			serv_addr.sin6_addr = in6addr_any;
+			serv_addr.sin6_port = ::htons(listen_port_);
+
+			int reuseaddr = 1;
+			int ret = ::setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
+
+			int ipv6only = 0;
+			ret = ::setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
+
+			ret = ::bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+
+			ret = ::listen(sockfd, 5);
+			int connections_accepted = 0;
+
+			while (1)
+			{
+				sockaddr_in6 cli_addr;
+				socklen_t clilen = sizeof(cli_addr);
+
+				SOCKET clientsockfd = ::accept(sockfd, reinterpret_cast<sockaddr*>(&cli_addr), &clilen);
+
+				server_status().connections_accepted(server_status().connections_accepted() + 1);
+				server_status().connections_current(server_status().connections_current() + 1);
+
+				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler>(*this, clientsockfd, connection_timeout_)]() { new_connection_handler->proceed(); });
+				connection_thread.detach();
+			}
+		}
+		catch (...)
+		{
+			// TODO
+		}
+	}
+
+	class server_info
+	{
+	private:
+		size_t connections_accepted_;
+		size_t connections_current_;
+		std::vector<std::string> access_log_;
+		std::mutex mutex_;
+
+	public:
+		server_info()
+			: connections_accepted_(0)
+			, connections_current_(0){};
+
+		size_t connections_accepted()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			return connections_accepted_;
+		}
+
+		void connections_accepted(size_t nr)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			connections_accepted_ = nr;
+		}
+
+		const size_t connections_current()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			return connections_current_;
+		}
+
+		void connections_current(size_t nr)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			connections_current_ = nr;
+		}
+
+		static std::string log_entry() {}
+
+		void log_access(http::session_handler& session)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+
+			std::stringstream s;
+
+			s << "\"" << session.request()["Remote_Addr"] << "\"";
+
+			s << " - \"" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << "\"";
+			s << " - " << session.response().status() << " - " << session.response().content_length();
+			s << " - \"" << session.request()["User-Agent"] << "\"\n";
+
+			access_log_.emplace_back(s.str());
+
+			if (access_log_.size() >= 32) access_log_.erase(access_log_.begin());
+		}
+
+		std::string log_access_to_string()
+		{
+			std::stringstream s;
+			std::lock_guard<std::mutex> g(mutex_);
+
+			for (auto& access_log_entry : access_log_)
+				s << access_log_entry;
+
+			return s.str();
+		}
+
+		std::string to_string()
+		{
+			std::stringstream s;
+
+			s << "connection_accepted: " << connections_accepted_ << "\n";
+			s << "connections_current: " << connections_current_ << "\n";
+			s << "access_log:\n";
+			s << log_access_to_string();
+
+			return s.str();
+		}
+	};
+
+	class connection_handler
+	{
+	public:
+		connection_handler(http::basic::threaded::server& server, socket_t client_socket, int connection_timeout)
+			: server_(server)
+			, client_socket_(client_socket)
+			, session_handler_(server.configuration_)
+			, connection_timeout_(connection_timeout)
+		{
+		}
+
+		~connection_handler()
+		{
+			// printf("connection close: %lld\n", client_socket_);
+			shutdown(client_socket_, SD_SEND);
+			closesocket(client_socket_);
+			server_.server_status().connections_current(server_.server_status().connections_current() - 1);
+		}
+
+		void proceed()
+		{
+			std::array<char, 4096> buffer;
+			http::basic::session_data connection_data;
+			int ret = 0;
+
+			DWORD timeout_value = static_cast<DWORD>(connection_timeout_) * 1000;
+			ret = ::setsockopt(client_socket_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
+
+			BOOL tcp_nodelay = 1;
+			ret = ::setsockopt(client_socket_, IPPROTO_TCP, TCP_NODELAY, (char*)&tcp_nodelay, sizeof(tcp_nodelay));
+
+			while (true)
+			{
+				int ret = ::recv(client_socket_, &buffer[0], static_cast<int>(buffer.size()), 0);
+				// TODO ret = recv( clientsockfd, buf, sizeof(buf), MSG_WAITALL );
+				if (ret == 0)
+				{
+					break;
+				}
+				if (ret < 0)
+				{
+					break;
+				}
+
+				// store_request_data(buffer, ret);
+
+				http::session_handler::result_type parse_result;
+				std::array<char, 4096>::iterator c = std::begin(buffer);
+
+				auto& response = session_handler_.response();
+				auto& request = session_handler_.request();
+
+				std::tie(parse_result, c) = session_handler_.parse_request(c, std::end(buffer));
+
+				if ((parse_result == http::request_parser::result_type::good) && (request.has_content_lenght()))
+				{
+					auto x = c - std::begin(buffer);
+
+					std::string request_body_part;
+					request_body_part.reserve((ret - x));
+
+					request_body_part.assign(buffer.data() + x, (ret - x));
+
+					if (request.content_length() > std::uint64_t(x))
+						parse_result = http::request_parser::result_type::bad;
+					else
+						request.body() = request_body_part;
+				}
+
+				if (parse_result == http::request_parser::result_type::good)
+				{
+
+					request_data().clear();
+					response_data().clear();
+
+					session_handler_.request()["Remote_Addr"] = get_client_info(client_socket_);
+
+					session_handler_.handle_request(server_.router_);
+
+					server_.server_status().log_access(session_handler_);
+
+					if (response.body().empty())
+					{
+						std::array<char, 1024 * 32> file_buffer;
+
+						{
+							std::string headers = response.header_to_string();
+
+							ret = send(client_socket_, &headers[0], static_cast<int>(headers.length()), 0);
+
+							std::ifstream is(session_handler_.request().target(), std::ios::in | std::ios::binary);
+
+							is.seekg(0, std::ifstream::ios_base::beg);
+							is.rdbuf()->pubsetbuf(file_buffer.data(), file_buffer.size());
+
+							std::streamsize bytes_in = is.read(file_buffer.data(), file_buffer.size()).gcount();
+
+							while (bytes_in > 0 && ret != -1)
+							{
+								ret = send(client_socket_, file_buffer.data(), static_cast<int>(bytes_in), 0);
+
+								bytes_in = is.read(file_buffer.data(), file_buffer.size()).gcount();
+							}
+						}
+					}
+					else
+					{
+						connection_data.store_response_data(http::to_string(response));
+						ret = send(client_socket_, &(connection_data.response_data()[0]), static_cast<int>(connection_data.response_data().size()), 0);
+					}
+
+					if (response.keep_alive() == true)
+					{
+						connection_data.reset();
+						session_handler_.reset();
+					}
+					else
+					{
+						return;
+					}
+				}
+				else
+				{
+					// TODO send http error
+					connection_data.reset();
+					session_handler_.reset();
+					return;
+				}
+			}
+		}
+
+	protected:
+		http::basic::threaded::server& server_;
+		socket_t client_socket_;
+		http::session_handler session_handler_;
+		int connection_timeout_;
+
+		std::vector<char> data_request_;
+		std::vector<char> data_response_;
+
+		void store_request_data(const std::array<char, 4096>& data, size_t size)
+		{
+			data_request_.resize(data_request_.size() + size);
+
+			std::copy(std::begin(data), std::begin(data) + size, std::rbegin(data_request_));
+		}
+		void store_response_data(const std::string& response_string)
+		{
+			data_response_.resize(response_string.size());
+			data_response_.insert(std::end(data_response_), response_string.begin(), response_string.end());
+		}
+
+		std::vector<char>& request_data() { return data_request_; }
+		std::vector<char>& response_data() { return data_response_; }
+
+		void reset_session()
+		{
+			session_handler_.reset();
+			data_request_.clear();
+			data_response_.clear();
+		}
+	};
+
+	server_info& server_status() { return server_info_; }
+
+	/*void send_events_to_bshell()
+	{
+		std::lock_guard<std::mutex> guard(event_mutex);
+		while (!event_queue.empty())
+		{
+			ds_send_event(reinterpret_cast<DsTevent*>(&event_queue.front()));
+			event_queue.pop();
+		}
+	}*/
+protected:
+	server_info server_info_;
+private:
+	int thread_count_;
+	int listen_port_;
+	int connection_timeout_;
+};
+
+} // namespace threaded
 
 } // namespace basic
 

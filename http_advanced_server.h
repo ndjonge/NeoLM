@@ -113,7 +113,7 @@ public:
 			}
 			else if (result == http::request_parser::bad)
 			{
-				session_handler_.response().stock_reply(http::status::bad_request);
+				session_handler_.response().status(http::status::bad_request);
 				write_buffer_.push_back(http::to_string(session_handler_.response()));
 
 				do_write_header();
