@@ -94,7 +94,8 @@ public:
 		{
 			endpoint_ = &endpoint;
 			endpoint_->open(protocol_);
-;			::bind(endpoint_->socket(), &endpoint_->addr(), sizeof(endpoint_->addr()));
+			sockaddr& addr_ = endpoint_->addr();
+;			::bind(endpoint_->socket(), &addr_, sizeof(sockaddr));
 		}
 
 		void listen() 
