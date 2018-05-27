@@ -10,6 +10,258 @@
 #include <winsock2.h>
 #endif
 
+
+#include <stdio.h>
+
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
+
+
+namespace network
+{
+using socket_t = SOCKET;
+
+namespace tcp
+{
+
+class endpoint
+{
+public:
+	endpoint() = default;
+	virtual void open(std::int16_t protocol) = 0;
+	std::int16_t  protocol() {return protocol_;}
+	virtual sockaddr& addr()=0;
+	socket_t& socket() {return socket_;};
+
+protected:
+	socket_t  socket_;
+	std::int16_t protocol_;
+};
+
+class v4 : public endpoint
+{
+public:
+	v4(std::int16_t port) : sock_addr_({})
+	{
+		protocol_ = SOCK_STREAM;
+		sock_addr_.sin_family = AF_INET;
+		sock_addr_.sin_port = htons(port);
+		sock_addr_.sin_addr.s_addr = htonl(INADDR_ANY);
+	}
+
+	sockaddr& addr() {return reinterpret_cast<sockaddr&>(sock_addr_);};
+
+	void open(std::int16_t protocol)
+	{
+		socket_ = ::socket(sock_addr_.sin_family, protocol, 0);
+	}
+private:
+	sockaddr_in sock_addr_;
+};
+
+class v6 : public endpoint
+{
+public:
+	v6(std::int16_t port) : sock_addr_({})
+	{
+		sock_addr_.sin6_family = AF_INET6;
+		sock_addr_.sin6_port = ::htons(port);
+		sock_addr_.sin6_addr = in6addr_any;
+		protocol_ = SOCK_STREAM;
+	}
+
+	void open(std::int16_t protocol)
+	{
+		socket_ = ::socket(sock_addr_.sin6_family, protocol, 0);
+	}
+	
+	sockaddr& addr() {return reinterpret_cast<sockaddr&>(sock_addr_);};
+
+private:
+	sockaddr_in6 sock_addr_;
+};
+
+class acceptor
+{
+public:
+		acceptor() = default;
+
+		void open(std::int16_t protocol) { protocol_ = protocol;}
+
+		void bind(endpoint& endpoint) 
+		{
+			endpoint_ = &endpoint;
+			endpoint_->open(protocol_);
+;			::bind(endpoint_->socket(), &endpoint_->addr(), sizeof(endpoint_->addr()));
+		}
+
+		void listen() 
+		{
+			::listen(endpoint_->socket(), 1);
+		}
+
+		void accept(socket_t& socket) 
+		{
+			int len = sizeof(endpoint_->addr());
+			socket = ::accept(endpoint_->socket(), &endpoint_->addr(), &len);
+		}
+
+private:
+	std::int16_t protocol_;
+	endpoint* endpoint_;
+};
+
+}
+}
+
+void test_network()
+{
+	WSADATA wsaData;
+	WSAStartup(MAKEWORD(2, 2), &wsaData);
+
+	network::tcp::v6 endpoint_6{3000};
+
+	network::tcp::acceptor acceptor_{};
+
+	acceptor_.open(endpoint_6.protocol());
+	acceptor_.bind(endpoint_6);
+	acceptor_.listen();
+
+	network::socket_t client_socket=0;
+
+	acceptor_.accept(client_socket);
+
+}
+
+
+SOCKET create_socket(int port)
+{
+		WSADATA wsaData;
+		WSAStartup(MAKEWORD(2, 2), &wsaData);
+
+    SOCKET s;
+    struct sockaddr_in addr;
+
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s < 0) {
+	perror("Unable to create socket");
+	exit(EXIT_FAILURE);
+    }
+
+    if (bind(s, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+	perror("Unable to bind");
+	exit(EXIT_FAILURE);
+    }
+
+    if (listen(s, 1) < 0) {
+	perror("Unable to listen");
+	exit(EXIT_FAILURE);
+    }
+
+    return s;
+}
+
+void init_openssl()
+{ 
+    SSL_load_error_strings();	
+    OpenSSL_add_ssl_algorithms();
+}
+
+void cleanup_openssl()
+{
+    EVP_cleanup();
+}
+
+SSL_CTX *create_context()
+{
+    const SSL_METHOD *method;
+    SSL_CTX *ctx;
+
+    method = SSLv23_server_method();
+
+    ctx = SSL_CTX_new(method);
+    if (!ctx) {
+	perror("Unable to create SSL context");
+	ERR_print_errors_fp(stderr);
+	exit(EXIT_FAILURE);
+    }
+
+    return ctx;
+}
+
+void configure_context(SSL_CTX *ctx)
+{
+    SSL_CTX_set_ecdh_auto(ctx, 1);
+
+    /* Set the key and cert */
+    if (SSL_CTX_use_certificate_file(ctx, "/ssl/ssl.crt", SSL_FILETYPE_PEM) <= 0) {
+        ERR_print_errors_fp(stderr);
+	exit(EXIT_FAILURE);
+    }
+
+    if (SSL_CTX_use_PrivateKey_file(ctx, "/ssl/ssl.key", SSL_FILETYPE_PEM) <= 0 ) {
+        ERR_print_errors_fp(stderr);
+	exit(EXIT_FAILURE);
+    }
+}
+
+int main(int argc, char **argv)
+{
+
+	test_network();
+
+    SOCKET sock;
+    SSL_CTX *ctx;
+
+    init_openssl();
+    ctx = create_context();
+
+    configure_context(ctx);
+
+    sock = create_socket(4000);
+
+    /* Handle connections */
+    while(1) {
+        struct sockaddr_in addr;
+
+        int len = sizeof(addr);
+        SSL *ssl;
+        const char reply[] = "test\n";
+
+        SOCKET client = accept(sock, (struct sockaddr*)&addr, &len);
+        if (client < 0) {
+            perror("Unable to accept");
+            exit(EXIT_FAILURE);
+        }
+
+        ssl = SSL_new(ctx);
+        SSL_set_fd(ssl, (int)client);
+
+        if (SSL_accept(ssl) <= 0) {
+            ERR_print_errors_fp(stderr);
+        }
+        else {
+            SSL_write(ssl, reply, (int)strlen(reply));
+        }
+
+        SSL_free(ssl);
+        closesocket(client);
+    }
+
+    closesocket(sock);
+    SSL_CTX_free(ctx);
+    cleanup_openssl();
+}
+
+
+
+
 #include "http_basic.h"
 //#include "http_advanced_server.h"
 //#include "json.h"
@@ -148,7 +400,7 @@ private:
 };
 }
 
-int main(int argc, char* argv[])
+int xxmain(int argc, char* argv[])
 {
 	http::configuration configuration{
 		{ "server", "http 0.0.1" }, { "keepalive_count", "30" }, { "keepalive_timeout", "5" }, { "thread_count", "10" }, { "doc_root", "C:/Development Libraries/doc_root" }, { "ssl_certificate", "C:/Development Libraries/ssl.crt" }, { "ssl_certificate_key", "C:/Development Libraries/ssl.key" }

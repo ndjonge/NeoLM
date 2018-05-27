@@ -519,7 +519,7 @@ public:
 
 		if (http::header<specialization>::status() != http::status::ok)
 		{
-			body_ += "Error: " + std::to_string(http::header<specialization>::status());
+			body_ += "status: " + std::to_string(http::header<specialization>::status());
 		}
 	}
 
@@ -1348,14 +1348,15 @@ public:
 
 	void use(const std::string& path) { static_content_routes.emplace_back(path); }
 
-	void on_get(const std::string& route, R api_method) { api_router_table["GET"].emplace_back(route, api_method); };
-	void on_post(const std::string& route, R api_method) { api_router_table["POST"].emplace_back(route, api_method); };
-	void on_head(const std::string& route, R api_method) { api_router_table["HEAD"].emplace_back(route, api_method); };
-	void on_put(const std::string& route, R api_method) { api_router_table["PUT"].emplace_back(route, api_method); };
-	void on_update(const std::string& route, R api_method) { api_router_table["UPDATE"].emplace_back(route, api_method); };
-	void on_delete(const std::string& route, R api_method) { api_router_table["DELETE"].emplace_back(route, api_method); };
-	void on_patch(const std::string& route, R api_method) { api_router_table["PATCH"].emplace_back(route, api_method); };
-	void on_option(const std::string& route, R api_method) { api_router_table["OPTION"].emplace_back(route, api_method); };
+	void on_http_method(const std::string& route, const std::string& http_method, R api_method) { api_router_table[http_method].emplace_back(route, api_method); }
+	void on_get(const std::string& route, R api_method) { api_router_table["GET"].emplace_back(route, api_method); }
+	void on_post(const std::string& route, R api_method) { api_router_table["POST"].emplace_back(route, api_method); }
+	void on_head(const std::string& route, R api_method) { api_router_table["HEAD"].emplace_back(route, api_method); }
+	void on_put(const std::string& route, R api_method) { api_router_table["PUT"].emplace_back(route, api_method); }
+	void on_update(const std::string& route, R api_method) { api_router_table["UPDATE"].emplace_back(route, api_method); }
+	void on_delete(const std::string& route, R api_method) { api_router_table["DELETE"].emplace_back(route, api_method); }
+	void on_patch(const std::string& route, R api_method) { api_router_table["PATCH"].emplace_back(route, api_method); }
+	void on_option(const std::string& route, R api_method) { api_router_table["OPTION"].emplace_back(route, api_method); }
 
 	void use(const std::string& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
 
@@ -1470,8 +1471,6 @@ public:
 
 protected:
 	std::deque<session_data*> session_datas_;
-	//http::session_handler session_handler_;
-
 	http::api::router<> router_;
 	http::configuration& configuration_;
 };
@@ -1494,7 +1493,7 @@ public:
 
 	server(const server&) = default;
 
-	void start_server()
+	virtual void start_server()
 	{
 		WSADATA wsaData;
 		WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -1530,8 +1529,9 @@ public:
 			memset(&serv_addr, 0, sizeof(serv_addr));
 
 			serv_addr.sin6_family = AF_INET6;
-			serv_addr.sin6_addr = in6addr_any;
 			serv_addr.sin6_port = ::htons(listen_port_);
+			serv_addr.sin6_addr = in6addr_any;
+
 
 			int reuseaddr = 1;
 			int ret = ::setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
@@ -1612,7 +1612,7 @@ public:
 			s << "\"" << session.request()["Remote_Addr"] << "\"";
 
 			s << " - \"" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << "\"";
-			s << " - " << session.response().status() << " - " << session.response().content_length();
+			s << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length();;
 			s << " - \"" << session.request()["User-Agent"] << "\"\n";
 
 			access_log_.emplace_back(s.str());
@@ -1702,15 +1702,41 @@ public:
 				{
 					auto x = c - std::begin(buffer);
 
-					std::string request_body_part;
-					request_body_part.reserve((ret - x));
+					//request.body().reserve((ret - x));
+					request.body().assign(buffer.data() + x, (ret - x));
 
-					request_body_part.assign(buffer.data() + x, (ret - x));
+					if (request.content_length() > std::uint64_t(ret - x))
+					{
+						while (true)
+						{
+							parse_result = http::request_parser::result_type::bad;
 
-					if (request.content_length() > std::uint64_t(x))
-						parse_result = http::request_parser::result_type::bad;
-					else
-						request.body() = request_body_part;
+							ret = ::recv(client_socket_, &buffer[0], static_cast<int>(buffer.size()), 0);
+							if (ret == 0)
+							{
+								break;
+							}
+							if (ret < 0)
+							{
+								break;
+							}
+
+							request.body().append(buffer.data(), buffer.data()+ret);
+							
+							if (request.content_length() == request.body().length())
+							{
+								parse_result = http::request_parser::result_type::good;
+								break;
+							}
+							else if (request.content_length() < request.body().length())
+							{
+								parse_result = http::request_parser::result_type::bad;
+								break;
+							}
+							else
+								continue;
+						}
+					}						
 				}
 
 				if (parse_result == http::request_parser::result_type::good)
@@ -1808,16 +1834,6 @@ public:
 	};
 
 	server_info& server_status() { return server_info_; }
-
-	/*void send_events_to_bshell()
-	{
-		std::lock_guard<std::mutex> guard(event_mutex);
-		while (!event_queue.empty())
-		{
-			ds_send_event(reinterpret_cast<DsTevent*>(&event_queue.front()));
-			event_queue.pop();
-		}
-	}*/
 protected:
 	server_info server_info_;
 private:

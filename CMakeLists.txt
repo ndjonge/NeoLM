@@ -38,12 +38,12 @@ set (CMAKE_CXX_EXTENSIONS OFF)
 
 
 #find_package(Boost 1.64 REQUIRED system thread)
-#find_package(OpenSSL REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 #include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
-#include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
+include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 
 
 
 #target_link_libraries (${PROJECT_NAME} ${Boost_LIBRARIES})
-#target_link_libraries( ${PROJECT_NAME} ${OPENSSL_LIBRARIES})
+target_link_libraries( ${PROJECT_NAME} ${OPENSSL_LIBRARIES})
