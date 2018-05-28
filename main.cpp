@@ -32,7 +32,8 @@ public:
 	endpoint() = default;
 	virtual void open(std::int16_t protocol) = 0;
 	std::int16_t  protocol() {return protocol_;}
-	virtual sockaddr& addr()=0;
+	virtual sockaddr* addr()=0;
+	virtual int addr_size()=0;
 	socket_t& socket() {return socket_;};
 
 protected:
@@ -51,7 +52,8 @@ public:
 		sock_addr_.sin_addr.s_addr = htonl(INADDR_ANY);
 	}
 
-	sockaddr& addr() {return reinterpret_cast<sockaddr&>(sock_addr_);};
+	sockaddr* addr() {return reinterpret_cast<sockaddr*>(&sock_addr_);};
+	std::int32_t addr_size() { return static_cast<std::int32_t>(sizeof(this->sock_addr_));}
 
 	void open(std::int16_t protocol)
 	{
@@ -77,7 +79,9 @@ public:
 		socket_ = ::socket(sock_addr_.sin6_family, protocol, 0);
 	}
 	
-	sockaddr& addr() {return reinterpret_cast<sockaddr&>(sock_addr_);};
+	sockaddr* addr() {return reinterpret_cast<sockaddr*>(&sock_addr_);};
+	std::int32_t addr_size() { return static_cast<std::int32_t>(sizeof(this->sock_addr_));}
+
 
 private:
 	sockaddr_in6 sock_addr_;
@@ -92,9 +96,15 @@ public:
 
 		void bind(endpoint& endpoint) 
 		{
+			int ret = 0;
 			endpoint_ = &endpoint;
 			endpoint_->open(protocol_);
-;			::bind(endpoint_->socket(), &endpoint_->addr(), sizeof(endpoint_->addr()));
+
+			ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
+
+
+
+			//ec.value = ret;
 		}
 
 		void listen() 
@@ -104,8 +114,9 @@ public:
 
 		void accept(socket_t& socket) 
 		{
-			int len = sizeof(endpoint_->addr());
-			socket = ::accept(endpoint_->socket(), &endpoint_->addr(), &len);
+			std::int32_t len = static_cast<int>(endpoint_->addr_size());
+			socket = ::accept(endpoint_->socket(), endpoint_->addr(), &len);
+
 		}
 
 private:
@@ -122,7 +133,6 @@ void test_network()
 	WSAStartup(MAKEWORD(2, 2), &wsaData);
 
 	network::tcp::v6 endpoint_6{3000};
-
 	network::tcp::acceptor acceptor_{};
 
 	acceptor_.open(endpoint_6.protocol());
@@ -132,6 +142,9 @@ void test_network()
 	network::socket_t client_socket=0;
 
 	acceptor_.accept(client_socket);
+
+	network::read();
+	network::write();
 
 }
 
