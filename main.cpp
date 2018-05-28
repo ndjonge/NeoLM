@@ -261,8 +261,6 @@ public:
 
 			ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
 
-
-
 			//ec.value = ret;
 		}
 
