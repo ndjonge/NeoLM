@@ -17,14 +17,173 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-
+#include <array>
 
 namespace network
 {
 using socket_t = SOCKET;
 
+void init()
+{
+	WSADATA wsaData;
+	WSAStartup(MAKEWORD(2, 2), &wsaData);
+}
+
+class buffer
+{
+public:
+	buffer(char* data, size_t size) : data_(data), size_(size)
+	{
+	}
+
+	char* data(){return data_;}
+	size_t size() { 
+		return size_;
+	}
+private:
+	char* data_;
+	size_t size_;
+};
+
+namespace ssl
+{
+
+void init()
+{
+    SSL_load_error_strings();	
+    OpenSSL_add_ssl_algorithms();
+}
+
+void cleanup()
+{
+    EVP_cleanup();
+}
+
+class context
+{
+public:
+
+	enum method
+	{
+		tlsv12
+	};
+
+	context(method m)
+	{
+
+		switch(m)
+		{
+			case tlsv12:
+				ssl_method_ = TLSv1_2_server_method();
+				break;
+		}
+		context_ = SSL_CTX_new(ssl_method_);
+	}
+
+	void use_certificate_chain_file(const char* path)
+	{
+		SSL_CTX_set_ecdh_auto(context_, 1);
+
+		/* Set the key and cert */
+		if (SSL_CTX_use_certificate_file(context_, path, SSL_FILETYPE_PEM) <= 0) {
+			ERR_print_errors_fp(stderr);
+			exit(EXIT_FAILURE);
+		}
+
+	}
+
+	void use_private_key_file(const char* path)
+	{
+		if (SSL_CTX_use_PrivateKey_file(context_, path, SSL_FILETYPE_PEM) <= 0 ) {
+			ERR_print_errors_fp(stderr);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	enum verify_mode
+	{
+		verify_peer,
+		verify_fail_if_no_peer_cert,
+		verify_client_once
+	};
+
+	void set_verify_mode(verify_mode v)//network::ssl::verify_peer | boost::asio::ssl::verify_fail_if_no_peer_cert | boost::asio::ssl::verify_client_once);
+	{
+		//?
+	}
+
+	SSL_CTX* native() { return context_;}
+
+private:
+	SSL_CTX* context_;
+	const SSL_METHOD* ssl_method_;
+};
+
+namespace stream_base
+{
+	enum handshake_type 
+	{
+		client,
+		server
+	};
+}
+
+template<class socket>
+class stream
+{
+public:
+	stream(context& context) : context_(context), lowest_layer_(0), ssl_(nullptr) 
+	{
+	}
+
+	~stream()
+	{
+	}
+
+	const socket& lowest_layer() const
+	{
+		return lowest_layer_;
+	}
+
+	socket& lowest_layer()
+	{
+		return lowest_layer_;
+	}
+
+	SSL* native()
+	{
+		return ssl_;
+	}
+
+	void handshake(stream_base::handshake_type type)
+	{
+        ssl_ = SSL_new(context_.native());
+        SSL_set_fd(ssl_, (int)(lowest_layer_));
+
+        if (SSL_accept(ssl_) <= 0) {
+            ERR_print_errors_fp(stderr);
+        }
+        else 
+		{
+			SSL_CTX_set_mode(context_.native(), SSL_MODE_AUTO_RETRY);
+		}	
+	}
+
+private:
+	context& context_;
+	socket lowest_layer_;
+	SSL* ssl_;
+};
+
+}
+
+
+
+
 namespace tcp
 {
+
+using socket = socket_t;
 
 class endpoint
 {
@@ -34,10 +193,10 @@ public:
 	std::int16_t  protocol() {return protocol_;}
 	virtual sockaddr* addr()=0;
 	virtual int addr_size()=0;
-	socket_t& socket() {return socket_;};
+	socket& socket() {return socket_;};
 
 protected:
-	socket_t  socket_;
+	tcp::socket  socket_;
 	std::int16_t protocol_;
 };
 
@@ -102,8 +261,6 @@ public:
 
 			ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
 
-
-
 			//ec.value = ret;
 		}
 
@@ -112,7 +269,7 @@ public:
 			::listen(endpoint_->socket(), 1);
 		}
 
-		void accept(socket_t& socket) 
+		void accept(socket& socket) 
 		{
 			std::int32_t len = static_cast<int>(endpoint_->addr_size());
 			socket = ::accept(endpoint_->socket(), endpoint_->addr(), &len);
@@ -123,14 +280,37 @@ private:
 	std::int16_t protocol_;
 	endpoint* endpoint_;
 };
+}
+
+std::int32_t read(socket_t s, buffer& b)
+{
+	return ::recv(s, b.data(), static_cast<int>(b.size()), 0);
+}
+
+std::int32_t write(socket_t s, buffer& b)
+{
+	return ::send(s, b.data(), static_cast<int>(b.size()), 0);
+}
+
+std::int32_t read(ssl::stream<tcp::socket> s, buffer& b)
+{
+	return ::SSL_read(s.native(), b.data(), static_cast<int>(b.size()));
 
 }
+
+std::int32_t write(ssl::stream<tcp::socket> s, buffer& b)
+{
+	return ::SSL_write(s.native(), b.data(), static_cast<int>(b.size()));
 }
+
+}
+
 
 void test_network()
 {
-	WSADATA wsaData;
-	WSAStartup(MAKEWORD(2, 2), &wsaData);
+	network::init();
+
+	network::ssl::init();
 
 	network::tcp::v6 endpoint_6{3000};
 	network::tcp::acceptor acceptor_{};
@@ -139,12 +319,23 @@ void test_network()
 	acceptor_.bind(endpoint_6);
 	acceptor_.listen();
 
-	network::socket_t client_socket=0;
+	network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
-	acceptor_.accept(client_socket);
+	ssl_context.use_certificate_chain_file("C:\\ssl\\server.crt");
+	ssl_context.use_private_key_file("C:\\ssl\\server.key");
 
-	network::read();
-	network::write();
+	network::ssl::stream<network::tcp::socket> ssl_socket(ssl_context);
+
+	std::array<char, 4096> a;
+
+	acceptor_.accept(ssl_socket.lowest_layer());
+	ssl_socket.handshake(network::ssl::stream_base::server);
+
+
+	auto x = network::read(ssl_socket, network::buffer(a.data(), a.size()));
+	auto y = network::write(ssl_socket, network::buffer(a.data(), a.size()));
+
+	exit(0);
 
 }
 
@@ -213,12 +404,12 @@ void configure_context(SSL_CTX *ctx)
     SSL_CTX_set_ecdh_auto(ctx, 1);
 
     /* Set the key and cert */
-    if (SSL_CTX_use_certificate_file(ctx, "/ssl/ssl.crt", SSL_FILETYPE_PEM) <= 0) {
+    if (SSL_CTX_use_certificate_file(ctx, "C:\\ssl\\ssl.crt", SSL_FILETYPE_PEM) <= 0) {
         ERR_print_errors_fp(stderr);
 	exit(EXIT_FAILURE);
     }
 
-    if (SSL_CTX_use_PrivateKey_file(ctx, "/ssl/ssl.key", SSL_FILETYPE_PEM) <= 0 ) {
+    if (SSL_CTX_use_PrivateKey_file(ctx, "C:\\ssl\\ssl.key", SSL_FILETYPE_PEM) <= 0 ) {
         ERR_print_errors_fp(stderr);
 	exit(EXIT_FAILURE);
     }
@@ -244,16 +435,15 @@ int main(int argc, char **argv)
         struct sockaddr_in addr;
 
         int len = sizeof(addr);
-        SSL *ssl;
-        const char reply[] = "test\n";
+		const char reply[] = "test\n";
 
         SOCKET client = accept(sock, (struct sockaddr*)&addr, &len);
         if (client < 0) {
             perror("Unable to accept");
             exit(EXIT_FAILURE);
         }
-
-        ssl = SSL_new(ctx);
+		 
+        SSL* ssl = SSL_new(ctx);
         SSL_set_fd(ssl, (int)client);
 
         if (SSL_accept(ssl) <= 0) {
