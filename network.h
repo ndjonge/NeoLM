@@ -131,7 +131,12 @@ public:
 
 	~stream()
 	{
+	}
+
+	void close()
+	{
 		SSL_free(ssl_);
+		ssl_=nullptr;
 	}
 
 	const socket& lowest_layer() const
@@ -330,6 +335,7 @@ void closesocket(network::tcp::socket& client_socket)
 
 void closesocket(network::ssl::stream<network::tcp::socket>& client_socket)
 {
+	client_socket.close();
 	::closesocket(client_socket.lowest_layer());
 }
 
