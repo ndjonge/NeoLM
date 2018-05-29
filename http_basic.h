@@ -36,6 +36,7 @@ TODO: insert copyrights and MIT license.
 #include <winsock2.h>
 #endif
 
+#include "network.h"
 
 namespace filesystem
 {
@@ -452,7 +453,7 @@ struct mapping
 }
 
 const mappings[]
-	= { { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" } };
+	= { { "json", "application/json" }, { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" } };
 
 static std::string extension_to_type(const std::string& extension)
 {
@@ -1495,66 +1496,119 @@ public:
 
 	virtual void start_server()
 	{
-		WSADATA wsaData;
-		WSAStartup(MAKEWORD(2, 2), &wsaData);
+		network::init();
+		network::ssl::init();
 
 
-		std::thread connection_thread([this]() { listener_handler(); });
+		std::thread http_connection_thread([this]() { http_listener_handler(); });
 		// al_so_create(&sync_, AL_SYNC_TYPE_SEMAPHORE|AL_SYNC_LOCKED, FALSE);
 		// al_so_add_to_ipcwait(sync_, callback, sync_);
 
-		connection_thread.detach();
+		http_connection_thread.detach();
+
+		std::thread https_connection_thread([this]() { https_listener_handler(); });
+		https_connection_thread.detach();
 	}
 
-	static std::string get_client_info(SOCKET client_socket)
-	{
-		sockaddr_in6 sa = { 0 };
-		socklen_t sl = sizeof(sa);
-		char c[INET6_ADDRSTRLEN];
-
-		getpeername(client_socket, (sockaddr*)&sa, &sl);
-
-		inet_ntop(AF_INET6, &(sa.sin6_addr), c, INET6_ADDRSTRLEN);
-
-		return c;
-	}
-
-	void listener_handler()
+	void https_listener_handler()
 	{
 		try
 		{
-			SOCKET sockfd = ::socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+			network::tcp::v6 endpoint_http(listen_port_+1);
 
-			sockaddr_in6 serv_addr;
-			memset(&serv_addr, 0, sizeof(serv_addr));
+			network::tcp::acceptor acceptor_https{};
 
-			serv_addr.sin6_family = AF_INET6;
-			serv_addr.sin6_port = ::htons(listen_port_);
-			serv_addr.sin6_addr = in6addr_any;
+			acceptor_https.open(endpoint_http.protocol());
+
+			acceptor_https.bind(endpoint_http);
+
+			acceptor_https.listen();
+
+			network::ssl::context ssl_context(network::ssl::context::tlsv12);
+
+			ssl_context.use_certificate_chain_file("C:\\ssl\\ssl.crt");
+			ssl_context.use_private_key_file("C:\\ssl\\ssl.key");
+
+			network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
 
 
+
+			/*
 			int reuseaddr = 1;
 			int ret = ::setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
 
 			int ipv6only = 0;
 			ret = ::setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
+			*/
 
-			ret = ::bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
-
-			ret = ::listen(sockfd, 5);
 			int connections_accepted = 0;
 
 			while (1)
 			{
-				sockaddr_in6 cli_addr;
-				socklen_t clilen = sizeof(cli_addr);
+				acceptor_https.accept(https_socket.lowest_layer());
+				https_socket.handshake(network::ssl::stream_base::server);
 
-				SOCKET clientsockfd = ::accept(sockfd, reinterpret_cast<sockaddr*>(&cli_addr), &clilen);
+				DWORD timeout_value = static_cast<DWORD>(connection_timeout_) * 1000;
+				int ret = ::setsockopt(https_socket.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
+
+				BOOL tcp_nodelay = 1;
+				ret = ::setsockopt(https_socket.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, (char*)&tcp_nodelay, sizeof(tcp_nodelay));
 
 				server_status().connections_accepted(server_status().connections_accepted() + 1);
 				server_status().connections_current(server_status().connections_current() + 1);
 
-				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler>(*this, clientsockfd, connection_timeout_)]() { new_connection_handler->proceed(); });
+				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, https_socket, connection_timeout_)]() { new_connection_handler->proceed(); });
+				connection_thread.detach();
+			}
+		}
+		catch (...)
+		{
+			// TODO
+		}
+	}
+
+	void http_listener_handler()
+	{
+		try
+		{
+			network::tcp::v6 endpoint_http(listen_port_);
+
+			network::tcp::acceptor acceptor_http{};
+
+			acceptor_http.open(endpoint_http.protocol());
+
+			acceptor_http.bind(endpoint_http);
+
+			acceptor_http.listen();
+
+			network::tcp::socket http_socket;
+
+
+
+			/*
+			int reuseaddr = 1;
+			int ret = ::setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
+
+			int ipv6only = 0;
+			ret = ::setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
+			*/
+
+			int connections_accepted = 0;
+
+			while (1)
+			{
+				acceptor_http.accept(http_socket);
+
+				DWORD timeout_value = static_cast<DWORD>(connection_timeout_) * 1000;
+				int ret = ::setsockopt(http_socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
+
+				BOOL tcp_nodelay = 1;
+				ret = ::setsockopt(http_socket, IPPROTO_TCP, TCP_NODELAY, (char*)&tcp_nodelay, sizeof(tcp_nodelay));
+
+				server_status().connections_accepted(server_status().connections_accepted() + 1);
+				server_status().connections_current(server_status().connections_current() + 1);
+
+				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_)]() { new_connection_handler->proceed(); });
 				connection_thread.detach();
 			}
 		}
@@ -1635,7 +1689,7 @@ public:
 		{
 			std::stringstream s;
 
-			s << "connection_accepted: " << connections_accepted_ << "\n";
+			s << "connections_accepted: " << connections_accepted_ << "\n";
 			s << "connections_current: " << connections_current_ << "\n";
 			s << "access_log:\n";
 			s << log_access_to_string();
@@ -1644,10 +1698,11 @@ public:
 		}
 	};
 
+	template<class S>
 	class connection_handler
 	{
 	public:
-		connection_handler(http::basic::threaded::server& server, socket_t client_socket, int connection_timeout)
+		connection_handler(http::basic::threaded::server& server, S client_socket, int connection_timeout)
 			: server_(server)
 			, client_socket_(client_socket)
 			, session_handler_(server.configuration_)
@@ -1658,8 +1713,8 @@ public:
 		~connection_handler()
 		{
 			// printf("connection close: %lld\n", client_socket_);
-			shutdown(client_socket_, SD_SEND);
-			closesocket(client_socket_);
+			network::shutdown(client_socket_, SD_SEND);
+			network::closesocket(client_socket_);
 			server_.server_status().connections_current(server_.server_status().connections_current() - 1);
 		}
 
@@ -1669,16 +1724,12 @@ public:
 			http::basic::session_data connection_data;
 			int ret = 0;
 
-			DWORD timeout_value = static_cast<DWORD>(connection_timeout_) * 1000;
-			ret = ::setsockopt(client_socket_, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
 
-			BOOL tcp_nodelay = 1;
-			ret = ::setsockopt(client_socket_, IPPROTO_TCP, TCP_NODELAY, (char*)&tcp_nodelay, sizeof(tcp_nodelay));
 
 			while (true)
 			{
-				int ret = ::recv(client_socket_, &buffer[0], static_cast<int>(buffer.size()), 0);
-				// TODO ret = recv( clientsockfd, buf, sizeof(buf), MSG_WAITALL );
+				int ret = network::read(client_socket_, network::buffer(buffer.data(), buffer.size()));
+
 				if (ret == 0)
 				{
 					break;
@@ -1711,7 +1762,8 @@ public:
 						{
 							parse_result = http::request_parser::result_type::bad;
 
-							ret = ::recv(client_socket_, &buffer[0], static_cast<int>(buffer.size()), 0);
+							int ret = network::read(client_socket_, network::buffer(buffer.data(), buffer.size()));
+
 							if (ret == 0)
 							{
 								break;
@@ -1739,17 +1791,22 @@ public:
 					}						
 				}
 
-				if (parse_result == http::request_parser::result_type::good)
+				if ((parse_result == http::request_parser::result_type::good) || (parse_result == http::request_parser::result_type::bad))
 				{
 
 					request_data().clear();
 					response_data().clear();
 
-					session_handler_.request()["Remote_Addr"] = get_client_info(client_socket_);
-
-					session_handler_.handle_request(server_.router_);
-
-					server_.server_status().log_access(session_handler_);
+					if (parse_result == http::request_parser::result_type::good)
+					{
+						session_handler_.request()["Remote_Addr"] = network::get_client_info(client_socket_);
+						session_handler_.handle_request(server_.router_);
+						server_.server_status().log_access(session_handler_);
+					}
+					else
+					{
+						session_handler_.response().result(http::status::bad_request);
+					}
 
 					if (response.body().empty())
 					{
@@ -1758,7 +1815,9 @@ public:
 						{
 							std::string headers = response.header_to_string();
 
-							ret = send(client_socket_, &headers[0], static_cast<int>(headers.length()), 0);
+
+
+							ret = network::write(client_socket_, network::buffer(&headers[0], headers.length()) );
 
 							std::ifstream is(session_handler_.request().target(), std::ios::in | std::ios::binary);
 
@@ -1769,7 +1828,7 @@ public:
 
 							while (bytes_in > 0 && ret != -1)
 							{
-								ret = send(client_socket_, file_buffer.data(), static_cast<int>(bytes_in), 0);
+								ret = network::write(client_socket_, network::buffer(&file_buffer[0], bytes_in) );
 
 								bytes_in = is.read(file_buffer.data(), file_buffer.size()).gcount();
 							}
@@ -1778,7 +1837,7 @@ public:
 					else
 					{
 						connection_data.store_response_data(http::to_string(response));
-						ret = send(client_socket_, &(connection_data.response_data()[0]), static_cast<int>(connection_data.response_data().size()), 0);
+						ret = network::write(client_socket_, network::buffer(&(connection_data.response_data()[0]), static_cast<int>(connection_data.response_data().size())));
 					}
 
 					if (response.keep_alive() == true)
@@ -1803,7 +1862,7 @@ public:
 
 	protected:
 		http::basic::threaded::server& server_;
-		socket_t client_socket_;
+		S client_socket_;
 		http::session_handler session_handler_;
 		int connection_timeout_;
 
