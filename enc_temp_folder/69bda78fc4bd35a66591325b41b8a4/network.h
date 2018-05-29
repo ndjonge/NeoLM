@@ -1,8 +1,6 @@
 #pragma once
 
-
-
-#if defined(_WIN32)
+#if defined(WIN32)
 #include <Ws2tcpip.h>
 #include <winsock2.h>
 #endif
@@ -131,7 +129,6 @@ public:
 
 	~stream()
 	{
-		SSL_free(ssl_);
 	}
 
 	const socket& lowest_layer() const
@@ -193,7 +190,6 @@ protected:
 	std::int16_t protocol_;
 };
 
-/*
 class v4 : public endpoint
 {
 public:
@@ -215,7 +211,6 @@ public:
 private:
 	sockaddr_in sock_addr_;
 };
-*/
 
 class v6 : public endpoint
 {
@@ -345,6 +340,11 @@ void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, int how
 
 }
 
+void test_example()
+{
+
+}
+
 void test_network()
 {
 	network::init();
@@ -371,9 +371,9 @@ void test_network()
 	ssl_context.use_private_key_file("C:\\ssl\\server.key");
 
 	network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
-	//network::tcp::socket http_socket;
+	network::tcp::socket http_socket;
 
-	//std::array<char, 4096> a;
+	std::array<char, 4096> a;
 
 	//acceptor_http.accept(http_socket);
 		
@@ -384,8 +384,8 @@ void test_network()
 	https_socket.handshake(network::ssl::stream_base::server);
 
 
-//	auto x2 = network::read(http_socket, network::buffer(a.data(), a.size()));
-//	auto y2 = network::write(http_socket, network::buffer(a.data(), a.size()));
+	auto x2 = network::read(http_socket, network::buffer(a.data(), a.size()));
+	auto y2 = network::write(http_socket, network::buffer(a.data(), a.size()));
 
 	exit(0);
 

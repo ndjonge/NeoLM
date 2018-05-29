@@ -38,7 +38,6 @@ TODO: insert copyrights and MIT license.
 
 #include "network.h"
 
-
 namespace filesystem
 {
 inline std::uintmax_t file_size(const std::string& path)
@@ -1527,8 +1526,8 @@ public:
 
 			network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
-			ssl_context.use_certificate_chain_file(configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
-			ssl_context.use_private_key_file(configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
+			ssl_context.use_certificate_chain_file("C:\\ssl\\server.crt");
+			ssl_context.use_private_key_file("C:\\ssl\\server.key");
 
 			network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
 
