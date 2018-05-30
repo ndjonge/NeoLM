@@ -1507,8 +1507,8 @@ public:
 
 		http_connection_thread.detach();
 
-		std::thread https_connection_thread([this]() { https_listener_handler(); });
-		https_connection_thread.detach();
+		//std::thread https_connection_thread([this]() { https_listener_handler(); });
+		//https_connection_thread.detach();
 	}
 
 	void https_listener_handler()
@@ -1531,16 +1531,6 @@ public:
 			ssl_context.use_private_key_file(configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
 
 			network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
-
-
-
-			/*
-			int reuseaddr = 1;
-			int ret = ::setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
-
-			int ipv6only = 0;
-			ret = ::setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
-			*/
 
 			int connections_accepted = 0;
 
