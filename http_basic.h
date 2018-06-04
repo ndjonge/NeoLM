@@ -24,8 +24,7 @@ TODO: insert copyrights and MIT license.
 #include <deque>
 #include <thread>
 
-
-
+#include <zlib.h>
 
 #if defined(_USE_CPP17_STD_FILESYSTEM)
 #include <experimental/filesystem>
@@ -35,6 +34,7 @@ TODO: insert copyrights and MIT license.
 #include <Ws2tcpip.h>
 #include <winsock2.h>
 #endif
+
 
 #include "network.h"
 
@@ -59,6 +59,136 @@ namespace fs = std::experimental::filesystem;
 #else
 namespace fs = filesystem;
 #endif
+
+
+namespace gzip
+{
+
+class compressor
+{
+	std::size_t max_;
+	int level_;
+
+public:
+	compressor(int level = Z_DEFAULT_COMPRESSION)
+		: level_(level)
+	{
+	}
+
+	template <typename InputType> void compress(InputType& output, const char* data, std::size_t size) const
+	{
+		z_stream deflate_s;
+		deflate_s.zalloc = nullptr;
+		deflate_s.zfree = nullptr;
+		deflate_s.opaque = nullptr;
+		deflate_s.avail_in = 0;
+		deflate_s.next_in = nullptr;
+
+		constexpr int window_bits = 15 + 16;
+		constexpr int mem_level = 8;
+
+		if (deflateInit2(&deflate_s, level_, Z_DEFLATED, window_bits, mem_level, Z_DEFAULT_STRATEGY) != Z_OK)
+		{
+			throw std::runtime_error("deflate init failed");
+		}
+
+  deflate_s.next_in   = reinterpret_cast<Bytef *>( const_cast<char *>( data ) );
+		deflate_s.avail_in = static_cast<unsigned int>(size);
+
+		std::size_t size_compressed = 0;
+		do
+		{
+			size_t increase = size / 2 + 1024;
+			if (output.size() < (size_compressed + increase))
+			{
+				output.resize(size_compressed + increase);
+			}
+
+			deflate_s.avail_out = static_cast<unsigned int>(increase);
+			deflate_s.next_out = reinterpret_cast<Bytef*>((&output[0] + size_compressed));
+			deflate(&deflate_s, Z_FINISH);
+			size_compressed += (increase - deflate_s.avail_out);
+		} while (deflate_s.avail_out == 0);
+
+		deflateEnd(&deflate_s);
+		output.resize(size_compressed);
+	}
+};
+
+inline std::string compress(const char* data, std::size_t size, int level = Z_DEFAULT_COMPRESSION)
+{
+	compressor comp(level);
+	std::string output;
+	comp.compress(output, data, size);
+	return output;
+}
+
+class decompressor
+{
+  public:
+    decompressor()
+    {
+    }
+
+    template <typename OutputType>
+    void decompress(OutputType& output,
+                    const char* data,
+                    std::size_t size) const
+    {
+        z_stream inflate_s;
+
+        inflate_s.zalloc = nullptr;
+        inflate_s.zfree = nullptr;
+        inflate_s.opaque = nullptr;
+        inflate_s.avail_in = 0;
+        inflate_s.next_in = nullptr;
+
+        constexpr int window_bits = 15 + 32; 
+
+        if (inflateInit2(&inflate_s, window_bits) != Z_OK)
+        {
+            throw std::runtime_error("inflate init failed");
+        }
+
+        inflate_s.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data));
+
+
+		inflateEnd(&inflate_s);
+
+        inflate_s.avail_in = static_cast<unsigned int>(size);
+        std::size_t size_uncompressed = 0;
+        do
+        {
+            std::size_t resize_to = size_uncompressed + 2 * size;
+            inflateEnd(&inflate_s);
+            output.resize(resize_to);
+            inflate_s.avail_out = static_cast<unsigned int>(2 * size);
+            inflate_s.next_out = reinterpret_cast<Bytef*>(&output[0] + size_uncompressed);
+            int ret = inflate(&inflate_s, Z_FINISH);
+            if (ret != Z_STREAM_END && ret != Z_OK && ret != Z_BUF_ERROR)
+            {
+                std::string error_msg = inflate_s.msg;
+                inflateEnd(&inflate_s);
+                throw std::runtime_error(error_msg);
+            }
+
+            size_uncompressed += (2 * size - inflate_s.avail_out);
+        } while (inflate_s.avail_out == 0);
+        inflateEnd(&inflate_s);
+        output.resize(size_uncompressed);
+    }
+};
+
+inline std::string decompress(const char* data, std::size_t size)
+{
+    decompressor decomp;
+    std::string output;
+    decomp.decompress(output, data, size);
+    return output;
+}
+
+}
+
 
 
 namespace http
@@ -117,7 +247,7 @@ bool read_from_disk(const std::string& file_path, const std::function<bool(std::
 	while (bytes_in > 0)
 	{
 
-		if (!read(buffer, bytes_in)) break;
+		if (!read(buffer, static_cast<size_t>(bytes_in))) break;
 
 		bytes_in = is.read(buffer.data(), buffer.size()).gcount();
 	}
@@ -1819,7 +1949,7 @@ public:
 
 							while (bytes_in > 0 && ret != -1)
 							{
-								ret = network::write(client_socket_, network::buffer(&file_buffer[0], bytes_in) );
+								ret = network::write(client_socket_, network::buffer(&file_buffer[0], static_cast<size_t>(bytes_in)) );
 
 								bytes_in = is.read(file_buffer.data(), file_buffer.size()).gcount();
 							}

@@ -4,13 +4,12 @@ set (PROJECT_NAME "NeoLM" CXX)
 project (${PROJECT_NAME})
 
 set (CMAKE_C_COMPILER "clang")
-
-
 add_executable(${PROJECT_NAME} main.cpp)
 IF (WIN32)
 #	set (BOOST_ROOT "C:/Development Libraries/boost_1_64_0")
 #	set (BOOST_LIBRARYDIR "C:/Development Libraries/boost_1_64_0/lib64-msvc-14.1")
 	set (OPENSSL_ROOT_DIR "C:/Development Libraries/openssl-bld-lib/")
+	set (ZLIB_ROOT_DIR "C:/Projects/GnuWin32/")
 #	link_directories("C:/Development Libraries/boost_1_64_0/lib64-msvc-14.1")
 	add_definitions(-DWINVER=0x0A00 
                     -D_WIN32_WINNT=0x0A00 
@@ -39,10 +38,11 @@ set (CMAKE_CXX_EXTENSIONS OFF)
 
 #find_package(Boost 1.64 REQUIRED system thread)
 find_package(OpenSSL REQUIRED)
+find_package(zlib REQUIRED)
 
 #include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
-
+include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
 
 
 #target_link_libraries (${PROJECT_NAME} ${Boost_LIBRARIES})
