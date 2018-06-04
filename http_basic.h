@@ -1488,7 +1488,7 @@ public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
 		, thread_count_(configuration.get<int>("thread_count", 5))
-		, listen_port_(configuration.get<int>("listen_port_", 3000))
+		, listen_port_(configuration.get<int>("listen_port_", atoi(getenv("HTTP_PORT"))))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 	{
 	}
