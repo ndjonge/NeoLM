@@ -1685,6 +1685,10 @@ public:
 			network::tcp::acceptor acceptor_https{};
 
 			acceptor_https.open(endpoint_http.protocol());
+			/*
+			network::reuse_address(https_socket.lowest_layer(), 1);
+
+			network::ipv6only(http_socket, 0); */
 
 			acceptor_https.bind(endpoint_http);
 
@@ -1702,20 +1706,10 @@ public:
 			while (1)
 			{
 				acceptor_https.accept(https_socket.lowest_layer());
+
+				network::timeout(https_socket.lowest_layer(), connection_timeout_);
 				https_socket.handshake(network::ssl::stream_base::server);
 
-#if defined(WIN32_)
-				DWORD timeout_value = static_cast<DWORD>(connection_timeout_) * 1000;
-				int ret = ::setsockopt(https_socket.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
-
-				BOOL tcp_nodelay = 1;
-				ret = ::setsockopt(https_socket.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, (char*)&tcp_nodelay, sizeof(tcp_nodelay));
-#else
-                timeval timeout;
-                timeout.tv_sec = connection_timeout_;
-                timeout.tv_usec = 0;
-                setsockopt(https_socket.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-#endif 
 				server_status().connections_accepted(server_status().connections_accepted() + 1);
 				server_status().connections_current(server_status().connections_current() + 1);
 
@@ -1739,34 +1733,24 @@ public:
 
 			acceptor_http.open(endpoint_http.protocol());
 
+			/*network::reuse_address(http_socket, 1);
+
+			network::ipv6only(http_socket, 0);*/
+
 			acceptor_http.bind(endpoint_http);
 
 			acceptor_http.listen();
 
 			network::tcp::socket http_socket;
 
-
-
-			/*
-			int reuseaddr = 1;
-			int ret = ::setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
-
-			int ipv6only = 0;
-			ret = ::setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
-			*/
-
 			int connections_accepted = 0;
 
 			while (1)
 			{
 				acceptor_http.accept(http_socket);
-/*
-				DWORD timeout_value = static_cast<DWORD>(connection_timeout_) * 1000;
-				int ret = ::setsockopt(http_socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
 
-				BOOL tcp_nodelay = 1;
-				ret = ::setsockopt(http_socket, IPPROTO_TCP, TCP_NODELAY, (char*)&tcp_nodelay, sizeof(tcp_nodelay));
-*/
+				network::timeout(http_socket, connection_timeout_);
+
 				server_status().connections_accepted(server_status().connections_accepted() + 1);
 				server_status().connections_current(server_status().connections_current() + 1);
 
@@ -1910,12 +1894,7 @@ public:
 
 		~connection_handler()
 		{
-#ifndef SD_SEND
-#define SD_SEND 1
-#endif
-
-			// printf("connection close: %lld\n", client_socket_);
-			network::shutdown(client_socket_, SD_SEND);
+			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
 			server_.server_status().connections_current(server_.server_status().connections_current() - 1);
 		}

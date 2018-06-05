@@ -340,6 +340,33 @@ std::string get_client_info(network::tcp::socket& client_socket)
 	return c;
 }
 
+int reuse_address(network::tcp::socket& s, int value)
+{
+	int reuseaddr = value;
+	return ::setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
+}
+
+int ipv6only(network::tcp::socket& s, int value)
+{
+	int ipv6only = value;
+	return ::setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
+}
+
+int timeout(network::tcp::socket& s, int value)
+{
+#if defined(_WIN32)
+	DWORD timeout_value = static_cast<DWORD>(value) * 1000;
+	int ret = ::setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
+#else
+    timeval timeout;
+    timeout.tv_sec = connection_timeout_;
+    timeout.tv_usec = 0;
+	int ret = setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+#endif
+
+	return ret;
+}
+
 void closesocket(network::tcp::socket& client_socket)
 {
 	::closesocket(client_socket);
