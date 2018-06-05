@@ -47,3 +47,5 @@ include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
 
 #target_link_libraries (${PROJECT_NAME} ${Boost_LIBRARIES})
 target_link_libraries( ${PROJECT_NAME} ${OPENSSL_LIBRARIES})
+target_link_libraries( ${PROJECT_NAME} ${ZLIB_LIBRARY})
+

@@ -153,7 +153,7 @@ int main(int argc, char* argv[])
 	network::ssl::init();
 
 	http::configuration configuration{
-		{ "server", "http 0.0.1" }, { "keepalive_count", "30" }, { "keepalive_timeout", "5" }, { "thread_count", "10" }, { "doc_root", "C:/Development Libraries/doc_root" }, { "ssl_certificate", "C:/ssl/ssl.crt" }, { "ssl_certificate_key", "C:/ssl/ssl.key" }
+		{ "server", "neolm-0.001" }, { "listen_port", "3000" }, {"listen_port_range", "3000-3005"}, {"keepalive_count", "30" }, { "keepalive_timeout", "5" }, { "thread_count", "10" }, { "doc_root", "C:/Projects/doc_root" }, { "ssl_certificate", "C:/ssl/ssl.crt" }, { "ssl_certificate_key", "C:/ssl/ssl.key" }
 	};
 
 	dshell::api_server test_server(configuration);

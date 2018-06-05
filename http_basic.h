@@ -436,7 +436,7 @@ public:
 
 	inline std::vector<fields::value_type>::reverse_iterator last_new_field() { return fields_.rbegin(); }
 		
-	inline const std::string& operator[](std::string name) const
+	inline const std::string& operator[](const char* name) const
 	{
 		static const std::string not_found = "";
 
@@ -455,7 +455,7 @@ public:
 			return i->value;
 	}
 
-	inline std::string& operator[](const std::string& name)
+	inline std::string& operator[](const char* name)
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
 			if (http::util::case_insensitive_equal(f.name, name))
@@ -1124,9 +1124,13 @@ public:
 			}
 		}
 
+		if (request_["Content-Encoding"] == "gzip")
+		{
+			request_.body() = gzip::decompress(request_.body().c_str(), request_.content_length());
+		}
+
 		request_.url_requested_ = request_.target_;
 		request_.target_ = request_path;
-
 
 		if (router_.call_middleware(*this))
 		{
@@ -1618,7 +1622,7 @@ public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
 		, thread_count_(configuration.get<int>("thread_count", 5))
-		, listen_port_(configuration.get<int>("listen_port_", atoi(getenv("HTTP_PORT"))))
+		, listen_port_(configuration.get<int>("listen_port", 3000))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 	{
 	}
@@ -1645,7 +1649,7 @@ public:
 	{
 		try
 		{
-			network::tcp::v6 endpoint_http(listen_port_+1);
+			network::tcp::v6 endpoint_http(listen_port_);
 
 			network::tcp::acceptor acceptor_https{};
 
@@ -1912,6 +1916,8 @@ public:
 					}						
 				}
 
+
+
 				if ((parse_result == http::request_parser::result_type::good) || (parse_result == http::request_parser::result_type::bad))
 				{
 
@@ -1936,8 +1942,6 @@ public:
 						{
 							std::string headers = response.header_to_string();
 
-
-
 							ret = network::write(client_socket_, network::buffer(&headers[0], headers.length()) );
 
 							std::ifstream is(session_handler_.request().target(), std::ios::in | std::ios::binary);
@@ -1957,6 +1961,13 @@ public:
 					}
 					else
 					{
+						if (session_handler_.request()["Accept-Encoding"].find("gzip") != std::string::npos)
+						{ 
+							response.body() = gzip::compress(response.body().c_str(), response.body().size());
+							response["Content-Encoding"] = "gzip";
+							response["Content-Length"] = std::to_string(response.body().size());
+						}
+
 						connection_data.store_response_data(http::to_string(response));
 						ret = network::write(client_socket_, network::buffer(&(connection_data.response_data()[0]), static_cast<int>(connection_data.response_data().size())));
 					}
