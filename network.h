@@ -299,12 +299,12 @@ std::int32_t write(socket_t s, buffer& b)
 
 std::int32_t read(ssl::stream<tcp::socket> s, buffer& b)
 {
-	return ::SSL_read(s.native(), b.data(), static_cast<int>(b.size()));
+	return SSL_read(s.native(), b.data(), static_cast<int>(b.size()));
 }
 
 std::int32_t write(ssl::stream<tcp::socket> s, buffer& b)
 {
-	return ::SSL_write(s.native(), b.data(), static_cast<int>(b.size()));
+	return SSL_write(s.native(), b.data(), static_cast<int>(b.size()));
 }
 
 std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_socket)
@@ -349,9 +349,14 @@ void shutdown(network::tcp::socket& client_socket, int how)
 	::shutdown(client_socket, how);
 }
 
-void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, int how)
+enum shutdown_type
 {
-	::shutdown(client_socket.lowest_layer(), how);
+	shutdown_receive = 0, shutdown_send, shutdown_both
+};
+
+void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, shutdown_type how)
+{
+	::shutdown(client_socket.lowest_layer(), static_cast<int>(how));
 }
 
 }
