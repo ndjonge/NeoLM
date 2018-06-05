@@ -1,10 +1,16 @@
 #pragma once
 
-
-
 #if defined(_WIN32)
 #include <Ws2tcpip.h>
 #include <winsock2.h>
+#else
+#define SOCKET int
+#define closesocket close
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
 #endif
 
 #include <stdio.h>
@@ -18,8 +24,10 @@ using socket_t = SOCKET;
 
 void init()
 {
+#if defined(_WIN32)
 	WSADATA wsaData;
 	WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif
 }
 
 class buffer
@@ -29,8 +37,8 @@ public:
 	{
 	}
 
-	char* data(){return data_;}
-	size_t size() { 
+	char* data() const {return data_;}
+	size_t size() const { 
 		return size_;
 	}
 private:
@@ -180,7 +188,6 @@ private:
 
 namespace tcp
 {
-
 using socket = socket_t;
 
 class endpoint
@@ -191,7 +198,7 @@ public:
 	std::int16_t  protocol() {return protocol_;}
 	virtual sockaddr* addr()=0;
 	virtual int addr_size()=0;
-	socket& socket() {return socket_;};
+    tcp::socket& socket() {return socket_;};
 
 protected:
 	tcp::socket  socket_;
@@ -261,7 +268,7 @@ public:
 			int reuseaddr = 1;
 			ret = ::setsockopt(endpoint_->socket(), SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
 
-			DWORD  ipv6only = 0;
+			int ipv6only = 0;
 			ret = ::setsockopt(endpoint_->socket(), IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
 
 			ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
@@ -276,7 +283,7 @@ public:
 
 		void accept(socket& socket) 
 		{
-			std::int32_t len = static_cast<int>(endpoint_->addr_size());
+			socklen_t len = static_cast<socklen_t>(endpoint_->addr_size());
 			socket = ::accept(endpoint_->socket(), endpoint_->addr(), &len);
 
 		}
@@ -287,22 +294,22 @@ private:
 };
 }
 
-std::int32_t read(socket_t s, buffer& b)
+std::int32_t read(socket_t s, const buffer& b)
 {
 	return ::recv(s, b.data(), static_cast<int>(b.size()), 0);
 }
 
-std::int32_t write(socket_t s, buffer& b)
+std::int32_t write(socket_t s, const buffer& b)
 {
 	return ::send(s, b.data(), static_cast<int>(b.size()), 0);
 }
 
-std::int32_t read(ssl::stream<tcp::socket> s, buffer& b)
+std::int32_t read(ssl::stream<tcp::socket> s, const buffer& b)
 {
 	return ::SSL_read(s.native(), b.data(), static_cast<int>(b.size()));
 }
 
-std::int32_t write(ssl::stream<tcp::socket> s, buffer& b)
+std::int32_t write(ssl::stream<tcp::socket> s, const buffer& b)
 {
 	return ::SSL_write(s.native(), b.data(), static_cast<int>(b.size()));
 }
