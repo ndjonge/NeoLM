@@ -54,7 +54,11 @@ public:
 			session.response().result(http::status::ok);
 		});
 
-		router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) { session.response().body() = server_info_.to_string(); });
+		router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) { 
+
+			server_info_.router_information(router_.to_string());
+			session.response().body() = server_info_.to_string(); 
+		});
 
 		router_.on_post("/token", [this](http::session_handler& session, const http::api::params& params) {
 			std::string code = session.request().query().get<std::string>("code");

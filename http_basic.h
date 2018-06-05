@@ -354,6 +354,18 @@ public:
 	fields(const http::fields& f)
 		: fields_(f.fields_){};
 
+	inline std::string to_string() const
+	{ 
+		std::stringstream ss;
+		for (auto&& field : fields_)
+		{
+			ss << field.name << ": ";
+			ss << field.value << "\r\n";
+		}
+
+		return ss.str();
+	}
+
 	inline bool fields_empty() const { return this->fields_.empty(); };
 
 	inline void set(const std::string& name, const std::string& value)
@@ -1476,6 +1488,25 @@ public:
 	router(const std::string& doc_root)
 		: doc_root_(doc_root){};
 
+	std::string to_string()
+	{
+		std::stringstream s;
+
+		for(auto& route : api_router_table["GET"])
+			s << "GET: " << route.path_ << "\n";
+
+		for(auto& route : api_router_table["POST"])
+			s << "POST: " << route.path_ << "\n";
+
+		for(auto& route : api_router_table["PUT"])
+			s << "PUT: " << route.path_ << "\n";
+
+		for(auto& route : api_router_table["DELETE"])
+			s << "DELETE: " << route.path_ << "\n";
+
+		return s.str();
+	}
+
 	void use(const std::string& path) { static_content_routes.emplace_back(path); }
 
 	void on_http_method(const std::string& route, const std::string& http_method, R api_method) { api_router_table[http_method].emplace_back(route, api_method); }
@@ -1628,12 +1659,18 @@ public:
 		network::init();
 		network::ssl::init();
 
+		server_info_.server_information(http::basic::server::configuration_.to_string());
+		server_info_.router_information(http::basic::server::router_.to_string());
+
+		
 
 		std::thread http_connection_thread([this]() { http_listener_handler(); });
 		// al_so_create(&sync_, AL_SYNC_TYPE_SEMAPHORE|AL_SYNC_LOCKED, FALSE);
 		// al_so_add_to_ipcwait(sync_, callback, sync_);
 
 		http_connection_thread.detach();
+
+
 
 		//std::thread https_connection_thread([this]() { https_listener_handler(); });
 		//https_connection_thread.detach();
@@ -1746,6 +1783,9 @@ public:
 	class server_info
 	{
 	private:
+		std::string server_information_;
+		std::string router_information_;
+		size_t requests_handled_;
 		size_t connections_accepted_;
 		size_t connections_current_;
 		std::vector<std::string> access_log_;
@@ -1753,8 +1793,23 @@ public:
 
 	public:
 		server_info()
-			: connections_accepted_(0)
+			: server_information_("")
+			, router_information_("")
+			, requests_handled_(0)
+			, connections_accepted_(0)
 			, connections_current_(0){};
+
+		size_t requests_handled()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			return requests_handled_;
+		}
+
+		void requests_handled(size_t nr)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			requests_handled_ = nr;
+		}
 
 		size_t connections_accepted()
 		{
@@ -1810,13 +1865,31 @@ public:
 			return s.str();
 		}
 
+		void server_information(std::string info)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			server_information_ = info;
+		}
+
+		void router_information(std::string info)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			router_information_ = info;
+		}
+
 		std::string to_string()
 		{
 			std::stringstream s;
 
+			s << "\nServer Configuration:\n" << server_information_ << "\n";
+
+			s << "\nStatistics:\n";
 			s << "connections_accepted: " << connections_accepted_ << "\n";
 			s << "connections_current: " << connections_current_ << "\n";
-			s << "access_log:\n";
+			s << "requests_handled: " << requests_handled_ << "\n";
+
+			s << "\nRouter:\n" << router_information_ << "\n";
+			s << "\nAccess Log:\n";
 			s << log_access_to_string();
 
 			return s.str();
@@ -1932,6 +2005,7 @@ public:
 					{
 						session_handler_.request()["Remote_Addr"] = network::get_client_info(client_socket_);
 						session_handler_.handle_request(server_.router_);
+						server_.server_status().requests_handled(server_.server_status().requests_handled() + 1);
 						server_.server_status().log_access(session_handler_);
 					}
 					else
