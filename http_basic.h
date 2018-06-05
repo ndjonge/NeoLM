@@ -30,12 +30,6 @@ TODO: insert copyrights and MIT license.
 #include <experimental/filesystem>
 #endif
 
-#if defined(WIN32)
-#include <Ws2tcpip.h>
-#include <winsock2.h>
-#endif
-
-
 #include "network.h"
 
 
@@ -213,7 +207,7 @@ template <typename T>
 T& split(T& result, const typename T::value_type& s, const typename T::value_type& delimiters, split_opt::empties_t empties = split_opt::empties_ok )
 {
   result.clear();
-  T::size_type next = T::value_type::npos;
+  typename T::size_type next = T::value_type::npos;
   auto current = next;
 
   do
@@ -1673,12 +1667,18 @@ public:
 				acceptor_https.accept(https_socket.lowest_layer());
 				https_socket.handshake(network::ssl::stream_base::server);
 
+#if defined(WIN32_)
 				DWORD timeout_value = static_cast<DWORD>(connection_timeout_) * 1000;
 				int ret = ::setsockopt(https_socket.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
 
 				BOOL tcp_nodelay = 1;
 				ret = ::setsockopt(https_socket.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, (char*)&tcp_nodelay, sizeof(tcp_nodelay));
-
+#else
+                timeval timeout;
+                timeout.tv_sec = connection_timeout_;
+                timeout.tv_usec = 0;
+                setsockopt(https_socket.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+#endif 
 				server_status().connections_accepted(server_status().connections_accepted() + 1);
 				server_status().connections_current(server_status().connections_current() + 1);
 
@@ -1723,13 +1723,13 @@ public:
 			while (1)
 			{
 				acceptor_http.accept(http_socket);
-
+/*
 				DWORD timeout_value = static_cast<DWORD>(connection_timeout_) * 1000;
 				int ret = ::setsockopt(http_socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
 
 				BOOL tcp_nodelay = 1;
 				ret = ::setsockopt(http_socket, IPPROTO_TCP, TCP_NODELAY, (char*)&tcp_nodelay, sizeof(tcp_nodelay));
-
+*/
 				server_status().connections_accepted(server_status().connections_accepted() + 1);
 				server_status().connections_current(server_status().connections_current() + 1);
 
@@ -1837,6 +1837,10 @@ public:
 
 		~connection_handler()
 		{
+#ifndef SD_SEND
+#define SD_SEND 1
+#endif
+
 			// printf("connection close: %lld\n", client_socket_);
 			network::shutdown(client_socket_, SD_SEND);
 			network::closesocket(client_socket_);
