@@ -1,15 +1,21 @@
 {
     // See https://go.microsoft.com//fwlink//?linkid=834763 for more information about this file.
     "configurations": [
-        {
+      {
         "name": "x86-Debug",
         "generator": "Visual Studio 15 2017",
-        "configurationType" : "Debug",
-        "buildRoot":  "${env.USERPROFILE}\\CMakeBuild\\${workspaceHash}\\build\\${name}",
-        "cmakeCommandArgs":  "",
+        "configurationType": "Debug",
+        "buildRoot": "${env.USERPROFILE}\\CMakeBuild\\${workspaceHash}\\build\\${name}",
+        "cmakeCommandArgs": "",
         "buildCommandArgs": "-m -v:minimal",
-        "ctestCommandArgs":  ""
-        },
+        "ctestCommandArgs": "",
+        "variables": [
+          {
+            "name": "CMAKE_TOOLCHAIN_FILE",
+            "value": "C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+          }
+        ]
+      },
       {
         "name": "x86-Release",
         "generator": "Visual Studio 15 2017",
@@ -17,7 +23,13 @@
         "buildRoot": "${env.USERPROFILE}\\CMakeBuild\\${workspaceHash}\\build\\${name}",
         "cmakeCommandArgs": "",
         "buildCommandArgs": "-m -v:minimal",
-        "ctestCommandArgs": ""
+        "ctestCommandArgs": "",
+        "variables": [
+          {
+            "name": "CMAKE_TOOLCHAIN_FILE",
+            "value": "C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+          }
+        ]
       },
       {
         "name": "x64-Debug",
@@ -26,7 +38,13 @@
         "buildRoot": "${env.USERPROFILE}\\CMakeBuild\\${workspaceHash}\\build\\${name}",
         "cmakeCommandArgs": "",
         "buildCommandArgs": "-m -v:minimal",
-        "ctestCommandArgs": ""
+        "ctestCommandArgs": "",
+        "variables": [
+          {
+            "name": "CMAKE_TOOLCHAIN_FILE",
+            "value": "C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+          }
+        ]
       },
       {
         "name": "x64-Release",
@@ -35,7 +53,13 @@
         "buildRoot": "${env.USERPROFILE}\\CMakeBuild\\${workspaceHash}\\build\\${name}",
         "cmakeCommandArgs": "",
         "buildCommandArgs": "-m -v:minimal",
-        "ctestCommandArgs": ""
+        "ctestCommandArgs": "",
+        "variables": [
+          {
+            "name": "CMAKE_TOOLCHAIN_FILE",
+            "value": "C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+          }
+        ]
       }
     ]
 }

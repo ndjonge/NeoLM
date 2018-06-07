@@ -21,6 +21,95 @@
 namespace network
 {
 using socket_t = SOCKET;
+using error_code = std::int32_t;
+
+
+ namespace error
+{
+    enum errc_t
+    {
+    success = 0,
+    address_family_not_supported = EAFNOSUPPORT,
+    address_in_use = EADDRINUSE,
+    address_not_available = EADDRNOTAVAIL,
+    already_connected = EISCONN,
+    argument_list_too_long = E2BIG,
+    argument_out_of_domain = EDOM,
+    bad_address = EFAULT,
+    bad_file_descriptor = EBADF,
+    bad_message = EBADMSG,
+    broken_pipe = EPIPE,
+    connection_aborted = ECONNABORTED,
+    connection_already_in_progress = EALREADY,
+    connection_refused = ECONNREFUSED,
+    connection_reset = ECONNRESET,
+    cross_device_link = EXDEV,
+    destination_address_required = EDESTADDRREQ,
+    device_or_resource_busy = EBUSY,
+    directory_not_empty = ENOTEMPTY,
+    executable_format_error = ENOEXEC,
+    file_exists = EEXIST,
+    file_too_large = EFBIG,
+    filename_too_long = ENAMETOOLONG,
+    function_not_supported = ENOSYS,
+    host_unreachable = EHOSTUNREACH,
+    identifier_removed = EIDRM,
+    illegal_byte_sequence = EILSEQ,
+    inappropriate_io_control_operation = ENOTTY,
+    interrupted = EINTR,
+    invalid_argument = EINVAL,
+    invalid_seek = ESPIPE,
+    io_error = EIO,
+    is_a_directory = EISDIR,
+    message_size = EMSGSIZE,
+    network_down = ENETDOWN,
+    network_reset = ENETRESET,
+    network_unreachable = ENETUNREACH,
+    no_buffer_space = ENOBUFS,
+    no_child_process = ECHILD,
+    no_link = ENOLINK,
+    no_lock_available = ENOLCK,
+    no_message_available = ENODATA,
+    no_message = ENOMSG,
+    no_protocol_option = ENOPROTOOPT,
+    no_space_on_device = ENOSPC,
+    no_stream_resources = ENOSR,
+    no_such_device_or_address = ENXIO,
+    no_such_device = ENODEV,
+    no_such_file_or_directory = ENOENT,
+    no_such_process = ESRCH,
+    not_a_directory = ENOTDIR,
+    not_a_socket = ENOTSOCK,
+    not_a_stream = ENOSTR,
+    not_connected = ENOTCONN,
+    not_enough_memory = ENOMEM,
+    not_supported = ENOTSUP,
+    operation_canceled = ECANCELED,
+    operation_in_progress = EINPROGRESS,
+    operation_not_permitted = EPERM,
+    operation_not_supported = EOPNOTSUPP,
+    operation_would_block = EWOULDBLOCK,
+    owner_dead = EOWNERDEAD,
+    permission_denied = EACCES,
+    protocol_error = EPROTO,
+    protocol_not_supported = EPROTONOSUPPORT,
+    read_only_file_system = EROFS,
+    resource_deadlock_would_occur = EDEADLK,
+    resource_unavailable_try_again = EAGAIN,
+    result_out_of_range = ERANGE,
+    state_not_recoverable = ENOTRECOVERABLE,
+    stream_timeout = ETIME,
+    text_file_busy = ETXTBSY,
+    timed_out = ETIMEDOUT,
+    too_many_files_open_in_system = ENFILE,
+    too_many_files_open = EMFILE,
+    too_many_links = EMLINK,
+    too_many_symbolic_link_levels = ELOOP,
+    value_too_large = EOVERFLOW,
+    wrong_protocol_type = EPROTOTYPE
+    };
+
+} // namespace errc
 
 void init()
 {
@@ -184,8 +273,6 @@ private:
 
 }
 
-
-
 namespace tcp
 {
 using socket = socket_t;
@@ -244,7 +331,12 @@ public:
 	{
 		socket_ = ::socket(sock_addr_.sin6_family, protocol, 0);
 	}
-	
+
+	void port(std::int16_t port)
+	{
+		sock_addr_.sin6_port = ::htons(port);
+	}
+
 	sockaddr* addr() {return reinterpret_cast<sockaddr*>(&sock_addr_);};
 	std::int32_t addr_size() { return static_cast<std::int32_t>(sizeof(this->sock_addr_));}
 
@@ -260,7 +352,7 @@ public:
 
 		void open(std::int16_t protocol) { protocol_ = protocol;}
 
-		void bind(endpoint& endpoint) 
+		void bind(endpoint& endpoint, error_code& ec) 
 		{
 			int ret = 0;
 			endpoint_ = &endpoint;
@@ -397,7 +489,7 @@ void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, shutdow
 
 void test_network()
 {
-	network::init();
+	/*network::init();
 
 	network::ssl::init();
 	network::tcp::v6 endpoint_http{3001};
@@ -420,7 +512,7 @@ void test_network()
 	ssl_context.use_certificate_chain_file("C:\\ssl\\server.crt");
 	ssl_context.use_private_key_file("C:\\ssl\\server.key");
 
-	network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
+	network::ssl::stream<network::tcp::socket> https_socket(ssl_context);*/
 	//network::tcp::socket http_socket;
 
 	//std::array<char, 4096> a;
@@ -430,8 +522,8 @@ void test_network()
 	//auto x = network::read(http_socket, network::buffer(a.data(), a.size()));
 	//auto y = network::write(http_socket, network::buffer(a.data(), a.size()));
 
-	acceptor_https.accept(https_socket.lowest_layer());
-	https_socket.handshake(network::ssl::stream_base::server);
+	//acceptor_https.accept(https_socket.lowest_layer());
+	//https_socket.handshake(network::ssl::stream_base::server);
 
 
 //	auto x2 = network::read(http_socket, network::buffer(a.data(), a.size()));

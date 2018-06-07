@@ -1689,8 +1689,17 @@ public:
 			network::reuse_address(https_socket.lowest_layer(), 1);
 
 			network::ipv6only(http_socket, 0); */
+			
+			network::error_code ec = network::error::success;
 
-			acceptor_https.bind(endpoint_http);
+			do
+			{ 
+				acceptor_https.bind(endpoint_http, ec);
+				
+				if (ec == network::error::address_in_use)
+					endpoint_http.port(listen_port_++);
+
+			} while(ec == network::error::address_in_use );
 
 			acceptor_https.listen();
 
@@ -1737,7 +1746,16 @@ public:
 
 			network::ipv6only(http_socket, 0);*/
 
-			acceptor_http.bind(endpoint_http);
+			network::error_code ec = network::error::success;
+
+			do
+			{ 
+				acceptor_http.bind(endpoint_http, ec);
+				
+				if (ec == network::error::address_in_use)
+					endpoint_http.port(listen_port_++);
+
+			} while(ec == network::error::address_in_use );
 
 			acceptor_http.listen();
 
