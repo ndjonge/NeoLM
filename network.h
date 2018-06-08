@@ -456,7 +456,7 @@ int timeout(network::tcp::socket& s, int value)
 	int ret = ::setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
 #else
     timeval timeout;
-    timeout.tv_sec = connection_timeout_;
+    timeout.tv_sec = value;
     timeout.tv_usec = 0;
 	int ret = setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 #endif
