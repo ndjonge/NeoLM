@@ -1647,7 +1647,8 @@ public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
 		, thread_count_(configuration.get<int>("thread_count", 5))
-		, listen_port_(configuration.get<int>("listen_port", 3000))
+		, listen_port_begin_(configuration.get<int>("listen_port", 3000))
+		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 	{
 	}
@@ -1692,14 +1693,24 @@ public:
 			
 			network::error_code ec = network::error::success;
 
-			do
+			for(listen_port_ = listen_port_begin_; listen_port_ != listen_port_end_; listen_port_)
 			{ 
 				acceptor_https.bind(endpoint_http, ec);
 				
-				if (ec == network::error::address_in_use)
-					endpoint_http.port(listen_port_++);
-
-			} while(ec == network::error::address_in_use );
+				if (ec == network::error::success)
+				{
+					break;
+				}
+				else if (listen_port_ == network::error::address_in_use)
+				{
+					listen_port_++;
+					endpoint_http.port(listen_port_);
+				}
+				else
+				{
+					throw std::runtime_error("http bind failed on port: " +std::to_string(listen_port_) + " ec: " + std::to_string(ec));
+				}
+			}
 
 			acceptor_https.listen();
 
@@ -1736,7 +1747,7 @@ public:
 	{
 		try
 		{
-			network::tcp::v6 endpoint_http(listen_port_);
+			network::tcp::v6 endpoint_http(listen_port_begin_);
 
 			network::tcp::acceptor acceptor_http{};
 
@@ -1748,14 +1759,24 @@ public:
 
 			network::error_code ec = network::error::success;
 
-			do
+			for(listen_port_ = listen_port_begin_; listen_port_ != listen_port_end_; listen_port_)
 			{ 
 				acceptor_http.bind(endpoint_http, ec);
 				
-				if (ec == network::error::address_in_use)
-					endpoint_http.port(listen_port_++);
-
-			} while(ec == network::error::address_in_use );
+				if (ec == network::error::success)
+				{
+					break;
+				}
+				else if (listen_port_ == network::error::address_in_use)
+				{
+					listen_port_++;
+					endpoint_http.port(listen_port_);
+				}
+				else
+				{
+					throw std::runtime_error("http bind failed on port: " +std::to_string(listen_port_) + " ec: " + std::to_string(ec));
+				}
+			}
 
 			acceptor_http.listen();
 
@@ -2104,6 +2125,8 @@ protected:
 	server_info server_info_;
 private:
 	int thread_count_;
+	int listen_port_begin_;
+	int listen_port_end_;
 	int listen_port_;
 	int connection_timeout_;
 };
