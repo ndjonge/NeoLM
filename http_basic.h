@@ -1693,7 +1693,7 @@ public:
 			
 			network::error_code ec = network::error::success;
 
-			for(listen_port_ = listen_port_begin_; listen_port_ != listen_port_end_; listen_port_)
+			for(listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_; listen_port_)
 			{ 
 				acceptor_https.bind(endpoint_http, ec);
 				
@@ -1759,15 +1759,16 @@ public:
 
 			network::error_code ec = network::error::success;
 
-			for(listen_port_ = listen_port_begin_; listen_port_ != listen_port_end_; listen_port_)
+			for(listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_; listen_port_)
 			{ 
 				acceptor_http.bind(endpoint_http, ec);
 				
 				if (ec == network::error::success)
 				{
+					this->configuration_.set("http_listen_socket", std::to_string(listen_port_));
 					break;
 				}
-				else if (listen_port_ == network::error::address_in_use)
+				else if (ec == network::error::address_in_use)
 				{
 					listen_port_++;
 					endpoint_http.port(listen_port_);

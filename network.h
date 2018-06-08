@@ -358,12 +358,17 @@ public:
 			endpoint_ = &endpoint;
 			endpoint_->open(protocol_);
 			int reuseaddr = 1;
-			ret = ::setsockopt(endpoint_->socket(), SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
+			//ret = ::setsockopt(endpoint_->socket(), SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
 
 			int ipv6only = 0;
 			ret = ::setsockopt(endpoint_->socket(), IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
 
 			ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
+
+			if (ret == -1)
+				ec = network::error::address_in_use;
+			else
+				ec = network::error::success;
 
 			//ec.value = ret;
 		}
