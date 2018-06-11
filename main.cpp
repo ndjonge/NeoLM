@@ -12,7 +12,7 @@
 
 using namespace std::literals;
 
-namespace dshell
+namespace neolm
 {
 
 class api_server : public http::basic::threaded::server
@@ -27,32 +27,60 @@ public:
 		router_.use("/index.html");
 		router_.use("/");
 
-		router_.use("/api", [this](http::session_handler& session, const http::api::params& params) {
-			// std::promise<bool> is_dshell_ready;
-
-			/*DsThttpEvent httpEvent;
-			httpEvent.type = DsNhttpEvent;
-			httpEvent.process = 2;
-			httpEvent.userContext = 0;
-
-			std::pair<http::session_handler*, std::promise<bool>*> session_promise = std::make_pair(&session, &is_bshell_ready);
-
-			httpEvent.session = static_cast<bs4>(sgm::make_wrapped_sgm_ptr<std::pair<http::session_handler*, std::promise<bool>*>>(session_promise).asHandle());
-
-
-			{
-				std::lock_guard<std::mutex> guard(event_mutex);
-				event_queue.push(httpEvent);
-				al_so_release( sync_ );
-			}
-
-
-			auto x = is_dshell_ready.get_future().get();*/
-
-			session.response().body() = "HI\n";
-			session.response().type("text");
-			session.response().result(http::status::ok);
+		// License instance configuration routes..
+		router_.on_get("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
 		});
+
+		router_.on_post("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		router_.on_put("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		router_.on_delete("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		// License model routes...
+		router_.on_get("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		router_.on_post("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		router_.on_put("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		router_.on_delete("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+
+		// Allocation routes...
+		router_.on_get("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		router_.on_post("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		router_.on_put("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		router_.on_delete("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+
+		// Acquired routes...
+		router_.on_get("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		router_.on_post("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		router_.on_put("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
+		router_.on_delete("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+		});
+
 
 		router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) { 
 
@@ -60,110 +88,109 @@ public:
 			server_info_.router_information(router_.to_string());
 			session.response().body() = server_info_.to_string(); 
 		});
-
-		router_.on_post("/token", [this](http::session_handler& session, const http::api::params& params) {
-			std::string code = session.request().query().get<std::string>("code");
-
-			if (code.empty())
-			{
-				session.response().result(http::status::bad_request);
-			}
-			else
-			{
-				std::string token = std::to_string(std::hash<std::string>{}(code));
-				tokens_.emplace(token, code);
-				session.response().body() = token;
-			}
-		});
-
-		router_.on_get("/token", [this](http::session_handler& session, const http::api::params& params) {
-			std::string token = session.request().query().get<std::string>("token");
-
-			if (token.empty())
-			{
-				session.response().result(http::status::bad_request);
-			}
-			else
-			{
-				auto value = tokens_.find(token);
-
-				if (value != tokens_.end())
-				{
-					session.response().body() = value->second;
-				}
-				else
-				{
-					session.response().result(http::status::bad_request);
-				}
-			}
-		});
-
-		router_.on_post("/key-value-store/:key", [this](http::session_handler& session, const http::api::params& params) {
-			auto& key = params.get("key");
-
-			if (key.empty())
-			{
-				session.response().result(http::status::bad_request);
-			}
-			else
-			{
-				auto i = key_value_store.emplace(key, session.request().body());
-
-				if (i.second)
-					session.response().result(http::status::created);
-				else
-					session.response().result(http::status::not_found);
-			}
-		});
-
-		router_.on_get("/key-value-store/:key", [this](http::session_handler& session, const http::api::params& params) {
-			auto& key = params.get("key");
-
-			if (key.empty())
-			{
-				session.response().result(http::status::not_found);
-			}
-			else
-			{
-				auto value = key_value_store.find(key);
-
-				if (value != key_value_store.end())
-				{
-					session.response().body() = value->second;
-				}
-				else
-				{
-					session.response().result(http::status::not_found);
-				}
-			}
-		});
 	}
 
 private:
-	// al_sync_object* sync_;
-	// std::queue<DsThttpEvent> event_queue;
-	std::mutex event_mutex;
 
-	std::unordered_map<std::string, std::string> tokens_;
-	std::unordered_map<std::string, std::string> key_value_store;
 };
+
+class license_manager
+{
+class instance;
+template<class M> class product;
+
+class user;
+class server;
+class named_user_license;
+class concurrent_user_license;
+class named_server_license;
+
+using instances = std::unordered_map<std::string, license_manager::instance>;
+using concurrent_user_licenses = std::unordered_map<std::string, license_manager::product<license_manager::concurrent_user_license>>;
+using named_user_licenses = std::unordered_map<std::string, license_manager::product<license_manager::named_user_license>>;
+using named_server_licenses = std::unordered_map<std::string, license_manager::product<license_manager::named_server_license>>;
+
+using users = std::unordered_map<std::string, license_manager::user>;
+using servers = std::unordered_map<std::string, license_manager::server>;
+
+private:
+
+	class instance
+	{
+	public:
+		instance(std::string id, std::string name, std::string key, std::string domains) : id_(id), name_(name), license_key_(key), license_hash_(){};
+
+		std::string id_;
+		std::string name_;
+		std::string license_key_;
+		std::string license_hash_;
+
+		named_user_licenses named_user_licenses_;
+		named_server_licenses named_server_licenses_;
+		concurrent_user_licenses concurrent_user_licenses_;
+
+		users users_;
+		servers servers_;
+	};
+
+	class product
+	{
+	public:
+		product(std::string id, std::string description, std::string key, std::string domains) : id_(id), description_(description){};
+
+		std::string id_;
+		std::string description_;
+	};
+
+	class user
+	{
+	public:
+		user(std::string name): name_(name) {};
+
+		std::string name_;
+	};
+
+	class server
+	{
+	public:
+		server(std::string id, std::string hostname) : id_(id), hostname_(hostname){};
+
+		std::string id_;
+		std::string hostname_;
+	};
+
+public:
+	license_manager() :
+		configuration_{
+			{ "server", "neolm-8.0.01" }, 
+			{ "listen_port_begin", "3000" }, 
+			{"listen_port_end", "3010"}, 
+			{"keepalive_count", "30" }, 
+			{ "keepalive_timeout", "5" }, 
+			{ "thread_count", "10" }, 
+			{ "doc_root", "C:/Projects/doc_root" }, 
+			{ "ssl_certificate", "C:/ssl/ssl.crt" }, 
+			{ "ssl_certificate_key", "C:/ssl/ssl.key" }},
+		api_server_(configuration_) 
+	{
+			api_server_.start_server();	
+	}
+
+	~license_manager() {}
+
+private:
+	http::configuration configuration_;
+	api_server api_server_;	
+};
+
 }
 
 int main(int argc, char* argv[])
 {
-
-	//test_network();
-
 	network::init();
 	network::ssl::init();
 
-	http::configuration configuration{
-		{ "server", "neolm-0.001" }, { "listen_port_begin", "3000" }, {"listen_port_end", "3010"}, {"keepalive_count", "30" }, { "keepalive_timeout", "5" }, { "thread_count", "10" }, { "doc_root", "C:/Projects/doc_root" }, { "ssl_certificate", "C:/ssl/ssl.crt" }, { "ssl_certificate_key", "C:/ssl/ssl.key" }
-	};
-
-	dshell::api_server test_server(configuration);
-
-	test_server.start_server();
+	neolm::license_manager test_server;
 
 	while (1)
 	{
