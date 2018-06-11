@@ -1692,6 +1692,10 @@ public:
 			network::tcp::acceptor acceptor_https{};
 
 			acceptor_https.open(endpoint_http.protocol());
+			/*
+			network::reuse_address(https_socket.lowest_layer(), 1);
+
+			network::ipv6only(http_socket, 0); */
 			
 			network::error_code ec = network::error::success;
 
