@@ -235,10 +235,10 @@ public:
 
 
 		json::value instance_license = json::parser::parse(std::ifstream(license_file));
-		json::value instance_users = json::parser::parse(std::ifstream("users_"+license_file));
-		json::value instance_servers = json::parser::parse(std::ifstream("servers_"+license_file));
+		json::value instance_users = json::parser::parse(std::ifstream("users_" + license_file));
+		json::value instance_servers = json::parser::parse(std::ifstream("servers_" + license_file));
 
-		this->instances_.emplace("customer_001", instance_license, instance_users, instance_servers);
+		this->instances_.emplace("customer_001", instance(instance_license, instance_users, instance_servers));
 
 		api_server_.start_server();	
 	}
