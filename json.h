@@ -199,7 +199,10 @@ public:
 	json::array& get_array() { return *array_value; }
 	json::object& get_object() { return *object_value; };
 
-
+	json::value& operator[](const std::string& key)
+	{
+		return get_object()[key];
+	}
 
 	std::size_t count() const {};
 
@@ -551,6 +554,32 @@ static json::value parseValue(const std::string& str, std::string::const_iterato
 	case 't':
 		return parseBoolean(str, i);
 	}
+}
+
+static json::value parse(std::ifstream& stream)
+{
+	std::string line;
+
+	std::stringstream s;
+
+	if (stream.is_open())
+	{
+		while (std::getline(stream, line))
+		{
+			s << line << '\n';
+		}
+		stream.close();
+	}
+
+
+	string str = s.str();
+
+	std::string::const_iterator i = str.begin();
+	value rval = parser::parseValue(str, i);
+
+	parser::skipWhiteSpace(str, i);
+
+	return rval;
 }
 
 

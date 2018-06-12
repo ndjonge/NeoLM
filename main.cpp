@@ -8,7 +8,7 @@
 
 #include "http_basic.h"
 //#include "http_advanced_server.h"
-//#include "json.h"
+#include "json.h"
 
 using namespace std::literals;
 
@@ -118,7 +118,41 @@ private:
 	class instance
 	{
 	public:
-		instance(std::string id, std::string name, std::string key, std::string domains) : id_(id), name_(name), license_key_(key), license_hash_(){};
+		instance(json::value& instance_license, json::value& instance_named_users, json::value& instance_named_servers)
+		{
+			id_ = json::get<std::string>(instance_license["id"]);
+			name_ = json::get<std::string>(instance_license["name"]);
+			license_key_ = json::get<std::string>(instance_license["key"]);
+			license_hash_ = json::get<std::string>(instance_license["bind_to"]);
+
+			auto named_user_license_definitions = instance_license["named-user"].as_array();
+			auto named_server_license_definitions = instance_license["named-server"].as_array();
+			auto concurrent_user_license_definitions = instance_license["concurrent-user"].as_array();
+
+			for (auto& named_user_license_definition : named_user_license_definitions)
+			{
+				named_user_licenses_.emplace(json::get<std::string>(named_user_license_definition["id"]), product<named_user_license>(
+					json::get<std::string>(named_user_license_definition["id"]),
+					json::get<std::string>(named_user_license_definition["description"])
+				));
+			}
+
+			for (auto& named_server_license_definition : named_server_license_definitions)
+			{
+				named_server_licenses_.emplace(json::get<std::string>(named_server_license_definition["id"]), product<named_server_license>(
+					json::get<std::string>(named_server_license_definition["id"]),
+					json::get<std::string>(named_server_license_definition["description"])
+				));
+			}
+
+			for (auto& concurrent_user_license_definition : concurrent_user_license_definitions)
+			{
+				concurrent_user_licenses_.emplace(json::get<std::string>(concurrent_user_license_definition["id"]), product<concurrent_user_license>(
+					json::get<std::string>(concurrent_user_license_definition["id"]),
+					json::get<std::string>(concurrent_user_license_definition["description"])
+				));
+			}
+		}
 
 		std::string id_;
 		std::string name_;
@@ -133,13 +167,16 @@ private:
 		servers servers_;
 	};
 
+	template<class M>
 	class product
 	{
 	public:
-		product(std::string id, std::string description, std::string key, std::string domains) : id_(id), description_(description){};
+		product(std::string id, std::string description) : id_(id), description_(description){};
 
 		std::string id_;
 		std::string description_;
+	
+		M model_;
 	};
 
 	class user
@@ -159,8 +196,29 @@ private:
 		std::string hostname_;
 	};
 
+	class named_user_license
+	{
+	public:
+		named_user_license() = default;
+	};
+	
+	class named_server_license
+	{
+	public:
+		named_server_license() = default;
+	};
+
+	class concurrent_user_license
+	{
+	public:
+		concurrent_user_license() = default;
+	};
+	
+
+
+
 public:
-	license_manager() :
+	license_manager(std::string license_file) :
 		configuration_{
 			{ "server", "neolm-8.0.01" }, 
 			{ "listen_port_begin", "3000" }, 
@@ -171,16 +229,27 @@ public:
 			{ "doc_root", "C:/Projects/doc_root" }, 
 			{ "ssl_certificate", "C:/ssl/ssl.crt" }, 
 			{ "ssl_certificate_key", "C:/ssl/ssl.key" }},
-		api_server_(configuration_) 
+		api_server_(configuration_),
+		license_file_(license_file)
 	{
-			api_server_.start_server();	
+
+
+		json::value instance_license = json::parser::parse(std::ifstream(license_file));
+		json::value instance_users = json::parser::parse(std::ifstream("users_"+license_file));
+		json::value instance_servers = json::parser::parse(std::ifstream("servers_"+license_file));
+
+		this->instances_.emplace("customer_001", instance_license, instance_users, instance_servers);
+
+		api_server_.start_server();	
 	}
 
 	~license_manager() {}
 
 private:
 	http::configuration configuration_;
-	api_server api_server_;	
+	api_server api_server_;
+	std::string license_file_;
+	instances instances_;
 };
 
 }
@@ -190,7 +259,8 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-	neolm::license_manager test_server;
+	neolm::license_manager license_server{"C:/Projects/license.json"};
+
 
 	while (1)
 	{

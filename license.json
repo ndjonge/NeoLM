@@ -1,0 +1,48 @@
+{
+  "id": "Customer_001",
+  "name": "Customer 001",
+  "key": "aa-bb-cc-dd-ff",
+  "bind_to": "domain.local:1234567890:abcdefghij",
+  "named-user": [
+    {
+      "id": "10000",
+      "description": "Product 10000"
+    },
+    {
+      "id": "10001",
+      "description": "Product 10001"
+    },
+    {
+      "id": "10002",
+      "description": "Product 10002"
+    }
+  ],
+  "named-server": [
+    {
+      "id": "20000",
+      "description": "Product 20000"
+    },
+    {
+      "id": "20001",
+      "description": "Product 20001"
+    },
+    {
+      "id": "20002",
+      "description": "Product 20002"
+    }
+  ],
+  "concurrent-user": [
+    {
+      "id": "30000",
+      "description": "Product 30000"
+    },
+    {
+      "id": "30001",
+      "description": "Product 30001"
+    },
+    {
+      "id": "30002",
+      "description": "Product 3002"
+    }
+  ]
+}
