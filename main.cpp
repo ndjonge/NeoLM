@@ -15,84 +15,7 @@ using namespace std::literals;
 namespace neolm
 {
 
-class api_server : public http::basic::threaded::server
-{
-public:
-	api_server(http::configuration& configuration)
-		: http::basic::threaded::server(configuration)
-	{
-		router_.use("/static/");
-		router_.use("/images/");
-		router_.use("/styles/");
-		router_.use("/index.html");
-		router_.use("/");
 
-		// License instance configuration routes..
-		router_.on_get("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_post("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_put("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_delete("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		// License model routes...
-		router_.on_get("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_post("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_put("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_delete("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-
-		// Allocation routes...
-		router_.on_get("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_post("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_put("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_delete("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-
-		// Acquired routes...
-		router_.on_get("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_post("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_put("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-		router_.on_delete("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
-		});
-
-
-		router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) { 
-
-			server_info_.server_information(configuration_.to_string());
-			server_info_.router_information(router_.to_string());
-			session.response().body() = server_info_.to_string(); 
-		});
-	}
-
-private:
-
-};
 
 class license_manager
 {
@@ -114,6 +37,92 @@ using users = std::unordered_map<std::string, license_manager::user>;
 using servers = std::unordered_map<std::string, license_manager::server>;
 
 private:
+
+	class api_server : public http::basic::threaded::server
+	{
+	public:
+		api_server(license_manager& license_manager, http::configuration& configuration)
+			: http::basic::threaded::server(configuration),
+			license_manager_(license_manager)
+		{
+			router_.use("/static/");
+			router_.use("/images/");
+			router_.use("/styles/");
+			router_.use("/index.html");
+			router_.use("/");
+
+			// License instance configuration routes..
+			router_.on_get("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
+				auto instances = license_manager_.get_instances();
+
+
+			});
+
+			router_.on_post("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			router_.on_put("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			router_.on_delete("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			// License model routes...
+			router_.on_get("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			router_.on_post("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			router_.on_put("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			router_.on_delete("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+
+			// Allocation routes...
+			router_.on_get("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			router_.on_post("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			router_.on_put("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			router_.on_delete("/license/:instance/allocation/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+
+			// Acquired routes...
+			router_.on_get("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			router_.on_post("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			router_.on_put("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+			router_.on_delete("/license/:instance/acquired/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			});
+
+
+			router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) { 
+
+				server_info_.server_information(configuration_.to_string());
+				server_info_.router_information(router_.to_string());
+				session.response().body() = server_info_.to_string(); 
+			});
+		}
+
+	private:
+		friend class license_manager;
+		license_manager& license_manager_;
+	};
+
+
 
 	class instance
 	{
@@ -243,7 +252,7 @@ public:
 			{ "doc_root", "C:/Projects/doc_root" }, 
 			{ "ssl_certificate", "C:/ssl/ssl.crt" }, 
 			{ "ssl_certificate_key", "C:/ssl/ssl.key" }},
-		api_server_(configuration_),
+		api_server_(*this, configuration_),
 		license_file_(license_file)
 	{
 
@@ -257,6 +266,8 @@ public:
 	}
 
 	~license_manager() {}
+
+	instances& get_instances() {return instances_;}
 
 private:
 	http::configuration configuration_;
