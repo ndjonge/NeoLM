@@ -571,7 +571,6 @@ static json::value parse(std::ifstream& stream)
 		stream.close();
 	}
 
-
 	string str = s.str();
 
 	std::string::const_iterator i = str.begin();

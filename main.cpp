@@ -118,7 +118,7 @@ private:
 	class instance
 	{
 	public:
-		instance(json::value& instance_license, json::value& instance_named_users, json::value& instance_named_servers)
+		instance(json::value& instance_license, json::value& instance_allocation)
 		{
 			id_ = json::get<std::string>(instance_license["id"]);
 			name_ = json::get<std::string>(instance_license["name"]);
@@ -152,6 +152,20 @@ private:
 					json::get<std::string>(concurrent_user_license_definition["description"])
 				));
 			}
+
+			auto users = instance_allocation["users"].as_array();
+			auto servers = instance_allocation["servers"].as_array();
+
+			for (auto& user : users)
+			{
+				users_.emplace(json::get<std::string>(user["name"]), json::get<std::string>(user["name"]));
+			}
+
+			for (auto& server : servers)
+			{
+				servers_.emplace(json::get<std::string>(server["name"]), license_manager::server(json::get<std::string>(server["name"]), json::get<std::string>(server["name"])));
+			}
+
 		}
 
 		std::string id_;
@@ -218,12 +232,12 @@ private:
 
 
 public:
-	license_manager(std::string license_file) :
+	license_manager(std::string license_file, std::string allocation_file) :
 		configuration_{
 			{ "server", "neolm-8.0.01" }, 
 			{ "listen_port_begin", "3000" }, 
-			{"listen_port_end", "3010"}, 
-			{"keepalive_count", "30" }, 
+			{ "listen_port_end", "3010"}, 
+			{ "keepalive_count", "30" }, 
 			{ "keepalive_timeout", "5" }, 
 			{ "thread_count", "10" }, 
 			{ "doc_root", "C:/Projects/doc_root" }, 
@@ -235,10 +249,9 @@ public:
 
 
 		json::value instance_license = json::parser::parse(std::ifstream(license_file));
-		json::value instance_users = json::parser::parse(std::ifstream("users_" + license_file));
-		json::value instance_servers = json::parser::parse(std::ifstream("servers_" + license_file));
+		json::value instance_allocation = json::parser::parse(std::ifstream(allocation_file));
 
-		this->instances_.emplace("customer_001", instance(instance_license, instance_users, instance_servers));
+		this->instances_.emplace("customer_001", instance(instance_license, instance_allocation));
 
 		api_server_.start_server();	
 	}
@@ -259,7 +272,7 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-	neolm::license_manager license_server{"C:/Projects/license.json"};
+	neolm::license_manager license_server{"C:/Projects/license.json", "C:/Projects/allocation.json"};
 
 
 	while (1)
