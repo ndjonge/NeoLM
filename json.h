@@ -36,7 +36,7 @@ using number_signed_integer = std::int64_t;
 using number_unsigned_integer = std::uint64_t;
 using string = std::string;
 using array = std::vector<json::value>;
-using object = std::map<json::string, json::value>;
+using object = std::unordered_map<json::string, json::value>;
 
 class value
 {

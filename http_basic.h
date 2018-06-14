@@ -1096,12 +1096,6 @@ public:
 			return;
 		}
 
-		if (request_path[request_path.size() - 1] == '/')
-		{
-			request_path += "index.html";
-		}
-
-
 		std::size_t last_slash_pos = request_path.find_last_of("/");
 		std::size_t last_dot_pos = request_path.find_last_of(".");
 		std::string extension;
@@ -1157,6 +1151,12 @@ public:
 			}
 			else if (router_.serve_static_content(*this))
 			{
+				if (request_path[request_path.size() - 1] == '/')
+				{
+					request_path += "index.html";
+				}
+
+
 				// Static content route.
 				// Check filesize and set headers.
 				auto content_size = fs::file_size(request_.target());

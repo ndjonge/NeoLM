@@ -104,7 +104,7 @@ private:
 
 
 			// License model routes...
-			router_.on_get("/license/:instance/model/named-users/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
+			router_.on_get("/license/:instance/model/named-user/:product-id/:user-name", [this](http::session_handler& session, const http::api::params& params) {
 
 				const std::string& instance_id = params.get("instance");
 				const std::string& product_id = params.get("product-id");
