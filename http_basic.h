@@ -1384,6 +1384,35 @@ public:
 				match = true; 
 				break;
 			}
+			else if (b == std::string::npos)
+			{
+				bool partial_match_with_only_missing_dynamic_elements_at_the_end = false; 
+
+				for (size_t i = token; i != tokens.size(); i++)
+					if (tokens[i][1] == ':')
+					{ 
+						partial_match_with_only_missing_dynamic_elements_at_the_end = true;
+					}
+					else
+					{
+						partial_match_with_only_missing_dynamic_elements_at_the_end = false;
+						break;
+					}
+
+				if (partial_match_with_only_missing_dynamic_elements_at_the_end)
+				{ 
+					for (size_t i = token; i != tokens.size(); i++)
+						params.insert(tokens[i].substr(2), ""); // first token already inserted! ?
+
+					match = true; 
+					break;
+				}
+				else
+				{
+					match = false; 
+					break;
+				}
+			}
 		}
 
 
