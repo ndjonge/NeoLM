@@ -111,14 +111,9 @@ private:
 				const std::string& product_id = params.get("product-id");
 				const std::string& user_name = params.get("user-name");
 
-				/*license_manager::instance i = license_manager_.get_instances().at(instance_id);
-				license_manager::product<license_manager::named_user_license> product = i.named_user_licenses_.at(product_id);*/
-
-
 				if (instance_id.empty())
 				{
-					json::array return_json;
-					auto instance = license_manager_.get_instances().at(params.get("instance"));
+					json::array return_json;					
 
 					for (auto instance : license_manager_.get_instances())
 					{
@@ -143,17 +138,166 @@ private:
 
 						}
 
+						instance_json.emplace(std::string("named-users-licenses"), products_json);
+
+						for (auto& product : instance.second.named_server_licenses_)
+						{
+							json::object product_json;
+
+							product_json.emplace(std::string("id"), json::string(product.second.id_));
+							product_json.emplace(std::string("description"), json::string(product.second.description_));
+							//product_json.emplace(std::string("id"), json::string(product.second.model_));
+
+							products_json.emplace_back(product_json);
+
+						}
+
+						instance_json.emplace(std::string("named-server-licenses"), products_json);
+
+						for (auto& product : instance.second.concurrent_user_licenses_)
+						{
+							json::object product_json;
+
+							product_json.emplace(std::string("id"), json::string(product.second.id_));
+							product_json.emplace(std::string("description"), json::string(product.second.description_));
+							//product_json.emplace(std::string("id"), json::string(product.second.model_));
+
+							products_json.emplace_back(product_json);
+
+						}
+
+						instance_json.emplace(std::string("concurrent-user-licenses"), products_json);
+
 						return_json.emplace_back(instance_json);
 					}
 
 					session.response().body() = json::serializer::serialize(return_json).str();
 					session.response().type("json");
 				} 
-				else if (product_id.empty())
+				else if (license_model.empty())
 				{			
-					json::object return_json;
+					json::array return_json;					
+
 					auto instance = license_manager_.get_instances().at(params.get("instance"));
-					auto product = license_manager_.get_instances().at(params.get("instance"));
+
+					json::object instance_json;
+
+					return_json.emplace(std::string("id"), json::string(instance.id_));
+					return_json.emplace(std::string("name"), json::string(instance.name_));
+					return_json.emplace(std::string("key"), json::string(instance.license_key_));
+					return_json.emplace(std::string("bind-to"), json::string(instance.license_hash_));
+
+
+					json::array products_json;
+
+					for (auto& product : instance.named_user_licenses_)
+					{
+						json::object product_json;
+
+						product_json.emplace(std::string("id"), json::string(product.second.id_));
+						product_json.emplace(std::string("description"), json::string(product.second.description_));
+						//product_json.emplace(std::string("id"), json::string(product.second.model_));
+
+						products_json.emplace_back(product_json);
+
+					}
+
+					return_json.emplace(std::string("named-users-licenses"), products_json);
+
+					for (auto& product : instance.named_server_licenses_)
+					{
+						json::object product_json;
+
+						product_json.emplace(std::string("id"), json::string(product.second.id_));
+						product_json.emplace(std::string("description"), json::string(product.second.description_));
+						//product_json.emplace(std::string("id"), json::string(product.second.model_));
+
+						products_json.emplace_back(product_json);
+
+					}
+
+					return_json.emplace(std::string("named-server-licenses"), products_json);
+
+					for (auto& product : instance.concurrent_user_licenses_)
+					{
+						json::object product_json;
+
+						product_json.emplace(std::string("id"), json::string(product.second.id_));
+						product_json.emplace(std::string("description"), json::string(product.second.description_));
+						//product_json.emplace(std::string("id"), json::string(product.second.model_));
+
+						products_json.emplace_back(product_json);
+
+					}
+
+					return_json.emplace(std::string("concurrent-user-licenses"), products_json);
+
+					session.response().body() = json::serializer::serialize(return_json).str();
+					session.response().type("json");
+				} 
+				else if (product_id.empty())
+				{							
+					auto instance = license_manager_.get_instances().at(params.get("instance"));
+
+					json::object instance_json;
+
+					return_json.emplace(std::string("id"), json::string(instance.id_));
+					return_json.emplace(std::string("name"), json::string(instance.name_));
+					return_json.emplace(std::string("key"), json::string(instance.license_key_));
+					return_json.emplace(std::string("bind-to"), json::string(instance.license_hash_));
+
+
+					json::array products_json;
+
+					if (license_model == "named-users-licenses")
+					{ 
+						for (auto& product : instance.named_user_licenses_)
+						{
+							json::object product_json;
+
+							product_json.emplace(std::string("id"), json::string(product.second.id_));
+							product_json.emplace(std::string("description"), json::string(product.second.description_));
+							//product_json.emplace(std::string("id"), json::string(product.second.model_));
+
+							products_json.emplace_back(product_json);
+
+						}
+
+						return_json.emplace(std::string("named-users-licenses"), products_json);
+					}
+
+					if (license_model == "named-server-licenses")
+					{ 
+						for (auto& product : instance.named_server_licenses_)
+						{
+							json::object product_json;
+
+							product_json.emplace(std::string("id"), json::string(product.second.id_));
+							product_json.emplace(std::string("description"), json::string(product.second.description_));
+							//product_json.emplace(std::string("id"), json::string(product.second.model_));
+
+							products_json.emplace_back(product_json);
+
+						}
+						return_json.emplace(std::string("named-server-licenses"), products_json);
+					}
+
+					if (license_model == "concurrent-user-licenses")
+					{ 
+						for (auto& product : instance.concurrent_user_licenses_)
+						{
+							json::object product_json;
+
+							product_json.emplace(std::string("id"), json::string(product.second.id_));
+							product_json.emplace(std::string("description"), json::string(product.second.description_));
+							//product_json.emplace(std::string("id"), json::string(product.second.model_));
+
+							products_json.emplace_back(product_json);
+
+						}
+
+						return_json.emplace(std::string("concurrent-user-licenses"), products_json);
+					}
 
 					session.response().body() = json::serializer::serialize(return_json).str();
 					session.response().type("json");
