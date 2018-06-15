@@ -7,15 +7,12 @@
 #include <array>
 
 #include "http_basic.h"
-//#include "http_advanced_server.h"
 #include "json.h"
 
 using namespace std::literals;
 
 namespace neolm
 {
-
-
 
 class license_manager
 {
@@ -86,10 +83,6 @@ private:
 					session.response().body() = json::serializer::serialize(return_json).str();
 					session.response().type("json");
 				} 
-
-
-
-
 
 			});
 
@@ -176,17 +169,13 @@ private:
 				} 
 				else if (license_model.empty())
 				{			
-					json::array return_json;					
-
-					auto instance = license_manager_.get_instances().at(params.get("instance"));
-
-					json::object instance_json;
+					json::object return_json;					
+					auto instance = license_manager_.get_instances().at(params.get(instance_id));
 
 					return_json.emplace(std::string("id"), json::string(instance.id_));
 					return_json.emplace(std::string("name"), json::string(instance.name_));
 					return_json.emplace(std::string("key"), json::string(instance.license_key_));
 					return_json.emplace(std::string("bind-to"), json::string(instance.license_hash_));
-
 
 					json::array products_json;
 
@@ -239,7 +228,7 @@ private:
 				{							
 					auto instance = license_manager_.get_instances().at(params.get("instance"));
 
-					json::object instance_json;
+					json::object return_json;
 
 					return_json.emplace(std::string("id"), json::string(instance.id_));
 					return_json.emplace(std::string("name"), json::string(instance.name_));
