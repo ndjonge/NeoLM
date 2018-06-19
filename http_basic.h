@@ -107,7 +107,7 @@ public:
 			throw std::runtime_error("deflate init failed");
 		}
 
-  deflate_s.next_in   = reinterpret_cast<Bytef *>( const_cast<char *>( data ) );
+  		deflate_s.next_in   = reinterpret_cast<Bytef *>( const_cast<char *>( data ) );
 		deflate_s.avail_in = static_cast<unsigned int>(size);
 
 		std::size_t size_compressed = 0;
