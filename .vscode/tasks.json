@@ -21,7 +21,12 @@
             "options": {
                 "cwd": "${workspaceRoot}/build"
             },
-            "dependsOn":["cmake"]
+            "dependsOn": [
+                "cmake"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ]
         },
         {
             "label": "build",
@@ -33,7 +38,9 @@
                 "kind": "build",
                 "isDefault": true
             },
-            "dependsOn": ["make"]
+            "dependsOn": [
+                "make"
+            ]
         }
     ]
 }
