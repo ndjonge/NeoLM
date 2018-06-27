@@ -12,7 +12,7 @@
         "variables": [
           {
             "name": "CMAKE_TOOLCHAIN_FILE",
-            "value": "C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+            "value": "C:\\projects\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
           }
         ]
       },
@@ -27,7 +27,7 @@
         "variables": [
           {
             "name": "CMAKE_TOOLCHAIN_FILE",
-            "value": "C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+            "value": "C:\\projects\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
           }
         ]
       },
@@ -42,7 +42,7 @@
         "variables": [
           {
             "name": "CMAKE_TOOLCHAIN_FILE",
-            "value": "C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+            "value": "C:\\projects\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
           }
         ]
       },
@@ -57,7 +57,7 @@
         "variables": [
           {
             "name": "CMAKE_TOOLCHAIN_FILE",
-            "value": "C:\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+            "value": "C:\\projects\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
           }
         ]
       }
