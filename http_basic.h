@@ -107,7 +107,7 @@ public:
 			throw std::runtime_error("deflate init failed");
 		}
 
-  		deflate_s.next_in   = reinterpret_cast<Bytef *>( const_cast<char *>( data ) );
+  deflate_s.next_in   = reinterpret_cast<Bytef *>( const_cast<char *>( data ) );
 		deflate_s.avail_in = static_cast<unsigned int>(size);
 
 		std::size_t size_compressed = 0;
@@ -1200,9 +1200,9 @@ public:
 		}
 
 		// set connection headers in the response.
-		if (request_.keep_alive() || (request_.version_nr() == 11 && (http::util::case_insensitive_equal(request_["Connection"], "close")==false))  && 
+		if (request_.keep_alive() || (((request_.version_nr() == 11) && (http::util::case_insensitive_equal(request_["Connection"], "close")==false))  && 
 
-			(this->keepalive_count()-1 > 0 && (response_.status() == http::status::ok)))
+			(this->keepalive_count()-1 > 0 && (response_.status() == http::status::ok))))
 		{
 			keepalive_count(keepalive_count() - 1);
 			response_["Connection"] = "Keep-Alive";
@@ -1350,10 +1350,7 @@ public:
 		}
 
 		std::vector<std::string> tokens;
-		size_t offset = 0;
 		size_t token = 0;
-		bool ret = false;
-
 
 		// token = /-----
 
@@ -1467,9 +1464,7 @@ public:
 		}
 
 		std::vector<std::string> tokens;
-		size_t offset = 0;
 		size_t token = 0;
-		bool ret = false;
 
 
 		// token = /-----
@@ -1612,7 +1607,6 @@ public:
 
 	bool call_route(session_handler_type& session)
 	{
-		auto result = false;
 		auto routes = api_router_table[session.request().method()];
 
 		if (!routes.empty())
@@ -1703,7 +1697,7 @@ public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
 		, thread_count_(configuration.get<int>("thread_count", 5))
-		, listen_port_begin_(configuration.get<int>("listen_port", 3000))
+		, listen_port_begin_(configuration.get<int>("listen_port", ( getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")): 3000 )))
 		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 	{
@@ -1745,7 +1739,7 @@ public:
 			
 			network::error_code ec = network::error::success;
 
-			for(listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_; listen_port_)
+			for(listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_; )
 			{ 
 				acceptor_https.bind(endpoint_http, ec);
 				
@@ -1772,8 +1766,6 @@ public:
 			ssl_context.use_private_key_file(configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
 
 			network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
-
-			int connections_accepted = 0;
 
 			while (1)
 			{
@@ -1811,7 +1803,7 @@ public:
 
 			network::error_code ec = network::error::success;
 
-			for(listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_; listen_port_)
+			for(listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_; )
 			{ 
 				acceptor_http.bind(endpoint_http, ec);
 				
@@ -1834,8 +1826,6 @@ public:
 			acceptor_http.listen();
 
 			network::tcp::socket http_socket;
-
-			int connections_accepted = 0;
 
 			while (1)
 			{
@@ -1899,7 +1889,7 @@ public:
 			connections_accepted_ = nr;
 		}
 
-		const size_t connections_current()
+		size_t connections_current()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 			return connections_current_;
@@ -1910,8 +1900,6 @@ public:
 			std::lock_guard<std::mutex> g(mutex_);
 			connections_current_ = nr;
 		}
-
-		static std::string log_entry() {}
 
 		void log_access(http::session_handler& session)
 		{
@@ -1995,9 +1983,6 @@ public:
 		{
 			std::array<char, 4096> buffer;
 			http::basic::session_data connection_data;
-			int ret = 0;
-
-
 
 			while (true)
 			{
@@ -2154,7 +2139,7 @@ public:
 		{
 			data_request_.resize(data_request_.size() + size);
 
-			std::copy(std::begin(data), std::begin(data) + size, std::rbegin(data_request_));
+			std::copy(data.begin(), data.begin() + size, data_request_.rbegin());
 		}
 		void store_response_data(const std::string& response_string)
 		{

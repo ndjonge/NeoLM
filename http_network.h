@@ -41,8 +41,9 @@
 #include <arpa/inet.h>
 #endif
 
-#include <openssl/ssl.h>
-#include <openssl/err.h>
+#include "openssl/ssl.h"
+#include "openssl/err.h"
+#include "openssl/evp.h"
 
 namespace network
 {
@@ -190,15 +191,17 @@ public:
 		switch(m)
 		{
 			case tlsv12:
-				ssl_method_ = TLSv1_2_method();
+				ssl_method_ = TLS_server_method();		
+				context_ = SSL_CTX_new(ssl_method_);
+				SSL_CTX_set_min_proto_version(context_, TLS1_2_VERSION);
+				SSL_CTX_set_max_proto_version(context_, TLS1_2_VERSION);
 				break;
 		}
-		context_ = SSL_CTX_new(ssl_method_);
 	}
 
 	void use_certificate_chain_file(const char* path)
 	{
-		SSL_CTX_set_ecdh_auto(context_, 1);
+		//SSL_CTX_set_ecdh_auto(context_, 1);
 
 		/* Set the key and cert */
 		if (SSL_CTX_use_certificate_file(context_, path, SSL_FILETYPE_PEM) <= 0) {
@@ -348,7 +351,7 @@ public:
 	v6(std::int16_t port) : sock_addr_({})
 	{
 		sock_addr_.sin6_family = AF_INET6;
-		sock_addr_.sin6_port = ::htons(port);
+		sock_addr_.sin6_port = htons(port);
 		sock_addr_.sin6_addr = in6addr_any;
 		protocol_ = SOCK_STREAM;
 	}
@@ -360,7 +363,7 @@ public:
 
 	void port(std::int16_t port)
 	{
-		sock_addr_.sin6_port = ::htons(port);
+		sock_addr_.sin6_port = htons(port);
 	}
 
 	sockaddr* addr() {return reinterpret_cast<sockaddr*>(&sock_addr_);};
@@ -383,7 +386,7 @@ public:
 			int ret = 0;
 			endpoint_ = &endpoint;
 			endpoint_->open(protocol_);
-			int reuseaddr = 1;
+			//int reuseaddr = 1;
 			//ret = ::setsockopt(endpoint_->socket(), SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
 
 			int ipv6only = 0;
