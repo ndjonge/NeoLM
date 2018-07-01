@@ -191,10 +191,15 @@ public:
 		switch(m)
 		{
 			case tlsv12:
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+				ssl_method_ = TLSv1_2_method();
+				context_ = SSL_CTX_new(ssl_method_);
+#else
 				ssl_method_ = TLS_server_method();		
 				context_ = SSL_CTX_new(ssl_method_);
 				SSL_CTX_set_min_proto_version(context_, TLS1_2_VERSION);
 				SSL_CTX_set_max_proto_version(context_, TLS1_2_VERSION);
+#endif
 				break;
 		}
 	}

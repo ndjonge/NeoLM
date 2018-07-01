@@ -556,7 +556,7 @@ static json::value parseValue(const std::string& str, std::string::const_iterato
 	}
 }
 
-static json::value parse(std::ifstream& stream)
+static json::value parse(std::ifstream stream)
 {
 	std::string line;
 
