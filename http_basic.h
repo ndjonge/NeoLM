@@ -503,7 +503,7 @@ template <> class header<request_specialization> : public fields
 	friend class http::session_handler;
 	friend class http::request_parser;
 
-private:
+protected:
 	std::string method_;
 	std::string url_requested_;
 	std::string target_;
@@ -534,7 +534,12 @@ public:
 	{
 		std::stringstream ss;
 
-		ss << method_ << " " << target_ << "\n";
+		ss << method_ << " " << target_ << " HTTP/";
+
+		if (version_nr() == 11)
+			ss << "1.1\r\n";
+		else
+			ss << "1.0\r\n";
 
 		for (auto&& field : fields_)
 		{
@@ -624,6 +629,14 @@ private:
 public:
 	message() = default;
 	message(const message&) = default;
+
+	//TODO use enableif....
+	message(const std::string& method, const std::string& target, const int version_nr = 11)
+	{
+		header<specialization>::version_nr_ = version_nr;
+		header<specialization>::method_ = method;
+		header<specialization>::target_ = target;
+	}
 
 	void reset()
 	{

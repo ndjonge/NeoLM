@@ -480,8 +480,8 @@ public:
 			{ "server", "neolm-8.0.01" }, 
 			{ "listen_port_begin", "3000" }, 
 			{ "listen_port_end", "3010"}, 
-			{ "keepalive_count", "30" }, 
-			{ "keepalive_timeout", "5" }, 
+			{ "keepalive_count", "1024" }, 
+			{ "keepalive_timeout", "2" }, 
 			{ "thread_count", "10" }, 
 			{ "doc_root", "C:/Projects/doc_root" }, 
 			{ "ssl_certificate", "C:/ssl/ssl.crt" }, 
@@ -532,6 +532,47 @@ int main(int argc, char* argv[])
 
 	while (1)
 	{
+/*
+		auto start = std::chrono::system_clock::now();
+		std::array<char, 1024 * 8> readbuffer;
+
+		int test_connections = 100;
+		int test_requests = 1000;
+
+		for (int j = 0; j < test_connections; j++)
+		{
+			std::string url = "::1";
+			network::tcp::v6 s(url, 3000);
+			network::error_code ec;
+			s.connect(ec);
+
+			auto start_requests = std::chrono::system_clock::now();
+
+			for (int i = 0; i < test_requests; i++)
+			{
+
+				http::request_message req("GET", "/status");
+
+				std::string reqstr = http::to_string(req);
+
+				network::write(s.socket(), network::buffer(&reqstr[0], reqstr.length()));
+
+				network::read(s.socket(), network::buffer(&readbuffer[0], sizeof(readbuffer)));
+
+			}
+			auto end_requests = std::chrono::system_clock::now();
+			std::chrono::duration<double> diff = end_requests - start_requests;
+
+			std::cout << j << ":" << test_requests / diff.count() << " req/sec\n";
+
+
+		}
+
+		auto end = std::chrono::system_clock::now();
+		std::chrono::duration<double> diff = end - start;
+
+		std::cout << "" << (test_connections * test_requests) <<  " requests took: " << diff.count() << "\n";
+		*/
 		std::this_thread::sleep_for(60s);
 	}
 }

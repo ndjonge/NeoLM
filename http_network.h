@@ -314,7 +314,11 @@ using socket = socket_t;
 class endpoint
 {
 public:
-	endpoint() = default;
+	endpoint() :socket_(0), protocol_(SOCK_STREAM) {}
+	endpoint(const std::string& ip, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) {}
+	virtual ~endpoint() {};
+
+	virtual void connect(network::error_code& ec) = 0;
 	virtual void open(std::int16_t protocol) = 0;
 	std::int16_t  protocol() {return protocol_;}
 	virtual sockaddr* addr()=0;
@@ -358,7 +362,33 @@ public:
 		sock_addr_.sin6_family = AF_INET6;
 		sock_addr_.sin6_port = htons(port);
 		sock_addr_.sin6_addr = in6addr_any;
-		protocol_ = SOCK_STREAM;
+	}
+
+	v6(const std::string& ip, std::int16_t port) : sock_addr_({})
+	{
+		inet_pton(AF_INET6, ip.c_str(), &(sock_addr_.sin6_addr));
+
+		sock_addr_.sin6_family = AF_INET6;
+		sock_addr_.sin6_port = htons(port);
+	}
+
+	~v6()
+	{
+		if (socket_)
+			::closesocket(socket_);
+	}
+
+	void connect(network::error_code& ec)
+	{
+		open(protocol_);
+		int ret = ::connect(socket_, addr(), addr_size());
+
+		if (ret == -1)
+		{
+			ec = network::error::connection_refused;
+		}
+		else
+			ec = network::error::success;
 	}
 
 	void open(std::int16_t protocol)
@@ -481,6 +511,15 @@ int ipv6only(network::tcp::socket& s, int value)
 {
 	int ipv6only = value;
 	return ::setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
+}
+
+int use_portsharding(network::tcp::socket& s, int value)
+{
+	int use_portsharding = value;
+#ifdef LINUX
+	return ::setsockopt(s, SOL_SOCKET, SO_REUSEPORT, (char*)&use_portsharding, sizeof(use_portsharding));
+#endif
+	return -1;
 }
 
 int timeout(network::tcp::socket& s, int value)
