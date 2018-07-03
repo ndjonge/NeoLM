@@ -501,6 +501,12 @@ std::string get_client_info(network::tcp::socket& client_socket)
 	return c;
 }
 
+int tcp_nodelay(network::tcp::socket& s, int value)
+{
+	int reuseaddr = value;
+	return ::setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (char*)&reuseaddr, sizeof(reuseaddr));
+}
+
 int reuse_address(network::tcp::socket& s, int value)
 {
 	int reuseaddr = value;

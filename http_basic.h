@@ -549,6 +549,7 @@ public:
 
 		ss << "\r\n";
 
+
 		return ss.str();
 	}
 };
@@ -1200,12 +1201,12 @@ public:
 		}
 
 		// set connection headers in the response.request_
-		if ((request_.http_version11() == true && keepalive_count() > 1 && response_.status() == http::status::ok && request_.connection_close() == false) ||
-			(request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && response_.status() == http::status::ok && request_.connection_close() == false))
+		if ((request_.http_version11() == true && keepalive_count() > 1 && (response_.status() == http::status::ok || response_.status() == http::status::created) && request_.connection_close() == false) ||
+			(request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && (response_.status() == http::status::ok || response_.status() == http::status::created) && request_.connection_close() == false))
 		{
 			keepalive_count(keepalive_count() - 1);
 			response_["Connection"] = "Keep-Alive";
-			response_["Keep-Alive"] = std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" + std::to_string(keepalive_count());
+			//response_["Keep-Alive"] = std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" + std::to_string(keepalive_count());
 		}
 		else
 		{
@@ -1580,6 +1581,8 @@ public:
 	bool call_route(session_handler_type& session)
 	{
 		auto routes = api_router_table[session.request().method()];
+		
+		//std::cout << session.request().target() << "\n";
 
 		if (!routes.empty())
 		{
@@ -1670,6 +1673,7 @@ public:
 		, listen_port_begin_(configuration.get<int>("listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
 		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
+		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024))
 	{
 	}
 
@@ -1743,7 +1747,7 @@ public:
 				server_status().connections_accepted(server_status().connections_accepted() + 1);
 				server_status().connections_current(server_status().connections_current() + 1);
 
-				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, https_socket, connection_timeout_)]() { new_connection_handler->proceed(); });
+				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, https_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 				connection_thread.detach();
 			}
 		}
@@ -1763,9 +1767,9 @@ public:
 
 			acceptor_http.open(endpoint_http.protocol());
 
-			/*network::reuse_address(http_socket, 1);
+			network::reuse_address(endpoint_http.socket(), 1);
+			network::ipv6only(endpoint_http.socket(), 0);
 
-			network::ipv6only(http_socket, 0);*/
 
 			network::error_code ec = network::error::success;
 
@@ -1798,11 +1802,12 @@ public:
 				acceptor_http.accept(http_socket);
 
 				network::timeout(http_socket, connection_timeout_);
+				network::tcp_nodelay(http_socket, 1);
 
 				server_status().connections_accepted(server_status().connections_accepted() + 1);
 				server_status().connections_current(server_status().connections_current() + 1);
 
-				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_)]() { new_connection_handler->proceed(); });
+				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 				connection_thread.detach();
 			}
 		}
@@ -1931,11 +1936,13 @@ public:
 	template <class S> class connection_handler
 	{
 	public:
-		connection_handler(http::basic::threaded::server& server, S client_socket, int connection_timeout)
+		connection_handler(http::basic::threaded::server& server, S client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
 			, client_socket_(client_socket)
 			, session_handler_(server.configuration_)
 			, connection_timeout_(connection_timeout)
+			, gzip_min_length_(gzip_min_length)
+
 		{
 		}
 
@@ -2060,7 +2067,7 @@ public:
 					}
 					else
 					{
-						if (session_handler_.request()["Accept-Encoding"].find("gzip") != std::string::npos)
+						if ((gzip_min_length_ < response.body().size()) && (session_handler_.request()["Accept-Encoding"].find("gzip") != std::string::npos))
 						{
 							response.body() = gzip::compress(response.body().c_str(), response.body().size());
 							response["Content-Encoding"] = "gzip";
@@ -2096,6 +2103,7 @@ public:
 		S client_socket_;
 		http::session_handler session_handler_;
 		int connection_timeout_;
+		size_t gzip_min_length_;
 
 		std::vector<char> data_request_;
 		std::vector<char> data_response_;
@@ -2134,6 +2142,7 @@ private:
 	int listen_port_end_;
 	int listen_port_;
 	int connection_timeout_;
+	size_t gzip_min_length_;
 };
 
 } // namespace threaded

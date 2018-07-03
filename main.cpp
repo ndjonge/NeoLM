@@ -477,7 +477,7 @@ public:
 public:
 	license_manager(std::string home_dir) :
 		configuration_{
-			{ "server", "neolm-8.0.01" }, 
+			{ "server", "neolm/8.0.01" }, 
 			{ "listen_port_begin", "3000" }, 
 			{ "listen_port_end", "3010"}, 
 			{ "keepalive_count", "1024" }, 
@@ -512,7 +512,63 @@ public:
 
 	const instances& get_instances() {return instances_;}
 
+	void add_test_routes()
+	{
+
+		for (int i= 0; i <= 10000; i++)
+		{
+			std::string test_route = "/key-value-store/";
+			test_route += "test_";
+			test_route += std::to_string(i);
+			test_route += "/:key";
+
+			api_server_.router_.on_put(test_route, [this, i](http::session_handler& session, const http::api::params& params) {
+				auto& key = std::to_string(i) + params.get("key");
+
+				if (key.empty())
+				{
+					session.response().result(http::status::bad_request);
+				}
+				else
+				{
+					try 
+					{
+						key_value_store_[key] = session.request().body();
+						session.response().result(http::status::created);
+					}
+					catch(...)
+					{
+						session.response().result(http::status::not_found);
+					}
+				}
+			});
+
+			api_server_.router_.on_get(test_route, [this, i](http::session_handler& session, const http::api::params& params) {
+				auto& key = std::to_string(i) + params.get("key");
+
+				if (key.empty())
+				{
+					session.response().result(http::status::not_found);
+				}
+				else
+				{
+					auto value = key_value_store_.find(key);
+
+					if (value != key_value_store_.end())
+					{
+						session.response().body() = value->second;
+					}
+					else
+					{
+						session.response().result(http::status::not_found);
+					}
+				}
+			});
+		}
+	}
+
 private:
+	std::unordered_map<std::string, std::string> key_value_store_;
 	http::configuration configuration_;
 	api_server api_server_;
 	std::string home_dir_;
@@ -523,6 +579,101 @@ private:
 
 }
 
+
+void test_req_p_sec_simple()
+{
+	auto start = std::chrono::system_clock::now();
+	std::array<char, 1024 * 8> readbuffer;
+
+	int test_connections = 100;
+	int test_requests = 1000;
+
+	for (int j = 0; j < test_connections; j++)
+	{
+		std::string url = "::1";
+		network::tcp::v6 s(url, 3000);
+		network::error_code ec;
+		s.connect(ec);
+
+		auto start_requests = std::chrono::system_clock::now();
+
+		for (int i = 0; i < test_requests; i++)
+		{
+
+			http::request_message req("POST", "/key");
+
+			std::string reqstr = http::to_string(req);
+
+			network::write(s.socket(), network::buffer(&reqstr[0], reqstr.length()));
+
+			network::read(s.socket(), network::buffer(&readbuffer[0], sizeof(readbuffer)));
+
+		}
+		auto end_requests = std::chrono::system_clock::now();
+		std::chrono::duration<double> diff = end_requests - start_requests;
+
+		std::cout << j << ":" << test_requests / diff.count() << " req/sec\n";
+	}
+
+	auto end = std::chrono::system_clock::now();
+	std::chrono::duration<double> diff = end - start;
+
+	std::cout << "" << (test_connections * test_requests) << " requests took: " << diff.count() << "\n";
+}
+
+
+void test_post_get()
+{
+	auto start = std::chrono::system_clock::now();
+	std::array<char, 1024 * 8> readbuffer;
+
+	int test_connections = 1;
+	int test_requests = 1000;
+
+	std::string test_body;
+	static int index = 0; 
+
+	test_body.resize(4 * 1024, 'A' + index++);
+
+
+	for (int j = 0; j < test_connections; j++)
+	{
+		std::string url = "::1";
+		network::tcp::v6 s(url, 3000);
+		network::error_code ec;
+		s.connect(ec);
+
+		auto start_requests = std::chrono::system_clock::now();
+
+		for (int i = 0; i < test_requests; i++)
+		{
+			std::string test_resource = "/key-value-store/test_" + std::to_string(i) + "/key" + std::to_string(i);
+			
+			//std::cout << test_resource << "\n";
+
+			http::request_message req("PUT", test_resource);
+
+			req.body() = test_body;
+			req.content_length(req.body().length());
+			std::string reqstr = http::to_string(req);
+
+			network::write(s.socket(), network::buffer(&reqstr[0], reqstr.length()));
+
+			network::read(s.socket(), network::buffer(&readbuffer[0], sizeof(readbuffer)));
+
+		}
+		auto end_requests = std::chrono::system_clock::now();
+		std::chrono::duration<double> diff = end_requests - start_requests;
+
+		std::cout << j << ":" << test_requests / diff.count() << " req/sec\n";
+	}
+
+	auto end = std::chrono::system_clock::now();
+	std::chrono::duration<double> diff = end - start;
+
+	std::cout << "" << (test_connections * test_requests) << " requests took: " << diff.count() << "\n";
+}
+
 int main(int argc, char* argv[])
 {
 	network::init();
@@ -530,49 +681,13 @@ int main(int argc, char* argv[])
 
 	neolm::license_manager license_server{"C:/Projects/neolm_licenses/"};
 
+
+	license_server.add_test_routes();
+
 	while (1)
 	{
-/*
-		auto start = std::chrono::system_clock::now();
-		std::array<char, 1024 * 8> readbuffer;
+		test_post_get();
 
-		int test_connections = 100;
-		int test_requests = 1000;
-
-		for (int j = 0; j < test_connections; j++)
-		{
-			std::string url = "::1";
-			network::tcp::v6 s(url, 3000);
-			network::error_code ec;
-			s.connect(ec);
-
-			auto start_requests = std::chrono::system_clock::now();
-
-			for (int i = 0; i < test_requests; i++)
-			{
-
-				http::request_message req("GET", "/status");
-
-				std::string reqstr = http::to_string(req);
-
-				network::write(s.socket(), network::buffer(&reqstr[0], reqstr.length()));
-
-				network::read(s.socket(), network::buffer(&readbuffer[0], sizeof(readbuffer)));
-
-			}
-			auto end_requests = std::chrono::system_clock::now();
-			std::chrono::duration<double> diff = end_requests - start_requests;
-
-			std::cout << j << ":" << test_requests / diff.count() << " req/sec\n";
-
-
-		}
-
-		auto end = std::chrono::system_clock::now();
-		std::chrono::duration<double> diff = end - start;
-
-		std::cout << "" << (test_connections * test_requests) <<  " requests took: " << diff.count() << "\n";
-		*/
 		std::this_thread::sleep_for(60s);
 	}
 }
