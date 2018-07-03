@@ -600,7 +600,7 @@ void test_req_p_sec_simple()
 		for (int i = 0; i < test_requests; i++)
 		{
 
-			http::request_message req("POST", "/key");
+			http::request_message req("GET", "/status");
 
 			std::string reqstr = http::to_string(req);
 
@@ -688,6 +688,7 @@ int main(int argc, char* argv[])
 	{
 		test_post_get();
 
+		//test_req_p_sec_simple();
 		std::this_thread::sleep_for(60s);
 	}
 }

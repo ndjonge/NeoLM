@@ -185,7 +185,7 @@ public:
 		tlsv12
 	};
 
-	context(method m)
+	context(method m) : context_(nullptr), ssl_method_(nullptr)
 	{
 
 		switch(m)
@@ -314,7 +314,7 @@ using socket = socket_t;
 class endpoint
 {
 public:
-	endpoint() :socket_(0), protocol_(SOCK_STREAM) {}
+	endpoint() noexcept: socket_(0), protocol_(SOCK_STREAM) {}
 	endpoint(const std::string& ip, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) {}
 	virtual ~endpoint() {};
 
@@ -488,7 +488,7 @@ std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_s
 	return c;
 }
 
-std::string get_client_info(network::tcp::socket& client_socket)
+std::string get_client_info(const network::tcp::socket& client_socket)
 {
 	sockaddr_in6 sa = { 0 };
 	socklen_t sl = sizeof(sa);

@@ -41,7 +41,7 @@ using object = std::unordered_map<json::string, json::value>;
 class value
 {
 public:
-	value() : type_(json::type::null_type) {}
+	value() noexcept : type_(json::type::null_type) {}
 	~value()
 	{
 		switch (type_)
@@ -170,7 +170,7 @@ public:
 	bool is_null() const { return type_ == json::type::null_type; }
 	bool is_string() const { return type_ == json::type::string_type; }
 	bool is_bool() const { return type_ == json::type::boolean_type; }
-	bool is_number() const { return type_ == json::type::number_signed_integer_type || json::type::number_unsigned_integer_type || json::type::number_float_type; }
+	bool is_number() const { return type_ == json::type::number_signed_integer_type || type_ == json::type::number_unsigned_integer_type || type_ == json::type::number_float_type; }
 	bool is_unsigned_integer_number() const { return type_ == json::type::number_unsigned_integer_type; }
 	bool is_signed_integer_number() const { return type_ == json::type::number_signed_integer_type; }
 	bool is_float_number() const { return type_ == json::type::number_float_type; }
@@ -787,7 +787,7 @@ namespace serializer
 {
 std::string indent(std::int16_t depth)
 {
-	std::string indent_str((depth ? --depth : 0)  * 2, ' ');
+	std::string indent_str((depth ? --depth : 0)  * static_cast<size_t>(2), ' ');
 	
 	return indent_str;
 }

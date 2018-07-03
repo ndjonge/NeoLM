@@ -82,8 +82,8 @@ class compressor
 	int level_;
 
 public:
-	compressor(int level = Z_DEFAULT_COMPRESSION)
-		: level_(level)
+	compressor(int level = Z_DEFAULT_COMPRESSION) noexcept
+		: max_(0), level_(level)
 	{
 	}
 
@@ -138,7 +138,7 @@ inline std::string compress(const char* data, std::size_t size, int level = Z_DE
 class decompressor
 {
 public:
-	decompressor() {}
+	decompressor() noexcept {}
 
 	template <typename OutputType> void decompress(OutputType& output, const char* data, std::size_t size) const
 	{
@@ -508,9 +508,10 @@ protected:
 	std::string url_requested_;
 	std::string target_;
 	query_params params_;
-	unsigned int version_nr_;
+	unsigned int version_nr_ = 11;
 
 public:
+	header() = default;
 	const std::string& method() const { return method_; }
 	const std::string& target() const { return target_; }
 	const std::string& url_requested() const { return url_requested_; }
@@ -520,7 +521,7 @@ public:
 
 	query_params& query() { return params_; };
 
-	void reset()
+	void headers_reset()
 	{
 		this->version_nr_ = 0;
 		this->method_.clear();
@@ -558,16 +559,17 @@ template <> class header<response_specialization> : public fields
 {
 private:
 	std::string reason_;
-	http::status::status_t status_;
+	http::status::status_t status_ = http::status::bad_request;
 	unsigned int version_ = 11;
 
 public:
+	header() = default;
 	const unsigned int& version() const noexcept { return version_; }
 	void version(unsigned int value) noexcept { version_ = value; }
 	void status(http::status::status_t status) { status_ = status; }
 	http::status::status_t status() const { return status_; }
 
-	void reset()
+	void headers_reset()
 	{
 		this->fields_.clear();
 		version_ = 0;
@@ -641,7 +643,7 @@ public:
 
 	void reset()
 	{
-		header<specialization>::reset();
+		header<specialization>::headers_reset();
 		this->body_.clear();
 	}
 
@@ -726,7 +728,7 @@ using response_message = http::message<response_specialization>;
 class request_parser
 {
 public:
-	request_parser()
+	request_parser() noexcept
 		: state_(method_start){};
 
 	void reset() { state_ = method_start; };
@@ -1615,7 +1617,7 @@ namespace basic
 class session_data
 {
 public:
-	session_data(){};
+	session_data() noexcept {};
 
 	void store_request_data(const char* data, size_t size) { data_request_.insert(std::end(data_request_), &data[0], &data[0] + size); }
 
@@ -1670,6 +1672,7 @@ public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
 		, thread_count_(configuration.get<int>("thread_count", 5))
+		, listen_port_(0)
 		, listen_port_begin_(configuration.get<int>("listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
 		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
@@ -1735,10 +1738,12 @@ public:
 			ssl_context.use_certificate_chain_file(configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
 			ssl_context.use_private_key_file(configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
 
-			network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
+
 
 			while (1)
 			{
+				network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
+
 				acceptor_https.accept(https_socket.lowest_layer());
 
 				network::timeout(https_socket.lowest_layer(), connection_timeout_);
@@ -1795,10 +1800,11 @@ public:
 
 			acceptor_http.listen();
 
-			network::tcp::socket http_socket;
+
 
 			while (1)
 			{
+				network::tcp::socket http_socket{ 0 };
 				acceptor_http.accept(http_socket);
 
 				network::timeout(http_socket, connection_timeout_);
@@ -1830,7 +1836,7 @@ public:
 		std::mutex mutex_;
 
 	public:
-		server_info()
+		server_info() noexcept
 			: server_information_("")
 			, router_information_("")
 			, requests_handled_(0)
@@ -1875,7 +1881,7 @@ public:
 
 		void log_access(http::session_handler& session)
 		{
-			std::lock_guard<std::mutex> g(mutex_);
+			/*std::lock_guard<std::mutex> g(mutex_);
 
 			std::stringstream s;
 
@@ -1888,7 +1894,7 @@ public:
 
 			access_log_.emplace_back(s.str());
 
-			if (access_log_.size() >= 32) access_log_.erase(access_log_.begin());
+			if (access_log_.size() >= 32) access_log_.erase(access_log_.begin());*/
 		}
 
 		std::string log_access_to_string()
@@ -2043,7 +2049,7 @@ public:
 
 					if (response.body().empty())
 					{
-						std::array<char, 1024 * 32> file_buffer;
+						std::array<char, 1024 * 8> file_buffer;
 
 						{
 							std::string headers = response.header_to_string();
