@@ -142,7 +142,8 @@ void init()
 {
 #if defined(_WIN32)
 	WSADATA wsaData;
-	WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+		exit(1);
 #endif
 }
 
@@ -414,9 +415,9 @@ class acceptor
 public:
 		acceptor() = default;
 
-		void open(std::int16_t protocol) { protocol_ = protocol;}
+		void open(std::int16_t protocol) noexcept { protocol_ = protocol;} 
 
-		void bind(endpoint& endpoint, error_code& ec) 
+		void bind(endpoint& endpoint, error_code& ec) noexcept
 		{
 			int ret = 0;
 			endpoint_ = &endpoint;
@@ -437,14 +438,15 @@ public:
 			//ec.value = ret;
 		}
 
-		void listen() 
+		void listen() noexcept
 		{
 			::listen(endpoint_->socket(), 1);
 		}
 
-		void accept(socket& socket) 
+		void accept(socket& socket) noexcept
 		{
 			socklen_t len = static_cast<socklen_t>(endpoint_->addr_size());
+			socket = -1;
 			socket = ::accept(endpoint_->socket(), endpoint_->addr(), &len);
 
 		}

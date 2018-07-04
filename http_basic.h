@@ -1633,7 +1633,13 @@ public:
 
 	void store_request_data(const char* data, size_t size) { data_request_.insert(std::end(data_request_), &data[0], &data[0] + size); }
 
-	void store_response_data(const std::string& response_string) { data_response_.insert(std::end(data_response_), response_string.begin(), response_string.end()); }
+	void store_response_data(const std::string& response_string) 
+	{ 
+		data_response_.insert(
+			std::end(data_response_), 
+			response_string.begin(), 
+			response_string.end()); 
+	}
 
 	std::vector<char>& request_data() { return data_request_; }
 	std::vector<char>& response_data() { return data_response_; }
