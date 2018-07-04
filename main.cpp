@@ -286,7 +286,7 @@ private:
 			router_.use("/styles/");
 			router_.use("/index.html");
 			router_.use("/");
-
+			router_.use("/files/");
 			// License instance configuration routes..
 			router_.on_get("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
 
@@ -515,7 +515,7 @@ public:
 	void add_test_routes()
 	{
 
-		for (int i= 0; i <= 10000; i++)
+		for (int i= 0; i <= 1000; i++)
 		{
 			std::string test_route = "/key-value-store/";
 			test_route += "test_";
@@ -533,6 +533,7 @@ public:
 				{
 					try 
 					{
+						//std::cout << key << "\n";
 						key_value_store_[key] = session.request().body();
 						session.response().result(http::status::created);
 					}
@@ -647,7 +648,7 @@ void test_post_get()
 
 		for (int i = 0; i < test_requests; i++)
 		{
-			std::string test_resource = "/key-value-store/test_" + std::to_string(i) + "/key" + std::to_string(i);
+			std::string test_resource = "/key-value-store/test_" + std::to_string(i) + "/key_" + std::to_string(i);
 			
 			//std::cout << test_resource << "\n";
 
@@ -679,14 +680,16 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
+	test_json();
+
 	neolm::license_manager license_server{"C:/Projects/neolm_licenses/"};
 
 
-	license_server.add_test_routes();
+	//license_server.add_test_routes();
 
 	while (1)
 	{
-		test_post_get();
+		//test_post_get();
 
 		//test_req_p_sec_simple();
 		std::this_thread::sleep_for(60s);

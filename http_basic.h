@@ -620,7 +620,7 @@ static std::string extension_to_type(const std::string& extension)
 			}
 		}
 
-	return "text/plain";
+	return "application/octet-stream";
 }
 } // namespace mime_types
 
@@ -1178,7 +1178,9 @@ public:
 			{
 				if (request_path[request_path.size() - 1] == '/')
 				{
-					request_path += "index.html";
+					request_path = request_.target() + "index.html";
+					request_.target(request_path);
+					extension = "html";
 				}
 
 				// Static content route.
@@ -1319,62 +1321,65 @@ using middleware_function_t = std::function<void(session_handler_type& session, 
 template <typename R = route_function_t> class route
 {
 public:
-	route(const std::string& path, R endpoint)
-		: path_(path)
-		, endpoint_(endpoint){};
-
-	std::string path_;
-	R endpoint_;
-
-	static bool match(const std::string& route, const std::string& url, params& params)
+	route(const std::string& route, R endpoint)
+		: route_(route)
+		, endpoint_(endpoint)
 	{
-
-		// route: /route/:param1/subroute/:param2/subroute
-		// url:   /route/parameter
-
-		if (url == route)
-		{
-			return true;
-		}
-
-		std::vector<std::string> tokens;
+		size_t b = route_.find_first_of("/");
+		size_t e = route_.find_first_of("/", b + 1);
 		size_t token = 0;
-
-		// token = /-----
-
-		size_t b = route.find_first_of("/");
-		size_t e = route.find_first_of("/", b + 1);
 
 		for (token = 0; b != std::string::npos; token++)
 		{
 			std::string current_token = route.substr(b, e - b);
-			tokens.emplace_back(std::move(current_token));
+			tokens_.emplace_back(std::move(current_token));
 
 			if (e == std::string::npos) break;
 
-			b = route.find_first_of("/", e);
-			e = route.find_first_of("/", b + 1);
+			b = route_.find_first_of("/", e);
+			e = route_.find_first_of("/", b + 1);
+		}
+	};
+
+	std::string route_;
+	R endpoint_;
+
+	std::vector<std::string> tokens_;
+
+	bool match(const std::string& url, params& params) const
+	{
+		// route: /route/:param1/subroute/:param2/subroute
+		// url:   /route/parameter
+
+		if (url == route_)
+		{
+			return true;
 		}
 
-		b = url.find_first_of("/");
-		e = url.find_first_of("/", b + 1);
+		//std::vector<std::string> tokens;
 
+
+		// token = /-----
+
+		auto b = url.find_first_of("/");
+		auto e = url.find_first_of("/", b + 1);
+		size_t token = 0;
 		bool match = false;
 
-		for (token = 0; ((b != std::string::npos) && (token < tokens.size())); token++)
+		for (token = 0; ((b != std::string::npos) && (token < tokens_.size())); token++)
 		{
 			std::string current_token = url.substr(b, e - b);
 
-			if (tokens[token].size() > 2 && tokens[token][1] == ':')
+			if (tokens_[token].size() > 2 && tokens_[token][1] == ':')
 			{
-				params.insert(tokens[token].substr(2), current_token.substr(1));
+				params.insert(tokens_[token].substr(2), current_token.substr(1));
 			}
-			else if (tokens[token] != current_token)
+			else if (tokens_[token] != current_token)
 			{
 				match = false;
 				break;
 			}
-			else if (tokens.size() - 1 == token)
+			else if (tokens_.size() - 1 == token)
 			{
 				// still matches, this is the last token
 				match = true;
@@ -1383,7 +1388,7 @@ public:
 			b = url.find_first_of("/", e);
 			e = url.find_first_of("/", b + 1);
 
-			if ((b == std::string::npos) && (tokens.size() - 1 == token))
+			if ((b == std::string::npos) && (tokens_.size() - 1 == token))
 			{
 				match = true;
 				break;
@@ -1392,8 +1397,8 @@ public:
 			{
 				bool partial_match_with_only_missing_dynamic_elements_at_the_end = false;
 
-				for (size_t i = token; i != tokens.size(); i++)
-					if (tokens[i][1] == ':')
+				for (size_t i = token; i != tokens_.size(); i++)
+					if (tokens_[i][1] == ':')
 					{
 						partial_match_with_only_missing_dynamic_elements_at_the_end = true;
 					}
@@ -1405,8 +1410,8 @@ public:
 
 				if (partial_match_with_only_missing_dynamic_elements_at_the_end)
 				{
-					for (size_t i = token; i != tokens.size(); i++)
-						params.insert(tokens[i].substr(2), ""); // first token already inserted! ?
+					for (size_t i = token; i != tokens_.size(); i++)
+						params.insert(tokens_[i].substr(2), ""); // first token already inserted! ?
 
 					match = true;
 					break;
@@ -1426,24 +1431,10 @@ public:
 template <typename M = middleware_function_t> class middelware
 {
 public:
-	middelware(const std::string& path, M endpoint)
-		: path_(path)
-		, endpoint_(endpoint){};
-
-	std::string path_;
-	M endpoint_;
-
-	static bool match(const std::string& route, const std::string& url, params& params)
+	middelware(const std::string& route, M endpoint)
+		: route_(route)
+		, endpoint_(endpoint)
 	{
-		// route: /route/:param1/subroute/:param2/subroute
-		// url:   /route/parameter
-
-		if (url.find(route) == 0) // url starts with route
-		{
-			return true;
-		}
-
-		std::vector<std::string> tokens;
 		size_t token = 0;
 
 		// token = /-----
@@ -1462,25 +1453,44 @@ public:
 			e = route.find_first_of("/", b + 1);
 		}
 
-		b = url.find_first_of("/");
-		e = url.find_first_of("/", b + 1);
+	};
+
+	std::string route_;
+	M endpoint_;
+	std::vector<std::string> tokens_;
+
+	bool match(const std::string& url, params& params) const
+	{
+		// route: /route/:param1/subroute/:param2/subroute
+		// url:   /route/parameter
+
+		if (url.find(route_) == 0) // url starts with route
+		{
+			return true;
+		}
+
+		size_t token = 0;
+
+		// token = /-----
+		auto b = url.find_first_of("/");
+		auto e = url.find_first_of("/", b + 1);
 
 		bool match = false;
 
-		for (token = 0; ((b != std::string::npos) && (token < tokens.size())); token++)
+		for (token = 0; ((b != std::string::npos) && (token < tokens_.size())); token++)
 		{
 			std::string current_token = url.substr(b, e - b);
 
-			if (tokens[token].size() > 2 && tokens[token][1] == ':')
+			if (tokens_[token].size() > 2 && tokens_[token][1] == ':')
 			{
-				params.insert(tokens[token].substr(2), current_token.substr(1));
+				params.insert(tokens_[token].substr(2), current_token.substr(1));
 			}
-			else if (tokens[token] != current_token)
+			else if (tokens_[token] != current_token)
 			{
 				match = false;
 				break;
 			}
-			else if (tokens.size() - 1 == token)
+			else if (tokens_.size() - 1 == token)
 			{
 				// still matches, this is the last token
 				match = true;
@@ -1489,7 +1499,7 @@ public:
 			b = url.find_first_of("/", e);
 			e = url.find_first_of("/", b + 1);
 
-			if ((b == std::string::npos) && (tokens.size() - 1 == token))
+			if ((b == std::string::npos) && (tokens_.size() - 1 == token))
 			{
 				match = true;
 				break;
@@ -1514,16 +1524,16 @@ public:
 		std::stringstream s;
 
 		for (auto& route : api_router_table["GET"])
-			m[route.path_] += "GET ";
+			m[route.route_] += "GET ";
 
 		for (auto& route : api_router_table["POST"])
-			m[route.path_] += "POST ";
+			m[route.route_] += "POST ";
 
 		for (auto& route : api_router_table["PUT"])
-			m[route.path_] += "PUT ";
+			m[route.route_] += "PUT ";
 
 		for (auto& route : api_router_table["DELETE"])
-			m[route.path_] += "DELETE ";
+			m[route.route_] += "DELETE ";
 
 		for (auto& l : m)
 		{
@@ -1533,7 +1543,9 @@ public:
 		return s.str();
 	}
 
-	void use(const std::string& path) { static_content_routes.emplace_back(path); }
+	void use(const std::string& path) { 
+		static_content_routes.emplace_back(path); 
+	}
 
 	void on_http_method(const std::string& route, const std::string& http_method, R api_method) { api_router_table[http_method].emplace_back(route, api_method); }
 	void on_get(const std::string& route, R api_method) { api_router_table["GET"].emplace_back(route, api_method); }
@@ -1550,7 +1562,7 @@ public:
 	bool serve_static_content(session_handler_type& session)
 	{
 		// auto static_path = std::find(std::begin(this->static_content_routes), std::end(this->static_content_routes), session.request().target());
-		for (auto static_route : static_content_routes)
+		for (auto& static_route : static_content_routes)
 		{
 			if (session.request().target().find(static_route) == 0)
 			{
@@ -1563,14 +1575,14 @@ public:
 		return false;
 	}
 
-	bool call_middleware(session_handler_type& session)
+	bool call_middleware(session_handler_type& session) const
 	{
 		auto result = true;
 		for (auto& middleware : api_middleware_table)
 		{
 			params params_;
 
-			if (api::middelware<>::match(middleware.path_, session.request().target(), params_))
+			if (middleware.match(session.request().target(), params_))
 			{
 				result = true;
 				middleware.endpoint_(session, params_);
@@ -1580,9 +1592,9 @@ public:
 		return result;
 	}
 
-	bool call_route(session_handler_type& session)
+	bool call_route(session_handler_type& session) const
 	{
-		auto routes = api_router_table[session.request().method()];
+		auto& routes = api_router_table.at(session.request().method());
 		
 		//std::cout << session.request().target() << "\n";
 
@@ -1592,7 +1604,7 @@ public:
 			{
 				params params_;
 
-				if (api::route<>::match(route.path_, session.request().target(), params_))
+				if (route.match(session.request().target(), params_))
 				{
 					route.endpoint_(session, params_);
 					return true;
@@ -1676,7 +1688,7 @@ public:
 		, listen_port_begin_(configuration.get<int>("listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
 		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
-		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024))
+		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024*10))
 	{
 	}
 
@@ -1881,7 +1893,7 @@ public:
 
 		void log_access(http::session_handler& session)
 		{
-			/*std::lock_guard<std::mutex> g(mutex_);
+			std::lock_guard<std::mutex> g(mutex_);
 
 			std::stringstream s;
 
@@ -1894,7 +1906,7 @@ public:
 
 			access_log_.emplace_back(s.str());
 
-			if (access_log_.size() >= 32) access_log_.erase(access_log_.begin());*/
+			if (access_log_.size() >= 32) access_log_.erase(access_log_.begin());
 		}
 
 		std::string log_access_to_string()

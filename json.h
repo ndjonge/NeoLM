@@ -36,12 +36,22 @@ using number_signed_integer = std::int64_t;
 using number_unsigned_integer = std::uint64_t;
 using string = std::string;
 using array = std::vector<json::value>;
-using object = std::unordered_map<json::string, json::value>;
+using object = std::map<json::string, json::value>;
 
 class value
 {
 public:
-	value() noexcept : type_(json::type::null_type) {}
+	value() noexcept : 
+		type_(json::type::null_type)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, string_value(nullptr)
+		, array_value(nullptr)
+		, object_value(nullptr) 
+	{}
+
 	~value()
 	{
 		switch (type_)
@@ -49,7 +59,7 @@ public:
 			case null_type:
 				break;
 			case string_type:
-				string_value.release();
+				string_value = nullptr;
 				break;
 			case boolean_type:
 				break;
@@ -60,40 +70,169 @@ public:
 			case number_float_type:
 				break;
 			case array_type:
-				array_value.release();
-				break;
+				array_value = nullptr;
 			case object_type:
-			{
-				object_value.release();
-				break;
-			}
+				object_value = nullptr;
 			default:
 				break;
 		}
 	}
 
-	value(const char* char_value) : type_(json::type::string_type), string_value(std::make_unique<json::string>(char_value)) {}
-	value(const std::string& string_value) : type_(json::type::string_type), string_value(std::make_unique<std::string>(string_value))  {}
+	value(const char* char_value) 
+		: type_(json::type::string_type)
+		, string_value(nullptr)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
+	{
+		this->string_value = std::make_unique<std::string>(char_value);
+	}
 
-	value(bool bool_value) : type_(json::type::boolean_type), boolean_value(bool_value) {}
-	value(number_unsigned_integer number_unsigned_integer_value) : type_(json::type::number_unsigned_integer_type), number_unsigned_integer_value(number_unsigned_integer_value) {}
-	value(number_signed_integer number_signed_integer_value) : 
-		type_(json::type::number_signed_integer_type), 
-		number_signed_integer_value(number_signed_integer_value) 
-	{}
-	value(number_float number_float_value) : type_(json::type::number_float_type), number_float_value(number_float_value) {}
+	value(const std::string& string_value) 
+		: type_(json::type::string_type) 
+		, string_value(nullptr)  
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
+	{
+		this->string_value = std::make_unique<std::string>(string_value);
+	}
+
+	value(bool bool_value)
+		: type_(json::type::boolean_type)
+		, string_value(nullptr)  
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)		
+	{
+		boolean_value = bool_value;
+	}
+
+	value(number_unsigned_integer number_unsigned_integer_value) 
+		: type_(json::type::number_unsigned_integer_type)
+		, string_value(nullptr)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
+	{
+		number_unsigned_integer_value = number_unsigned_integer_value;
+	}
 	
-	value(int number_signed_integer_value) : type_(json::type::number_signed_integer_type), number_signed_integer_value(number_signed_integer_value) {}
-	value(unsigned int number_unsigned_integer_value) : type_(json::type::number_unsigned_integer_type), number_unsigned_integer_value(number_unsigned_integer_value) {}
-	value(double number_double_value) : type_(json::type::number_float_type), number_float_value(number_float_value) {}
+	value(float number_float_value)
+		: type_(json::type::number_float_type)
+		, string_value(nullptr)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
+	{
+		this->number_float_value = number_float_value;
+	}
+	
+	value(number_signed_integer number_signed_integer_value) 
+		: type_(json::type::number_signed_integer_type)
+		, string_value(nullptr)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
+	{
+		this->number_signed_integer_value = number_signed_integer_value;
+	}
+	
+	value(int number_signed_integer_value) 
+		: type_(json::type::number_signed_integer_type)
+		, string_value(nullptr)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
+	{
+		this->number_signed_integer_value = number_signed_integer_value;
+	}
 
-	value(const json::array& array_value) : type_(json::type::array_type), array_value(std::make_unique<json::array>(array_value)) {}
-	value(const json::object& object_value) : type_(json::type::object_type), object_value(std::make_unique<json::object>(object_value)) {} 
+
+	value(unsigned int number_unsigned_integer_value) 
+		: type_(json::type::number_unsigned_integer_type)
+		, string_value(nullptr)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
+	{
+		this->number_unsigned_integer_value = number_unsigned_integer_value;
+	}
+
+	value(double number_double_value)
+		: type_(json::type::number_float_type)
+		, string_value(nullptr)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
+	{
+		this->number_float_value = static_cast<float>(number_double_value);
+	}
+
+	value(const json::array& array_value) 
+		: type_(json::type::array_type)
+		, string_value(nullptr)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
+	{
+		this->array_value = std::make_unique<json::array>(array_value);
+	}
+
+	value(const json::object& object_value) 
+		: type_(json::type::object_type)
+		, string_value(nullptr)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
+	{
+		this->object_value = std::make_unique<json::object>(object_value);
+	} 
 
 	type ttype() const noexcept {return type_;}
 
-	value(json::value&& source) noexcept : 
-		type_(source.type_)
+	value(json::value&& source) noexcept 
+		: type_(source.type_)
+		, string_value(nullptr)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
 	{
 		using std::swap;
 
@@ -103,6 +242,7 @@ public:
 				break;
 			case string_type:
 				swap(string_value, source.string_value);
+				source.type_ = json::null_type;
 				break;
 			case boolean_type:
 				boolean_value = source.boolean_value;
@@ -118,28 +258,37 @@ public:
 				break;
 			case array_type:
 				swap(array_value, source.array_value);
+				source.type_ = json::null_type;
 				break;
 			case object_type:
 				swap(object_value, source.object_value);
+				source.type_ = json::null_type;
 				break;
 			default:
 				break;
 		}
 
-		//source.type_ = json::null_type;
 	}
 
-	value(const json::value& source) : 
-		type_(source.type_)
+	value(const json::value& source)
+		: type_(source.type_)
+		, string_value(nullptr)
+		, boolean_value(false)
+		, number_float_value(0)
+		, number_unsigned_integer_value(0)
+		, number_signed_integer_value(0)
+		, array_value(nullptr)
+		, object_value(nullptr)
 	{
 		switch (type_)
 		{
 			case null_type:
 				break;
 			case string_type:
-				string_value.release();
+			{
 				string_value = std::make_unique<std::string>(*source.string_value);
 				break;
+			}
 			case boolean_type:
 				boolean_value = source.boolean_value;
 				break;
@@ -153,15 +302,11 @@ public:
 				number_float_value = source.number_float_value;
 				break;
 			case array_type:
-				array_value.release();
 				array_value = std::make_unique<json::array>(*source.array_value);
 				break;
 			case object_type:
-			{
-				object_value.release();
 				object_value = std::make_unique<json::object>(*source.object_value);
 				break;
-			}
 			default:
 				break;
 		}
@@ -189,7 +334,7 @@ public:
 	const json::array& as_array() const { return *array_value; }
 	const json::object& as_object() const { return *object_value; };
 
-	json::string& get_string() { return *string_value; }
+	json::string& get_string() { return *(string_value.get()); }
 
 	bool& get_bool() { return boolean_value; }
 	float& get_number_as_float() { return number_float_value; }
@@ -252,13 +397,13 @@ public:
 			switch (type_)
 			{
 				case string_type:
-					string_value.release();
+					string_value.reset();
 					break;
 				case array_type:
-					array_value.release();
+					array_value.reset();
 					break;
 				case object_type:
-					object_value.release();
+					object_value.reset();
 					break;
 				default:
 					break;
@@ -327,7 +472,7 @@ struct is_string<std::basic_string<charT, traits, Alloc> >
     enum { value = true };
 };
 
-template<typename T> auto get(json::value v) -> T&
+template<typename T> auto get(json::value& v) -> T&
 {
 	if (std::is_unsigned<T>::value && std::is_integral<T>::value)
 		return v.get_number_unsigned_integer();
@@ -342,38 +487,38 @@ template<typename T> auto get(json::value v) -> T&
 		return static_cast<T&>(v.get_string());
 }
 
-template<> auto get(json::value v) -> bool&
+template<> auto get(json::value& v) -> bool&
 {
 	return v.get_bool();
 }
 
-template<> auto get(json::value v) -> std::uint64_t&
+template<> auto get(json::value& v) -> std::uint64_t&
 {
 	return v.get_number_unsigned_integer();
 }
 
-template<> auto get(json::value v) -> std::int64_t&
+template<> auto get(json::value& v) -> std::int64_t&
 {
 	return v.get_number_signed_integer();
 }
 
-template<> auto get(json::value v) -> float&
+template<> auto get(json::value& v) -> float&
 {
 	return v.get_number_as_float();
 }
 
-template<> auto get(json::value v) -> std::string&
+template<> auto get(json::value& v) -> std::string&
 {
 	return v.get_string();
 }
 
 
-template<> auto get(json::value v) -> json::object&
+template<> auto get(json::value& v) -> json::object&
 {
 	return v.get_object();
 }
 
-template<> auto get(json::value v) -> json::array&
+template<> auto get(json::value& v) -> json::array&
 {
 	return v.get_array();
 }
@@ -737,7 +882,7 @@ json::object parseObject(const std::string& str, std::string::const_iterator& i)
 		expectChar(*i, ':');
 		i++;
 
-		rval.insert(std::pair<std::string, json::value>(key, parseValue(str, i)));
+		rval.emplace(std::pair<std::string, json::value>(key, parseValue(str, i)));
 
 		skipWhiteSpace(str, i);
 
