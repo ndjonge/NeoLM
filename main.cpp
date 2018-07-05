@@ -461,6 +461,7 @@ private:
 				server_info_.server_information(configuration_.to_string());
 				server_info_.router_information(router_.to_string());
 				session.response().body() = server_info_.to_string(); 
+                session.response().type("text");
 			});
 		}
 
@@ -523,7 +524,7 @@ public:
 			test_route += "/:key";
 
 			api_server_.router_.on_put(test_route, [this, i](http::session_handler& session, const http::api::params& params) {
-				auto& key = std::to_string(i) + params.get("key");
+				auto key = std::to_string(i) + params.get("key");
 
 				if (key.empty())
 				{
@@ -545,7 +546,7 @@ public:
 			});
 
 			api_server_.router_.on_get(test_route, [this, i](http::session_handler& session, const http::api::params& params) {
-				auto& key = std::to_string(i) + params.get("key");
+				auto key = std::to_string(i) + params.get("key");
 
 				if (key.empty())
 				{
@@ -682,7 +683,7 @@ int main(int argc, char* argv[])
 
 	test_json();
 
-	neolm::license_manager license_server{"C:/Projects/neolm_licenses/"};
+	neolm::license_manager license_server{"/projects/neolm_licenses/"};
 
 
 	//license_server.add_test_routes();
