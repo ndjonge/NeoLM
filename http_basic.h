@@ -605,7 +605,7 @@ struct mapping
 }
 
 const mappings[]
-	= { { "json", "application/json" }, { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" } };
+	= { { "json", "application/json" }, { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" }, { "text", "text/plain"} };
 
 static std::string extension_to_type(const std::string& extension)
 {
@@ -693,7 +693,7 @@ public:
 			return std::stoul(content_length_);
 	}
 
-	bool http_version11() const { return version_nr() == 11; }
+	bool http_version11() const { return http::header<request_specialization>::version_nr() == 11; }
 
 	bool connection_close() const 
 	{
@@ -1445,7 +1445,7 @@ public:
 		for (token = 0; b != std::string::npos; token++)
 		{
 			std::string current_token = route.substr(b, e - b);
-			tokens.emplace_back(std::move(current_token));
+			tokens_.emplace_back(std::move(current_token));
 
 			if (e == std::string::npos) break;
 
