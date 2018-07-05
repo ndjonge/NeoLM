@@ -43,12 +43,6 @@ class value
 public:
 	value() noexcept : 
 		type_(json::type::null_type)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, string_value(nullptr)
-		, array_value(nullptr)
 		, object_value(nullptr) 
 	{}
 
@@ -78,27 +72,15 @@ public:
 		}
 	}
 
-	value(const char* char_value) 
+/*	value(const char* char_value) 
 		: type_(json::type::string_type)
-		, string_value(nullptr)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		this->string_value = std::make_unique<std::string>(char_value);
-	}
+	}*/
 
 	value(const std::string& string_value) 
 		: type_(json::type::string_type) 
-		, string_value(nullptr)  
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		this->string_value = std::make_unique<std::string>(string_value);
@@ -106,12 +88,6 @@ public:
 
 	value(bool bool_value)
 		: type_(json::type::boolean_type)
-		, string_value(nullptr)  
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)		
 	{
 		boolean_value = bool_value;
@@ -119,12 +95,6 @@ public:
 
 	value(number_unsigned_integer number_unsigned_integer_value) 
 		: type_(json::type::number_unsigned_integer_type)
-		, string_value(nullptr)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		number_unsigned_integer_value = number_unsigned_integer_value;
@@ -132,12 +102,6 @@ public:
 	
 	value(float number_float_value)
 		: type_(json::type::number_float_type)
-		, string_value(nullptr)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		this->number_float_value = number_float_value;
@@ -145,12 +109,6 @@ public:
 	
 	value(number_signed_integer number_signed_integer_value) 
 		: type_(json::type::number_signed_integer_type)
-		, string_value(nullptr)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		this->number_signed_integer_value = number_signed_integer_value;
@@ -158,12 +116,6 @@ public:
 	
 	value(int number_signed_integer_value) 
 		: type_(json::type::number_signed_integer_type)
-		, string_value(nullptr)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		this->number_signed_integer_value = number_signed_integer_value;
@@ -172,12 +124,6 @@ public:
 
 	value(unsigned int number_unsigned_integer_value) 
 		: type_(json::type::number_unsigned_integer_type)
-		, string_value(nullptr)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		this->number_unsigned_integer_value = number_unsigned_integer_value;
@@ -185,12 +131,6 @@ public:
 
 	value(double number_double_value)
 		: type_(json::type::number_float_type)
-		, string_value(nullptr)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		this->number_float_value = static_cast<float>(number_double_value);
@@ -198,12 +138,6 @@ public:
 
 	value(const json::array& array_value) 
 		: type_(json::type::array_type)
-		, string_value(nullptr)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		this->array_value = std::make_unique<json::array>(array_value);
@@ -211,12 +145,6 @@ public:
 
 	value(const json::object& object_value) 
 		: type_(json::type::object_type)
-		, string_value(nullptr)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		this->object_value = std::make_unique<json::object>(object_value);
@@ -226,12 +154,6 @@ public:
 
 	value(json::value&& source) noexcept 
 		: type_(source.type_)
-		, string_value(nullptr)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		using std::swap;
@@ -272,12 +194,6 @@ public:
 
 	value(const json::value& source)
 		: type_(source.type_)
-		, string_value(nullptr)
-		, boolean_value(false)
-		, number_float_value(0)
-		, number_unsigned_integer_value(0)
-		, number_signed_integer_value(0)
-		, array_value(nullptr)
 		, object_value(nullptr)
 	{
 		switch (type_)
@@ -831,7 +747,7 @@ json::value parseNull(const std::string& str, std::string::const_iterator& i)
 	}
 	else
 	{
-		return nullptr;
+		return json::value(nullptr);
 	}
 }
 
