@@ -1,26 +1,26 @@
 /*
- Copyright (c) <2018> <ndejonge@gmail.com>
+Copyright (c) <2018> <ndejonge@gmail.com>
 
- Permission is hereby granted, free of charge, to any person
- obtaining a copy of this software and associated documentation
- files (the "Software"), to deal in the Software without
- restriction, including without limitation the rights to use,
- copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the
- Software is furnished to do so, subject to the following
- conditions:
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
 
- The above copyright notice and this permission notice shall be
- included in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
 
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
- HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
- WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
- OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
 */
 
 #pragma once
@@ -83,7 +83,8 @@ class compressor
 
 public:
 	compressor(int level = Z_DEFAULT_COMPRESSION) noexcept
-		: max_(0), level_(level)
+		: max_(0)
+		, level_(level)
 	{
 	}
 
@@ -192,7 +193,7 @@ inline std::string decompress(const char* data, std::size_t size)
 	decomp.decompress(output, data, size);
 	return output;
 }
-}
+} // namespace gzip
 
 namespace http
 {
@@ -550,7 +551,6 @@ public:
 
 		ss << "\r\n";
 
-
 		return ss.str();
 	}
 };
@@ -605,7 +605,7 @@ struct mapping
 }
 
 const mappings[]
-	= { { "json", "application/json" }, { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" }, { "text", "text/plain"} };
+	= { { "json", "application/json" }, { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" }, { "text", "text/plain" } };
 
 static std::string extension_to_type(const std::string& extension)
 {
@@ -633,7 +633,7 @@ public:
 	message() = default;
 	message(const message&) = default;
 
-	//TODO use enableif....
+	// TODO use enableif....
 	message(const std::string& method, const std::string& target, const int version_nr = 11)
 	{
 		header<specialization>::version_nr_ = version_nr;
@@ -695,7 +695,7 @@ public:
 
 	bool http_version11() const { return http::header<request_specialization>::version_nr() == 11; }
 
-	bool connection_close() const 
+	bool connection_close() const
 	{
 		if (http::util::case_insensitive_equal(http::fields::operator[]("Connection"), "close"))
 			return true;
@@ -1205,12 +1205,12 @@ public:
 		}
 
 		// set connection headers in the response.request_
-		if ((request_.http_version11() == true && keepalive_count() > 1 && (response_.status() == http::status::ok || response_.status() == http::status::created) && request_.connection_close() == false) ||
-			(request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && (response_.status() == http::status::ok || response_.status() == http::status::created) && request_.connection_close() == false))
+		if ((request_.http_version11() == true && keepalive_count() > 1 && (response_.status() == http::status::ok || response_.status() == http::status::created) && request_.connection_close() == false)
+			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && (response_.status() == http::status::ok || response_.status() == http::status::created) && request_.connection_close() == false))
 		{
 			keepalive_count(keepalive_count() - 1);
 			response_["Connection"] = "Keep-Alive";
-			//response_["Keep-Alive"] = std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" + std::to_string(keepalive_count());
+			// response_["Keep-Alive"] = std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" + std::to_string(keepalive_count());
 		}
 		else
 		{
@@ -1356,8 +1356,7 @@ public:
 			return true;
 		}
 
-		//std::vector<std::string> tokens;
-
+		// std::vector<std::string> tokens;
 
 		// token = /-----
 
@@ -1452,7 +1451,6 @@ public:
 			b = route.find_first_of("/", e);
 			e = route.find_first_of("/", b + 1);
 		}
-
 	};
 
 	std::string route_;
@@ -1543,9 +1541,7 @@ public:
 		return s.str();
 	}
 
-	void use(const std::string& path) { 
-		static_content_routes.emplace_back(path); 
-	}
+	void use(const std::string& path) { static_content_routes.emplace_back(path); }
 
 	void on_http_method(const std::string& route, const std::string& http_method, R api_method) { api_router_table[http_method].emplace_back(route, api_method); }
 	void on_get(const std::string& route, R api_method) { api_router_table["GET"].emplace_back(route, api_method); }
@@ -1595,8 +1591,8 @@ public:
 	bool call_route(session_handler_type& session) const
 	{
 		auto& routes = api_router_table.at(session.request().method());
-		
-		//std::cout << session.request().target() << "\n";
+
+		// std::cout << session.request().target() << "\n";
 
 		if (!routes.empty())
 		{
@@ -1633,13 +1629,7 @@ public:
 
 	void store_request_data(const char* data, size_t size) { data_request_.insert(std::end(data_request_), &data[0], &data[0] + size); }
 
-	void store_response_data(const std::string& response_string) 
-	{ 
-		data_response_.insert(
-			std::end(data_response_), 
-			response_string.begin(), 
-			response_string.end()); 
-	}
+	void store_response_data(const std::string& response_string) { data_response_.insert(std::end(data_response_), response_string.begin(), response_string.end()); }
 
 	std::vector<char>& request_data() { return data_request_; }
 	std::vector<char>& response_data() { return data_response_; }
@@ -1694,7 +1684,7 @@ public:
 		, listen_port_begin_(configuration.get<int>("listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
 		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
-		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024*10))
+		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 	{
 	}
 
@@ -1745,7 +1735,7 @@ public:
 				}
 				else
 				{
-					throw std::runtime_error("http bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
+					throw std::runtime_error("https bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
 				}
 			}
 
@@ -1756,8 +1746,6 @@ public:
 			ssl_context.use_certificate_chain_file(configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
 			ssl_context.use_private_key_file(configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
 
-
-
 			while (1)
 			{
 				network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
@@ -1767,11 +1755,24 @@ public:
 				network::timeout(https_socket.lowest_layer(), connection_timeout_);
 				https_socket.handshake(network::ssl::stream_base::server);
 
+				auto current_connections = server_status().connections_current();
 				server_status().connections_accepted(server_status().connections_accepted() + 1);
-				server_status().connections_current(server_status().connections_current() + 1);
+				server_status().connections_current(current_connections + 1);
 
-				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, https_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
-				connection_thread.detach();
+				if (current_connections < thread_count_)
+				{
+					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, https_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
+					connection_thread.detach();
+				}
+				{
+					std::cout << "buzzy";
+					while(server_status().connections_current()>= thread_count_)
+					{
+					}
+
+					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, https_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
+					connection_thread.detach();
+				}
 			}
 		}
 		catch (...)
@@ -1790,7 +1791,12 @@ public:
 
 			acceptor_http.open(endpoint_http.protocol());
 
-			network::reuse_address(endpoint_http.socket(), 1);
+			if (listen_port_begin_ == listen_port_end_)
+				network::reuse_address(endpoint_http.socket(), 1);
+			else
+				network::reuse_address(endpoint_http.socket(), 0);
+
+
 			network::ipv6only(endpoint_http.socket(), 0);
 
 
@@ -1818,8 +1824,6 @@ public:
 
 			acceptor_http.listen();
 
-
-
 			while (1)
 			{
 				network::tcp::socket http_socket{ 0 };
@@ -1827,9 +1831,12 @@ public:
 
 				network::timeout(http_socket, connection_timeout_);
 				network::tcp_nodelay(http_socket, 1);
+				network::no_linger(http_socket, 1);
 
+
+				auto current_connections = server_status().connections_current();
 				server_status().connections_accepted(server_status().connections_accepted() + 1);
-				server_status().connections_current(server_status().connections_current() + 1);
+				server_status().connections_current(current_connections + 1);
 
 				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 				connection_thread.detach();
@@ -1849,6 +1856,7 @@ public:
 		size_t requests_handled_;
 		size_t connections_accepted_;
 		size_t connections_current_;
+		size_t connections_highest_;
 
 		std::vector<std::string> access_log_;
 		std::mutex mutex_;
@@ -1859,7 +1867,8 @@ public:
 			, router_information_("")
 			, requests_handled_(0)
 			, connections_accepted_(0)
-			, connections_current_(0){};
+			, connections_current_(0)
+			, connections_highest_(0){};
 
 		size_t requests_handled()
 		{
@@ -1895,6 +1904,19 @@ public:
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 			connections_current_ = nr;
+			if (connections_current_ > connections_highest_) connections_highest_ = connections_current_;
+		}
+
+		size_t connections_highest()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			return connections_highest_;
+		}
+
+		void connections_highest(size_t nr)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			connections_highest_ = nr;
 		}
 
 		void log_access(http::session_handler& session)
@@ -1915,17 +1937,6 @@ public:
 			if (access_log_.size() >= 32) access_log_.erase(access_log_.begin());
 		}
 
-		std::string log_access_to_string()
-		{
-			std::stringstream s;
-			std::lock_guard<std::mutex> g(mutex_);
-
-			for (auto& access_log_entry : access_log_)
-				s << access_log_entry;
-
-			return s.str();
-		}
-
 		void server_information(std::string info)
 		{
 			std::lock_guard<std::mutex> g(mutex_);
@@ -1940,18 +1951,23 @@ public:
 
 		std::string to_string()
 		{
+			std::lock_guard<std::mutex> g(mutex_);
+
 			std::stringstream s;
 
 			s << "Server Configuration:\n" << server_information_ << "\n";
 
 			s << "\nStatistics:\n";
 			s << "connections_accepted: " << connections_accepted_ << "\n";
+			s << "connections_highest: " << connections_highest_ << "\n";
 			s << "connections_current: " << connections_current_ << "\n";
 			s << "requests_handled: " << requests_handled_ << "\n";
 
 			s << "\nRouter:\n" << router_information_ << "\n";
 			s << "\nAccess Log:\n";
-			s << log_access_to_string();
+
+			for (auto& access_log_entry : access_log_)
+				s << access_log_entry;
 
 			return s.str();
 		}

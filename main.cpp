@@ -681,7 +681,7 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-	test_json();
+	//test_json();
 
 	neolm::license_manager license_server{"/projects/neolm_licenses/"};
 
