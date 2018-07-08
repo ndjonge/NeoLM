@@ -1343,9 +1343,10 @@ public:
 	class statistics
 	{
 	public:
-		statistics() = default;
+		statistics() : hit_count(0), response_time_min(0), response_time_max(0) {};
 		size_t hit_count;
-		size_t response_time;
+		size_t response_time_min;
+		size_t response_time_max;
 	};
 
 	std::string route_;
@@ -1526,24 +1527,14 @@ public:
 	std::string to_string()
 	{
 		std::stringstream s;
-		/*std::map<std::string, std::string> m;
 
-		for (auto& route : api_router_table["GET"])
-			m[route.route_] += "GET ";
-
-		for (auto& route : api_router_table["POST"])
-			m[route.route_] += "POST ";
-
-		for (auto& route : api_router_table["PUT"])
-			m[route.route_] += "PUT ";
-
-		for (auto& route : api_router_table["DELETE"])
-			m[route.route_] += "DELETE ";
-
-		for (auto& l : m)
+		for (auto& method : api_router_table)
 		{
-			s << l.first << " [ " << l.second << "]\n";
-		}*/
+			for (auto& route_def : method.second)
+			{
+				s << route_def.route_ <<  " : " << method.first << "(hit-count: " << std::to_string(route_def.statistics_.hit_count) << ", response-time-min: " << std::to_string(route_def.statistics_.response_time_min) << ", response-time-max: " << std::to_string(route_def.statistics_.response_time_max) << ")"<< "\n";
+			}
+		}
 
 		return s.str();
 	}
@@ -1609,9 +1600,22 @@ public:
 
 				if (route.match(session.request().target(), params_))
 				{
+					auto start = std::chrono::system_clock::now();
+
 					route.endpoint_(session, params_);
 
 					route.statistics_.hit_count++;
+
+					auto end = std::chrono::system_clock::now();
+					std::chrono::duration<double> diff = (end - start) ;
+
+					size_t diff_2 = static_cast<size_t>(diff.count() * 1000);
+
+					if (diff_2  > route.statistics_.response_time_max)
+						route.statistics_.response_time_max = diff_2;
+
+					if (diff_2  < route.statistics_.response_time_min)
+						route.statistics_.response_time_min = diff_2;
 
 					return true;
 				}
@@ -1809,7 +1813,6 @@ public:
 
 			network::ipv6only(endpoint_http.socket(), 0);
 
-
 			network::error_code ec = network::error::success;
 
 			for (listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_;)
@@ -1819,6 +1822,8 @@ public:
 				if (ec == network::error::success)
 				{
 					this->configuration_.set("http_listen_socket", std::to_string(listen_port_));
+					network::loopback_fastpath(endpoint_http.socket(), 1);
+
 					break;
 				}
 				else if (ec == network::error::address_in_use)
@@ -1854,6 +1859,9 @@ public:
 				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 				connection_thread.detach();
 
+				//connection_handler<network::tcp::socket> new_connection_handler(*this, http_socket, connection_timeout_, gzip_min_length_);
+				//new_connection_handler.proceed();
+
 				auto end = std::chrono::system_clock::now();
 				std::chrono::duration<double> diff = end - start_accept;
 
@@ -1887,7 +1895,9 @@ public:
 			, requests_handled_(0)
 			, connections_accepted_(0)
 			, connections_current_(0)
-			, connections_highest_(0){};
+			, connections_highest_(0){
+			access_log_.reserve(32);
+		};
 
 		size_t requests_handled()
 		{
@@ -1940,16 +1950,19 @@ public:
 
 		void log_access(http::session_handler& session)
 		{
+			std::stringstream s;
 			std::lock_guard<std::mutex> g(mutex_);
 
-			std::stringstream s;
-
-			s << "\"" << session.request()["Remote_Addr"] << "\"";
-
-			s << " - \"" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << "\"";
-			s << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length();
-			;
-			s << " - \"" << session.request()["User-Agent"] << "\"\n";
+			s 
+			<< "\"" << session.request()["Remote_Addr"] << "\""
+			<< " - \"" << session.request().method() 
+			<< " " << session.request().url_requested() 
+			<< " " << session.request().version() << "\""
+			<< " - " << session.response().status() 
+			<< " - " << session.response().content_length() 
+			<< " - " << session.request().content_length()
+			<< " - \"" << session.request()["User-Agent"] 
+			<< "\"\n";
 
 			access_log_.emplace_back(s.str());
 
