@@ -465,6 +465,11 @@ namespace network
 		return ::send(s, b.data(), static_cast<int>(b.size()), 0);
 	}
 
+	std::int32_t write(socket_t s, const std::string& str) noexcept
+	{
+		return ::send(s, str.data(), static_cast<int>(str.size()), 0);
+	}
+
 	std::int32_t read(ssl::stream<tcp::socket> s, const buffer& b) noexcept
 	{
 		return SSL_read(s.native(), b.data(), static_cast<int>(b.size()));
@@ -473,6 +478,11 @@ namespace network
 	std::int32_t write(ssl::stream<tcp::socket> s, const buffer& b) noexcept
 	{
 		return SSL_write(s.native(), b.data(), static_cast<int>(b.size()));
+	}
+
+	std::int32_t write(ssl::stream<tcp::socket> s, const std::string& str) noexcept
+	{
+		return SSL_write(s.native(), const_cast<char*>(str.data()), static_cast<int>(str.size()));
 	}
 
 	std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_socket)

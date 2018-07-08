@@ -1366,13 +1366,13 @@ public:
 
 		for (token = 0; ((b != std::string::npos) && (token < tokens_.size())); token++)
 		{
-			std::string current_token = url.substr(b, e - b);
+			//std::string current_token = url.substr(b, e - b);
 
 			if (tokens_[token].size() > 2 && tokens_[token][1] == ':')
 			{
-				params.insert(tokens_[token].substr(2), current_token.substr(1));
+				params.insert(tokens_[token].substr(2), url.substr(b, e - b));
 			}
-			else if (tokens_[token] != current_token)
+			else if (tokens_[token] != url.substr(b, e - b))
 			{
 				match = false;
 				break;
@@ -1826,7 +1826,10 @@ public:
 			while (1)
 			{
 				network::tcp::socket http_socket{ 0 };
+
 				acceptor_http.accept(http_socket);
+
+				auto start_accept = std::chrono::system_clock::now();
 
 				network::timeout(http_socket, connection_timeout_);
 				network::tcp_nodelay(http_socket, 0);
@@ -1839,6 +1842,12 @@ public:
 
 				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 				connection_thread.detach();
+
+				auto end = std::chrono::system_clock::now();
+				std::chrono::duration<double> diff = end - start_accept;
+
+				std::cout << "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
+
 			}
 		}
 		catch (...)
@@ -2113,8 +2122,8 @@ public:
 							response["Content-Length"] = std::to_string(response.body().size());
 						}
 
-						connection_data.store_response_data(http::to_string(response));
-						ret = network::write(client_socket_, network::buffer(&(connection_data.response_data()[0]), static_cast<int>(connection_data.response_data().size())));
+						//connection_data.store_response_data(http::to_string(response));
+						ret = network::write(client_socket_, http::to_string(response));
 					}
 
 					if (response.connection_keep_alive() == true)
@@ -2147,17 +2156,7 @@ public:
 		std::vector<char> data_request_;
 		std::vector<char> data_response_;
 
-		void store_request_data(const std::array<char, 4096>& data, size_t size)
-		{
-			data_request_.resize(data_request_.size() + size);
 
-			std::copy(data.begin(), data.begin() + size, data_request_.rbegin());
-		}
-		void store_response_data(const std::string& response_string)
-		{
-			data_response_.resize(response_string.size());
-			data_response_.insert(std::end(data_response_), response_string.begin(), response_string.end());
-		}
 
 		std::vector<char>& request_data() { return data_request_; }
 		std::vector<char>& response_data() { return data_response_; }

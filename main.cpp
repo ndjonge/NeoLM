@@ -288,6 +288,11 @@ private:
 			router_.use("/");
 			router_.use("/files/");
 			// License instance configuration routes..
+
+			router_.on_get("/null", [this](http::session_handler& session, const http::api::params& params) {
+				session.response().body() = "Hoi!\n";
+			});
+
 			router_.on_get("/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
 
 				if (params.get("instance").empty())
@@ -602,7 +607,7 @@ void test_req_p_sec_simple()
 		for (int i = 0; i < test_requests; i++)
 		{
 
-			http::request_message req("GET", "/license/");
+			http::request_message req("GET", "/null");
 
 			std::string reqstr = http::to_string(req);
 
@@ -686,13 +691,13 @@ int main(int argc, char* argv[])
 	neolm::license_manager license_server{"/projects/neolm_licenses/"};
 
 
-	//license_server.add_test_routes();
+	license_server.add_test_routes();
 
 	while (1)
 	{
-		//test_post_get();
+		test_post_get();
 
-		test_req_p_sec_simple();
+		//test_req_p_sec_simple();
 		std::this_thread::sleep_for(60s);
 	}
 }
