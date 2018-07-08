@@ -1340,9 +1340,17 @@ public:
 		}
 	};
 
+	class statistics
+	{
+	public:
+		statistics() = default;
+		size_t hit_count;
+		size_t response_time;
+	};
+
 	std::string route_;
 	R endpoint_;
-
+	statistics statistics_;
 	std::vector<std::string> tokens_;
 
 	bool match(const std::string& url, params& params) const
@@ -1517,8 +1525,8 @@ public:
 
 	std::string to_string()
 	{
-		std::map<std::string, std::string> m;
 		std::stringstream s;
+		/*std::map<std::string, std::string> m;
 
 		for (auto& route : api_router_table["GET"])
 			m[route.route_] += "GET ";
@@ -1535,7 +1543,7 @@ public:
 		for (auto& l : m)
 		{
 			s << l.first << " [ " << l.second << "]\n";
-		}
+		}*/
 
 		return s.str();
 	}
@@ -1587,7 +1595,7 @@ public:
 		return result;
 	}
 
-	bool call_route(session_handler_type& session) const
+	bool call_route(session_handler_type& session)
 	{
 		auto& routes = api_router_table.at(session.request().method());
 
@@ -1602,6 +1610,9 @@ public:
 				if (route.match(session.request().target(), params_))
 				{
 					route.endpoint_(session, params_);
+
+					route.statistics_.hit_count++;
+
 					return true;
 				}
 			}
@@ -1846,7 +1857,7 @@ public:
 				auto end = std::chrono::system_clock::now();
 				std::chrono::duration<double> diff = end - start_accept;
 
-				std::cout << "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
+				//std::cout << "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
 
 			}
 		}

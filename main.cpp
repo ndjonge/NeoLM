@@ -691,13 +691,13 @@ int main(int argc, char* argv[])
 	neolm::license_manager license_server{"/projects/neolm_licenses/"};
 
 
-	license_server.add_test_routes();
+	//license_server.add_test_routes();
 
 	while (1)
 	{
-		test_post_get();
+		//test_post_get();
 
-		//test_req_p_sec_simple();
+		test_req_p_sec_simple();
 		std::this_thread::sleep_for(60s);
 	}
 }
