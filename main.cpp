@@ -609,9 +609,7 @@ void test_req_p_sec_simple()
 
 			http::request_message req("GET", "/null");
 
-			std::string reqstr = http::to_string(req);
-
-			network::write(s.socket(), network::buffer(&reqstr[0], reqstr.length()));
+			network::write(s.socket(), http::to_string(req));
 
 			network::read(s.socket(), network::buffer(&readbuffer[0], sizeof(readbuffer)));
 
