@@ -455,22 +455,22 @@ namespace network
 		};
 	}
 
-	std::int32_t read(socket_t s, const buffer& b)
+	std::int32_t read(socket_t s, const buffer& b) noexcept
 	{
 		return ::recv(s, b.data(), static_cast<int>(b.size()), 0);
 	}
 
-	std::int32_t write(socket_t s, const buffer& b)
+	std::int32_t write(socket_t s, const buffer& b) noexcept
 	{
 		return ::send(s, b.data(), static_cast<int>(b.size()), 0);
 	}
 
-	std::int32_t read(ssl::stream<tcp::socket> s, const buffer& b)
+	std::int32_t read(ssl::stream<tcp::socket> s, const buffer& b) noexcept
 	{
 		return SSL_read(s.native(), b.data(), static_cast<int>(b.size()));
 	}
 
-	std::int32_t write(ssl::stream<tcp::socket> s, const buffer& b)
+	std::int32_t write(ssl::stream<tcp::socket> s, const buffer& b) noexcept
 	{
 		return SSL_write(s.native(), b.data(), static_cast<int>(b.size()));
 	}

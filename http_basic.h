@@ -365,13 +365,12 @@ public:
 	fields(const http::fields& f)
 		: fields_(f.fields_){};
 
-	inline std::string to_string() const
+	inline std::string to_string() const noexcept
 	{
 		std::stringstream ss;
 		for (auto&& field : fields_)
 		{
-			ss << field.name << ": ";
-			ss << field.value << "\r\n";
+			ss << field.name << ": " << field.value << "\r\n";
 		}
 
 		return ss.str();
@@ -1830,7 +1829,7 @@ public:
 				acceptor_http.accept(http_socket);
 
 				network::timeout(http_socket, connection_timeout_);
-				network::tcp_nodelay(http_socket, 1);
+				network::tcp_nodelay(http_socket, 0);
 				network::no_linger(http_socket, 1);
 
 
