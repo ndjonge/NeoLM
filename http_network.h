@@ -563,6 +563,7 @@ namespace network
 
 	int loopback_fastpath(network::tcp::socket& s, int value)
 	{
+#ifndef LINUX
 		int OptionValue = value;
 		DWORD NumberOfBytesReturned = 0;
 
@@ -587,7 +588,7 @@ namespace network
 				// supported.
 			}
 		}
-
+#endif
 		return 0;
 	}
 
