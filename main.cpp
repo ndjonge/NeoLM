@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <array>
 
+#include <signal.h>
+
 #include "http_basic.h"
 #include "json.h"
 
@@ -683,16 +685,18 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
+    signal(SIGPIPE, SIG_IGN);
+
 	//test_json();
 
 	neolm::license_manager license_server{"/projects/neolm_licenses/"};
 
 
-	//license_server.add_test_routes();
+//	license_server.add_test_routes();
 
 	while (1)
 	{
-		/*test_post_get();
+//		test_post_get();
 
 		std::vector<std::thread> clients;
 
@@ -700,10 +704,13 @@ int main(int argc, char* argv[])
 
 		for (int i=0; i!=1; i++)
 		{
-			clients.push_back(std::thread([](){ test_req_p_sec_simple(); }));			
+			clients.push_back(std::move(std::thread([](){ test_req_p_sec_simple(); })));			
 			clients.back().detach();
-		}*/
-		std::this_thread::sleep_for(60s);
-	}
+		}
+
+        std::this_thread::sleep_for(60s);
+
+		//test_post_get();
+    }
 }
 
