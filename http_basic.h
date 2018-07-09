@@ -669,14 +669,14 @@ public:
 
 	const std::string& body() const { return body_; }
 
-	bool chunked() const { return (http::fields::operator[]("Transfer-Encoding") == "chunked"); }
+	bool chunked() const { return (http::fields::get("Transfer-Encoding") == "chunked"); }
 
 	void chunked(bool value)
 	{
 		if (value)
-			http::fields::operator[]("Transfer-Encoding") = "chunked";
+			http::fields::set("Transfer-Encoding", "chunked");
 		else
-			http::fields::operator[]("Transfer-Encoding") = "none";
+			http::fields::set("Transfer-Encoding", "none");
 	}
 
 	bool has_content_lenght() const
