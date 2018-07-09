@@ -681,13 +681,13 @@ public:
 
 	bool has_content_lenght() const
 	{
-		if (get("Content-Length").empty())
+		if (http::fields::get("Content-Length").empty())
 			return false;
 		else
 			return true;
 	}
 
-	void type(const std::string& content_type) { set("Content-Type", mime_types::extension_to_type(content_type)); }
+	void type(const std::string& content_type) { http::fields::set("Content-Type", mime_types::extension_to_type(content_type)); }
 
 	void result(http::status::status_t status)
 	{
@@ -699,11 +699,11 @@ public:
 		}
 	}
 
-	void content_length(uint64_t const& length) { set("Content-Length", std::to_string(length)); }
+	void content_length(uint64_t const& length) { http::fields::set("Content-Length", std::to_string(length)); }
 
 	uint64_t content_length() const
 	{
-		auto content_length_ = get("Content-Length");
+		auto content_length_ = http::fields::get("Content-Length");
 
 		if (content_length_.empty())
 			return 0;
@@ -715,7 +715,7 @@ public:
 
 	bool connection_close() const
 	{
-		if (http::util::case_insensitive_equal(get("Connection"), "close"))
+		if (http::util::case_insensitive_equal(http::fields::get("Connection"), "close"))
 			return true;
 		else
 			return false;
@@ -723,7 +723,7 @@ public:
 
 	bool connection_keep_alive() const
 	{
-		if (http::util::case_insensitive_equal(get("Connection"), "Keep-Alive"))
+		if (http::util::case_insensitive_equal(http::fields::get("Connection"), "Keep-Alive"))
 			return true;
 		else
 			return false;
@@ -1851,7 +1851,7 @@ public:
 
 				network::timeout(http_socket, connection_timeout_);
 				network::tcp_nodelay(http_socket, 0);
-				network::no_linger(http_socket, 1);
+				network::no_linger(http_socket, 0);
 
 
 				auto current_connections = server_status().connections_current();
