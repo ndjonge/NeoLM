@@ -145,6 +145,8 @@ namespace network
 		WSADATA wsaData;
 		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
 			exit(1);
+#else
+		signal(SIGPIPE, SIG_IGN);
 #endif
 	}
 

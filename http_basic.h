@@ -1610,7 +1610,7 @@ public:
 	{
 		auto& routes = api_router_table.at(session.request().method());
 
-		// std::cout << session.request().target() << "\n";
+		//std::cout << session.request().target() << "\n";
 
 		if (!routes.empty())
 		{

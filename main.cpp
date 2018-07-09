@@ -523,7 +523,7 @@ public:
 	void add_test_routes()
 	{
 
-		for (int i= 0; i <= 1000; i++)
+		for (int i= 0; i <= 10000; i++)
 		{
 			std::string test_route = "/key-value-store/";
 			test_route += "test_";
@@ -629,19 +629,19 @@ void test_req_p_sec_simple()
 }
 
 
-void test_post_get()
+void test_post_get(size_t size, size_t nr_routes)
 {
-	auto start = std::chrono::system_clock::now();
-	std::array<char, 1024 * 8> readbuffer;
 
-	int test_connections = 1;
-	int test_requests = 10000;
+	int test_connections = 10;
+	int test_requests = 1000;
+	int key_index = 0;
 
 	std::string test_body;
 	static int index = 0; 
 
-	test_body.resize(4 * 1024, 'A' + index++);
+	test_body.resize(size * 1024, 'A' + index++);
 
+	auto start = std::chrono::system_clock::now();
 
 	for (int j = 0; j < test_connections; j++)
 	{
@@ -652,9 +652,13 @@ void test_post_get()
 
 		auto start_requests = std::chrono::system_clock::now();
 
+		std::vector<char> readbuffer;
+
+		readbuffer.resize(size * 1024);
+
 		for (int i = 0; i < test_requests; i++)
 		{
-			std::string test_resource = "/key-value-store/test_" + std::to_string(i) + "/key_" + std::to_string(i);
+			std::string test_resource = "/key-value-store/test_" + std::to_string(key_index) + "/key_" + std::to_string(key_index);
 			
 			//std::cout << test_resource << "\n";
 
@@ -665,19 +669,24 @@ void test_post_get()
 
 			network::write(s.socket(), http::to_string(req));
 
-			network::read(s.socket(), network::buffer(&readbuffer[0], sizeof(readbuffer)));
+			network::read(s.socket(), network::buffer(&readbuffer[0], readbuffer.size()));
+
+			key_index++;
+
+			if (nr_routes < key_index)
+				key_index = 0;
 
 		}
 		auto end_requests = std::chrono::system_clock::now();
 		std::chrono::duration<double> diff = end_requests - start_requests;
 
-		std::cout << j << ":" << test_requests / diff.count() << " req/sec\n";
+		//std::cout << j << ":" << test_requests / diff.count() << " req/sec\n";
 	}
 
 	auto end = std::chrono::system_clock::now();
 	std::chrono::duration<double> diff = end - start;
 
-	std::cout << "" << (test_connections * test_requests) << " requests took: " << diff.count() << "\n";
+	std::cout << "" << (test_connections * test_requests) <<" "<< std::to_string(size) <<"K requests took: " << diff.count() << "\n";
 }
 
 int main(int argc, char* argv[])
@@ -685,32 +694,29 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-    signal(SIGPIPE, SIG_IGN);
-
-	//test_json();
-
 	neolm::license_manager license_server{"/projects/neolm_licenses/"};
 
+	//license_server.add_test_routes();
 
-//	license_server.add_test_routes();
+	//size_t size = 4;
 
 	while (1)
 	{
-//		test_post_get();
-
 		std::vector<std::thread> clients;
 
-		clients.reserve(4);
+		/*clients.reserve(4);
 
 		for (int i=0; i!=1; i++)
 		{
-			clients.push_back(std::move(std::thread([](){ test_req_p_sec_simple(); })));			
+			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 10000); })));
 			clients.back().detach();
 		}
 
-        std::this_thread::sleep_for(60s);
-
-		//test_post_get();
-    }
+		size = size +4;
+		if (size > 32)
+			size = 4;
+			*/
+        std::this_thread::sleep_for(10s);
+	}
 }
 
