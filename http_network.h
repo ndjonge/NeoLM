@@ -547,13 +547,13 @@ namespace network
 
 		if (value)
 		{
-			linger_.l_onoff = TRUE;
-			linger_.l_linger = FALSE;
+			linger_.l_onoff = 1;
+			linger_.l_linger = 0;
 		}
 		else
 		{
-			linger_.l_onoff = FALSE;
-			linger_.l_linger = TRUE;
+			linger_.l_onoff = 0;
+			linger_.l_linger = 1;
 		}
 
 		int ret = ::setsockopt(s, SOL_SOCKET, SO_LINGER, (char*)&linger_, sizeof(linger));
@@ -563,7 +563,7 @@ namespace network
 
 	int loopback_fastpath(network::tcp::socket& s, int value)
 	{
-#ifndef LINUX
+#ifdef WIN32_ 
 		int OptionValue = value;
 		DWORD NumberOfBytesReturned = 0;
 
