@@ -378,21 +378,6 @@ public:
 
 	inline bool fields_empty() const { return this->fields_.empty(); };
 
-	inline void set(const std::string& name, const std::string& value)
-	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return f.name == name; });
-
-		if (i != std::end(fields_))
-		{
-			i->value = value;
-		}
-		else
-		{
-			http::field field_(name, value);
-			fields_.emplace_back(std::move(field_));
-		}
-	}
-
 	inline std::vector<fields::value_type>::reverse_iterator new_field()
 	{
 		fields_.push_back(field());
@@ -449,7 +434,41 @@ public:
 
 	inline std::vector<fields::value_type>::reverse_iterator last_new_field() { return fields_.rbegin(); }
 
-	inline const std::string& operator[](const char* name) const
+	inline const std::string& get(const char* name) const
+	{
+		static const std::string not_found = "";
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
+
+		if (i == std::end(fields_))
+		{
+			return not_found;
+		}
+		else
+			return i->value;
+	}
+
+	inline void set(const std::string& name, const std::string& value)
+	{
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return f.name == name; });
+
+		if (i != std::end(fields_))
+		{
+			i->value = value;
+		}
+		else
+		{
+			http::field field_(name, value);
+			fields_.emplace_back(std::move(field_));
+		}
+	}
+
+/*	inline const std::string& operator[](const char* name) const
 	{
 		static const std::string not_found = "";
 
@@ -484,7 +503,7 @@ public:
 		}
 		else
 			return i->value;
-	}
+	}*/
 };
 
 using configuration = http::fields;
@@ -604,7 +623,7 @@ struct mapping
 }
 
 const mappings[]
-	= { { "json", "application/json" }, { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" }, { "text", "text/plain" } };
+	= { { "json", "application/json" }, { "text", "text/plain" } , { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" }, { "html", "text/html" }, { "jpg", "image/jpeg" }, { "jpeg", "image/jpeg" }, { "png", "image/png" } };
 
 static std::string extension_to_type(const std::string& extension)
 {
@@ -662,13 +681,13 @@ public:
 
 	bool has_content_lenght() const
 	{
-		if (http::fields::operator[]("Content-Length").empty())
+		if (get("Content-Length").empty())
 			return false;
 		else
 			return true;
 	}
 
-	void type(const std::string& content_type) { http::fields::operator[]("Content-Type") = mime_types::extension_to_type(content_type); }
+	void type(const std::string& content_type) { set("Content-Type", mime_types::extension_to_type(content_type)); }
 
 	void result(http::status::status_t status)
 	{
@@ -680,11 +699,11 @@ public:
 		}
 	}
 
-	void content_length(uint64_t const& length) { http::fields::operator[]("Content-Length") = std::to_string(length); }
+	void content_length(uint64_t const& length) { set("Content-Length", std::to_string(length)); }
 
 	uint64_t content_length() const
 	{
-		auto content_length_ = http::fields::operator[]("Content-Length");
+		auto content_length_ = get("Content-Length");
 
 		if (content_length_.empty())
 			return 0;
@@ -696,7 +715,7 @@ public:
 
 	bool connection_close() const
 	{
-		if (http::util::case_insensitive_equal(http::fields::operator[]("Connection"), "close"))
+		if (http::util::case_insensitive_equal(get("Connection"), "close"))
 			return true;
 		else
 			return false;
@@ -704,7 +723,7 @@ public:
 
 	bool connection_keep_alive() const
 	{
-		if (http::util::case_insensitive_equal(http::fields::operator[]("Connection"), "Keep-Alive"))
+		if (http::util::case_insensitive_equal(get("Connection"), "Keep-Alive"))
 			return true;
 		else
 			return false;
@@ -1149,7 +1168,7 @@ public:
 			}
 		}
 
-		if (request_["Content-Encoding"] == "gzip")
+		if (request_.get("Content-Encoding") == "gzip")
 		{
 			request_.body() = gzip::decompress(request_.body().c_str(), request_.content_length());
 		}
@@ -1208,12 +1227,12 @@ public:
 			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && (response_.status() == http::status::ok || response_.status() == http::status::created) && request_.connection_close() == false))
 		{
 			keepalive_count(keepalive_count() - 1);
-			response_["Connection"] = "Keep-Alive";
+			response_.set("Connection", "Keep-Alive");
 			// response_["Keep-Alive"] = std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" + std::to_string(keepalive_count());
 		}
 		else
 		{
-			response_["Connection"] = "close";
+			response_.set("Connection", "close");
 		}
 	}
 
@@ -1300,7 +1319,7 @@ public:
 	inline const std::string& get(const std::string& name) const
 	{
 		auto it = parameters.find(name);
-		static std::string no_ret;
+		static std::string no_ret="";
 
 		if (it != parameters.end()) // if found
 			return it->second;
@@ -1340,18 +1359,8 @@ public:
 		}
 	};
 
-	class statistics
-	{
-	public:
-		statistics() : hit_count(0), response_time_min(0), response_time_max(0) {};
-		size_t hit_count;
-		size_t response_time_min;
-		size_t response_time_max;
-	};
-
 	std::string route_;
 	R endpoint_;
-	statistics statistics_;
 	std::vector<std::string> tokens_;
 
 	bool match(const std::string& url, params& params) const
@@ -1379,7 +1388,7 @@ public:
 
 			if (tokens_[token].size() > 2 && tokens_[token][1] == ':')
 			{
-				params.insert(tokens_[token].substr(2), url.substr(b, e - b));
+				params.insert(tokens_[token].substr(2), url.substr(b, e - b).substr(1));
 			}
 			else if (tokens_[token] != url.substr(b, e - b))
 			{
@@ -1528,12 +1537,23 @@ public:
 	{
 		std::stringstream s;
 
-		for (auto& method : api_router_table)
+		std::map<std::string, std::string> m;
+
+		for (auto& route : api_router_table["GET"])
+			m[route.route_] += "GET ";
+
+		for (auto& route : api_router_table["POST"])
+			m[route.route_] += "POST ";
+
+		for (auto& route : api_router_table["PUT"])
+			m[route.route_] += "PUT ";
+
+		for (auto& route : api_router_table["DELETE"])
+			m[route.route_] += "DELETE ";
+
+		for (auto& l : m)
 		{
-			for (auto& route_def : method.second)
-			{
-				s << route_def.route_ <<  " : " << method.first << "(hit-count: " << std::to_string(route_def.statistics_.hit_count) << ", response-time-min: " << std::to_string(route_def.statistics_.response_time_min) << ", response-time-max: " << std::to_string(route_def.statistics_.response_time_max) << ")"<< "\n";
-			}
+			s << l.first << " [ " << l.second << "]\n";
 		}
 
 		return s.str();
@@ -1586,7 +1606,7 @@ public:
 		return result;
 	}
 
-	bool call_route(session_handler_type& session)
+	bool call_route(session_handler_type& session) const
 	{
 		auto& routes = api_router_table.at(session.request().method());
 
@@ -1600,23 +1620,7 @@ public:
 
 				if (route.match(session.request().target(), params_))
 				{
-					auto start = std::chrono::system_clock::now();
-
 					route.endpoint_(session, params_);
-
-					route.statistics_.hit_count++;
-
-					auto end = std::chrono::system_clock::now();
-					std::chrono::duration<double> diff = (end - start) ;
-
-					size_t diff_2 = static_cast<size_t>(diff.count() * 1000);
-
-					if (diff_2  > route.statistics_.response_time_max)
-						route.statistics_.response_time_max = diff_2;
-
-					if (diff_2  < route.statistics_.response_time_min)
-						route.statistics_.response_time_min = diff_2;
-
 					return true;
 				}
 			}
@@ -1845,8 +1849,6 @@ public:
 
 				acceptor_http.accept(http_socket);
 
-				auto start_accept = std::chrono::system_clock::now();
-
 				network::timeout(http_socket, connection_timeout_);
 				network::tcp_nodelay(http_socket, 0);
 				network::no_linger(http_socket, 1);
@@ -1861,12 +1863,7 @@ public:
 
 				//connection_handler<network::tcp::socket> new_connection_handler(*this, http_socket, connection_timeout_, gzip_min_length_);
 				//new_connection_handler.proceed();
-
-				auto end = std::chrono::system_clock::now();
-				std::chrono::duration<double> diff = end - start_accept;
-
 				//std::cout << "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
-
 			}
 		}
 		catch (...)
@@ -1954,14 +1951,14 @@ public:
 			std::lock_guard<std::mutex> g(mutex_);
 
 			s 
-			<< "\"" << session.request()["Remote_Addr"] << "\""
+			<< "\"" << session.request().get("Remote_Addr") << "\""
 			<< " - \"" << session.request().method() 
 			<< " " << session.request().url_requested() 
 			<< " " << session.request().version() << "\""
 			<< " - " << session.response().status() 
 			<< " - " << session.response().content_length() 
 			<< " - " << session.request().content_length()
-			<< " - \"" << session.request()["User-Agent"] 
+			<< " - \"" << session.request().get("User-Agent") 
 			<< "\"\n";
 
 			access_log_.emplace_back(s.str());
@@ -2103,7 +2100,7 @@ public:
 
 					if (parse_result == http::request_parser::result_type::good)
 					{
-						session_handler_.request()["Remote_Addr"] = network::get_client_info(client_socket_);
+						session_handler_.request().set("Remote_Addr", network::get_client_info(client_socket_));
 						session_handler_.handle_request(server_.router_);
 						server_.server_status().requests_handled(server_.server_status().requests_handled() + 1);
 						server_.server_status().log_access(session_handler_);
@@ -2139,11 +2136,11 @@ public:
 					}
 					else
 					{
-						if ((gzip_min_length_ < response.body().size()) && (session_handler_.request()["Accept-Encoding"].find("gzip") != std::string::npos))
+						if ((gzip_min_length_ < response.body().size()) && (session_handler_.request().get("Accept-Encoding").find("gzip") != std::string::npos))
 						{
 							response.body() = gzip::compress(response.body().c_str(), response.body().size());
-							response["Content-Encoding"] = "gzip";
-							response["Content-Length"] = std::to_string(response.body().size());
+							response.set("Content-Encoding", "gzip");
+							response.set("Content-Length", std::to_string(response.body().size()));
 						}
 
 						//connection_data.store_response_data(http::to_string(response));

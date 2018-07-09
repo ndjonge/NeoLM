@@ -227,21 +227,21 @@ json::value to_json(const instance& instance)
 	json::array products_json;
 
 
-	for (auto& product : instance.named_user_licenses_)
+	for (auto&& product : instance.named_user_licenses_)
 	{
 		products_json.emplace_back(to_json(product.second).as_object());
 	}
 
 	ret.emplace(std::string("named-user-licenses"), products_json);
 
-	for (auto& product : instance.named_server_licenses_)
+	for (auto&& product : instance.named_server_licenses_)
 	{
 		products_json.emplace_back(to_json(product.second).as_object());
 	}
 
 	ret.emplace(std::string("named-server-licenses"), products_json);
 
-	for (auto& product : instance.concurrent_user_licenses_)
+	for (auto&& product : instance.concurrent_user_licenses_)
 	{
 		products_json.emplace_back(to_json(product.second).as_object());
 	}
@@ -299,7 +299,7 @@ private:
 				{
 					json::array return_json;
 
-					for (auto instance : license_manager_.get_instances())
+					for (auto&& instance : license_manager_.get_instances())
 					{
 						json::object instance_json;
 
@@ -602,22 +602,22 @@ void test_req_p_sec_simple()
 		network::error_code ec;
 		s.connect(ec);
 
-		auto start_requests = std::chrono::system_clock::now();
+		//auto start_requests = std::chrono::system_clock::now();
 
 		for (int i = 0; i < test_requests; i++)
 		{
 
-			http::request_message req("GET", "/null");
+			http::request_message req("GET", "/license/");
 
 			network::write(s.socket(), http::to_string(req));
 
 			network::read(s.socket(), network::buffer(&readbuffer[0], sizeof(readbuffer)));
 
 		}
-		auto end_requests = std::chrono::system_clock::now();
-		std::chrono::duration<double> diff = end_requests - start_requests;
+		//auto end_requests = std::chrono::system_clock::now();
+		//std::chrono::duration<double> diff = end_requests - start_requests;
 
-		std::cout << j << ":" << test_requests / diff.count() << " req/sec\n";
+		//std::cout << j << ":" << test_requests / diff.count() << " req/sec\n";
 	}
 
 	auto end = std::chrono::system_clock::now();
@@ -633,7 +633,7 @@ void test_post_get()
 	std::array<char, 1024 * 8> readbuffer;
 
 	int test_connections = 1;
-	int test_requests = 1000;
+	int test_requests = 10000;
 
 	std::string test_body;
 	static int index = 0; 
@@ -693,7 +693,16 @@ int main(int argc, char* argv[])
 	while (1)
 	{
 		test_post_get();
-		test_req_p_sec_simple();
+
+		std::vector<std::thread> clients;
+
+		clients.reserve(4);
+
+		for (int i=0; i!=1; i++)
+		{
+			clients.push_back(std::thread([](){ test_req_p_sec_simple(); }));			
+			clients.back().detach();
+		}
 		std::this_thread::sleep_for(60s);
 	}
 }
