@@ -1932,6 +1932,13 @@ public:
 					});
 				connection_thread.detach();
 
+				if (current_connections > thread_count_)
+				{
+					while(server_status().connections_current() > thread_count_)
+					{
+						std::this_thread::yield();
+					}
+				}
 				// connection_handler<network::tcp::socket> new_connection_handler(*this, http_socket,
 				// connection_timeout_, gzip_min_length_); new_connection_handler.proceed(); std::cout <<
 				// "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";

@@ -501,7 +501,7 @@ public:
 						  { "listen_port_end", "3010" },
 						  { "keepalive_count", "1024" },
 						  { "keepalive_timeout", "2" },
-						  { "thread_count", "10" },
+						  { "thread_count", "64" },
 						  { "doc_root", "C:/Projects/doc_root" },
 						  { "ssl_certificate", "C:/ssl/ssl.crt" },
 						  { "ssl_certificate_key", "C:/ssl/ssl.key" } }
@@ -533,7 +533,7 @@ public:
 	void add_test_routes()
 	{
 
-		for (int i = 0; i <= 10000; i++)
+		for (int i = 0; i <= 100; i++)
 		{
 			std::string test_route = "/key-value-store/";
 			test_route += "test_";
@@ -550,6 +550,8 @@ public:
 					}
 					else
 					{
+						std::lock_guard<std::mutex> g(key_value_store_mutex_);
+
 						try
 						{
 							// std::cout << key << "\n";
@@ -573,6 +575,8 @@ public:
 					}
 					else
 					{
+						std::lock_guard<std::mutex> g(key_value_store_mutex_);
+
 						auto value = key_value_store_.find(key);
 
 						if (value != key_value_store_.end())
@@ -590,6 +594,8 @@ public:
 
 private:
 	std::unordered_map<std::string, std::string> key_value_store_;
+	std::mutex key_value_store_mutex_;
+
 	http::configuration configuration_;
 	api_server api_server_;
 	std::string home_dir_;
@@ -703,26 +709,26 @@ int main(int argc, char* argv[])
 
 	neolm::license_manager license_server{ "/projects/neolm_licenses/" };
 
-	// license_server.add_test_routes();
+	//license_server.add_test_routes();
 
-	// size_t size = 4;
+	size_t size = 4;
 
 	while (1)
 	{
 		std::vector<std::thread> clients;
 
-		/*clients.reserve(4);
+		clients.reserve(32);
 
 		for (int i=0; i!=1; i++)
 		{
-			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 10000); })));
+			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000); })));
 			clients.back().detach();
 		}
 
-		size = size +4;
+		size = size;
 		if (size > 32)
 			size = 4;
-			*/
+
 		std::this_thread::sleep_for(10s);
 	}
 }
