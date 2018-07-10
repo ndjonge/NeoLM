@@ -31,7 +31,6 @@ OTHER DEALINGS IN THE SOFTWARE.
 #if defined(_WIN32)
 #include <Ws2tcpip.h>
 #include <winsock2.h>
-#include <Mstcpip.h>
 #else
 #define SOCKET int
 #define closesocket close
@@ -561,37 +560,6 @@ namespace network
 		int ret = ::setsockopt(s, SOL_SOCKET, SO_LINGER, (char*)&linger_, sizeof(linger));
 
 		return ret;
-	}
-
-	int loopback_fastpath(network::tcp::socket& s, int value)
-	{
-#ifdef WIN32_ 
-		int OptionValue = value;
-		DWORD NumberOfBytesReturned = 0;
-
-		int status =
-			WSAIoctl(
-				s,
-				SIO_LOOPBACK_FAST_PATH,
-				&OptionValue,
-				sizeof(OptionValue),
-				NULL,
-				0,
-				&NumberOfBytesReturned,
-				0,
-				0);
-
-		if (SOCKET_ERROR == status) {
-			DWORD LastError = ::GetLastError();
-
-			if (WSAEOPNOTSUPP == LastError) {
-				// This system is not Windows Windows
-				// Server 2012, and the call is not 
-				// supported.
-			}
-		}
-#endif
-		return 0;
 	}
 
 	int timeout(network::tcp::socket& s, int value)
