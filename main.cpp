@@ -505,7 +505,7 @@ public:
 						  { "listen_port_end", "3010" },
 						  { "keepalive_count", "1024" },
 						  { "keepalive_timeout", "2" },
-						  { "thread_count", "64" },
+						  { "thread_count", "8" },
 						  { "doc_root", "/Projects/doc_root" },
 						  { "ssl_certificate", "/Projects/ssl/ssl.crt" },
 						  { "ssl_certificate_key", "/Projects/ssl/ssl.key" } }
