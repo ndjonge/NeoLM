@@ -9,6 +9,9 @@
 #include <signal.h>
 
 #include "http_basic.h"
+
+#include "http_asio.h"
+
 #include "json.h"
 
 using namespace std::literals;
@@ -269,15 +272,16 @@ json::value to_json(const instances& instances)
 	return ret;
 }
 
+template<class S>
 class license_manager
 {
 public:
 private:
-	class api_server : public http::basic::threaded::server
+	class api_server : public S
 	{
 	public:
 		api_server(license_manager& license_manager, http::configuration& configuration)
-			: http::basic::threaded::server(configuration)
+			: S(configuration)
 			, license_manager_(license_manager)
 		{
 			router_.use("/static/");
@@ -502,9 +506,9 @@ public:
 						  { "keepalive_count", "1024" },
 						  { "keepalive_timeout", "2" },
 						  { "thread_count", "64" },
-						  { "doc_root", "C:/Projects/doc_root" },
-						  { "ssl_certificate", "C:/ssl/ssl.crt" },
-						  { "ssl_certificate_key", "C:/ssl/ssl.key" } }
+						  { "doc_root", "/Projects/doc_root" },
+						  { "ssl_certificate", "/Projects/ssl/ssl.crt" },
+						  { "ssl_certificate_key", "/Projects/ssl/ssl.key" } }
 		, api_server_(*this, configuration_)
 		, home_dir_(home_dir)
 	{
@@ -707,7 +711,10 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-	neolm::license_manager license_server{ "/projects/neolm_licenses/" };
+//	neolm::license_manager<http::basic::threaded::server> license_server{ "/projects/neolm_licenses/" };
+
+	neolm::license_manager<http::basic::async::server> license_server{ "/projects/neolm_licenses/" };
+
 
 	//license_server.add_test_routes();
 

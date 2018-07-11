@@ -1736,220 +1736,6 @@ public:
 		session_datas_.erase(std::find(std::begin(session_datas_), std::end(session_datas_), session));
 	};
 
-protected:
-	std::deque<session_data*> session_datas_;
-	http::api::router<> router_;
-	http::configuration& configuration_;
-};
-
-namespace threaded
-{
-
-class server : public http::basic::server
-{
-	using socket_t = SOCKET;
-
-public:
-	server(http::configuration& configuration)
-		: http::basic::server{ configuration }
-		, thread_count_(configuration.get<int>("thread_count", 5))
-		, listen_port_(0)
-		, listen_port_begin_(
-			  configuration.get<int>("listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
-		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
-		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
-		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
-	{
-	}
-
-	server(const server&) = default;
-
-	virtual void start_server()
-	{
-		network::init();
-		network::ssl::init();
-
-		server_info_.server_information(http::basic::server::configuration_.to_string());
-		server_info_.router_information(http::basic::server::router_.to_string());
-
-		std::thread http_connection_thread([this]() { http_listener_handler(); });
-		// al_so_create(&sync_, AL_SYNC_TYPE_SEMAPHORE|AL_SYNC_LOCKED, FALSE);
-		// al_so_add_to_ipcwait(sync_, callback, sync_);
-
-		http_connection_thread.detach();
-
-		// std::thread https_connection_thread([this]() { https_listener_handler(); });
-		// https_connection_thread.detach();
-	}
-
-	void https_listener_handler()
-	{
-		try
-		{
-			network::tcp::v6 endpoint_http(listen_port_);
-
-			network::tcp::acceptor acceptor_https{};
-
-			acceptor_https.open(endpoint_http.protocol());
-
-			network::error_code ec = network::error::success;
-
-			for (listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_;)
-			{
-				acceptor_https.bind(endpoint_http, ec);
-
-				if (ec == network::error::success)
-				{
-					break;
-				}
-				else if (listen_port_ == network::error::address_in_use)
-				{
-					listen_port_++;
-					endpoint_http.port(listen_port_);
-				}
-				else
-				{
-					throw std::runtime_error(
-						"https bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
-				}
-			}
-
-			acceptor_https.listen();
-
-			network::ssl::context ssl_context(network::ssl::context::tlsv12);
-
-			ssl_context.use_certificate_chain_file(
-				configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
-			ssl_context.use_private_key_file(
-				configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
-
-			while (1)
-			{
-				network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
-
-				acceptor_https.accept(https_socket.lowest_layer());
-
-				network::timeout(https_socket.lowest_layer(), connection_timeout_);
-				https_socket.handshake(network::ssl::stream_base::server);
-
-				auto current_connections = server_status().connections_current();
-				server_status().connections_accepted(server_status().connections_accepted() + 1);
-				server_status().connections_current(current_connections + 1);
-
-				if (current_connections < thread_count_)
-				{
-					std::thread connection_thread(
-						[new_connection_handler
-						 = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
-							 *this, https_socket, connection_timeout_, gzip_min_length_)]() {
-							new_connection_handler->proceed();
-						});
-					connection_thread.detach();
-				}
-				{
-					std::cout << "buzzy";
-					while (server_status().connections_current() >= thread_count_)
-					{
-					}
-
-					std::thread connection_thread(
-						[new_connection_handler
-						 = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
-							 *this, https_socket, connection_timeout_, gzip_min_length_)]() {
-							new_connection_handler->proceed();
-						});
-					connection_thread.detach();
-				}
-			}
-		}
-		catch (...)
-		{
-			// TODO
-		}
-	}
-
-	void http_listener_handler()
-	{
-		try
-		{
-			network::tcp::v6 endpoint_http(listen_port_begin_);
-
-			network::tcp::acceptor acceptor_http{};
-
-			acceptor_http.open(endpoint_http.protocol());
-
-			if (listen_port_begin_ == listen_port_end_)
-				network::reuse_address(endpoint_http.socket(), 1);
-			else
-				network::reuse_address(endpoint_http.socket(), 0);
-
-			network::ipv6only(endpoint_http.socket(), 0);
-
-			network::error_code ec = network::error::success;
-
-			for (listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_;)
-			{
-				acceptor_http.bind(endpoint_http, ec);
-
-				if (ec == network::error::success)
-				{
-					this->configuration_.set("http_listen_socket", std::to_string(listen_port_));
-
-					break;
-				}
-				else if (ec == network::error::address_in_use)
-				{
-					listen_port_++;
-					endpoint_http.port(listen_port_);
-				}
-				else
-				{
-					throw std::runtime_error(
-						"http bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
-				}
-			}
-
-			acceptor_http.listen();
-
-			while (1)
-			{
-				network::tcp::socket http_socket{ 0 };
-
-				acceptor_http.accept(http_socket);
-
-				network::timeout(http_socket, connection_timeout_);
-				network::tcp_nodelay(http_socket, 0);
-				network::no_linger(http_socket, 0);
-
-				auto current_connections = server_status().connections_current();
-				server_status().connections_accepted(server_status().connections_accepted() + 1);
-				server_status().connections_current(current_connections + 1);
-
-				std::thread connection_thread(
-					[new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
-						 *this, http_socket, connection_timeout_, gzip_min_length_)]() {
-						new_connection_handler->proceed();
-					});
-				connection_thread.detach();
-
-				if (current_connections > thread_count_)
-				{
-					while(server_status().connections_current() > thread_count_)
-					{
-						std::this_thread::yield();
-					}
-				}
-				// connection_handler<network::tcp::socket> new_connection_handler(*this, http_socket,
-				// connection_timeout_, gzip_min_length_); new_connection_handler.proceed(); std::cout <<
-				// "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
-			}
-		}
-		catch (...)
-		{
-			// TODO
-		}
-	}
-
 	class server_info
 	{
 	private:
@@ -2075,6 +1861,223 @@ public:
 			return s.str();
 		}
 	};
+
+	server_info& server_status() { return server_info_; }
+
+protected:
+	server_info server_info_;
+ 	std::deque<session_data*> session_datas_;
+	http::api::router<> router_;
+	http::configuration& configuration_;
+};
+
+namespace threaded
+{
+
+class server : public http::basic::server
+{
+	using socket_t = SOCKET;
+
+public:
+	server(http::configuration& configuration)
+		: http::basic::server{ configuration }
+		, thread_count_(configuration.get<int>("thread_count", 5))
+		, listen_port_(0)
+		, listen_port_begin_(
+			  configuration.get<int>("listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
+		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
+		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
+		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
+	{
+	}
+
+	server(const server&) = default;
+
+	virtual void start_server()
+	{
+		network::init();
+		network::ssl::init();
+
+		server_info_.server_information(http::basic::server::configuration_.to_string());
+		server_info_.router_information(http::basic::server::router_.to_string());
+
+		std::thread http_connection_thread([this]() { http_listener_handler(); });
+		// al_so_create(&sync_, AL_SYNC_TYPE_SEMAPHORE|AL_SYNC_LOCKED, FALSE);
+		// al_so_add_to_ipcwait(sync_, callback, sync_);
+
+		http_connection_thread.detach();
+
+		// std::thread https_connection_thread([this]() { https_listener_handler(); });
+		// https_connection_thread.detach();
+	}
+
+	void https_listener_handler()
+	{
+		try
+		{
+			network::tcp::v6 endpoint_http(listen_port_);
+
+			network::tcp::acceptor acceptor_https{};
+
+			acceptor_https.open(endpoint_http.protocol());
+
+			network::error_code ec = network::error::success;
+
+			for (listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_;)
+			{
+				acceptor_https.bind(endpoint_http, ec);
+
+				if (ec == network::error::success)
+				{
+					break;
+				}
+				else if (listen_port_ == network::error::address_in_use)
+				{
+					listen_port_++;
+					endpoint_http.port(listen_port_);
+				}
+				else
+				{
+					throw std::runtime_error(
+						"https bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
+				}
+			}
+
+			acceptor_https.listen();
+
+			network::ssl::context ssl_context(network::ssl::context::tlsv12);
+
+			ssl_context.use_certificate_chain_file(
+				configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
+			ssl_context.use_private_key_file(
+				configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
+
+			while (1)
+			{
+				network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
+
+				acceptor_https.accept(https_socket.lowest_layer());
+
+				network::timeout(https_socket.lowest_layer(), connection_timeout_);
+				https_socket.handshake(network::ssl::stream_base::server);
+
+				auto current_connections = server_status().connections_current();
+				server_status().connections_accepted(server_status().connections_accepted() + 1);
+				server_status().connections_current(current_connections + 1);
+
+				if (current_connections < thread_count_)
+				{
+					std::thread connection_thread(
+						[new_connection_handler
+						 = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
+							 *this, https_socket, connection_timeout_, gzip_min_length_)]() {
+							new_connection_handler->proceed();
+						});
+					connection_thread.detach();
+				}
+				{
+					while (server_status().connections_current() >= thread_count_)
+					{
+						std::this_thread::yield();
+					}
+
+					std::thread connection_thread(
+						[new_connection_handler
+						 = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
+							 *this, https_socket, connection_timeout_, gzip_min_length_)]() {
+							new_connection_handler->proceed();
+						});
+					connection_thread.detach();
+				}
+			}
+		}
+		catch (...)
+		{
+			// TODO
+		}
+	}
+
+	void http_listener_handler()
+	{
+		try
+		{
+			network::tcp::v6 endpoint_http(listen_port_begin_);
+
+			network::tcp::acceptor acceptor_http{};
+
+			acceptor_http.open(endpoint_http.protocol());
+
+			if (listen_port_begin_ == listen_port_end_)
+				network::reuse_address(endpoint_http.socket(), 1);
+			else
+				network::reuse_address(endpoint_http.socket(), 0);
+
+			network::ipv6only(endpoint_http.socket(), 0);
+
+			network::error_code ec = network::error::success;
+
+			for (listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_;)
+			{
+				acceptor_http.bind(endpoint_http, ec);
+
+				if (ec == network::error::success)
+				{
+					this->configuration_.set("http_listen_socket", std::to_string(listen_port_));
+
+					break;
+				}
+				else if (ec == network::error::address_in_use)
+				{
+					listen_port_++;
+					endpoint_http.port(listen_port_);
+				}
+				else
+				{
+					throw std::runtime_error(
+						"http bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
+				}
+			}
+
+			acceptor_http.listen();
+
+			while (1)
+			{
+				network::tcp::socket http_socket{ 0 };
+
+				acceptor_http.accept(http_socket);
+
+				network::timeout(http_socket, connection_timeout_);
+				network::tcp_nodelay(http_socket, 0);
+				network::no_linger(http_socket, 0);
+
+				auto current_connections = server_status().connections_current();
+				server_status().connections_accepted(server_status().connections_accepted() + 1);
+				server_status().connections_current(current_connections + 1);
+
+				std::thread connection_thread(
+					[new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
+						 *this, http_socket, connection_timeout_, gzip_min_length_)]() {
+						new_connection_handler->proceed();
+					});
+				connection_thread.detach();
+
+				if (current_connections > thread_count_)
+				{
+					while(server_status().connections_current() > thread_count_)
+					{
+						std::this_thread::yield();
+					}
+				}
+				// connection_handler<network::tcp::socket> new_connection_handler(*this, http_socket,
+				// connection_timeout_, gzip_min_length_); new_connection_handler.proceed(); std::cout <<
+				// "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
+			}
+		}
+		catch (...)
+		{
+			// TODO
+		}
+	}
 
 	template <class S> class connection_handler
 	{
@@ -2267,11 +2270,6 @@ public:
 			data_response_.clear();
 		}
 	};
-
-	server_info& server_status() { return server_info_; }
-
-protected:
-	server_info server_info_;
 
 private:
 	int thread_count_;

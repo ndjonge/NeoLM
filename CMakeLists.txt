@@ -18,6 +18,13 @@ endif()
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 
+find_path(ASIO_INCLUDE_DIR asio.hpp)
+	if(ASIO_INCLUDE_DIR STREQUAL "ASIO_INCLUDE_DIR-NOTFOUND")
+	message("Asio:${ASIO_INCLUDE_DIR")
+	add_definitions(ASIO_STANDALONE)
+endif()
+
+include_directories(${ASIO_INCLUDE_DIR})
 include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
 
