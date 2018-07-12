@@ -204,9 +204,7 @@ namespace util
 {
 inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
 {
-	return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) {
-			   return tolower(a) == tolower(b);
-		   });
+	return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) { return tolower(a) == tolower(b); });
 }
 
 namespace split_opt
@@ -218,12 +216,7 @@ enum empties_t
 };
 };
 
-template <typename T>
-T& split(
-	T& result,
-	const typename T::value_type& s,
-	const typename T::value_type& delimiters,
-	split_opt::empties_t empties = split_opt::empties_ok)
+template <typename T> T& split(T& result, const typename T::value_type& s, const typename T::value_type& delimiters, split_opt::empties_t empties = split_opt::empties_ok)
 {
 	result.clear();
 	typename T::size_type next = T::value_type::npos;
@@ -391,8 +384,7 @@ public:
 		return fields_.rbegin();
 	}
 
-	template <typename T>
-	typename std::enable_if<std::is_same<T, bool>::value, bool>::type get(const std::string& name, const T value = T())
+	template <typename T> typename std::enable_if<std::is_same<T, bool>::value, bool>::type get(const std::string& name, const T value = T())
 	{
 		T returnvalue = value;
 
@@ -408,9 +400,7 @@ public:
 		return static_cast<T>(returnvalue);
 	}
 
-	template <typename T>
-	typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type
-	get(const std::string& name, const T value = T())
+	template <typename T> typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
 	{
 		T returnvalue = value;
 
@@ -426,9 +416,7 @@ public:
 		return static_cast<T>(returnvalue);
 	}
 
-	template <typename T>
-	typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type
-	get(const std::string& name, const T& value = T())
+	template <typename T> typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type get(const std::string& name, const T& value = T())
 	{
 		T returnvalue = value;
 
@@ -467,8 +455,7 @@ public:
 
 	inline void set(const std::string& name, const std::string& value)
 	{
-		auto i = std::find_if(
-			std::begin(fields_), std::end(fields_), [name](const http::field& f) { return f.name == name; });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return f.name == name; });
 
 		if (i != std::end(fields_))
 		{
@@ -636,9 +623,10 @@ struct mapping
 }
 
 const mappings[]
-	= { { "json", "application/json" }, { "text", "text/plain" }, { "ico", "image/x-icon" },
-		{ "gif", "image/gif" },			{ "htm", "text/html" },   { "html", "text/html" },
-		{ "jpg", "image/jpeg" },		{ "jpeg", "image/jpeg" }, { "png", "image/png" } };
+	= {
+		  { "json", "application/json" }, { "text", "text/plain" }, { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" },
+		  { "html", "text/html" },		  { "jpg", "image/jpeg" },  { "jpeg", "image/jpeg" },  { "png", "image/png" }
+	  };
 
 static std::string extension_to_type(const std::string& extension)
 {
@@ -702,10 +690,7 @@ public:
 			return true;
 	}
 
-	void type(const std::string& content_type)
-	{
-		http::fields::set("Content-Type", mime_types::extension_to_type(content_type));
-	}
+	void type(const std::string& content_type) { http::fields::set("Content-Type", mime_types::extension_to_type(content_type)); }
 
 	void result(http::status::status_t status)
 	{
@@ -756,10 +741,7 @@ public:
 	}
 };
 
-template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
-{
-	return http::message<specialization>::to_string(message);
-}
+template <message_specializations specialization> std::string to_string(const http::message<specialization>& message) { return http::message<specialization>::to_string(message); }
 
 using request_message = http::message<request_specialization>;
 using response_message = http::message<response_specialization>;
@@ -779,8 +761,7 @@ public:
 		indeterminate
 	};
 
-	template <typename InputIterator>
-	std::tuple<result_type, InputIterator> parse(http::request_message& req, InputIterator begin, InputIterator end)
+	template <typename InputIterator> std::tuple<result_type, InputIterator> parse(http::request_message& req, InputIterator begin, InputIterator end)
 	{
 		while (begin != end)
 		{
@@ -1141,11 +1122,7 @@ public:
 	{
 	}
 
-	template <typename InputIterator>
-	std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end)
-	{
-		return request_parser_.parse(request_, begin, end);
-	}
+	template <typename InputIterator> std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end) { return request_parser_.parse(request_, begin, end); }
 
 	template <typename router_t> void handle_request(router_t& router_)
 	{
@@ -1252,8 +1229,7 @@ public:
 		// && (response_.status() == http::status::ok || response_.status() == http::status::created)
 		// && (response_.status() == http::status::ok || response_.status() == http::status::created)
 		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false)
-			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1
-				&& request_.connection_close() == false))
+			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && request_.connection_close() == false))
 		{
 			keepalive_count(keepalive_count() - 1);
 			response_.set("Connection", "Keep-Alive");
@@ -1591,32 +1567,17 @@ public:
 
 	void use(const std::string& path) { static_content_routes.emplace_back(path); }
 
-	void on_http_method(const std::string& route, const std::string& http_method, R api_method)
-	{
-		api_router_table[http_method].emplace_back(route, api_method);
-	}
+	void on_http_method(const std::string& route, const std::string& http_method, R api_method) { api_router_table[http_method].emplace_back(route, api_method); }
 	void on_get(const std::string& route, R api_method) { api_router_table["GET"].emplace_back(route, api_method); }
 	void on_post(const std::string& route, R api_method) { api_router_table["POST"].emplace_back(route, api_method); }
 	void on_head(const std::string& route, R api_method) { api_router_table["HEAD"].emplace_back(route, api_method); }
 	void on_put(const std::string& route, R api_method) { api_router_table["PUT"].emplace_back(route, api_method); }
-	void on_update(const std::string& route, R api_method)
-	{
-		api_router_table["UPDATE"].emplace_back(route, api_method);
-	}
-	void on_delete(const std::string& route, R api_method)
-	{
-		api_router_table["DELETE"].emplace_back(route, api_method);
-	}
+	void on_update(const std::string& route, R api_method) { api_router_table["UPDATE"].emplace_back(route, api_method); }
+	void on_delete(const std::string& route, R api_method) { api_router_table["DELETE"].emplace_back(route, api_method); }
 	void on_patch(const std::string& route, R api_method) { api_router_table["PATCH"].emplace_back(route, api_method); }
-	void on_option(const std::string& route, R api_method)
-	{
-		api_router_table["OPTION"].emplace_back(route, api_method);
-	}
+	void on_option(const std::string& route, R api_method) { api_router_table["OPTION"].emplace_back(route, api_method); }
 
-	void use(const std::string& route, middleware_function_t middleware_function)
-	{
-		api_middleware_table.emplace_back(route, middleware_function);
-	};
+	void use(const std::string& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
 
 	bool serve_static_content(session_handler_type& session)
 	{
@@ -1691,15 +1652,9 @@ class session_data
 public:
 	session_data() noexcept {};
 
-	void store_request_data(const char* data, size_t size)
-	{
-		data_request_.insert(std::end(data_request_), &data[0], &data[0] + size);
-	}
+	void store_request_data(const char* data, size_t size) { data_request_.insert(std::end(data_request_), &data[0], &data[0] + size); }
 
-	void store_response_data(const std::string& response_string)
-	{
-		data_response_.insert(std::end(data_response_), response_string.begin(), response_string.end());
-	}
+	void store_response_data(const std::string& response_string) { data_response_.insert(std::end(data_response_), response_string.begin(), response_string.end()); }
 
 	std::vector<char>& request_data() { return data_request_; }
 	std::vector<char>& response_data() { return data_response_; }
@@ -1731,10 +1686,7 @@ public:
 		return session_datas_.back();
 	};
 
-	void close_session(session_data* session)
-	{
-		session_datas_.erase(std::find(std::begin(session_datas_), std::end(session_datas_), session));
-	};
+	void close_session(session_data* session) { session_datas_.erase(std::find(std::begin(session_datas_), std::end(session_datas_), session)); };
 
 	class server_info
 	{
@@ -1816,10 +1768,8 @@ public:
 			std::lock_guard<std::mutex> g(mutex_);
 
 			s << "\"" << session.request().get("Remote_Addr") << "\""
-			  << " - \"" << session.request().method() << " " << session.request().url_requested() << " "
-			  << session.request().version() << "\""
-			  << " - " << session.response().status() << " - " << session.response().content_length() << " - "
-			  << session.request().content_length() << " - \"" << session.request().get("User-Agent") << "\"\n";
+			  << " - \"" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << "\""
+			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << " - \"" << session.request().get("User-Agent") << "\"\n";
 
 			access_log_.emplace_back(s.str());
 
@@ -1866,7 +1816,7 @@ public:
 
 protected:
 	server_info server_info_;
- 	std::deque<session_data*> session_datas_;
+	std::deque<session_data*> session_datas_;
 	http::api::router<> router_;
 	http::configuration& configuration_;
 };
@@ -1883,8 +1833,7 @@ public:
 		: http::basic::server{ configuration }
 		, thread_count_(configuration.get<int>("thread_count", 5))
 		, listen_port_(0)
-		, listen_port_begin_(
-			  configuration.get<int>("listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
+		, listen_port_begin_(configuration.get<int>("listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
 		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
@@ -1938,8 +1887,7 @@ public:
 				}
 				else
 				{
-					throw std::runtime_error(
-						"https bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
+					throw std::runtime_error("https bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
 				}
 			}
 
@@ -1947,10 +1895,8 @@ public:
 
 			network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
-			ssl_context.use_certificate_chain_file(
-				configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
-			ssl_context.use_private_key_file(
-				configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
+			ssl_context.use_certificate_chain_file(configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
+			ssl_context.use_private_key_file(configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
 
 			while (1)
 			{
@@ -1968,11 +1914,7 @@ public:
 				if (current_connections < thread_count_)
 				{
 					std::thread connection_thread(
-						[new_connection_handler
-						 = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
-							 *this, https_socket, connection_timeout_, gzip_min_length_)]() {
-							new_connection_handler->proceed();
-						});
+						[new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, https_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
 				}
 				{
@@ -1982,11 +1924,7 @@ public:
 					}
 
 					std::thread connection_thread(
-						[new_connection_handler
-						 = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
-							 *this, https_socket, connection_timeout_, gzip_min_length_)]() {
-							new_connection_handler->proceed();
-						});
+						[new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, https_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
 				}
 			}
@@ -2054,7 +1992,6 @@ public:
 				network::timeout(http_socket, connection_timeout_);
 				network::tcp_nodelay(http_socket, 1);
 
-
 				auto current_connections = server_status().connections_current();
 				server_status().connections_accepted(server_status().connections_accepted() + 1);
 				server_status().connections_current(current_connections + 1);
@@ -2062,9 +1999,9 @@ public:
 				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 				connection_thread.detach();
 
-				//connection_handler<network::tcp::socket> new_connection_handler(*this, http_socket, connection_timeout_, gzip_min_length_);
-				//new_connection_handler.proceed();
-				//std::cout << "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
+				// connection_handler<network::tcp::socket> new_connection_handler(*this, http_socket, connection_timeout_, gzip_min_length_);
+				// new_connection_handler.proceed();
+				// std::cout << "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
 			}
 		}
 		catch (...)
@@ -2076,11 +2013,7 @@ public:
 	template <class S> class connection_handler
 	{
 	public:
-		connection_handler(
-			http::basic::threaded::server& server,
-			S client_socket,
-			int connection_timeout,
-			size_t gzip_min_length)
+		connection_handler(http::basic::threaded::server& server, S client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
 			, client_socket_(client_socket)
 			, session_handler_(server.configuration_)
@@ -2166,8 +2099,7 @@ public:
 					}
 				}
 
-				if ((parse_result == http::request_parser::result_type::good)
-					|| (parse_result == http::request_parser::result_type::bad))
+				if ((parse_result == http::request_parser::result_type::good) || (parse_result == http::request_parser::result_type::bad))
 				{
 
 					request_data().clear();
@@ -2203,8 +2135,7 @@ public:
 
 							while (bytes_in > 0 && ret != -1)
 							{
-								ret = network::write(
-									client_socket_, network::buffer(&file_buffer[0], static_cast<size_t>(bytes_in)));
+								ret = network::write(client_socket_, network::buffer(&file_buffer[0], static_cast<size_t>(bytes_in)));
 
 								bytes_in = is.read(file_buffer.data(), file_buffer.size()).gcount();
 							}
@@ -2212,8 +2143,7 @@ public:
 					}
 					else
 					{
-						if ((gzip_min_length_ < response.body().size())
-							&& (session_handler_.request().get("Accept-Encoding").find("gzip") != std::string::npos))
+						if ((gzip_min_length_ < response.body().size()) && (session_handler_.request().get("Accept-Encoding").find("gzip") != std::string::npos))
 						{
 							response.body() = gzip::compress(response.body().c_str(), response.body().size());
 							response.set("Content-Encoding", "gzip");

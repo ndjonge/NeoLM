@@ -394,6 +394,12 @@ namespace network
 					ec = network::error::success;
 			}
 
+			std::int16_t protocol()
+			{
+				socket_ = ::socket(sock_addr_.sin6_family, SOCK_STREAM, 0);
+				return SOCK_STREAM;
+			}
+
 			void open(std::int16_t protocol)
 			{
 				socket_ = ::socket(sock_addr_.sin6_family, protocol, 0);
@@ -423,7 +429,6 @@ namespace network
 			{
 				int ret = 0;
 				endpoint_ = &endpoint;
-				endpoint_->open(protocol_);
 
 				ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
 
