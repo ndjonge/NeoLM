@@ -354,8 +354,8 @@ namespace async
 			, ssl_acceptor_(io_service)
 			, ssl_context(asio::ssl::context::tlsv12)
 		{
-			ssl_context.use_certificate_chain_file(configuration_.get("ssl_certificate"));
-			ssl_context.use_private_key_file(configuration_.get("ssl_certificate_key"), asio::ssl::context::pem);
+			//ssl_context.use_certificate_chain_file(configuration_.get("ssl_certificate"));
+			//ssl_context.use_private_key_file(configuration_.get("ssl_certificate_key"), asio::ssl::context::pem);
 
 			if (configuration_.get("ssl_certificate_verify").size() > 0)
 			{
@@ -379,15 +379,16 @@ namespace async
 			acceptor_.set_option(asio::ip::tcp::acceptor::reuse_address(true));
 
 			acceptor_.bind(http_endpoint);
-			ssl_acceptor_.bind(https_endpoint);
+			//ssl_acceptor_.bind(https_endpoint);
 
 			acceptor_.listen();
-			ssl_acceptor_.listen();
+			//ssl_acceptor_.listen();
 
 			acceptor_.async_accept(http_handler->socket(), [this, http_handler](auto error) { this->handle_new_connection(http_handler, error); });
-
-			ssl_acceptor_.async_accept(
+			
+			/*ssl_acceptor_.async_accept(
 				https_handler->socket().lowest_layer(), [this, https_handler](auto error) { this->handle_new_https_connection(https_handler, error); });
+			*/
 
 			for (auto i = 0; i < thread_count_; ++i)
 			{
