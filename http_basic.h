@@ -2014,11 +2014,17 @@ public:
 
 			network::ipv6only(endpoint_http.socket(), 0);
 
+			network::use_portsharding(endpoint_http.socket(), 1);
+
+			network::no_linger(endpoint_http.socket(), 1);
+
 			network::error_code ec = network::error::success;
 
 			for (listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_;)
 			{
 				acceptor_http.bind(endpoint_http, ec);
+
+				network::no_linger(endpoint_http.socket(), 1);
 
 				if (ec == network::error::success)
 				{
@@ -2033,8 +2039,7 @@ public:
 				}
 				else
 				{
-					throw std::runtime_error(
-						"http bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
+					throw std::runtime_error("http bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
 				}
 			}
 
@@ -2047,30 +2052,19 @@ public:
 				acceptor_http.accept(http_socket);
 
 				network::timeout(http_socket, connection_timeout_);
-				network::tcp_nodelay(http_socket, 0);
-				network::no_linger(http_socket, 0);
+				network::tcp_nodelay(http_socket, 1);
+
 
 				auto current_connections = server_status().connections_current();
 				server_status().connections_accepted(server_status().connections_accepted() + 1);
 				server_status().connections_current(current_connections + 1);
 
-				std::thread connection_thread(
-					[new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
-						 *this, http_socket, connection_timeout_, gzip_min_length_)]() {
-						new_connection_handler->proceed();
-					});
+				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 				connection_thread.detach();
 
-				if (current_connections > thread_count_)
-				{
-					while(server_status().connections_current() > thread_count_)
-					{
-						std::this_thread::yield();
-					}
-				}
-				// connection_handler<network::tcp::socket> new_connection_handler(*this, http_socket,
-				// connection_timeout_, gzip_min_length_); new_connection_handler.proceed(); std::cout <<
-				// "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
+				//connection_handler<network::tcp::socket> new_connection_handler(*this, http_socket, connection_timeout_, gzip_min_length_);
+				//new_connection_handler.proceed();
+				//std::cout << "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
 			}
 		}
 		catch (...)

@@ -425,9 +425,6 @@ namespace network
 				endpoint_ = &endpoint;
 				endpoint_->open(protocol_);
 
-				int ipv6only = 0;
-				ret = ::setsockopt(endpoint_->socket(), IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
-
 				ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
 
 				if (ret == -1)
@@ -440,7 +437,7 @@ namespace network
 
 			void listen() noexcept
 			{
-				::listen(endpoint_->socket(), 32);
+				::listen(endpoint_->socket(), 1);
 			}
 
 			void accept(socket& socket) noexcept
@@ -535,7 +532,8 @@ namespace network
 	{
 		int use_portsharding = value;
 #ifdef LINUX
-		return ::setsockopt(s, SOL_SOCKET, SO_REUSEPORT, (char*)&use_portsharding, sizeof(use_portsharding));
+		int ret = ::setsockopt(s, SOL_SOCKET, SO_REUSEPORT, (char*)&use_portsharding, sizeof(use_portsharding));
+		return ret;
 #endif
 		return -1;
 	}
@@ -548,13 +546,13 @@ namespace network
 
 		if (value)
 		{
-			linger_.l_onoff = 1;
+			linger_.l_onoff = 0;
 			linger_.l_linger = 0;
 		}
 		else
 		{
-			linger_.l_onoff = 0;
-			linger_.l_linger = 1;
+			linger_.l_onoff = 1;
+			linger_.l_linger = 5;
 		}
 
 		int ret = ::setsockopt(s, SOL_SOCKET, SO_LINGER, (char*)&linger_, sizeof(linger));

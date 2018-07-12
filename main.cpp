@@ -492,6 +492,7 @@ private:
 			});
 		}
 
+
 	private:
 		friend class license_manager;
 		license_manager& license_manager_;
@@ -526,18 +527,22 @@ public:
 
 			this->instances_.emplace(instance_id, instance(instance_license, instance_allocation));
 		}
-
-		api_server_.start_server();
 	}
 
 	~license_manager() {}
+
+	void start_server()
+	{
+		this->api_server_.start_server();
+	}
+
 
 	const instances& get_instances() { return instances_; }
 
 	void add_test_routes()
 	{
 
-		for (int i = 0; i <= 100; i++)
+		for (int i = 0; i <= 1000; i++)
 		{
 			std::string test_route = "/key-value-store/";
 			test_route += "test_";
@@ -611,10 +616,13 @@ private:
 void test_req_p_sec_simple()
 {
 	auto start = std::chrono::system_clock::now();
-	std::array<char, 1024 * 8> readbuffer;
 
 	int test_connections = 100;
 	int test_requests = 1000;
+
+	std::string readbuffer;
+
+	readbuffer.resize(1 * 1024);
 
 	for (int j = 0; j < test_connections; j++)
 	{
@@ -632,7 +640,11 @@ void test_req_p_sec_simple()
 
 			network::write(s.socket(), http::to_string(req));
 
-			network::read(s.socket(), network::buffer(&readbuffer[0], sizeof(readbuffer)));
+			int ret = -1;
+			do
+			{
+				ret = network::read(s.socket(), network::buffer(&readbuffer[0], readbuffer.size()));
+			} while(readbuffer.find("\r\n\r\n") == std::string::npos);
 		}
 		// auto end_requests = std::chrono::system_clock::now();
 		// std::chrono::duration<double> diff = end_requests - start_requests;
@@ -669,7 +681,9 @@ void test_post_get(size_t size, size_t nr_routes)
 
 		auto start_requests = std::chrono::system_clock::now();
 
-		std::vector<char> readbuffer;
+		//std::vector<char> readbuffer;
+
+		std::string readbuffer;
 
 		readbuffer.resize(size * 1024);
 
@@ -687,7 +701,11 @@ void test_post_get(size_t size, size_t nr_routes)
 
 			network::write(s.socket(), http::to_string(req));
 
-			network::read(s.socket(), network::buffer(&readbuffer[0], readbuffer.size()));
+			int ret = -1;
+			do
+			{
+				ret = network::read(s.socket(), network::buffer(&readbuffer[0], readbuffer.size()));
+			} while(readbuffer.find("\r\n\r\n") == std::string::npos);
 
 			key_index++;
 
@@ -711,12 +729,14 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-//	neolm::license_manager<http::basic::threaded::server> license_server{ "/projects/neolm_licenses/" };
+	//neolm::license_manager<http::basic::threaded::server> license_server{ "/projects/neolm_licenses/" };
 
 	neolm::license_manager<http::basic::async::server> license_server{ "/projects/neolm_licenses/" };
 
 
-	//license_server.add_test_routes();
+	license_server.add_test_routes();
+
+	license_server.start_server();
 
 	size_t size = 4;
 
@@ -726,11 +746,19 @@ int main(int argc, char* argv[])
 
 		clients.reserve(32);
 
-		for (int i=0; i!=1; i++)
+
+		for (int i=0; i!=4; i++)
 		{
 			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000); })));
 			clients.back().detach();
 		}
+
+		for (int i=0; i!=4; i++)
+		{
+			clients.push_back(std::move(std::thread([size](){ test_req_p_sec_simple(); })));
+			clients.back().detach();
+		}
+
 
 		size = size;
 		if (size > 32)

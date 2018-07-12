@@ -100,8 +100,9 @@ namespace async
 
 					if (result == http::request_parser::good)
 					{
-						//this->cancel_timeout();
-						session_handler_.request().set("Remote_Addr", this->remote_address_base());
+						this->cancel_timeout();
+
+						session_handler_.request().set("Remote_Addr", this->remote_address_base());					
 
 						if (session_handler_.request().has_content_lenght())
 						{
@@ -109,6 +110,8 @@ namespace async
 							auto s = asio::buffers_end(in_packet_.data()) - asio::buffers_begin(in_packet_.data());
 
 							in_packet_.consume(s);
+
+							this->session_handler_.request().body().reserve(session_handler_.request().content_length());
 
 							do_read_body();
 						}
@@ -141,18 +144,44 @@ namespace async
 
 			void do_read_body()
 			{
-				if (this->session_handler_.request().body().length() <= this->session_handler_.request().content_length())
+				auto t = this->session_handler_.request().body().size();
+				if (this->session_handler_.request().body().size() < this->session_handler_.request().content_length())
 				{
 					asio::async_read(
 						this->socket_base(), in_packet_, asio::transfer_at_least(1), [me = this->shared_from_this()](asio::error_code const& ec, std::size_t bytes_xfer)
-					{
-						me->do_read_body_done(ec, bytes_xfer);
+					{			
+						auto content_length = me->session_handler_.request().content_length();
+						auto body_size = me->session_handler_.request().body().length();
+						
+						size_t chunk_size = asio::buffers_end(me->in_packet_.data()) - asio::buffers_begin(me->in_packet_.data());
+
+						if (content_length - body_size < chunk_size)							
+							chunk_size = content_length - body_size;
+
+
+						std::string chunk = std::string(asio::buffers_begin(me->in_packet_.data()), asio::buffers_begin(me->in_packet_.data()) + chunk_size);
+
+						me->in_packet_.consume(chunk_size);
+
+						me->session_handler_.request().body() += chunk;
+
+						body_size = me->session_handler_.request().body().length();
+						
+						if (body_size < content_length)
+						{
+							me->do_read_body();
+						}
+						else
+						{
+							me->do_read_body_done(ec, bytes_xfer);
+						}
 					});
 				}
 				else
 				{
-					session_handler_.handle_request(server_.router_);
-					do_write_header();
+					asio::error_code ec;
+					ec.assign(1, ec.category());
+					this->do_read_body_done(ec, 0);
 				}
 			}
 
@@ -160,19 +189,12 @@ namespace async
 			{
 				if (!ec)
 				{
-					auto b = std::string(asio::buffers_begin(in_packet_.data()), asio::buffers_begin(in_packet_.data()) + bytes_transferred);
-					this->session_handler_.request().body() += b;
-					in_packet_.consume(bytes_transferred);
+					session_handler_.request().set("Remote_Addr", this->remote_address_base());					
+					session_handler_.handle_request(server_.router_);
+					server_.server_status().requests_handled(server_.server_status().requests_handled() + 1);
+					server_.server_status().log_access(session_handler_);
 
-					if (this->session_handler_.request().body().length() < this->session_handler_.request().content_length())
-					{
-						do_read_body();
-					}
-					else
-					{
-						session_handler_.handle_request(server_.router_);
-						do_write_header();
-					}
+					do_write_header();
 				}
 			}
 
@@ -180,8 +202,9 @@ namespace async
 			{
 				if (!session_handler_.response().body().empty())
 				{
+					asio::error_code ec;
 					std::string& body = session_handler_.response().body();
-					asio::write(socket_base(), asio::buffer(session_handler_.response().body()));
+					asio::write(socket_base(), asio::buffer(session_handler_.response().body()), ec);
 
 					do_write_content_done();
 				}
@@ -260,9 +283,6 @@ namespace async
 
 			void do_write_header_done()
 			{
-
-
-
 				if (session_handler_.response().connection_keep_alive())
 				{
 					session_handler_.reset();
@@ -370,8 +390,8 @@ namespace async
 			auto http_handler = std::make_shared<server::connection_handler_http>(io_service, *this, configuration_);
 			auto https_handler = std::make_shared<server::connection_handler_https>(io_service, *this, configuration_, ssl_context);
 
-			asio::ip::tcp::endpoint http_endpoint(asio::ip::tcp::v4(), listen_port_begin_);
-			asio::ip::tcp::endpoint https_endpoint(asio::ip::tcp::v4(), listen_port_begin_+1);
+			asio::ip::tcp::endpoint http_endpoint(asio::ip::tcp::v6(), listen_port_begin_);
+			asio::ip::tcp::endpoint https_endpoint(asio::ip::tcp::v6(), listen_port_begin_+1);
 
 			acceptor_.open(http_endpoint.protocol());
 			ssl_acceptor_.open(https_endpoint.protocol());
@@ -384,21 +404,24 @@ namespace async
 			acceptor_.listen();
 			//ssl_acceptor_.listen();
 
+
 			acceptor_.async_accept(http_handler->socket(), [this, http_handler](auto error) { this->handle_new_connection(http_handler, error); });
-			
-			/*ssl_acceptor_.async_accept(
-				https_handler->socket().lowest_layer(), [this, https_handler](auto error) { this->handle_new_https_connection(https_handler, error); });
-			*/
 
 			for (auto i = 0; i < thread_count_; ++i)
 			{
 				thread_pool.emplace_back([this] { io_service.run(); });
 			}
 
-			for (auto i = 0; i < thread_count_; ++i)
+			/*ssl_acceptor_.async_accept(
+				https_handler->socket().lowest_layer(), [this, https_handler](auto error) { this->handle_new_https_connection(https_handler, error); });
+			*/
+
+
+
+			/*for (auto i = 0; i < thread_count_; ++i)
 			{
 				thread_pool[i].join();
-			}
+			}*/
 		}
 
 	private:
