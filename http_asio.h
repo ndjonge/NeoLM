@@ -102,7 +102,7 @@ namespace async
 					{
 						this->cancel_timeout();
 
-						session_handler_.request().set("Remote_Addr", this->remote_address_base());					
+						session_handler_.request().set("Remote_Addr", ""); //this->remote_address_base());					
 
 						if (session_handler_.request().has_content_lenght())
 						{
@@ -189,7 +189,7 @@ namespace async
 			{
 				if (!ec)
 				{
-					session_handler_.request().set("Remote_Addr", this->remote_address_base());					
+					session_handler_.request().set("Remote_Addr", ""); //this->remote_address_base());					
 					session_handler_.handle_request(server_.router_);
 					server_.server_status().requests_handled(server_.server_status().requests_handled() + 1);
 					server_.server_status().log_access(session_handler_);

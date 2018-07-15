@@ -284,19 +284,19 @@ private:
 			: S(configuration)
 			, license_manager_(license_manager)
 		{
-			router_.use("/static/");
-			router_.use("/images/");
-			router_.use("/styles/");
-			router_.use("/index.html");
-			router_.use("/");
-			router_.use("/files/");
+            S::router_.use("/static/");
+            S::router_.use("/images/");
+            S::router_.use("/styles/");
+            S::router_.use("/index.html");
+            S::router_.use("/");
+            S::router_.use("/files/");
 			// License instance configuration routes..
 
-			router_.on_get("/null", [this](http::session_handler& session, const http::api::params& params) {
+            S::router_.on_get("/null", [this](http::session_handler& session, const http::api::params& params) {
 				session.response().body() = "Hoi!\n";
 			});
 
-			router_.on_get(
+            S::router_.on_get(
 				"/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
 					if (params.get("instance").empty())
 					{
@@ -332,17 +332,17 @@ private:
 					}
 				});
 
-			router_.on_post(
+            S::router_.on_post(
 				"/license/:instance", [this](http::session_handler& session, const http::api::params& params) {});
 
-			router_.on_put(
+            S::router_.on_put(
 				"/license/:instance", [this](http::session_handler& session, const http::api::params& params) {});
 
-			router_.on_delete(
+            S::router_.on_delete(
 				"/license/:instance", [this](http::session_handler& session, const http::api::params& params) {});
 
 			// License model routes...
-			router_.on_get(
+            S::router_.on_get(
 				"/license/configuration/:instance/:license-model/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {
 					const std::string& instance_id = params.get("instance");
@@ -438,57 +438,57 @@ private:
 					}
 				});
 
-			router_.on_post(
+            S::router_.on_post(
 				"/license/:instance/model/named-user/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {});
 
-			router_.on_put(
+            S::router_.on_put(
 				"/license/:instance/model/named-user/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {});
 
-			router_.on_delete(
+            S::router_.on_delete(
 				"/license/:instance/model/named-user/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {});
 
 			// Allocation routes...
-			router_.on_get(
+            S::router_.on_get(
 				"/license/:instance/allocation/named-user/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {});
 
-			router_.on_post(
+            S::router_.on_post(
 				"/license/:instance/allocation/named-user/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {});
 
-			router_.on_put(
+            S::router_.on_put(
 				"/license/:instance/allocation/named-user/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {});
 
-			router_.on_delete(
+            S::router_.on_delete(
 				"/license/:instance/allocation/named-user/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {});
 
 			// Acquired routes...
-			router_.on_get(
+            S::router_.on_get(
 				"/license/:instance/acquired/named-user/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {});
 
-			router_.on_post(
+            S::router_.on_post(
 				"/license/:instance/acquired/named-user/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {});
 
-			router_.on_put(
+            S::router_.on_put(
 				"/license/:instance/acquired/named-user/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {});
 
-			router_.on_delete(
+            S::router_.on_delete(
 				"/license/:instance/acquired/named-user/:product-id/:user-name",
 				[this](http::session_handler& session, const http::api::params& params) {});
 
-			router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) {
-				server_info_.server_information(configuration_.to_string());
-				server_info_.router_information(router_.to_string());
-				session.response().body() = server_info_.to_string();
-				session.response().type("text");
+            S::router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) {
+                S::server_info_.server_information(S::configuration_.to_string());
+                S::server_info_.router_information(S::router_.to_string());
+                session.response().body() = S::server_info_.to_string();
+                session.response().type("text");
 			});
 		}
 
@@ -729,10 +729,9 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-	neolm::license_manager<http::basic::threaded::server> license_server{ "/projects/neolm_licenses/" };
+	//neolm::license_manager<http::basic::threaded::server> license_server{ "/projects/neolm_licenses/" };
 
-	//neolm::license_manager<http::basic::async::server> license_server{ "/projects/neolm_licenses/" };
-
+    neolm::license_manager<http::basic::async::server> license_server{ "/projects/neolm_licenses/" };
 
 	license_server.add_test_routes();
 
@@ -740,12 +739,13 @@ int main(int argc, char* argv[])
 
 	size_t size = 4;
 
+	network::init();
 	while (1)
 	{
+		std::this_thread::sleep_for(5s);
 		std::vector<std::thread> clients;
 
 		clients.reserve(32);
-
 
 		for (int i=0; i!=4; i++)
 		{
@@ -763,7 +763,7 @@ int main(int argc, char* argv[])
 		size = size;
 		if (size > 32)
 			size = 4;
-
-		std::this_thread::sleep_for(10s);
+		
+        std::this_thread::sleep_for(10s);
 	}
 }
