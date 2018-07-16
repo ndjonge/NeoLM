@@ -31,6 +31,9 @@ OTHER DEALINGS IN THE SOFTWARE.
 #if defined(_WIN32)
 #include <Ws2tcpip.h>
 #include <winsock2.h>
+#ifndef MSG_NOSIGNAL
+# define MSG_NOSIGNAL 0
+#endif
 #else
 #define SOCKET int
 #define closesocket close

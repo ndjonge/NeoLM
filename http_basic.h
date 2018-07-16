@@ -632,9 +632,9 @@ public:
 
 	void target(const std::string& target) { header<specialization>::target_ = target; }
 
-	const header<specialization>::fields& headers()
+	const std::vector<http::field>& headers()
 	{
-		return 
+		return header<specialization>::fields_;
 	}
 
 	void reset()
