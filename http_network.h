@@ -145,7 +145,10 @@ namespace network
 		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
 			exit(1);
 #else
-		signal(SIGPIPE, SIG_IGN);
+        struct sigaction sa;
+        std::memset( &sa, 0, sizeof(sa) );
+        sa.sa_handler = SIG_IGN;
+        sigaction( SIGPIPE, &sa, NULL);
 #endif
 	}
 
@@ -466,12 +469,12 @@ namespace network
 
 	std::int32_t write(socket_t s, const buffer& b) noexcept
 	{
-		return ::send(s, b.data(), static_cast<int>(b.size()), 0);
+		return ::send(s, b.data(), static_cast<int>(b.size()), MSG_NOSIGNAL);
 	}
 
 	std::int32_t write(socket_t s, const std::string& str) noexcept
 	{
-		return ::send(s, str.data(), static_cast<int>(str.size()), 0);
+		return ::send(s, str.data(), static_cast<int>(str.size()),MSG_NOSIGNAL);
 	}
 
 	std::int32_t read(ssl::stream<tcp::socket> s, const buffer& b) noexcept
