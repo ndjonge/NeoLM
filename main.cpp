@@ -613,7 +613,7 @@ private:
 
 } // namespace neolm
 
-void test_req_p_sec_simple()
+void test_req_p_sec_simple(std::int16_t port)
 {
 	auto start = std::chrono::system_clock::now();
 
@@ -627,7 +627,7 @@ void test_req_p_sec_simple()
 	for (int j = 0; j < test_connections; j++)
 	{
 		std::string url = "::1";
-		network::tcp::v6 s(url, 3000);
+		network::tcp::v6 s(url, port);
 		network::error_code ec;
 		s.connect(ec);
 
@@ -655,10 +655,11 @@ void test_req_p_sec_simple()
 	auto end = std::chrono::system_clock::now();
 	std::chrono::duration<double> diff = end - start;
 
-	std::cout << "" << (test_connections * test_requests) << " requests took: " << diff.count() << "\n";
+	std::cout << "" << (test_connections * test_requests) << " requests took: " << diff.count() << " (port:" << std::to_string(port) <<")\n";
+
 }
 
-void test_post_get(size_t size, size_t nr_routes)
+void test_post_get(size_t size, size_t nr_routes, std::int16_t port)
 {
 
 	int test_connections = 10;
@@ -675,7 +676,7 @@ void test_post_get(size_t size, size_t nr_routes)
 	for (int j = 0; j < test_connections; j++)
 	{
 		std::string url = "::1";
-		network::tcp::v6 s(url, 3000);
+		network::tcp::v6 s(url, port);
 		network::error_code ec;
 		s.connect(ec);
 
@@ -721,7 +722,7 @@ void test_post_get(size_t size, size_t nr_routes)
 	std::chrono::duration<double> diff = end - start;
 
 	std::cout << "" << (test_connections * test_requests) << " " << std::to_string(size)
-			  << "K requests took: " << diff.count() << "\n";
+			  << "K requests took: " << diff.count() << " (port:" << std::to_string(port) <<")\n";
 }
 
 int main(int argc, char* argv[])
@@ -742,20 +743,32 @@ int main(int argc, char* argv[])
 	network::init();
 	while (1)
 	{
-		std::this_thread::sleep_for(5s);
+		/*std::this_thread::sleep_for(5s);
 		std::vector<std::thread> clients;
 
 		clients.reserve(32);
 
 		for (int i=0; i!=4; i++)
 		{
-			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000); })));
+			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000, 3000); })));
 			clients.back().detach();
 		}
 
 		for (int i=0; i!=4; i++)
 		{
-			clients.push_back(std::move(std::thread([size](){ test_req_p_sec_simple(); })));
+			clients.push_back(std::move(std::thread([size](){ test_req_p_sec_simple(3000); })));
+			clients.back().detach();
+		}
+
+		for (int i=0; i!=4; i++)
+		{
+			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000, 80); })));
+			clients.back().detach();
+		}
+
+		for (int i=0; i!=4; i++)
+		{
+			clients.push_back(std::move(std::thread([size](){ test_req_p_sec_simple(80); })));
 			clients.back().detach();
 		}
 
@@ -763,7 +776,7 @@ int main(int argc, char* argv[])
 		size = size;
 		if (size > 32)
 			size = 4;
-		
+		*/
         std::this_thread::sleep_for(10s);
 	}
 }

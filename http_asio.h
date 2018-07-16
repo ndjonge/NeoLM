@@ -102,7 +102,7 @@ namespace async
 					{
 						this->cancel_timeout();
 
-						session_handler_.request().set("Remote_Addr", ""); //this->remote_address_base());					
+						session_handler_.request().set("Remote_Addr", this->remote_address_base());					
 
 						if (session_handler_.request().has_content_lenght())
 						{
@@ -189,7 +189,6 @@ namespace async
 			{
 				if (!ec)
 				{
-					session_handler_.request().set("Remote_Addr", ""); //this->remote_address_base());					
 					session_handler_.handle_request(server_.router_);
 					server_.server_status().requests_handled(server_.server_status().requests_handled() + 1);
 					server_.server_status().log_access(session_handler_);
@@ -263,7 +262,7 @@ namespace async
 				{
 					session_handler_.keepalive_count(session_handler_.keepalive_count() - 1);
 					session_handler_.response().set("Connection", "Keep-Alive");
-					session_handler_.response().set("Keep-Alive", std::string("timeout=") + std::to_string(session_handler_.keepalive_max()) + ", max="  + std::to_string(session_handler_.keepalive_count()));
+					//session_handler_.response().set("Keep-Alive", std::string("timeout=") + std::to_string(session_handler_.keepalive_max()) + ", max="  + std::to_string(session_handler_.keepalive_count()));
 				}
 				else
 				{
@@ -387,22 +386,48 @@ namespace async
 
 		void start_server()
 		{
+			//auto https_handler = std::make_shared<server::connection_handler_https>(io_service, *this, configuration_, ssl_context);
+			//asio::ip::tcp::endpoint https_endpoint(asio::ip::tcp::v6(), listen_port_begin_+1);
+			//ssl_acceptor_.open(https_endpoint.protocol());
+			//ssl_acceptor_.bind(https_endpoint);
+			//ssl_acceptor_.listen();
+
 			auto http_handler = std::make_shared<server::connection_handler_http>(io_service, *this, configuration_);
-			auto https_handler = std::make_shared<server::connection_handler_https>(io_service, *this, configuration_, ssl_context);
 
 			asio::ip::tcp::endpoint http_endpoint(asio::ip::tcp::v6(), listen_port_begin_);
-			asio::ip::tcp::endpoint https_endpoint(asio::ip::tcp::v6(), listen_port_begin_+1);
 
 			acceptor_.open(http_endpoint.protocol());
-			ssl_acceptor_.open(https_endpoint.protocol());
 
-			acceptor_.set_option(asio::ip::tcp::acceptor::reuse_address(true));
+			if (listen_port_begin_ == listen_port_end_)
+			{
+				acceptor_.set_option(asio::ip::tcp::acceptor::reuse_address(true));
+			}
+			
+			asio::error_code ec;
+			acceptor_.bind(http_endpoint, ec);
 
-			acceptor_.bind(http_endpoint);
-			//ssl_acceptor_.bind(https_endpoint);
+			if ((ec == asio::error::address_in_use) && (listen_port_begin_ < listen_port_end_))
+			{
+				for (listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_;)
+				{
+					http_endpoint.port(listen_port_);
+					acceptor_.close();
+					acceptor_.open(http_endpoint.protocol());
+					acceptor_.bind(http_endpoint, ec);
+					if (ec)
+					{
+						listen_port_++;
+						continue;						
+					}
+					else
+						break;
+				}
+			}
+
+			if (ec)
+				throw std::runtime_error("bind failed...");
 
 			acceptor_.listen();
-			//ssl_acceptor_.listen();
 
 
 			acceptor_.async_accept(http_handler->socket(), [this, http_handler](auto error) { this->handle_new_connection(http_handler, error); });
