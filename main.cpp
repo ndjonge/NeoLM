@@ -714,7 +714,7 @@ void test_post_get(size_t size, size_t nr_routes, std::int16_t port)
 		}
 		auto end_requests = std::chrono::system_clock::now();
 		std::chrono::duration<double> diff = end_requests - start_requests;
-
+        network::shutdown(s.socket(), network::shutdown_send);
 		// std::cout << j << ":" << test_requests / diff.count() << " req/sec\n";
 	}
 
@@ -743,7 +743,6 @@ int main(int argc, char* argv[])
 	network::init();
 	while (1)
 	{
-		/*std::this_thread::sleep_for(5s);
 		std::vector<std::thread> clients;
 
 		clients.reserve(32);
@@ -754,13 +753,13 @@ int main(int argc, char* argv[])
 			clients.back().detach();
 		}
 
-		for (int i=0; i!=4; i++)
+	/*	for (int i=0; i!=4; i++)
 		{
 			clients.push_back(std::move(std::thread([size](){ test_req_p_sec_simple(3000); })));
 			clients.back().detach();
-		}
+		}*/
 
-		for (int i=0; i!=4; i++)
+		/*for (int i=0; i!=4; i++)
 		{
 			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000, 80); })));
 			clients.back().detach();

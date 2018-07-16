@@ -13,7 +13,6 @@ if(MSVC)
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 endif()
 
-
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 

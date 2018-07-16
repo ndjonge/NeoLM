@@ -136,7 +136,7 @@ namespace async
 						do_read_header();
 					}
 				}
-				else if (ec == asio::error::operation_aborted)
+				else
 				{
 					stop();
 				}
@@ -307,7 +307,24 @@ namespace async
 
 			asio::ip::tcp::socket& socket() { return socket_; }
 
-			std::string remote_address() { return socket_.remote_endpoint().address().to_string(); }
+			std::string remote_address() 
+            {
+                asio::error_code ec;
+                
+                try
+                {
+                    std::string ret = socket_.remote_endpoint().address().to_string(ec);
+
+                    if (ec)
+                        ret = "?";
+
+                    return ret;
+                }
+                catch(...)
+                {
+                    return "-";
+                }
+            }
 
 			void start()
 			{
