@@ -729,9 +729,9 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-	neolm::license_manager<http::basic::threaded::server> license_server{ "/projects/neolm_licenses/" };
+	//neolm::license_manager<http::basic::threaded::server> license_server{ "/projects/neolm_licenses/" };
 
-	//neolm::license_manager<http::basic::async::server> license_server{ "/projects/neolm_licenses/" };
+	neolm::license_manager<http::basic::async::server> license_server{ "/projects/neolm_licenses/" };
 
 
 	license_server.add_test_routes();

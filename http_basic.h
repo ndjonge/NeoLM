@@ -467,43 +467,6 @@ public:
 			fields_.emplace_back(std::move(field_));
 		}
 	}
-
-	/*	inline const std::string& operator[](const char* name) const
-	{
-	static const std::string not_found = "";
-
-	auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
-	if (http::util::case_insensitive_equal(f.name, name))
-	return true;
-	else
-	return false;
-	});
-
-	if (i == std::end(fields_))
-	{
-	return not_found;
-	}
-	else
-	return i->value;
-	}
-
-	inline std::string& operator[](const char* name)
-	{
-	auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
-	if (http::util::case_insensitive_equal(f.name, name))
-	return true;
-	else
-	return false;
-	});
-
-	if (i == std::end(fields_))
-	{
-	fields_.emplace_back(http::field(name, ""));
-	return fields_.back().value;
-	}
-	else
-	return i->value;
-	}*/
 };
 
 using configuration = http::fields;
@@ -660,6 +623,18 @@ public:
 		header<specialization>::version_nr_ = version_nr;
 		header<specialization>::method_ = method;
 		header<specialization>::target_ = target;
+	}
+
+	std::string target() const
+	{
+		return header<specialization>::target_;
+	}
+
+	void target(const std::string& target) { header<specialization>::target_ = target; }
+
+	const header<specialization>::fields& headers()
+	{
+		return 
 	}
 
 	void reset()
