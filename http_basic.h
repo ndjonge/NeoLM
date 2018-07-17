@@ -1376,11 +1376,11 @@ public:
 				match = false;
 				break;
 			}
-			else if (tokens_.size() - 1 == token)
+/*			else if (tokens_.size() - 1 == token)
 			{
 				// still matches, this is the last token
 				match = true;
-			}
+			}*/
 
 			b = url.find_first_of("/", e);
 			e = url.find_first_of("/", b + 1);
@@ -1392,32 +1392,8 @@ public:
 			}
 			else if (b == std::string::npos)
 			{
-				bool partial_match_with_only_missing_dynamic_elements_at_the_end = false;
-
-				for (size_t i = token; i != tokens_.size(); i++)
-					if (tokens_[i][1] == ':')
-					{
-						partial_match_with_only_missing_dynamic_elements_at_the_end = true;
-					}
-					else
-					{
-						partial_match_with_only_missing_dynamic_elements_at_the_end = false;
-						break;
-					}
-
-				if (partial_match_with_only_missing_dynamic_elements_at_the_end)
-				{
-					for (size_t i = token; i != tokens_.size(); i++)
-						params.insert(tokens_[i].substr(2), ""); // first token already inserted! ?
-
-					match = true;
-					break;
-				}
-				else
-				{
-					match = false;
-					break;
-				}
+				match = false;
+				break;
 			}
 		}
 

@@ -480,7 +480,7 @@ namespace network
 		return ::send(s, str.data(), static_cast<int>(str.size()),MSG_NOSIGNAL);
 	}
 
-	std::int32_t read(ssl::stream<tcp::socket> s, const buffer& b) noexcept
+	std::int32_t read(ssl::stream<tcp::socket> s, const buffer& b, int flag = 0) noexcept
 	{
 		return SSL_read(s.native(), b.data(), static_cast<int>(b.size()));
 	}

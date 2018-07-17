@@ -292,6 +292,18 @@ private:
             S::router_.use("/files/");
 			// License instance configuration routes..
 
+			S::router_.on_get("/items/:itemcode/description", [this](http::session_handler& session, const http::api::params& params) {
+				session.response().body() = "'/items/:itemcode/description' --> " + params.get("itemcode");
+			});
+
+			S::router_.on_get("/items/:itemcode", [this](http::session_handler& session, const http::api::params& params) {
+				session.response().body() = "'/items/:itemcode' --> " + params.get("itemcode");
+			});
+
+			S::router_.on_get("/items", [this](http::session_handler& session, const http::api::params& params) {
+				session.response().body() = "'/items'";
+			});
+
             S::router_.on_get("/null", [this](http::session_handler& session, const http::api::params& params) {
 				session.response().body() = "Hoi!\n";
 			});
@@ -662,7 +674,7 @@ void test_req_p_sec_simple(std::int16_t port)
 void test_post_get(size_t size, size_t nr_routes, std::int16_t port)
 {
 
-	int test_connections = 10;
+	int test_connections = 100;
 	int test_requests = 1000;
 	int key_index = 0;
 
@@ -697,6 +709,8 @@ void test_post_get(size_t size, size_t nr_routes, std::int16_t port)
 
 			http::request_message req("PUT", test_resource);
 
+			req.set("Host", std::string("localhost:[8999]"));
+
 			req.body() = test_body;
 			req.content_length(req.body().length());
 
@@ -708,6 +722,11 @@ void test_post_get(size_t size, size_t nr_routes, std::int16_t port)
 				ret = network::read(s.socket(), network::buffer(&readbuffer[0], readbuffer.size()));
 			} while(readbuffer.find("\r\n\r\n") == std::string::npos);
 
+			bool ok = readbuffer.find("201") != std::string::npos;
+
+			if (!ok)
+				std::cout << "!ok" << readbuffer.c_str() << "\n";
+
 			key_index++;
 
 			if (nr_routes < key_index) key_index = 0;
@@ -715,7 +734,7 @@ void test_post_get(size_t size, size_t nr_routes, std::int16_t port)
 		auto end_requests = std::chrono::system_clock::now();
 		std::chrono::duration<double> diff = end_requests - start_requests;
         network::shutdown(s.socket(), network::shutdown_send);
-		// std::cout << j << ":" << test_requests / diff.count() << " req/sec\n";
+		//std::cout << j << ":" << test_requests / diff.count() << " req/sec\n";
 	}
 
 	auto end = std::chrono::system_clock::now();
@@ -725,41 +744,21 @@ void test_post_get(size_t size, size_t nr_routes, std::int16_t port)
 			  << "K requests took: " << diff.count() << " (port:" << std::to_string(port) <<")\n";
 }
 
-int main(int argc, char* argv[])
+void load_test()
 {
-	network::init();
-	network::ssl::init();
-
-	//neolm::license_manager<http::basic::threaded::server> license_server{ "/projects/neolm_licenses/" };
-
-    neolm::license_manager<http::basic::async::server> license_server{ "/projects/neolm_licenses/" };
-
-	license_server.add_test_routes();
-
-	license_server.start_server();
-
 	size_t size = 4;
 
-	network::init();
-	while (1)
-	{
-		std::vector<std::thread> clients;
+	std::vector<std::thread> clients;
 
 		clients.reserve(32);
-
-		for (int i=0; i!=4; i++)
+		
+		for (int i=0; i!=8; i++)
 		{
-			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000, 3000); })));
+			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000, 8999); })));
 			clients.back().detach();
 		}
 
-	/*	for (int i=0; i!=4; i++)
-		{
-			clients.push_back(std::move(std::thread([size](){ test_req_p_sec_simple(3000); })));
-			clients.back().detach();
-		}*/
-
-		/*for (int i=0; i!=4; i++)
+		for (int i=0; i!=4; i++)
 		{
 			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000, 80); })));
 			clients.back().detach();
@@ -775,7 +774,25 @@ int main(int argc, char* argv[])
 		size = size;
 		if (size > 32)
 			size = 4;
-		*/
+}
+
+int main(int argc, char* argv[])
+{
+	network::init();
+	network::ssl::init();
+
+	neolm::license_manager<http::basic::threaded::server> license_server{ "/projects/neolm_licenses/" };
+
+    //neolm::license_manager<http::basic::async::server> license_server{ "/projects/neolm_licenses/" };
+
+	license_server.start_server();
+
+	//icense_server.add_test_routes();
+
+	network::init();
+	while (1)
+	{
+		//load_test();
         std::this_thread::sleep_for(10s);
 	}
 }
