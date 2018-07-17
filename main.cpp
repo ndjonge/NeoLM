@@ -292,6 +292,19 @@ private:
             S::router_.use("/files/");
 			// License instance configuration routes..
 
+			S::router_.on_get("/items2/{itemcode}/description", [this](http::session_handler& session, const http::api::params& params) {
+				session.response().body() = "'/items/{itemcode}/description' --> " + params.get("itemcode");
+			});
+
+			S::router_.on_get("/items2/{itemcode}", [this](http::session_handler& session, const http::api::params& params) {
+				session.response().body() = "'/items/{itemcode}' --> " + params.get("itemcode");
+			});
+
+			S::router_.on_get("/items2", [this](http::session_handler& session, const http::api::params& params) {
+				session.response().body() = "'/items'";
+			});
+
+
 			S::router_.on_get("/items/:itemcode/description", [this](http::session_handler& session, const http::api::params& params) {
 				session.response().body() = "'/items/:itemcode/description' --> " + params.get("itemcode");
 			});

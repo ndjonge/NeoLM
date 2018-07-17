@@ -1367,9 +1367,16 @@ public:
 		{
 			// std::string current_token = url.substr(b, e - b);
 
-			if (tokens_[token].size() > 2 && tokens_[token][1] == ':')
+			if (tokens_[token].size() > 2 && (tokens_[token][1] == ':' || tokens_[token][1] == '{'))
 			{
-				params.insert(tokens_[token].substr(2), url.substr(b, e - b).substr(1));
+				if (tokens_[token][1] == ':')
+				{
+					params.insert(tokens_[token].substr(2, tokens_[token].size()-2), url.substr(b+1, e - b-1));
+				}
+				else
+				{
+					params.insert(tokens_[token].substr(2, tokens_[token].size()-3), url.substr(b+1, e - b-1));
+				}
 			}
 			else if (tokens_[token] != url.substr(b, e - b))
 			{
