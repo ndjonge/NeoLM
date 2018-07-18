@@ -467,6 +467,14 @@ public:
 			fields_.emplace_back(std::move(field_));
 		}
 	}
+
+	inline size_t size() const noexcept {return fields_.size();}
+
+	const http::field& operator[](size_t index) const noexcept
+	{
+		return fields_[index];
+	}
+
 };
 
 using configuration = http::fields;

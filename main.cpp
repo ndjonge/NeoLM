@@ -765,11 +765,11 @@ void load_test()
 
 		clients.reserve(32);
 		
-		for (int i=0; i!=8; i++)
+/*		for (int i=0; i!=8; i++)
 		{
 			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000, 8999); })));
 			clients.back().detach();
-		}
+		}*/
 
 		for (int i=0; i!=4; i++)
 		{
@@ -777,11 +777,11 @@ void load_test()
 			clients.back().detach();
 		}
 
-		for (int i=0; i!=4; i++)
+		/*for (int i=0; i!=4; i++)
 		{
 			clients.push_back(std::move(std::thread([size](){ test_req_p_sec_simple(80); })));
 			clients.back().detach();
-		}
+		}*/
 
 
 		size = size;
@@ -800,12 +800,12 @@ int main(int argc, char* argv[])
 
 	license_server.start_server();
 
-	//icense_server.add_test_routes();
+	license_server.add_test_routes();
 
 	network::init();
 	while (1)
 	{
-		//load_test();
+		load_test();
         std::this_thread::sleep_for(10s);
 	}
 }
