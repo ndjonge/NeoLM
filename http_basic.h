@@ -455,7 +455,7 @@ public:
 
 	inline void set(const std::string& name, const std::string& value)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return f.name == name; });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_))
 		{
@@ -1087,6 +1087,91 @@ private:
 		body_start,
 		body_end
 	} state_;
+
+public:
+	static std::string url_decode(const std::string& in)
+	{
+		std::string ret;
+		ret.reserve(in.size());
+
+		for (std::size_t i = 0; i < in.size(); ++i)
+		{
+			if (in[i] == '%')
+			{
+				if (i + 3 <= in.size())
+				{
+					int value = 0;
+					std::istringstream is(in.substr(i + 1, 2));
+					if (is >> std::hex >> value)
+					{
+						ret += static_cast<char>(value);
+						i += 2;
+					}
+					else
+					{
+						return "";
+					}
+				}
+				else
+				{
+					return "";
+				}
+			}
+			else if (in[i] == '+')
+			{
+				ret += ' ';
+			}
+			else
+			{
+				ret += in[i];
+			}
+		}
+		return ret;
+	}
+
+
+	/// Perform URL-decoding on a string. Returns false if the encoding was
+	/// invalid.
+	static bool url_decode(const std::string& in, std::string& out)
+	{
+		out.clear();
+		out.reserve(in.size());
+		for (std::size_t i = 0; i < in.size(); ++i)
+		{
+			if (in[i] == '%')
+			{
+				if (i + 3 <= in.size())
+				{
+					int value = 0;
+					std::istringstream is(in.substr(i + 1, 2));
+					if (is >> std::hex >> value)
+					{
+						out += static_cast<char>(value);
+						i += 2;
+					}
+					else
+					{
+						return false;
+					}
+				}
+				else
+				{
+					return false;
+				}
+			}
+			else if (in[i] == '+')
+			{
+				out += ' ';
+			}
+			else
+			{
+				out += in[i];
+			}
+		}
+		return true;
+	}
+
+
 };
 
 class session_handler
@@ -1114,7 +1199,7 @@ public:
 		response_.result(http::status::ok);
 		response_.set("Server", configuration_.get<std::string>("server", "a http server 0.0"));
 
-		if (!url_decode(request_.target(), request_path))
+		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
 			response_.result(http::status::bad_request);
 			return;
@@ -1150,7 +1235,10 @@ public:
 
 				http::util::split(name_value, token, "=");
 
-				request_.query().set(name_value[0], name_value[1]);
+				std::string name_decoded = http::request_parser::url_decode(name_value[0]);
+				std::string value_decoded = http::request_parser::url_decode(name_value[1]);
+
+				request_.query().set(name_decoded, value_decoded);
 			}
 		}
 
@@ -1159,7 +1247,9 @@ public:
 			request_.body() = gzip::decompress(request_.body().c_str(), request_.content_length());
 		}
 
-		request_.url_requested_ = request_.target_;
+		//std::string url_1 = url_requested.substr(0, request_.find_first_of('?'));
+
+		request_.url_requested_ = request_.target_;//.substr(0, request_.target_.find_first_of('?'));
 		request_.target_ = request_path;
 
 		if (router_.call_middleware(*this))
@@ -1250,47 +1340,6 @@ private:
 
 	int keepalive_count_;
 	int keepalive_max_;
-
-	/// Perform URL-decoding on a string. Returns false if the encoding was
-	/// invalid.
-	static bool url_decode(const std::string& in, std::string& out)
-	{
-		out.clear();
-		out.reserve(in.size());
-		for (std::size_t i = 0; i < in.size(); ++i)
-		{
-			if (in[i] == '%')
-			{
-				if (i + 3 <= in.size())
-				{
-					int value = 0;
-					std::istringstream is(in.substr(i + 1, 2));
-					if (is >> std::hex >> value)
-					{
-						out += static_cast<char>(value);
-						i += 2;
-					}
-					else
-					{
-						return false;
-					}
-				}
-				else
-				{
-					return false;
-				}
-			}
-			else if (in[i] == '+')
-			{
-				out += ' ';
-			}
-			else
-			{
-				out += in[i];
-			}
-		}
-		return true;
-	}
 };
 
 namespace api
@@ -1357,6 +1406,7 @@ public:
 		// route: /route/:param1/subroute/:param2/subroute
 		// url:   /route/parameter
 
+
 		if (url == route_)
 		{
 			return true;
@@ -1377,13 +1427,17 @@ public:
 
 			if (tokens_[token].size() > 2 && (tokens_[token][1] == ':' || tokens_[token][1] == '{'))
 			{
+				std::string value = url.substr(b+1, e - b-1);
+
+				http::request_parser::url_decode(url.substr(b+1, e - b-1), value);
+
 				if (tokens_[token][1] == ':')
 				{
-					params.insert(tokens_[token].substr(2, tokens_[token].size()-2), url.substr(b+1, e - b-1));
+					params.insert(tokens_[token].substr(2, tokens_[token].size()-2), value);
 				}
 				else
 				{
-					params.insert(tokens_[token].substr(2, tokens_[token].size()-3), url.substr(b+1, e - b-1));
+					params.insert(tokens_[token].substr(2, tokens_[token].size()-3), value);
 				}
 			}
 			else if (tokens_[token] != url.substr(b, e - b))
@@ -1446,10 +1500,12 @@ public:
 	M endpoint_;
 	std::vector<std::string> tokens_;
 
-	bool match(const std::string& url, params& params) const
+	bool match(const std::string& url_requested, params& params) const
 	{
 		// route: /route/:param1/subroute/:param2/subroute
 		// url:   /route/parameter
+
+		std::string url = url_requested.substr(0, url.find_first_of('?'));
 
 		if (url.find(route_) == 0) // url starts with route
 		{
@@ -1466,21 +1522,23 @@ public:
 
 		for (token = 0; ((b != std::string::npos) && (token < tokens_.size())); token++)
 		{
-			std::string current_token = url.substr(b, e - b);
+			//std::string current_token = url.substr(b, e - b);
 
-			if (tokens_[token].size() > 2 && tokens_[token][1] == ':')
+			if (tokens_[token].size() > 2 && (tokens_[token][1] == ':' || tokens_[token][1] == '{'))
 			{
-				params.insert(tokens_[token].substr(2), current_token.substr(1));
+				if (tokens_[token][1] == ':')
+				{
+					params.insert(tokens_[token].substr(2, tokens_[token].size()-2), url.substr(b+1, e - b-1));
+				}
+				else
+				{
+					params.insert(tokens_[token].substr(2, tokens_[token].size()-3), url.substr(b+1, e - b-1));
+				}
 			}
-			else if (tokens_[token] != current_token)
+			else if (tokens_[token] != url.substr(b, e - b))
 			{
 				match = false;
 				break;
-			}
-			else if (tokens_.size() - 1 == token)
-			{
-				// still matches, this is the last token
-				match = true;
 			}
 
 			b = url.find_first_of("/", e);
@@ -1551,7 +1609,9 @@ public:
 		// session.request().target());
 		for (auto& static_route : static_content_routes)
 		{
-			if (session.request().target().find(static_route) == 0)
+			std::string url = session.request().url_requested().substr(0, session.request().url_requested().find_first_of('?'));
+
+			if (url.find(static_route) == 0)
 			{
 				auto file_path = doc_root_ + session.request().target();
 				session.request().target(file_path);
@@ -1587,11 +1647,13 @@ public:
 
 		if (!routes.empty())
 		{
+			std::string url = session.request().url_requested().substr(0, session.request().url_requested().find_first_of('?'));
+
 			for (auto& route : routes)
 			{
 				params params_;
 
-				if (route.match(session.request().target(), params_))
+				if (route.match(url, params_))
 				{
 					route.endpoint_(session, params_);
 					return true;

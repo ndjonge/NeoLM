@@ -293,7 +293,14 @@ private:
 			// License instance configuration routes..
 
 			S::router_.on_get("/items2/{itemcode}/description", [this](http::session_handler& session, const http::api::params& params) {
-				session.response().body() = "'/items/{itemcode}/description' --> " + params.get("itemcode");
+
+				std::string query1 = session.request().query().get("query");
+
+				if (query1.empty())
+					session.response().body() = "'/items/{itemcode}/description' --> " + params.get("itemcode");
+				else
+					session.response().body() = "'/items/{itemcode}/description' --> " + params.get("itemcode") + " ----> " + query1;
+
 			});
 
 			S::router_.on_get("/items2/{itemcode}", [this](http::session_handler& session, const http::api::params& params) {
@@ -687,7 +694,7 @@ void test_req_p_sec_simple(std::int16_t port)
 void test_post_get(size_t size, size_t nr_routes, std::int16_t port)
 {
 
-	int test_connections = 100;
+	int test_connections = 10;
 	int test_requests = 1000;
 	int key_index = 0;
 
@@ -773,7 +780,7 @@ void load_test()
 
 		for (int i=0; i!=4; i++)
 		{
-			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000, 80); })));
+			clients.push_back(std::move(std::thread([size](){ test_post_get(size, 1000, 3000); })));
 			clients.back().detach();
 		}
 
@@ -805,7 +812,7 @@ int main(int argc, char* argv[])
 	network::init();
 	while (1)
 	{
-		load_test();
+//		load_test();
         std::this_thread::sleep_for(10s);
 	}
 }
