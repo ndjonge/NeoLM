@@ -31,6 +31,9 @@ OTHER DEALINGS IN THE SOFTWARE.
 #if defined(_WIN32)
 #include <Ws2tcpip.h>
 #include <winsock2.h>
+#ifndef MSG_NOSIGNAL
+# define MSG_NOSIGNAL 0
+#endif
 #else
 #define SOCKET int
 #define closesocket close
@@ -145,7 +148,10 @@ namespace network
 		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
 			exit(1);
 #else
-		signal(SIGPIPE, SIG_IGN);
+        struct sigaction sa;
+        std::memset( &sa, 0, sizeof(sa) );
+        sa.sa_handler = SIG_IGN;
+        sigaction( SIGPIPE, &sa, NULL);
 #endif
 	}
 
@@ -430,8 +436,6 @@ namespace network
 				int ret = 0;
 				endpoint_ = &endpoint;
 
-				int use_portsharding = 1;
-				ret = ::setsockopt(endpoint_->socket(), SOL_SOCKET, SO_REUSEPORT, (char*)&use_portsharding, sizeof(use_portsharding));
 				ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
 
 				if (ret == -1)
@@ -468,15 +472,15 @@ namespace network
 
 	std::int32_t write(socket_t s, const buffer& b) noexcept
 	{
-		return ::send(s, b.data(), static_cast<int>(b.size()), 0);
+		return ::send(s, b.data(), static_cast<int>(b.size()), MSG_NOSIGNAL);
 	}
 
 	std::int32_t write(socket_t s, const std::string& str) noexcept
 	{
-		return ::send(s, str.data(), static_cast<int>(str.size()), 0);
+		return ::send(s, str.data(), static_cast<int>(str.size()),MSG_NOSIGNAL);
 	}
 
-	std::int32_t read(ssl::stream<tcp::socket> s, const buffer& b) noexcept
+	std::int32_t read(ssl::stream<tcp::socket> s, const buffer& b, int flag = 0) noexcept
 	{
 		return SSL_read(s.native(), b.data(), static_cast<int>(b.size()));
 	}
