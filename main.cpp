@@ -38,15 +38,21 @@ using servers = std::unordered_map<std::string, neolm::server>;
 template <class M> class product
 {
 public:
-	product(std::string id, std::string description)
+	product(std::string id, std::string description, M&& m)
 		: id_(id)
-		, description_(description){};
+		, description_(description)
+		, model_(m){};
 
+
+	friend json::value to_json(const product<M>& m);
+
+private:
 	std::string id_;
 	std::string description_;
 
 	M model_;
 };
+
 
 class user
 {
@@ -71,19 +77,30 @@ public:
 class named_user_license
 {
 public:
-	named_user_license() = default;
+	named_user_license(size_t max_heavy, size_t max_light) : max_heavy_(max_heavy), max_light_(max_light) {};
+
+private:
+	size_t max_heavy_;
+	size_t max_light_;
 };
 
 class named_server_license
 {
 public:
-	named_server_license() = default;
+	named_server_license(size_t max) : max_(max) {};
+
+private:
+	size_t max_;
 };
 
 class concurrent_user_license
 {
 public:
-	concurrent_user_license() = default;
+	concurrent_user_license(size_t max) : max_(max) {}
+
+
+private:
+	size_t max_;
 };
 
 class instance
@@ -106,25 +123,34 @@ public:
 				json::get<std::string>(named_user_license_definition["id"]),
 				product<named_user_license>(
 					json::get<std::string>(named_user_license_definition["id"]),
-					json::get<std::string>(named_user_license_definition["description"])));
+					json::get<std::string>(named_user_license_definition["description"]),
+						named_user_license(
+							json::get<std::size_t>(named_user_license_definition["max_heavy"]),
+							json::get<std::size_t>(named_user_license_definition["max_light"]))));
 		}
 
 		for (auto& named_server_license_definition : named_server_license_definitions)
 		{
 			named_server_licenses_.emplace(
 				json::get<std::string>(named_server_license_definition["id"]),
+			
 				product<named_server_license>(
 					json::get<std::string>(named_server_license_definition["id"]),
-					json::get<std::string>(named_server_license_definition["description"])));
+					json::get<std::string>(named_server_license_definition["description"]),
+						named_server_license(
+							json::get<std::size_t>(named_server_license_definition["max"]))));
 		}
 
 		for (auto& concurrent_user_license_definition : concurrent_user_license_definitions)
 		{
 			concurrent_user_licenses_.emplace(
 				json::get<std::string>(concurrent_user_license_definition["id"]),
+
 				product<concurrent_user_license>(
 					json::get<std::string>(concurrent_user_license_definition["id"]),
-					json::get<std::string>(concurrent_user_license_definition["description"])));
+					json::get<std::string>(concurrent_user_license_definition["description"]),
+					concurrent_user_license(
+							json::get<std::size_t>(concurrent_user_license_definition["max"]))));
 		}
 
 		auto users = instance_allocation["users"].as_array();
@@ -154,6 +180,61 @@ public:
 
 	users users_;
 	servers servers_;
+
+	std::int32_t sequence_ = 0;
+
+	class license_aquired
+	{
+	public:
+		license_aquired(
+			std::string id,
+			std::string parameter,
+			std::string tag,
+			std::string hostname,
+			std::int32_t process_id,
+			std::int32_t sequence_id,
+			std::int32_t number) 	
+		: id_(id)
+		, parameter_(parameter)
+		, process_id_(process_id)
+		, hostname_(hostname)
+		, sequence_id_(sequence_id)
+		, number_(number)
+		{
+		}
+
+	private:
+		std::string id_;
+		std::string parameter_;
+		std::int32_t process_id_;
+		std::string hostname_;
+		std::int32_t sequence_id_;
+		std::int32_t number_;
+	};
+
+	json::object request_license(json::object& request_license, std::string hostname)
+	{
+		json::object ret;
+
+		std::string id = json::get<std::string>(request_license["id"]);
+		std::string parameter = json::get<std::string>(request_license["parameter"]);
+		std::string tag = json::get<std::string>(request_license["tag"]);
+
+		std::int32_t number = 0;
+		
+		std::stringstream s;
+
+		s << id << parameter << hostname << sequence_++ << number;
+
+		auto i = licenses_aquired_.emplace(
+			std::make_pair(
+				std::string(s.str()), 
+				license_aquired(id, parameter, tag, "",0 ,0, 0)));
+
+		return ret;
+	}
+
+	std::unordered_map<std::string, license_aquired> licenses_aquired_;
 };
 
 json::value to_json(const product<concurrent_user_license>& concurrent_user_license)
@@ -292,195 +373,53 @@ private:
             S::router_.use("/files/");
 			// License instance configuration routes..
 
-			S::router_.on_get("/items2/{itemcode}/description", [this](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_get(
+				"/licenses/configuration", [this](http::session_handler& session, const http::api::params& params) {
 
-				std::string query1 = session.request().query().get("query");
+				std::string instance_id = session.request().get("instance");
 
-				if (query1.empty())
-					session.response().body() = "'/items/{itemcode}/description' --> " + params.get("itemcode");
-				else
-					session.response().body() = "'/items/{itemcode}/description' --> " + params.get("itemcode") + " ----> " + query1;
+				if (instance_id.empty())
+				{				
+					instance_id = "main";
+				}
 
-			});
+				auto instance = license_manager_.get_instances().at(instance_id);
 
-			S::router_.on_get("/items2/{itemcode}", [this](http::session_handler& session, const http::api::params& params) {
-				session.response().body() = "'/items/{itemcode}' --> " + params.get("itemcode");
-			});
+				json::object return_json;
 
-			S::router_.on_get("/items2", [this](http::session_handler& session, const http::api::params& params) {
-				session.response().body() = "'/items'";
-			});
+				return_json.emplace(std::string("id"), json::string(instance.id_));
+				return_json.emplace(std::string("name"), json::string(instance.name_));
+				return_json.emplace(std::string("key"), json::string(instance.license_key_));
+				return_json.emplace(std::string("bind-to"), json::string(instance.license_hash_));
 
-
-			S::router_.on_get("/items/:itemcode/description", [this](http::session_handler& session, const http::api::params& params) {
-				session.response().body() = "'/items/:itemcode/description' --> " + params.get("itemcode");
-			});
-
-			S::router_.on_get("/items/:itemcode", [this](http::session_handler& session, const http::api::params& params) {
-				session.response().body() = "'/items/:itemcode' --> " + params.get("itemcode");
-			});
-
-			S::router_.on_get("/items", [this](http::session_handler& session, const http::api::params& params) {
-				session.response().body() = "'/items'";
-			});
-
-            S::router_.on_get("/null", [this](http::session_handler& session, const http::api::params& params) {
-				session.response().body() = "Hoi!\n";
+				session.response().body() = json::serializer::serialize(return_json).str();
+				session.response().type("json");
+				
 			});
 
             S::router_.on_get(
-				"/license/:instance", [this](http::session_handler& session, const http::api::params& params) {
-					if (params.get("instance").empty())
-					{
-						json::array return_json;
-
-						for (auto&& instance : license_manager_.get_instances())
-						{
-							json::object instance_json;
-
-							instance_json.emplace(std::string("id"), json::string(instance.second.id_));
-							instance_json.emplace(std::string("name"), json::string(instance.second.name_));
-							instance_json.emplace(std::string("key"), json::string(instance.second.license_key_));
-							instance_json.emplace(std::string("bind-to"), json::string(instance.second.license_hash_));
-
-							return_json.emplace_back(instance_json);
-						}
-
-						session.response().body() = json::serializer::serialize(return_json).str();
-						session.response().type("json");
-					}
-					else
-					{
-						auto instance = license_manager_.get_instances().at(params.get("instance"));
-						json::object return_json;
-
-						return_json.emplace(std::string("id"), json::string(instance.id_));
-						return_json.emplace(std::string("name"), json::string(instance.name_));
-						return_json.emplace(std::string("key"), json::string(instance.license_key_));
-						return_json.emplace(std::string("bind-to"), json::string(instance.license_hash_));
-
-						session.response().body() = json::serializer::serialize(return_json).str();
-						session.response().type("json");
-					}
-				});
-
-            S::router_.on_post(
-				"/license/:instance", [this](http::session_handler& session, const http::api::params& params) {});
-
-            S::router_.on_put(
-				"/license/:instance", [this](http::session_handler& session, const http::api::params& params) {});
-
-            S::router_.on_delete(
-				"/license/:instance", [this](http::session_handler& session, const http::api::params& params) {});
-
-			// License model routes...
-            S::router_.on_get(
-				"/license/configuration/:instance/:license-model/:product-id/:user-name",
+				"/licenses/:product-id/acquisition",
 				[this](http::session_handler& session, const http::api::params& params) {
-					const std::string& instance_id = params.get("instance");
-					const std::string& license_model = params.get("license-model");
-					const std::string& product_id = params.get("product-id");
-					const std::string& user_name = params.get("user-name");
+					
+					std::string instance_id = session.request().get("instance");
 
 					if (instance_id.empty())
-					{
-						session.response().body()
-							= json::serializer::serialize(to_json(license_manager_.get_instances())).str();
-						session.response().type("json");
+					{				
+						instance_id = "main";
 					}
-					else if (license_model.empty())
-					{
-						session.response().body()
-							= json::serializer::serialize(
-								  to_json(license_manager_.get_instances().at(params.get(instance_id))))
-								  .str();
-						session.response().type("json");
-					}
-					else if (product_id.empty())
-					{
-						auto instance = license_manager_.get_instances().at(params.get("instance"));
 
-						if (license_model == "named-users-licenses")
-						{
-							session.response().body()
-								= json::serializer::serialize(to_json(instance.named_user_licenses_)).str();
-						}
-						else if (license_model == "named-server-licenses")
-						{
-							session.response().body()
-								= json::serializer::serialize(to_json(instance.named_server_licenses_)).str();
-						}
-						else if (license_model == "concurrent-user-licenses")
-						{
-							session.response().body()
-								= json::serializer::serialize(to_json(instance.concurrent_user_licenses_)).str();
-						}
+					const std::string& product_id = params.get("product-id");
 
-						session.response().type("json");
-					}
-					else if (user_name.empty())
-					{
-						auto instance = license_manager_.get_instances().at(params.get("instance"));
+					auto instance = license_manager_.get_instances().at(instance_id);
 
-						if (license_model == "named-users-licenses")
-						{
-							session.response().body()
-								= json::serializer::serialize(to_json(instance.named_user_licenses_.at(product_id)))
-									  .str();
-						}
-						else if (license_model == "named-server-licenses")
-						{
-							session.response().body()
-								= json::serializer::serialize(to_json(instance.named_server_licenses_.at(product_id)))
-									  .str();
-						}
-						else if (license_model == "concurrent-user-licenses")
-						{
-							session.response().body() = json::serializer::serialize(
-															to_json(instance.concurrent_user_licenses_.at(product_id)))
-															.str();
-						}
+					auto request_json = json::parser::parse(session.request().body());
 
-						session.response().type("json");
-					}
-					else
-					{
-						auto instance = license_manager_.get_instances().at(params.get("instance"));
+					auto return_json = instance.request_license(request_json.get_object(), session.request().get("Remote_Addr"));
 
-						if (license_model == "named-users-licenses")
-						{
-							session.response().body()
-								= json::serializer::serialize(to_json(instance.named_user_licenses_.at(product_id)))
-									  .str();
-						}
-						else if (license_model == "named-server-licenses")
-						{
-							session.response().body()
-								= json::serializer::serialize(to_json(instance.named_server_licenses_.at(product_id)))
-									  .str();
-						}
-						else if (license_model == "concurrent-user-licenses")
-						{
-							session.response().body() = json::serializer::serialize(
-															to_json(instance.concurrent_user_licenses_.at(product_id)))
-															.str();
-						}
-
-						session.response().type("json");
-					}
-				});
-
-            S::router_.on_post(
-				"/license/:instance/model/named-user/:product-id/:user-name",
-				[this](http::session_handler& session, const http::api::params& params) {});
-
-            S::router_.on_put(
-				"/license/:instance/model/named-user/:product-id/:user-name",
-				[this](http::session_handler& session, const http::api::params& params) {});
-
-            S::router_.on_delete(
-				"/license/:instance/model/named-user/:product-id/:user-name",
-				[this](http::session_handler& session, const http::api::params& params) {});
+					session.response().body() = json::serializer::serialize(return_json).str();
+					session.response().type("json");
+					
+			});
 
 			// Allocation routes...
             S::router_.on_get(
@@ -568,75 +507,9 @@ public:
 		this->api_server_.start_server();
 	}
 
-
 	const instances& get_instances() { return instances_; }
 
-	void add_test_routes()
-	{
-
-		for (int i = 0; i <= 1000; i++)
-		{
-			std::string test_route = "/key-value-store/";
-			test_route += "test_";
-			test_route += std::to_string(i);
-			test_route += "/:key";
-
-			api_server_.router_.on_put(
-				test_route, [this, i](http::session_handler& session, const http::api::params& params) {
-					auto key = std::to_string(i) + params.get("key");
-
-					if (key.empty())
-					{
-						session.response().result(http::status::bad_request);
-					}
-					else
-					{
-						std::lock_guard<std::mutex> g(key_value_store_mutex_);
-
-						try
-						{
-							// std::cout << key << "\n";
-							key_value_store_[key] = session.request().body();
-							session.response().result(http::status::created);
-						}
-						catch (...)
-						{
-							session.response().result(http::status::not_found);
-						}
-					}
-				});
-
-			api_server_.router_.on_get(
-				test_route, [this, i](http::session_handler& session, const http::api::params& params) {
-					auto key = std::to_string(i) + params.get("key");
-
-					if (key.empty())
-					{
-						session.response().result(http::status::not_found);
-					}
-					else
-					{
-						std::lock_guard<std::mutex> g(key_value_store_mutex_);
-
-						auto value = key_value_store_.find(key);
-
-						if (value != key_value_store_.end())
-						{
-							session.response().body() = value->second;
-						}
-						else
-						{
-							session.response().result(http::status::not_found);
-						}
-					}
-				});
-		}
-	}
-
 private:
-	std::unordered_map<std::string, std::string> key_value_store_;
-	std::mutex key_value_store_mutex_;
-
 	http::configuration configuration_;
 	api_server api_server_;
 	std::string home_dir_;
@@ -807,12 +680,12 @@ int main(int argc, char* argv[])
 
 	license_server.start_server();
 
-	license_server.add_test_routes();
+//	license_server.add_test_routes();
 
 	network::init();
 	while (1)
 	{
-//		load_test();
+		//load_test();
         std::this_thread::sleep_for(10s);
 	}
 }

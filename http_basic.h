@@ -216,7 +216,7 @@ enum empties_t
 };
 };
 
-template <typename T> T& split(T& result, const typename T::value_type& s, const typename T::value_type& delimiters, split_opt::empties_t empties = split_opt::empties_ok)
+template <typename T> T& split_(T& result, const typename T::value_type& s, const typename T::value_type& delimiters, split_opt::empties_t empties = split_opt::empties_ok)
 {
 	result.clear();
 	typename T::size_type next = T::value_type::npos;
@@ -236,6 +236,32 @@ template <typename T> T& split(T& result, const typename T::value_type& s, const
 	} while (next != T::value_type::npos);
 	return result;
 }
+
+std::vector<std::string> split(const std::string& str, const std::string& delimiters)
+{
+    std::vector<std::string> output;
+
+	output.reserve(str.size()/2);
+
+    auto first = std::cbegin(str);
+
+    while (first != std::cend(str))
+    {
+        const auto second = std::find_first_of(first, std::cend(str), 
+                  std::cbegin(delimiters), std::cend(delimiters));
+
+        if (first != second)
+            output.emplace_back(first, second);
+
+        if (second == std::cend(str))
+            break;
+
+        first = std::next(second);
+    }
+
+    return output;
+}
+
 
 bool read_from_disk(const std::string& file_path, const std::function<bool(std::array<char, 8192>&, size_t)>& read)
 {
@@ -1195,9 +1221,10 @@ public:
 	template <typename router_t> void handle_request(router_t& router_)
 	{
 		std::string request_path;
+
 		response_.type("text");
 		response_.result(http::status::ok);
-		response_.set("Server", configuration_.get<std::string>("server", "a http server 0.0"));
+		response_.set("Server", configuration_.get<std::string>("server", "http server 0.0"));
 
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
@@ -1224,16 +1251,12 @@ public:
 
 		if (query_pos != std::string::npos)
 		{
-			std::vector<std::string> tokens;
-
-			http::util::split(tokens, request_path.substr(query_pos + 1), "&");
+			std::vector<std::string> tokens = http::util::split(request_path.substr(query_pos + 1), "&");
 
 			request_path = request_path.substr(0, query_pos);
 			for (auto& token : tokens)
 			{
-				std::vector<std::string> name_value;
-
-				http::util::split(name_value, token, "=");
+				std::vector<std::string> name_value = http::util::split(token, "=");
 
 				std::string name_decoded = http::request_parser::url_decode(name_value[0]);
 				std::string value_decoded = http::request_parser::url_decode(name_value[1]);
@@ -2130,8 +2153,8 @@ public:
 				if ((parse_result == http::request_parser::result_type::good) || (parse_result == http::request_parser::result_type::bad))
 				{
 
-					request_data().clear();
-					response_data().clear();
+					//request_data().clear();
+					//response_data().clear();
 
 					if (parse_result == http::request_parser::result_type::good)
 					{
@@ -2209,11 +2232,11 @@ public:
 		int connection_timeout_;
 		size_t gzip_min_length_;
 
-		std::vector<char> data_request_;
+/*		std::vector<char> data_request_;
 		std::vector<char> data_response_;
 
 		std::vector<char>& request_data() { return data_request_; }
-		std::vector<char>& response_data() { return data_response_; }
+		std::vector<char>& response_data() { return data_response_; }*/
 
 		void reset_session()
 		{

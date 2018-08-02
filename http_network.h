@@ -431,7 +431,7 @@ namespace network
 				endpoint_ = &endpoint;
 
 				int use_portsharding = 1;
-				ret = ::setsockopt(endpoint_->socket(), SOL_SOCKET, SO_REUSEPORT, (char*)&use_portsharding, sizeof(use_portsharding));
+
 				ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
 
 				if (ret == -1)
