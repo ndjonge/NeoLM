@@ -200,9 +200,11 @@ public:
 		, hostname_(hostname)
 		, sequence_id_(sequence_id)
 		, number_(number)
+		, last_confirm_(0)
 		{
 		}
 
+		friend class instance;
 	private:
 		std::string id_;
 		std::string parameter_;
@@ -210,6 +212,7 @@ public:
 		std::string hostname_;
 		std::int32_t sequence_id_;
 		std::int32_t number_;
+		std::int64_t last_confirm_;
 	};
 
 	json::object request_license(json::object& request_license, std::string hostname)
@@ -233,6 +236,48 @@ public:
 
 		return ret;
 	}
+
+	json::object confirm_license(json::object& confirm_info, std::string hostname)
+	{
+		json::object ret;
+
+		std::string id = json::get<std::string>(confirm_info["id"]);
+		std::string parameter = json::get<std::string>(confirm_info["parameter"]);
+		std::string tag = json::get<std::string>(confirm_info["tag"]);
+
+		std::int32_t number = 0;
+		
+		std::stringstream s;
+
+		s << id << parameter << hostname << sequence_++ << number;
+
+		auto i = licenses_aquired_.at(std::string(s.str()));
+
+		i.last_confirm_ = static_cast<std::int64_t>(std::time(0));
+
+		return ret;
+	}
+
+
+	json::object release_license(json::object& release_info, std::string hostname)
+	{
+		json::object ret;
+
+		std::string id = json::get<std::string>(release_info["id"]);
+		std::string parameter = json::get<std::string>(release_info["parameter"]);
+		std::string tag = json::get<std::string>(release_info["tag"]);
+
+		std::int32_t number = 0;
+		
+		std::stringstream s;
+
+		s << id << parameter << hostname << sequence_++ << number;
+
+		auto i = licenses_aquired_.erase(s.str());
+
+		return ret;
+	}
+
 
 	std::unordered_map<std::string, license_aquired> licenses_aquired_;
 };
@@ -397,10 +442,11 @@ private:
 				
 			});
 
-            S::router_.on_get(
+
+			S::router_.on_put(
 				"/licenses/:product-id/acquisition",
 				[this](http::session_handler& session, const http::api::params& params) {
-					
+					// refresh --> put
 					std::string instance_id = session.request().get("instance");
 
 					if (instance_id.empty())
@@ -421,39 +467,55 @@ private:
 					
 			});
 
-			// Allocation routes...
-            S::router_.on_get(
-				"/license/:instance/allocation/named-user/:product-id/:user-name",
-				[this](http::session_handler& session, const http::api::params& params) {});
+			S::router_.on_post(
+				"/licenses/:product-id/acquisition/:license-id",
+				[this](http::session_handler& session, const http::api::params& params) {
+					// request --> put					
+					std::string instance_id = session.request().get("instance");
 
-            S::router_.on_post(
-				"/license/:instance/allocation/named-user/:product-id/:user-name",
-				[this](http::session_handler& session, const http::api::params& params) {});
+					if (instance_id.empty())
+					{				
+						instance_id = "main";
+					}
 
-            S::router_.on_put(
-				"/license/:instance/allocation/named-user/:product-id/:user-name",
-				[this](http::session_handler& session, const http::api::params& params) {});
+					const std::string& product_id = params.get("product-id");
 
-            S::router_.on_delete(
-				"/license/:instance/allocation/named-user/:product-id/:user-name",
-				[this](http::session_handler& session, const http::api::params& params) {});
+					auto instance = license_manager_.get_instances().at(instance_id);
 
-			// Acquired routes...
-            S::router_.on_get(
-				"/license/:instance/acquired/named-user/:product-id/:user-name",
-				[this](http::session_handler& session, const http::api::params& params) {});
+					auto request_json = json::parser::parse(session.request().body());
 
-            S::router_.on_post(
-				"/license/:instance/acquired/named-user/:product-id/:user-name",
-				[this](http::session_handler& session, const http::api::params& params) {});
+					auto return_json = instance.request_license(request_json.get_object(), session.request().get("Remote_Addr"));
 
-            S::router_.on_put(
-				"/license/:instance/acquired/named-user/:product-id/:user-name",
-				[this](http::session_handler& session, const http::api::params& params) {});
+					session.response().body() = json::serializer::serialize(return_json).str();
+					session.response().type("json");
+					
+			});
 
-            S::router_.on_delete(
-				"/license/:instance/acquired/named-user/:product-id/:user-name",
-				[this](http::session_handler& session, const http::api::params& params) {});
+
+			S::router_.on_delete(
+				"/licenses/:product-id/acquisition/:license-id",
+				[this](http::session_handler& session, const http::api::params& params) {
+					
+					std::string instance_id = session.request().get("instance");
+
+					if (instance_id.empty())
+					{				
+						instance_id = "main";
+					}
+
+					const std::string& product_id = params.get("product-id");
+
+					auto instance = license_manager_.get_instances().at(instance_id);
+
+					auto request_json = json::parser::parse(session.request().body());
+
+					auto return_json = instance.release_license(request_json.get_object(), session.request().get("Remote_Addr"));
+
+					session.response().body() = json::serializer::serialize(return_json).str();
+					session.response().type("json");
+					
+			});
+
 
             S::router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) {
                 S::server_info_.server_information(S::configuration_.to_string());
@@ -468,6 +530,7 @@ private:
 		friend class license_manager;
 		license_manager& license_manager_;
 	};
+
 
 public:
 public:
