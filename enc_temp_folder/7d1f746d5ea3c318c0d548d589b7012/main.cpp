@@ -499,22 +499,20 @@ private:
 			S::router_.on_put(
 				"/licenses/:product-id/acquisition",
 				[this](http::session_handler& session, const http::api::params& params) {
-				
-					// 0 - Validate
+					// refresh --> put
 					std::string instance_id = session.request().get("instance");
-					const std::string& product_id = params.get("product-id");
 
 					if (instance_id.empty())
 					{				
 						instance_id = "main";
 					}
 
+					const std::string& product_id = params.get("product-id");
+
 					auto instance = license_manager_.get_instances().at(instance_id);
 
-					// 1 - Process
 					auto request_json = json::parser::parse(session.request().body());
 
-					// 2 - Return result
 					auto return_json = instance.request_license(request_json.get_object(), session.request().get("Remote_Addr"));
 
 					session.response().body() = json::serializer::serialize(return_json).str();
