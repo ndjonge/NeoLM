@@ -216,6 +216,18 @@ public:
 		std::int64_t last_confirm_;
 	};
 
+	/*
+	request_license --> audit_trail --> audit_trail_hash
+	confirm_license --> audit_trail --> audit_trail_hash
+	confirm_license --> audit_trail --> audit_trail_hash
+	confirm_license --> audit_trail --> audit_trail_hash
+	confirm_license --> audit_trail --> audit_trail_hash
+	confirm_license --> audit_trail --> audit_trail_hash
+	release_license --> audit_trail --> audit_trail_hash
+	*/
+
+
+
 	json::object about_license(std::string license_id)
 	{
 		json::object ret;
@@ -237,12 +249,13 @@ public:
 	{
 		json::object ret;
 
+		std::int32_t number = 0;
+
 		std::string id = json::get<std::string>(request_license["id"]);
 		std::string parameter = json::get<std::string>(request_license["parameter"]);
 		std::string tag = json::get<std::string>(request_license["tag"]);
 
-		std::int32_t number = 0;
-		
+
 		std::stringstream s;
 
 		s << id << parameter << hostname << sequence_++ << number;
@@ -251,6 +264,7 @@ public:
 			std::make_pair(
 				std::string(s.str()), 
 				license_aquired(id, parameter, tag, "",0 ,0, 0)));
+
 
 
 		ret.emplace("id", s.str());
