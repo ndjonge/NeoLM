@@ -245,29 +245,28 @@ public:
 		return ret;
 	}
 
-	json::object request_license(json::object& request_license, std::string hostname)
+	json::object request_license(const std::string& product_id, json::object& request_license, std::string hostname)
 	{
 		json::object ret;
 
-		std::int32_t number = 0;
-
-		std::string id = json::get<std::string>(request_license["id"]);
 		std::string parameter = json::get<std::string>(request_license["parameter"]);
 		std::string tag = json::get<std::string>(request_license["tag"]);
 
-
 		std::stringstream s;
 
-		s << id << parameter << hostname << sequence_++ << number;
+		s << product_id << "/" << parameter <<  "/" << hostname <<  "/" << sequence_++;
+
+		auto hash = std::hash<std::string>{}(s.str());
 
 		auto i = licenses_aquired_.emplace(
 			std::make_pair(
-				std::string(s.str()), 
-				license_aquired(id, parameter, tag, "",0 ,0, 0)));
+				std::to_string(hash), 
+				license_aquired(product_id, parameter, tag, "", 0 ,sequence_, 0)));
 
 
 
-		ret.emplace("id", s.str());
+		ret.emplace("license_id:", std::to_string(hash));
+		ret.emplace("license_request:", s.str());
 
 		return ret;
 	}
@@ -523,13 +522,13 @@ private:
 						instance_id = "main";
 					}
 
-					auto instance = license_manager_.get_instances().at(instance_id);
+					auto& instance = license_manager_.get_instances().at(instance_id);
 
 					// 1 - Process
 					auto request_json = json::parser::parse(session.request().body());
 
 					// 2 - Return result
-					auto return_json = instance.request_license(request_json.get_object(), session.request().get("Remote_Addr"));
+					auto return_json = instance.request_license(product_id, request_json.get_object(), session.request().get("Remote_Addr"));
 
 					session.response().body() = json::serializer::serialize(return_json).str();
 					session.response().type("json");
@@ -553,7 +552,7 @@ private:
 
 					auto request_json = json::parser::parse(session.request().body());
 
-					auto return_json = instance.request_license(request_json.get_object(), session.request().get("Remote_Addr"));
+					auto return_json = instance.confirm_license(request_json.get_object(), session.request().get("Remote_Addr"));
 
 					session.response().body() = json::serializer::serialize(return_json).str();
 					session.response().type("json");
@@ -639,7 +638,7 @@ public:
 		this->api_server_.start_server();
 	}
 
-	const instances& get_instances() { return instances_; }
+	instances& get_instances() { return instances_; }
 
 private:
 	http::configuration configuration_;
