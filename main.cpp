@@ -187,32 +187,34 @@ public:
 	{
 	public:
 		license_aquired(
-			std::string id,
-			std::string parameter,
-			std::string tag,
-			std::string hostname,
-			std::int32_t process_id,
-			std::int32_t sequence_id,
-			std::int32_t number) 	
-		: id_(id)
-		, parameter_(parameter)
-		, process_id_(process_id)
-		, hostname_(hostname)
-		, sequence_id_(sequence_id)
-		, number_(number)
+			json::object& request_license) 	
+		: product_id_(json::get<std::string>(request_license["product_id"]))
+		, parameter_(json::get<std::string>(request_license["parameter"]))
+		, tag_(json::get<std::string>(request_license["tag"]))
+		, hostname_(json::get<std::string>(request_license["hostname"]))
+		, sequence_id_(1)
 		, last_confirm_(0)
 		{
 		}
 
+		const std::string as_id() const
+		{
+			std::stringstream s;
+
+			s << product_id_ << "/" << parameter_ <<  "/" << hostname_ <<  "/" << sequence_id_;
+
+			return s.str();
+		}
+
+
 		friend class instance;
 		friend json::value to_json(const instance::license_aquired& license_aquired);
 	private:
-		std::string id_;
+		std::string product_id_;
 		std::string parameter_;
-		std::int32_t process_id_;
+		std::string tag_;
 		std::string hostname_;
 		std::int32_t sequence_id_;
-		std::int32_t number_;
 		std::int64_t last_confirm_;
 	};
 
@@ -228,6 +230,7 @@ public:
 
 
 
+
 	json::object about_license(std::string license_id)
 	{
 		json::object ret;
@@ -237,36 +240,25 @@ public:
 		ret.emplace("id", license_id);
 		ret.emplace("hostname", i.hostname_);
 		ret.emplace("last-confirm", i.last_confirm_);
-		ret.emplace("number", i.number_);
 		ret.emplace("parameter", i.parameter_);
-		ret.emplace("process-id", i.process_id_);
 		ret.emplace("sequence", i.sequence_id_);
 
 		return ret;
 	}
 
-	json::object request_license(const std::string& product_id, json::object& request_license, std::string hostname)
+	json::object request_license(json::object& request_license)
 	{
 		json::object ret;
 
-		std::string parameter = json::get<std::string>(request_license["parameter"]);
-		std::string tag = json::get<std::string>(request_license["tag"]);
+		license_aquired license_aquired(request_license);
 
-		std::stringstream s;
-
-		s << product_id << "/" << parameter <<  "/" << hostname <<  "/" << sequence_++;
-
-		auto hash = std::hash<std::string>{}(s.str());
+		ret.emplace("license_id:", license_aquired.as_id());
 
 		auto i = licenses_aquired_.emplace(
 			std::make_pair(
-				std::to_string(hash), 
-				license_aquired(product_id, parameter, tag, "", 0 ,sequence_, 0)));
+				license_aquired.as_id(), 
+				std::move(license_aquired)));
 
-
-
-		ret.emplace("license_id:", std::to_string(hash));
-		ret.emplace("license_request:", s.str());
 
 		return ret;
 	}
@@ -320,7 +312,7 @@ json::value to_json(const instance::license_aquired& license_aquired)
 {
 	json::object ret;
 
-	ret.emplace(std::string("id"), json::string(license_aquired.id_));
+	ret.emplace("license_id", license_aquired.as_id());
 
 	return ret;
 }
@@ -528,7 +520,11 @@ private:
 					auto request_json = json::parser::parse(session.request().body());
 
 					// 2 - Return result
-					auto return_json = instance.request_license(product_id, request_json.get_object(), session.request().get("Remote_Addr"));
+
+					request_json.get_object().emplace("product_id", product_id);
+					request_json.get_object().emplace("hostname", session.request().get("Remote_Addr"));
+
+					auto return_json = instance.request_license(request_json.get_object());
 
 					session.response().body() = json::serializer::serialize(return_json).str();
 					session.response().type("json");
