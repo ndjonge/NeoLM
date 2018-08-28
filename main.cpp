@@ -203,7 +203,9 @@ public:
 
 			s << product_id_ << "/" << parameter_ <<  "/" << hostname_ <<  "/" << sequence_id_;
 
-			return s.str();
+			auto h = std::hash<std::string>{}(s.str());
+
+			return std::to_string(h);
 		}
 
 
@@ -263,43 +265,29 @@ public:
 		return ret;
 	}
 
-	json::object confirm_license(json::object& confirm_info, std::string hostname)
+	json::object confirm_license(std::string license_id)
 	{
 		json::object ret;
 
-		std::string id = json::get<std::string>(confirm_info["id"]);
-		std::string parameter = json::get<std::string>(confirm_info["parameter"]);
-		std::string tag = json::get<std::string>(confirm_info["tag"]);
+		auto i = licenses_aquired_.at(std::string(license_id));
 
-		std::int32_t number = 0;
-		
-		std::stringstream s;
+		i.last_confirm_ += 600;
 
-		s << id << parameter << hostname << sequence_++ << number;
-
-		auto i = licenses_aquired_.at(std::string(s.str()));
-
-		i.last_confirm_ = static_cast<std::int64_t>(std::time(0));
+		ret.emplace("id", license_id);
+		ret.emplace("last-confirm", i.last_confirm_);
 
 		return ret;
 	}
 
 
-	json::object release_license(json::object& release_info, std::string hostname)
+	json::object release_license(std::string license_id)
 	{
 		json::object ret;
 
-		std::string id = json::get<std::string>(release_info["id"]);
-		std::string parameter = json::get<std::string>(release_info["parameter"]);
-		std::string tag = json::get<std::string>(release_info["tag"]);
+		auto i = licenses_aquired_.erase(std::string(license_id));
 
-		std::int32_t number = 0;
-		
-		std::stringstream s;
-
-		s << id << parameter << hostname << sequence_++ << number;
-
-		auto i = licenses_aquired_.erase(s.str());
+		ret.emplace("id", license_id);
+		ret.emplace("in-use-duration", "0");
 
 		return ret;
 	}
@@ -483,7 +471,7 @@ private:
 				[this](http::session_handler& session, const http::api::params& params) {
 					// refresh --> put
 					std::string instance_id = session.request().get("instance");
-					std::string license_id = session.request().get("license-id");
+					const std::string& license_id = params.get("license-id");
 
 					if (instance_id.empty())
 					{				
@@ -534,8 +522,8 @@ private:
 			S::router_.on_post(
 				"/licenses/:product-id/acquisition/:license-id",
 				[this](http::session_handler& session, const http::api::params& params) {
-					// request --> put					
 					std::string instance_id = session.request().get("instance");
+					const std::string& license_id = params.get("license-id");
 
 					if (instance_id.empty())
 					{				
@@ -546,21 +534,18 @@ private:
 
 					auto instance = license_manager_.get_instances().at(instance_id);
 
-					auto request_json = json::parser::parse(session.request().body());
-
-					auto return_json = instance.confirm_license(request_json.get_object(), session.request().get("Remote_Addr"));
+					auto return_json = instance.confirm_license(license_id);
 
 					session.response().body() = json::serializer::serialize(return_json).str();
-					session.response().type("json");
-					
+					session.response().type("json");					
 			});
 
 
 			S::router_.on_delete(
 				"/licenses/:product-id/acquisition/:license-id",
 				[this](http::session_handler& session, const http::api::params& params) {
-					
 					std::string instance_id = session.request().get("instance");
+					const std::string& license_id = params.get("license-id");
 
 					if (instance_id.empty())
 					{				
@@ -571,13 +556,10 @@ private:
 
 					auto instance = license_manager_.get_instances().at(instance_id);
 
-					auto request_json = json::parser::parse(session.request().body());
-
-					auto return_json = instance.release_license(request_json.get_object(), session.request().get("Remote_Addr"));
+					auto return_json = instance.release_license(license_id);
 
 					session.response().body() = json::serializer::serialize(return_json).str();
-					session.response().type("json");
-					
+					session.response().type("json");					
 			});
 
 
