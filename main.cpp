@@ -237,7 +237,7 @@ public:
 	{
 		json::object ret;
 
-		auto i = licenses_aquired_.at(std::string(license_id));
+		auto i = licenses_aquired_.at(license_id);
 
 		ret.emplace("id", license_id);
 		ret.emplace("hostname", i.hostname_);
@@ -269,7 +269,7 @@ public:
 	{
 		json::object ret;
 
-		auto i = licenses_aquired_.at(std::string(license_id));
+		auto& i = licenses_aquired_.at(std::string(license_id));
 
 		i.last_confirm_ += 600;
 
@@ -284,7 +284,7 @@ public:
 	{
 		json::object ret;
 
-		auto i = licenses_aquired_.erase(std::string(license_id));
+		auto i = licenses_aquired_.erase(license_id);
 
 		ret.emplace("id", license_id);
 		ret.emplace("in-use-duration", "0");
