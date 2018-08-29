@@ -237,13 +237,19 @@ public:
 	{
 		json::object ret;
 
-		auto i = licenses_aquired_.at(license_id);
+		try 
+		{	
+			auto& i = licenses_aquired_.at(license_id);
 
-		ret.emplace("id", license_id);
-		ret.emplace("hostname", i.hostname_);
-		ret.emplace("last-confirm", i.last_confirm_);
-		ret.emplace("parameter", i.parameter_);
-		ret.emplace("sequence", i.sequence_id_);
+			ret.emplace("id", license_id);
+			ret.emplace("hostname", i.hostname_);
+			ret.emplace("last-confirm", i.last_confirm_);
+			ret.emplace("parameter", i.parameter_);
+			ret.emplace("sequence", i.sequence_id_);
+		}
+		catch (const std::out_of_range&) 
+		{
+		}
 
 		return ret;
 	}
@@ -286,9 +292,12 @@ public:
 
 		auto i = licenses_aquired_.erase(license_id);
 
-		ret.emplace("id", license_id);
-		ret.emplace("in-use-duration", "0");
-
+		if (i > 0)
+		{
+			ret.emplace("id", license_id);
+			ret.emplace("in-use-duration", "0");
+		}
+	
 		return ret;
 	}
 
@@ -532,9 +541,9 @@ private:
 
 					const std::string& product_id = params.get("product-id");
 
-					auto instance = license_manager_.get_instances().at(instance_id);
+					auto& instance = license_manager_.get_instances().at(instance_id);
 
-					auto return_json = instance.confirm_license(license_id);
+					auto& return_json = instance.confirm_license(license_id);
 
 					session.response().body() = json::serializer::serialize(return_json).str();
 					session.response().type("json");					
@@ -554,9 +563,9 @@ private:
 
 					const std::string& product_id = params.get("product-id");
 
-					auto instance = license_manager_.get_instances().at(instance_id);
+					auto& instance = license_manager_.get_instances().at(instance_id);
 
-					auto return_json = instance.release_license(license_id);
+					auto& return_json = instance.release_license(license_id);
 
 					session.response().body() = json::serializer::serialize(return_json).str();
 					session.response().type("json");					
