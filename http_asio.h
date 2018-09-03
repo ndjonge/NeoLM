@@ -118,8 +118,8 @@ namespace async
 						else
 						{
 							session_handler_.handle_request(server_.router_);
-							server_.server_status().requests_handled(server_.server_status().requests_handled() + 1);
-							server_.server_status().log_access(session_handler_);
+							server_.manager().requests_handled(server_.manager().requests_handled() + 1);
+							server_.manager().log_access(session_handler_);
 
 							do_write_header();
 						}
@@ -190,8 +190,8 @@ namespace async
 				if (!ec)
 				{
 					session_handler_.handle_request(server_.router_);
-					server_.server_status().requests_handled(server_.server_status().requests_handled() + 1);
-					server_.server_status().log_access(session_handler_);
+					server_.manager().requests_handled(server_.manager().requests_handled() + 1);
+					server_.manager().log_access(session_handler_);
 
 					do_write_header();
 				}
@@ -474,9 +474,9 @@ namespace async
 				return;
 			}
 
-			auto current_connections = server_status().connections_current();
-			server_status().connections_accepted(server_status().connections_accepted() + 1);
-			server_status().connections_current(current_connections + 1);
+			auto current_connections = server_manager().connections_current();
+			server_manager().connections_accepted(server_manager().connections_accepted() + 1);
+			server_manager().connections_current(current_connections + 1);
 
 			handler->start();
 

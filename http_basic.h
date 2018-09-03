@@ -1395,7 +1395,7 @@ private:
 using session_handler_type = http::session_handler;
 
 using route_function_t = std::function<void(session_handler_type& session, const http::api::params& params)>;
-using middleware_function_t = std::function<void(session_handler_type& session, const http::api::params& params)>;
+using middleware_function_t = std::function<bool(session_handler_type& session, const http::api::params& params)>;
 
 template <typename R = route_function_t> class route
 {
@@ -1528,7 +1528,7 @@ public:
 		// route: /route/:param1/subroute/:param2/subroute
 		// url:   /route/parameter
 
-		std::string url = url_requested.substr(0, url.find_first_of('?'));
+		std::string url = url_requested.substr(0, url_requested.find_first_of('?'));
 
 		if (url.find(route_) == 0) // url starts with route
 		{
@@ -1654,8 +1654,7 @@ public:
 
 			if (middleware.match(session.request().target(), params_))
 			{
-				result = true;
-				middleware.endpoint_(session, params_);
+				result = middleware.endpoint_(session, params_);
 			}
 		}
 
@@ -1739,7 +1738,7 @@ public:
 
 	void close_session(session_data* session) { session_datas_.erase(std::find(std::begin(session_datas_), std::end(session_datas_), session)); };
 
-	class server_info
+	class server_manager
 	{
 	private:
 		std::string server_information_;
@@ -1753,7 +1752,7 @@ public:
 		std::mutex mutex_;
 
 	public:
-		server_info() noexcept
+		server_manager() noexcept
 			: server_information_("")
 			, router_information_("")
 			, requests_handled_(0)
@@ -1863,10 +1862,10 @@ public:
 		}
 	};
 
-	server_info& server_status() { return server_info_; }
+	server_manager& manager() { return manager_; }
 
 protected:
-	server_info server_info_;
+	server_manager manager_;
 	std::deque<session_data*> session_datas_;
 	http::api::router<> router_;
 	http::configuration& configuration_;
@@ -1898,8 +1897,8 @@ public:
 		network::init();
 		network::ssl::init();
 
-		server_info_.server_information(http::basic::server::configuration_.to_string());
-		server_info_.router_information(http::basic::server::router_.to_string());
+		manager_.server_information(http::basic::server::configuration_.to_string());
+		manager_.router_information(http::basic::server::router_.to_string());
 
 		std::thread http_connection_thread([this]() { http_listener_handler(); });
 		// al_so_create(&sync_, AL_SYNC_TYPE_SEMAPHORE|AL_SYNC_LOCKED, FALSE);
@@ -1958,9 +1957,9 @@ public:
 				network::timeout(https_socket.lowest_layer(), connection_timeout_);
 				https_socket.handshake(network::ssl::stream_base::server);
 
-				auto current_connections = server_status().connections_current();
-				server_status().connections_accepted(server_status().connections_accepted() + 1);
-				server_status().connections_current(current_connections + 1);
+				auto current_connections = manager().connections_current();
+				manager().connections_accepted(server_manager().connections_accepted() + 1);
+				manager().connections_current(current_connections + 1);
 
 				if (current_connections < thread_count_)
 				{
@@ -1969,7 +1968,7 @@ public:
 					connection_thread.detach();
 				}
 				{
-					while (server_status().connections_current() >= thread_count_)
+					while (server_manager().connections_current() >= thread_count_)
 					{
 						std::this_thread::yield();
 					}
@@ -2043,9 +2042,9 @@ public:
 				network::timeout(http_socket, connection_timeout_);
 				network::tcp_nodelay(http_socket, 1);
 
-				auto current_connections = server_status().connections_current();
-				server_status().connections_accepted(server_status().connections_accepted() + 1);
-				server_status().connections_current(current_connections + 1);
+				auto current_connections = server_manager().connections_current();
+				server_manager().connections_accepted(server_manager().connections_accepted() + 1);
+				server_manager().connections_current(current_connections + 1);
 
 				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 				connection_thread.detach();
@@ -2077,7 +2076,7 @@ public:
 		{
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
-			server_.server_status().connections_current(server_.server_status().connections_current() - 1);
+			server_.manager().connections_current(server_.manager().connections_current() - 1);
 		}
 
 		void proceed()
@@ -2160,8 +2159,8 @@ public:
 					{
 						session_handler_.request().set("Remote_Addr", network::get_client_info(client_socket_));
 						session_handler_.handle_request(server_.router_);
-						server_.server_status().requests_handled(server_.server_status().requests_handled() + 1);
-						server_.server_status().log_access(session_handler_);
+						server_.manager().requests_handled(server_.manager().requests_handled() + 1);
+						server_.manager().log_access(session_handler_);
 					}
 					else
 					{

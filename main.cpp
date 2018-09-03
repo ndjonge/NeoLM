@@ -220,19 +220,6 @@ public:
 		std::int64_t last_confirm_;
 	};
 
-	/*
-	request_license --> audit_trail --> audit_trail_hash
-	confirm_license --> audit_trail --> audit_trail_hash
-	confirm_license --> audit_trail --> audit_trail_hash
-	confirm_license --> audit_trail --> audit_trail_hash
-	confirm_license --> audit_trail --> audit_trail_hash
-	confirm_license --> audit_trail --> audit_trail_hash
-	release_license --> audit_trail --> audit_trail_hash
-	*/
-
-
-
-
 	json::object about_license(std::string license_id)
 	{
 		json::object ret;
@@ -451,6 +438,10 @@ private:
             S::router_.use("/files/");
 			// License instance configuration routes..
 
+			S::router_.use("/", [this](http::session_handler& session, const http::api::params& params) {
+				return false;
+			});
+
 			S::router_.on_get(
 				"/licenses/configuration", [this](http::session_handler& session, const http::api::params& params) {
 
@@ -573,11 +564,12 @@ private:
 
 
             S::router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) {
-                S::server_info_.server_information(S::configuration_.to_string());
-                S::server_info_.router_information(S::router_.to_string());
-                session.response().body() = S::server_info_.to_string();
+                S::server_manager().server_information(S::configuration_.to_string());
+                S::server_manager().router_information(S::router_.to_string());
+                session.response().body() = S::server_manager().to_string();
                 session.response().type("text");
 			});
+			
 		}
 
 
