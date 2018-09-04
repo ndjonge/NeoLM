@@ -1280,7 +1280,6 @@ public:
 		}
 		else
 		{
-			response_.result(http::status::bad_request);
 		}
 
 		if (response_.body().empty())
@@ -1762,6 +1761,13 @@ public:
 		{
 			access_log_.reserve(32);
 		};
+
+		bool too_busy()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+
+			return true;
+		}
 
 		size_t requests_handled()
 		{

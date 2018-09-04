@@ -439,7 +439,15 @@ private:
 			// License instance configuration routes..
 
 			S::router_.use("/", [this](http::session_handler& session, const http::api::params& params) {
-				return false;
+				bool result = true;
+
+				if (server_manager().too_busy())
+				{
+					session.response().result(http::status::service_unavailable);
+					result = false;
+				}
+
+				return result;
 			});
 
 			S::router_.on_get(
