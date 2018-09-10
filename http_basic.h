@@ -1717,7 +1717,15 @@ public:
 private:
 	std::vector<char> data_request_;
 	std::vector<char> data_response_;
+
+	std::chrono::high_resolution_clock::time_point start_of_session_handling;
+	std::chrono::high_resolution_clock::time_point start_of_endpoint_handling;
+
+	std::chrono::high_resolution_clock::time_point end_of_endpoint_handling;
+	std::chrono::high_resolution_clock::time_point end_of_session_handling;
+
 };
+
 
 class server
 {
