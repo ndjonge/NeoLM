@@ -441,7 +441,7 @@ private:
 			S::router_.use("/", [this](http::session_handler& session, const http::api::params& params) {
 				bool result = true;
 
-				if (server_manager().too_busy())
+				if (manager().too_busy())
 				{
 					session.response().result(http::status::service_unavailable);
 					result = false;
@@ -572,9 +572,9 @@ private:
 
 
             S::router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) {
-                S::server_manager().server_information(S::configuration_.to_string());
-                S::server_manager().router_information(S::router_.to_string());
-                session.response().body() = S::server_manager().to_string();
+                S::manager().server_information(S::configuration_.to_string());
+                S::manager().router_information(S::router_.to_string());
+                session.response().body() = S::manager().to_string();
                 session.response().type("text");
 			});
 			

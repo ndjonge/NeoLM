@@ -1284,8 +1284,14 @@ public:
 
 		if (response_.body().empty())
 		{
+			std::chrono::high_resolution_clock::time_point start_of_endpoint_handling = std::chrono::high_resolution_clock::now();
+			std::chrono::high_resolution_clock::time_point end_of_endpoint_handling = start_of_endpoint_handling_;
+		
 			if (router_.call_route(*this))
 			{
+				end_of_endpoint_handling_ = std::chrono::high_resolution_clock::now();
+
+
 				// Route has a valid handler, response body is set.
 				// Check bodys size and set headers.
 				response_.content_length(response_.body().length());
@@ -1335,6 +1341,7 @@ public:
 		{
 			response_.set("Connection", "close");
 		}
+
 	}
 
 	void keepalive_count(const int& keepalive_count) { keepalive_count_ = keepalive_count; };
@@ -1362,6 +1369,13 @@ private:
 
 	int keepalive_count_;
 	int keepalive_max_;
+
+	std::chrono::high_resolution_clock::time_point start_of_session_handling_;
+
+	std::chrono::high_resolution_clock::time_point start_of_endpoint_handling_;
+	std::chrono::high_resolution_clock::time_point end_of_endpoint_handling_;
+
+	std::chrono::high_resolution_clock::time_point end_of_session_handling_;
 };
 
 namespace api
@@ -1402,6 +1416,7 @@ public:
 	route(const std::string& route, R endpoint)
 		: route_(route)
 		, endpoint_(endpoint)
+		, processing_duration_(0)
 	{
 		size_t b = route_.find_first_of("/");
 		size_t e = route_.find_first_of("/", b + 1);
@@ -1422,6 +1437,17 @@ public:
 	std::string route_;
 	R endpoint_;
 	std::vector<std::string> tokens_;
+	std::int64_t processing_duration_;
+
+	void processing_duration(std::int64_t new_processing_duration_)
+	{
+		processing_duration_ = new_processing_duration_;
+	}
+
+	const std::int64_t processing_duration() const 
+	{
+		return processing_duration_;
+	}
 
 	bool match(const std::string& url, params& params) const
 	{
@@ -1589,23 +1615,26 @@ public:
 	{
 		std::stringstream s;
 
-		std::map<std::string, std::string> m;
+		std::map<std::string, std::vector<std::string>> m;
 
 		for (auto& route : api_router_table["GET"])
-			m[route.route_] += "GET ";
+			m[route.route_].push_back("GET");
 
 		for (auto& route : api_router_table["POST"])
-			m[route.route_] += "POST ";
+			m[route.route_].push_back("POST");
 
 		for (auto& route : api_router_table["PUT"])
-			m[route.route_] += "PUT ";
+			m[route.route_].push_back("PUT");
 
 		for (auto& route : api_router_table["DELETE"])
-			m[route.route_] += "DELETE ";
+			m[route.route_].push_back("DELETE");
 
 		for (auto& l : m)
 		{
-			s << l.first << " [ " << l.second << "]\n";
+			for (auto& v : l.second)
+			{
+				s << l.first << " [" << v << "]\n";
+			}
 		}
 
 		return s.str();
@@ -1660,7 +1689,7 @@ public:
 		return result;
 	}
 
-	bool call_route(session_handler_type& session) const
+	bool call_route(session_handler_type& session)
 	{
 		auto& routes = api_router_table.at(session.request().method());
 
@@ -1676,7 +1705,13 @@ public:
 
 				if (route.match(url, params_))
 				{
+					auto t0 = std::chrono::system_clock::now(); 
 					route.endpoint_(session, params_);
+					auto t1 = std::chrono::system_clock::now(); 
+					
+					auto diff = t1 - t0;
+
+					route.processing_duration(static_cast<std::int64_t>(diff.count()));
 					return true;
 				}
 			}
@@ -1717,12 +1752,6 @@ public:
 private:
 	std::vector<char> data_request_;
 	std::vector<char> data_response_;
-
-	std::chrono::high_resolution_clock::time_point start_of_session_handling;
-	std::chrono::high_resolution_clock::time_point start_of_endpoint_handling;
-
-	std::chrono::high_resolution_clock::time_point end_of_endpoint_handling;
-	std::chrono::high_resolution_clock::time_point end_of_session_handling;
 
 };
 
@@ -1774,7 +1803,7 @@ public:
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 
-			return true;
+			return false;
 		}
 
 		size_t requests_handled()
