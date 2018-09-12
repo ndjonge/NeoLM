@@ -1615,27 +1615,28 @@ public:
 	{
 		std::stringstream s;
 
-		std::map<std::string, std::vector<std::string>> m;
-
+		std::map<std::string, api::route<route_function_t>*> m;
+		
 		for (auto& route : api_router_table["GET"])
-			m[route.route_].push_back("GET");
+			m[route.route_+"|GET"] = &route;
 
 		for (auto& route : api_router_table["POST"])
-			m[route.route_].push_back("POST");
+			m[route.route_+"|POST"] = &route;
 
 		for (auto& route : api_router_table["PUT"])
-			m[route.route_].push_back("PUT");
+			m[route.route_+"|PUT"] = &route;
 
 		for (auto& route : api_router_table["DELETE"])
-			m[route.route_].push_back("DELETE");
+			m[route.route_+"|DELETE"] = &route;
+
+		s << "{\n  \"endpoints\":  {";
 
 		for (auto& l : m)
 		{
-			for (auto& v : l.second)
-			{
-				s << "\"" << l.first << "|" << v << "\"\n";
-			}
+			s << "  \"" << l.first << "\":  {bla: \"bla\"\n}\n";
 		}
+
+		s << "}";
 
 		return s.str();
 	}
