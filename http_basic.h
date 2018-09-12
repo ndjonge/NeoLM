@@ -1633,7 +1633,7 @@ public:
 		{
 			for (auto& v : l.second)
 			{
-				s << l.first << " [" << v << "]\n";
+				s << "\"" << l.first << "|" << v << "\"\n";
 			}
 		}
 
