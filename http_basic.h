@@ -1213,6 +1213,7 @@ public:
 		: configuration_(configuration)
 		, keepalive_count_(configuration.get<int>("keepalive_count", 10))
 		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
+		, t0_(std::chrono::system_clock::now())
 	{
 	}
 
@@ -1284,13 +1285,13 @@ public:
 
 		if (response_.body().empty())
 		{
-			std::chrono::high_resolution_clock::time_point start_of_endpoint_handling = std::chrono::high_resolution_clock::now();
-			std::chrono::high_resolution_clock::time_point end_of_endpoint_handling = start_of_endpoint_handling_;
+			t0_ = std::chrono::system_clock::now();
+			t1_ = t0_;
 		
 			if (router_.call_route(*this))
 			{
-				end_of_endpoint_handling_ = std::chrono::high_resolution_clock::now();
-
+				//end_of_endpoint_handling_ = std::chrono::high_resolution_clock::now();
+//
 
 				// Route has a valid handler, response body is set.
 				// Check bodys size and set headers.
@@ -1356,10 +1357,15 @@ public:
 
 	void reset()
 	{
+		t0_ = std::chrono::system_clock::now();
+
 		request_parser_.reset();
 		request_.reset();
 		response_.reset();
 	}
+
+	std::chrono::system_clock::time_point t0_;
+
 
 private:
 	http::request_message request_;
@@ -1370,12 +1376,7 @@ private:
 	int keepalive_count_;
 	int keepalive_max_;
 
-	std::chrono::high_resolution_clock::time_point start_of_session_handling_;
-
-	std::chrono::high_resolution_clock::time_point start_of_endpoint_handling_;
-	std::chrono::high_resolution_clock::time_point end_of_endpoint_handling_;
-
-	std::chrono::high_resolution_clock::time_point end_of_session_handling_;
+	std::chrono::system_clock::time_point t1_;
 };
 
 namespace api
@@ -1416,7 +1417,6 @@ public:
 	route(const std::string& route, R endpoint)
 		: route_(route)
 		, endpoint_(endpoint)
-		, processing_duration_(0)
 	{
 		size_t b = route_.find_first_of("/");
 		size_t e = route_.find_first_of("/", b + 1);
@@ -1434,19 +1434,48 @@ public:
 		}
 	};
 
+	struct route_metrics
+	{
+		route_metrics() : request_latency_(0), processing_duration_(0), hit_count_(0) {}
+
+
+		std::int32_t request_latency_;
+		std::int32_t processing_duration_;
+		std::int32_t hit_count_;
+
+		std::string to_string()
+		{
+			std::stringstream s;
+
+			s << request_latency_ << ", " << processing_duration_ << ", " << hit_count_;
+
+			return s.str();
+		};
+	};
+
 	std::string route_;
 	R endpoint_;
 	std::vector<std::string> tokens_;
-	std::int64_t processing_duration_;
+	route_metrics metrics_;
+
+	void request_latency(std::int64_t request_duration)
+	{
+		metrics_.request_latency_ = request_duration;
+	}
 
 	void processing_duration(std::int64_t new_processing_duration_)
 	{
-		processing_duration_ = new_processing_duration_;
+		metrics_.processing_duration_ = static_cast<std::int32_t>(new_processing_duration_);
 	}
 
-	const std::int64_t processing_duration() const 
+	void increase_hitcount()
 	{
-		return processing_duration_;
+		metrics_.hit_count_++;
+	}
+
+	route_metrics& metrics() 
+	{
+		return metrics_;
 	}
 
 	bool match(const std::string& url, params& params) const
@@ -1629,14 +1658,12 @@ public:
 		for (auto& route : api_router_table["DELETE"])
 			m[route.route_+"|DELETE"] = &route;
 
-		s << "{\n  \"endpoints\":  {";
+
 
 		for (auto& l : m)
 		{
-			s << "  \"" << l.first << "\":  {bla: \"bla\"\n}\n";
+			s << "\"" << l.first << "\"," << l.second->metrics().to_string() << "\n";
 		}
-
-		s << "}";
 
 		return s.str();
 	}
@@ -1707,12 +1734,15 @@ public:
 				if (route.match(url, params_))
 				{
 					auto t0 = std::chrono::system_clock::now(); 
+
+					route.request_latency(static_cast<std::int64_t>((t0 - session.t0_).count()) );
+
 					route.endpoint_(session, params_);
 					auto t1 = std::chrono::system_clock::now(); 
 					
-					auto diff = t1 - t0;
 
-					route.processing_duration(static_cast<std::int64_t>(diff.count()));
+					route.processing_duration(static_cast<std::int64_t>((t1 - t0).count()));
+					route.increase_hitcount();
 					return true;
 				}
 			}
@@ -1896,7 +1926,7 @@ public:
 			s << "connections_current: " << connections_current_ << "\n";
 			s << "requests_handled: " << requests_handled_ << "\n";
 
-			s << "\nRouter:\n" << router_information_ << "\n";
+			s << "\nEndPoints:\n" << router_information_ << "\n";
 			s << "\nAccess Log:\n";
 
 			for (auto& access_log_entry : access_log_)
