@@ -1439,9 +1439,9 @@ public:
 		route_metrics() : request_latency_(0), processing_duration_(0), hit_count_(0) {}
 
 
-		std::int32_t request_latency_;
-		std::int32_t processing_duration_;
-		std::int32_t hit_count_;
+		std::int64_t request_latency_;
+		std::int64_t processing_duration_;
+		std::int64_t hit_count_;
 
 		std::string to_string()
 		{
@@ -2116,9 +2116,9 @@ public:
 				network::timeout(http_socket, connection_timeout_);
 				network::tcp_nodelay(http_socket, 1);
 
-				auto current_connections = server_manager().connections_current();
-				server_manager().connections_accepted(server_manager().connections_accepted() + 1);
-				server_manager().connections_current(current_connections + 1);
+				auto current_connections = manager().connections_current();
+				manager().connections_accepted(manager().connections_accepted() + 1);
+				manager().connections_current(current_connections + 1);
 
 				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 				connection_thread.detach();
