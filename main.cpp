@@ -12,7 +12,7 @@
 #include "http_basic.h"
 #include "http_asio.h"
 
-//#include "neolm.h"
+#include "neolm.h"
 //#include <nlohmann/json.hpp>
 //using json = nlohmann::json;
 
@@ -21,6 +21,14 @@ namespace http
 
 namespace cluster
 {
+	
+namespace haproxy
+{
+}
+
+namespace nginx
+{
+}
 
 }
 

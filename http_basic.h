@@ -1684,7 +1684,9 @@ public:
 		: doc_root_("/var/www"){};
 
 	router(const std::string& doc_root)
-		: doc_root_(doc_root){};
+		: doc_root_(doc_root)
+	{
+	};
 
 	std::string to_string()
 	{
@@ -1692,16 +1694,16 @@ public:
 
 		std::map<std::string, api::route<route_function_t>*> m;
 		
-		for (auto& route : api_router_table["GET"])
+		for (auto& route : on_gets_)
 			m[route.route_+"|GET"] = &route;
 
-		for (auto& route : api_router_table["POST"])
+		for (auto& route : on_posts_)
 			m[route.route_+"|POST"] = &route;
 
-		for (auto& route : api_router_table["PUT"])
+		for (auto& route : on_puts_)
 			m[route.route_+"|PUT"] = &route;
 
-		for (auto& route : api_router_table["DELETE"])
+		for (auto& route : on_deletes_)
 			m[route.route_+"|DELETE"] = &route;
 
 
@@ -1716,15 +1718,52 @@ public:
 
 	void use(const std::string& path) { static_content_routes.emplace_back(path); }
 
-	void on_http_method(const std::string& route, const std::string& http_method, R api_method) { api_router_table[http_method].emplace_back(route, api_method); }
-	void on_get(const std::string& route, R api_method) { api_router_table["GET"].emplace_back(route, api_method); }
-	void on_post(const std::string& route, R api_method) { api_router_table["POST"].emplace_back(route, api_method); }
-	void on_head(const std::string& route, R api_method) { api_router_table["HEAD"].emplace_back(route, api_method); }
-	void on_put(const std::string& route, R api_method) { api_router_table["PUT"].emplace_back(route, api_method); }
-	void on_update(const std::string& route, R api_method) { api_router_table["UPDATE"].emplace_back(route, api_method); }
-	void on_delete(const std::string& route, R api_method) { api_router_table["DELETE"].emplace_back(route, api_method); }
-	void on_patch(const std::string& route, R api_method) { api_router_table["PATCH"].emplace_back(route, api_method); }
-	void on_option(const std::string& route, R api_method) { api_router_table["OPTION"].emplace_back(route, api_method); }
+	void on_http_method(const std::string& route, const std::string& http_method, R api_method) 
+	{ 
+		auto route_vector = lookup_route_vector(http_method);
+		
+		route_vector.emplace_back(route, api_method); 
+	}
+
+	void on_get(const std::string& route, R api_method) 
+	{
+		on_gets_.emplace_back(route, api_method);
+	}
+
+	void on_post(const std::string& route, R api_method) 
+	{
+		on_posts_.emplace_back(route, api_method);
+	}
+
+	void on_head(const std::string& route, R api_method) 
+	{
+		on_heads_.emplace_back(route, api_method);
+	}
+
+	void on_put(const std::string& route, R api_method) 
+	{
+		on_puts_.emplace_back(route, api_method);
+	}
+
+	void on_update(const std::string& route, R api_method) 
+	{
+		on_updates_.emplace_back(route, api_method);
+	}
+
+	void on_delete(const std::string& route, R api_method) 
+	{
+		on_deletes_.emplace_back(route, api_method);
+	}
+
+	void on_patch(const std::string& route, R api_method) 
+	{
+		on_patches_.emplace_back(route, api_method);
+	}
+
+	void on_option(const std::string& route, R api_method) 
+	{
+		on_option.emplace_back(route, api_method);
+	}
 
 	void use(const std::string& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
 
@@ -1765,7 +1804,7 @@ public:
 
 	bool call_route(session_handler_type& session)
 	{
-		auto& routes = api_router_table.at(session.request().method());
+		auto& routes = lookup_method(session.request().method());
 
 		// std::cout << session.request().target() << "\n";
 
@@ -1798,9 +1837,48 @@ public:
 	}
 
 protected:
+	std::vector<api::route<route_function_t>> on_gets_;
+	std::vector<api::route<route_function_t>> on_posts_;
+	std::vector<api::route<route_function_t>> on_heads_;
+	std::vector<api::route<route_function_t>> on_puts_;
+	std::vector<api::route<route_function_t>> on_updates_;
+	std::vector<api::route<route_function_t>> on_deletes_;
+	std::vector<api::route<route_function_t>> on_patches_;
+	std::vector<api::route<route_function_t>> on_options_;
+
+	std::vector<api::route<route_function_t>>& lookup_method(const std::string& method)
+	{
+		static std::vector<api::route<route_function_t>> unknown;
+
+		if (method == "GET")
+			return on_gets_;
+
+		if (method == "POST")
+			return on_gets_;
+
+		if (method == "HEAD")
+			return on_gets_;
+
+		if (method == "OPTIONS")
+			return on_gets_;
+
+		if (method == "PUTS")
+			return on_gets_;
+
+		if (method == "UPDATE")
+			return on_gets_;
+
+		if (method == "DELETE")
+			return on_gets_;
+
+		if (method == "PATCH")
+			return on_gets_;
+
+		return unknown;
+	};
+
 	std::string doc_root_;
 	std::vector<std::string> static_content_routes;
-	std::map<const std::string, std::vector<api::route<route_function_t>>> api_router_table;
 	std::vector<api::middelware<middleware_function_t>> api_middleware_table;
 };
 } // namespace api
