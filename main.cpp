@@ -24,6 +24,26 @@ namespace cluster
 	
 namespace haproxy
 {
+	bool add_upstream_server(const std::string& server)
+	{
+		bool ret = false;
+		network::tcp::v6 endpoint_to_haproxy{3000};
+		network::tcp::socket s;
+
+		network::error_code ec;
+		endpoint_to_haproxy.connect(ec);
+
+		if (!ec)
+		{
+			network::write(endpoint_to_haproxy
+		}
+
+		return ret;
+	}
+
+	bool remove_upstream_server(const std::string& server)
+	{
+	}
 }
 
 namespace nginx

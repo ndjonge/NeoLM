@@ -22,16 +22,16 @@ if(ASIO_INCLUDE_DIR STREQUAL "ASIO_INCLUDE_DIR-NOTFOUND")
 	add_definitions(ASIO_STANDALONE)
 endif()
 
-find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp HINTS )
-if(NLOHMANN_JSON_INCLUDE_DIR STREQUAL "NLOHMANN_JSON_INCLUDE_DIR-NOTFOUND")
-    message("Json:" ${NLOHMANN_JSON_INCLUDE_DIR})	
-endif()
+#find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp HINTS )
+#if(NLOHMANN_JSON_INCLUDE_DIR STREQUAL "NLOHMANN_JSON_INCLUDE_DIR-NOTFOUND")
+#    message("Json:" ${NLOHMANN_JSON_INCLUDE_DIR})	
+#endif()
 
 message("Asio: ${ASIO_INCLUDE_DIR}")
-message("Json: ${NLOHMANN_JSON_INCLUDE_DIR}")	
+#message("Json: ${NLOHMANN_JSON_INCLUDE_DIR}")	
 
 include_directories(${ASIO_INCLUDE_DIR})
-include_directories(${NLOHMANN_JSON_INCLUDE_DIR})
+#include_directories(${NLOHMANN_JSON_INCLUDE_DIR})
 include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
 
