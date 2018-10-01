@@ -27,15 +27,30 @@ namespace haproxy
 	bool add_upstream_server(const std::string& server)
 	{
 		bool ret = false;
+		std::string url = "::1";
+		network::tcp::v6 s(url, port);
+		network::error_code ec;
+		s.connect(ec);
+
+		// auto start_requests = std::chrono::system_clock::now();
+
+		for (int i = 0; i < test_requests; i++)
+		{
+
+			http::request_message req("GET", "/null");
+
+			network::write(s.socket(), http::to_string(req));
+
+
 		network::tcp::v6 endpoint_to_haproxy{3000};
 		network::tcp::socket s;
-
 		network::error_code ec;
+
 		endpoint_to_haproxy.connect(ec);
 
 		if (!ec)
 		{
-			network::write(endpoint_to_haproxy
+			network::write(s, "blabla");
 		}
 
 		return ret;
