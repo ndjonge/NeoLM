@@ -343,29 +343,56 @@ namespace network
 			std::int16_t protocol_;
 		};
 
-		/*
 		class v4 : public endpoint
 		{
 		public:
-		v4(std::int16_t port) : sock_addr_({})
-		{
-		protocol_ = SOCK_STREAM;
-		sock_addr_.sin_family = AF_INET;
-		sock_addr_.sin_port = htons(port);
-		sock_addr_.sin_addr.s_addr = htonl(INADDR_ANY);
-		}
+			v4(std::int16_t port) : sock_addr_({})
+			{
+				protocol_ = SOCK_STREAM;
+				sock_addr_.sin_family = AF_INET;
+				sock_addr_.sin_port = htons(port);
+				sock_addr_.sin_addr.s_addr = htonl(INADDR_ANY);
+			}
 
-		sockaddr* addr() {return reinterpret_cast<sockaddr*>(&sock_addr_);};
-		std::int32_t addr_size() { return static_cast<std::int32_t>(sizeof(this->sock_addr_));}
+			v4(const std::string& ip, std::int16_t port) : sock_addr_({})
+			{
+				inet_pton(AF_INET, ip.c_str(), &(sock_addr_.sin_addr));
 
-		void open(std::int16_t protocol)
-		{
-		socket_ = ::socket(sock_addr_.sin_family, protocol, 0);
-		}
+				sock_addr_.sin_family = AF_INET;
+				sock_addr_.sin_port = htons(port);
+			}
+
+			~v4()
+			{
+				if (socket_)
+					::closesocket(socket_);
+			}
+
+
+			void connect(network::error_code& ec)
+			{
+				open(protocol_);
+				int ret = ::connect(socket_, addr(), addr_size());
+
+				if (ret == -1)
+				{
+					ec = network::error::connection_refused;
+				}
+				else
+					ec = network::error::success;
+			}
+
+
+			sockaddr* addr() { return reinterpret_cast<sockaddr*>(&sock_addr_); };
+			std::int32_t addr_size() { return static_cast<std::int32_t>(sizeof(this->sock_addr_)); }
+
+			void open(std::int16_t protocol)
+			{
+				socket_ = ::socket(sock_addr_.sin_family, protocol, 0);
+			}
 		private:
-		sockaddr_in sock_addr_;
+			sockaddr_in sock_addr_;
 		};
-		*/
 
 		class v6 : public endpoint
 		{

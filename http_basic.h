@@ -245,7 +245,7 @@ namespace http
 {
 class request_parser;
 class session_handler;
-
+ 
 namespace util
 {
 inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
@@ -1883,6 +1883,77 @@ protected:
 };
 } // namespace api
 
+
+namespace cluster_node
+{
+
+template<typename P>
+class reverse_proxy_controller : public P
+{
+public:
+	reverse_proxy_controller(http::configuration& configuration) 
+		: proxy_addres_(configuration.get<std::string>("proxy_address", "[::1]:9999"))
+		, upstream_node_name_(configuration.get<std::string>("upstream_node_name"))
+	{}
+
+	bool enable_upstream_server()
+	{
+		return static_cast<P*>(this)->enable_upstream_server_impl(upstream_node_name_);
+	}
+
+	bool disable_upstream_server()
+	{
+		return static_cast<P*>(this)->disable_upstream_server_impl(upstream_node_name_);
+	}
+
+private:
+	std::string proxy_addres_;
+	std::string upstream_node_name_;
+};
+
+class haproxy
+{
+public:
+	bool enable_upstream_server_impl(const std::string& server)
+	{
+		bool ret = false;
+		std::string url = "127.0.0.1";
+		std::int16_t port = 9000;
+		network::tcp::v4 s(url, port);
+		network::error_code ec;
+		s.connect(ec);
+
+		if (!ec)
+		{
+			network::write(s.socket(), "enable server " + server + "");
+		}
+
+		return ret;
+	}
+
+	bool disable_upstream_server_impl(const std::string& server)
+	{
+		bool ret = false;
+		std::string url = "::1";
+		std::int16_t port = 9999;
+		network::tcp::v6 s(url, port);
+		network::error_code ec;
+		s.connect(ec);
+
+		if (!ec)
+		{
+			network::write(s.socket(), "disale server " + server + " state ready");
+		}
+
+		return ret;
+	}
+};
+
+}
+
+
+
+
 namespace basic
 {
 
@@ -1910,13 +1981,13 @@ private:
 
 };
 
-
 class server
 {
 public:
 	server(http::configuration& configuration)
 		: router_(configuration.get<std::string>("doc_root", "/var/www"))
-		, configuration_(configuration){};
+		, configuration_(configuration)
+		, reverse_proxy_controller_(configuration) {};
 
 	server(const server&) = default;
 
@@ -1928,6 +1999,10 @@ public:
 	};
 
 	void close_session(session_data* session) { session_datas_.erase(std::find(std::begin(session_datas_), std::end(session_datas_), session)); };
+
+	virtual void start_server()
+	{
+	}
 
 	class server_manager
 	{
@@ -2067,6 +2142,7 @@ protected:
 	std::deque<session_data*> session_datas_;
 	http::api::router<> router_;
 	http::configuration& configuration_;
+	http::cluster_node::reverse_proxy_controller<http::cluster_node::haproxy> reverse_proxy_controller_;
 };
 
 namespace threaded
@@ -2103,6 +2179,8 @@ public:
 		// al_so_add_to_ipcwait(sync_, callback, sync_);
 
 		http_connection_thread.detach();
+
+		reverse_proxy_controller_.enable_upstream_server();
 
 		// std::thread https_connection_thread([this]() { https_listener_handler(); });
 		// https_connection_thread.detach();
@@ -2455,71 +2533,5 @@ private:
 } // namespace threaded
 
 } // namespace basic
-
-namespace cluster_node
-{
-
-template<typename P>
-class reverse_proxy_controller : public P
-{
-public:
-	reverse_proxy_controller(const http::configuration& configuration) 
-		: proxy_addres_(configuration.get<std::string>("proxy_address", "[::1]:9999"))
-		, upstream_node_name_(configuration.get<std::string>("upstream_node_name"))
-	{}
-
-	bool enable_upstream_server()
-	{
-		return static_cast<P>(this)->enable_upstream_server_impl(server);
-	}
-
-	bool disable_upstream_server()
-	{
-		return static_cast<P>(this)->disable_upstream_server_impl(server);
-	}
-
-private:
-
-};
-
-class haproxy
-{
-public:
-	bool enable_upstream_server_impl(const std::string& server)
-	{
-		bool ret = false;
-		std::string url = "::1";
-		std::int16_t port = 9999;
-		network::tcp::v6 s(url, port);
-		network::error_code ec;
-		s.connect(ec);
-
-		if (!ec)
-		{
-			network::write(s.socket(), "enable server " + server + "");
-		}
-
-		return ret;
-	}
-
-	bool disable_upstream_server_impl(const std::string& server)
-	{
-		bool ret = false;
-		std::string url = "::1";
-		std::int16_t port = 9999;
-		network::tcp::v6 s(url, port);
-		network::error_code ec;
-		s.connect(ec);
-
-		if (!ec)
-		{
-			network::write(s.socket(), "disale server " + server + " state ready");
-		}
-
-		return ret;
-	}
-};
-
-}
 
 } // namespace http
