@@ -2456,4 +2456,70 @@ private:
 
 } // namespace basic
 
+namespace cluster_node
+{
+
+template<typename P>
+class reverse_proxy_controller : public P
+{
+public:
+	reverse_proxy_controller(const http::configuration& configuration) 
+		: proxy_addres_(configuration.get<std::string>("proxy_address", "[::1]:9999"))
+		, upstream_node_name_(configuration.get<std::string>("upstream_node_name"))
+	{}
+
+	bool enable_upstream_server()
+	{
+		return static_cast<P>(this)->enable_upstream_server_impl(server);
+	}
+
+	bool disable_upstream_server()
+	{
+		return static_cast<P>(this)->disable_upstream_server_impl(server);
+	}
+
+private:
+
+};
+
+class haproxy
+{
+public:
+	bool enable_upstream_server_impl(const std::string& server)
+	{
+		bool ret = false;
+		std::string url = "::1";
+		std::int16_t port = 9999;
+		network::tcp::v6 s(url, port);
+		network::error_code ec;
+		s.connect(ec);
+
+		if (!ec)
+		{
+			network::write(s.socket(), "enable server " + server + "");
+		}
+
+		return ret;
+	}
+
+	bool disable_upstream_server_impl(const std::string& server)
+	{
+		bool ret = false;
+		std::string url = "::1";
+		std::int16_t port = 9999;
+		network::tcp::v6 s(url, port);
+		network::error_code ec;
+		s.connect(ec);
+
+		if (!ec)
+		{
+			network::write(s.socket(), "disale server " + server + " state ready");
+		}
+
+		return ret;
+	}
+};
+
+}
+
 } // namespace http

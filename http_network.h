@@ -310,6 +310,16 @@ namespace network
 
 	}
 
+	namespace ip
+	{
+		using address = std::pair<std::string, std::uint16_t>;
+
+		address make_address(const std::string& url)
+		{
+			return address{"::1", 9999};
+		}
+	}
+
 	namespace tcp
 	{
 		using socket = socket_t;
