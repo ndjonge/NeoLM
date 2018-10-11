@@ -1917,15 +1917,33 @@ public:
 	bool enable_upstream_server_impl(const std::string& server)
 	{
 		bool ret = false;
-		std::string url = "127.0.0.1";
-		std::int16_t port = 9000;
-		network::tcp::v4 s(url, port);
-		network::error_code ec;
-		s.connect(ec);
 
-		if (!ec)
 		{
-			network::write(s.socket(), "enable server " + server + "");
+			std::string url = "127.0.0.1";
+			std::int16_t port = 1999;
+			network::tcp::v4 s(url, port);
+			network::error_code ec;
+			s.connect(ec);
+			char buffer[4096];
+
+			if (!ec)
+			{
+				network::write(s.socket(), "set server cluster-neolm/upstream-neolm1 addr 127.0.0.1:3000\n"); 
+				//network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
+			}
+		}
+
+		{
+			std::string url = "127.0.0.1";
+			std::int16_t port = 1999;
+			network::tcp::v4 s(url, port);
+			network::error_code ec;
+			s.connect(ec);
+
+			if (!ec)
+			{
+				network::write(s.socket(), "enable server cluster-neolm/upstream-neolm1 state ready");
+			}
 		}
 
 		return ret;
