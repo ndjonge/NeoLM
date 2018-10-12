@@ -5,6 +5,7 @@
 #include <iostream>
 #include <mutex>
 #include <unordered_map>
+#include <numeric>
 
 #include <signal.h>
 
@@ -23,7 +24,20 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-	neolm::license_manager<http::basic::threaded::server> license_server{ "/projects/neolm_licenses/" };
+	neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
+						{
+						  { "server", "neolm/8.0.01" },
+						  { "listen_port_begin", "3000" },
+						  { "listen_port_end", "3010" },
+						  { "keepalive_count", "1024" },
+						  { "keepalive_timeout", "2" },
+						  { "thread_count", "8" },
+						  { "scale_out_command", std::accumulate(argv, argv + argc, std::string(""))},
+						  { "doc_root", "/Projects/doc_root" },
+						  { "ssl_certificate", "/Projects/ssl/ssl.crt" },
+						  { "ssl_certificate_key", "/Projects/ssl/ssl.key" } 
+						},	"/projects/neolm_licenses/" };
+
     //neolm::license_manager<http::basic::async::server> license_server{ "/projects/neolm_licenses/" };
 
 	license_server.start_server();

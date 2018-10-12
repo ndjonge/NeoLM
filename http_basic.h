@@ -1892,75 +1892,91 @@ class reverse_proxy_controller : public P
 {
 public:
 	reverse_proxy_controller(http::configuration& configuration) 
-		: proxy_addres_(configuration.get<std::string>("proxy_address", "[::1]:9999"))
-		, upstream_node_name_(configuration.get<std::string>("upstream_node_name"))
-	{}
-
-	bool enable_upstream_server()
+		: reverse_proxy_addres_(configuration.get<std::string>("proxy_address", "127.0.0.1:9999"))
+		, reverse_proxy_upstream_node_name_(configuration.get<std::string>("upstream_node_name", "upstream/node"))
+		, reverse_proxy_this_node_url(configuration.get<std::string>("node_url_", "localhost:" + configuration.get<std::string>("listen_socket_start")))
 	{
-		return static_cast<P*>(this)->enable_upstream_server_impl(upstream_node_name_);
 	}
 
-	bool disable_upstream_server()
+	bool enable_upstream_server(const std::string& reverse_proxy_this_node_url)
 	{
-		return static_cast<P*>(this)->disable_upstream_server_impl(upstream_node_name_);
+		return static_cast<P*>(this)->enable_upstream_server_impl(reverse_proxy_addres_, reverse_proxy_upstream_node_name_, reverse_proxy_this_node_url);
+	}
+
+	bool disable_upstream_server(const std::string& reverse_proxy_this_node_url)
+	{
+		return static_cast<P*>(this)->disable_upstream_server(reverse_proxy_addres_, reverse_proxy_upstream_node_name_, reverse_proxy_this_node_url);
 	}
 
 private:
-	std::string proxy_addres_;
-	std::string upstream_node_name_;
+	std::string reverse_proxy_addres_;
+	std::string reverse_proxy_upstream_node_name_;
+	std::string reverse_proxy_this_node_url;
 };
 
 class haproxy
 {
 public:
-	bool enable_upstream_server_impl(const std::string& server)
+	bool enable_upstream_server_impl(const std::string& proxy_addres_, const std::string& upstream_node_name, const std::string& reverse_proxy_this_node_url)
 	{
 		bool ret = false;
+		char buffer[4096];
 
-		{
-			std::string url = "127.0.0.1";
-			std::int16_t port = 1999;
-			network::tcp::v4 s(url, port);
+		{	
+			network::tcp::v4 s(network::ip::make_address(proxy_addres_));
+			network::ip::address reverse_proxy_this_node_url_address = network::ip::make_address(reverse_proxy_this_node_url);
+
+
 			network::error_code ec;
+
 			s.connect(ec);
-			char buffer[4096];
+
 
 			if (!ec)
 			{
-				network::write(s.socket(), "set server cluster-neolm/upstream-neolm1 addr 127.0.0.1:3000\n"); 
-				//network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
+				/*
+				network::write(s.socket(), "set server upstream/node1 addr 127.0.0.1 port 3000\n"); 
+				*/ 
+
+				network::write(s.socket(), "set server " + upstream_node_name + " addr"+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n"); 
+				network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
 			}
 		}
 
 		{
 			std::string url = "127.0.0.1";
-			std::int16_t port = 1999;
+			std::int16_t port = 9999;
 			network::tcp::v4 s(url, port);
 			network::error_code ec;
 			s.connect(ec);
 
 			if (!ec)
 			{
-				network::write(s.socket(), "enable server cluster-neolm/upstream-neolm1 state ready");
+				network::write(s.socket(), "enable server upstream/node1 state ready\n");
+				network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
 			}
 		}
 
 		return ret;
 	}
 
-	bool disable_upstream_server_impl(const std::string& server)
+	bool disable_upstream_server_impl(const std::string& proxy_addres_, const std::string& upstream_node_name, const std::string& reverse_proxy_this_node_url)
 	{
 		bool ret = false;
-		std::string url = "::1";
-		std::int16_t port = 9999;
-		network::tcp::v6 s(url, port);
-		network::error_code ec;
-		s.connect(ec);
+		char buffer[4096];
 
-		if (!ec)
 		{
-			network::write(s.socket(), "disale server " + server + " state ready");
+			std::string url = "127.0.0.1";
+			std::int16_t port = 9999;
+			network::tcp::v4 s(url, port);
+			network::error_code ec;
+			s.connect(ec);
+
+			if (!ec)
+			{
+				network::write(s.socket(), "set server upstream/node1 state drain\n");
+				network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
+			}
 		}
 
 		return ret;
@@ -2009,6 +2025,18 @@ public:
 
 	server(const server&) = default;
 
+	bool scale_out() const
+	{
+		auto command = configuration_.get<std::string>("scale_out_command");
+		auto res = false;
+
+		if (!command.empty())
+			res = std::system(command.c_str());
+
+		return res;
+	}
+
+
 	session_data* open_session()
 	{
 		session_datas_.push_back(new session_data);
@@ -2050,8 +2078,12 @@ public:
 		bool too_busy()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
+			bool ret = false;
 
-			return false;
+			if (requests_handled_ > 4)
+				ret = true;
+	
+			return ret;
 		}
 
 		size_t requests_handled()
@@ -2198,8 +2230,6 @@ public:
 
 		http_connection_thread.detach();
 
-		reverse_proxy_controller_.enable_upstream_server();
-
 		// std::thread https_connection_thread([this]() { https_listener_handler(); });
 		// https_connection_thread.detach();
 	}
@@ -2326,6 +2356,10 @@ public:
 			}
 
 			acceptor_http.listen();
+
+			reverse_proxy_controller_.enable_upstream_server(
+				http::basic::server::configuration_.get<std::string>("node_url_", "localhost:" + std::to_string(listen_port_))
+			);
 
 			while (1)
 			{

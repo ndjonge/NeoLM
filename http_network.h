@@ -354,6 +354,14 @@ namespace network
 				sock_addr_.sin_addr.s_addr = htonl(INADDR_ANY);
 			}
 
+			v4(const network::ip::address address) : sock_addr_({})
+			{
+				inet_pton(AF_INET, address.first.c_str(), &(sock_addr_.sin_addr));
+
+				sock_addr_.sin_family = AF_INET;
+				sock_addr_.sin_port = htons(address.second);
+			}
+
 			v4(const std::string& ip, std::int16_t port) : sock_addr_({})
 			{
 				inet_pton(AF_INET, ip.c_str(), &(sock_addr_.sin_addr));

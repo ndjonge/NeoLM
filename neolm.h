@@ -437,6 +437,8 @@ private:
 
 				if (manager().too_busy())
 				{
+					S::scale_out();
+
 					session.response().result(http::status::service_unavailable);
 					result = false;
 				}
@@ -580,19 +582,9 @@ private:
 		license_manager& license_manager_;
 	};
 
-
 public:
-public:
-	license_manager(std::string home_dir)
-		: configuration_{ { "server", "neolm/8.0.01" },
-						  { "listen_port_begin", "3000" },
-						  { "listen_port_end", "3010" },
-						  { "keepalive_count", "1024" },
-						  { "keepalive_timeout", "2" },
-						  { "thread_count", "8" },
-						  { "doc_root", "/Projects/doc_root" },
-						  { "ssl_certificate", "/Projects/ssl/ssl.crt" },
-						  { "ssl_certificate_key", "/Projects/ssl/ssl.key" } }
+	license_manager(http::configuration& configuration, std::string home_dir)
+		: configuration_{configuration}
 		, api_server_(*this, configuration_)
 		, home_dir_(home_dir)
 	{
