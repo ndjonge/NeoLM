@@ -1894,24 +1894,22 @@ class reverse_proxy_controller : public P
 public:
 	reverse_proxy_controller(http::configuration& configuration) 
 		: reverse_proxy_addres_(configuration.get<std::string>("proxy_address", "127.0.0.1:9999"))
-		, reverse_proxy_upstream_node_name_(configuration.get<std::string>("upstream_node_name", "upstream/node"))
-		, reverse_proxy_this_node_url(configuration.get<std::string>("node_url_", "localhost:" + configuration.get<std::string>("listen_socket_start")))
+ 		, reverse_proxy_this_node_url(configuration.get<std::string>("node_url_", "localhost:" + configuration.get<std::string>("listen_socket_start")))
 	{
 	}
 
-	bool enable_upstream_server(const std::string& reverse_proxy_this_node_url)
+	bool enable_upstream_server(const std::string& node_name, std::string& reverse_proxy_this_node_url)
 	{
-		return static_cast<P*>(this)->enable_upstream_server_impl(reverse_proxy_addres_, reverse_proxy_upstream_node_name_, reverse_proxy_this_node_url);
+		return static_cast<P*>(this)->enable_upstream_server_impl(reverse_proxy_addres_, node_name, reverse_proxy_this_node_url);
 	}
 
-	bool disable_upstream_server(const std::string& reverse_proxy_this_node_url)
+	bool disable_upstream_server(const std::string& node_name, const std::string& reverse_proxy_this_node_url)
 	{
-		return static_cast<P*>(this)->disable_upstream_server(reverse_proxy_addres_, reverse_proxy_upstream_node_name_, reverse_proxy_this_node_url);
+		return static_cast<P*>(this)->disable_upstream_server_impl(reverse_proxy_addres_, node_name, reverse_proxy_this_node_url);
 	}
 
 private:
 	std::string reverse_proxy_addres_;
-	std::string reverse_proxy_upstream_node_name_;
 	std::string reverse_proxy_this_node_url;
 };
 
@@ -1938,13 +1936,20 @@ public:
 			network::write(s.socket(), "set server upstream/node1 addr 127.0.0.1 port 3000\n"); 
 			*/ 
 
-			std::cout << "set server " + upstream_node_name + " addr"+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n";
+			std::cout << "set server " + upstream_node_name + " addr "+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n";
 
-			network::write(s.socket(), "set server " + upstream_node_name + " addr"+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n"); 
+			network::write(s.socket(), "set server " + upstream_node_name + " addr "+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n"); 
 			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
 
-			std::cout << "set server " + upstream_node_name + " addr"+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n";
+		}
 
+		s.close();
+		s.connect(ec);
+
+		if (!ec)
+		{
+
+			std::cout << "enable server " + upstream_node_name + " state ready\n";
 			network::write(s.socket(), "enable server " + upstream_node_name + " state ready\n");
 			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
 		}
@@ -1957,18 +1962,35 @@ public:
 		bool ret = false;
 		char buffer[4096];
 
-		{
-			std::string url = "127.0.0.1";
-			std::int16_t port = 9999;
-			network::tcp::v4 s(url, port);
-			network::error_code ec;
-			s.connect(ec);
+		network::tcp::v4 s(network::ip::make_address(proxy_addres_));
+		network::ip::address reverse_proxy_this_node_url_address = network::ip::make_address(reverse_proxy_this_node_url);
 
-			if (!ec)
-			{
-				network::write(s.socket(), "set server upstream/node1 state drain\n");
-				network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
-			}
+
+		network::error_code ec;
+
+		s.connect(ec);
+
+/*
+		if (!ec)
+		{
+
+			std::cout << "set server " + upstream_node_name + " addr "+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n";
+
+			network::write(s.socket(), "set server " + upstream_node_name + " addr "+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n"); 
+			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
+
+		}
+
+		s.close();
+		*/
+		s.connect(ec);
+
+		if (!ec)
+		{
+
+			std::cout << "set server " + upstream_node_name + " state drain\n";
+			network::write(s.socket(), "set server " + upstream_node_name + " state drain\n");
+			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
 		}
 
 		return ret;
@@ -2025,19 +2047,30 @@ public:
 		if (!command.empty())
 			res = std::system(command.c_str());
 
+		std::cout << "too busy, scaling out! : " << command << " result: " << std::to_string(res) << "\n";
+
 		return res;
 	}
 
-	bool scale_in() const
+	bool scale_in()
 	{
 		auto command = configuration_.get<std::string>("scale_in_command");
+
 		auto res = false;
 
 		if (!command.empty())
 			res = std::system(command.c_str());
 
+ 		std::cout << "too idle, scaling in! : " << command << " result: " << std::to_string(res) << "\n";
+
 		return res;
+	} 
+
+	bool first_cluster_node()
+	{
+		return configuration_.get<std::uint16_t>("http_listen_socket") == configuration_.get<std::uint16_t>("listen_port_begin");
 	}
+
 
 	session_data* open_session()
 	{
@@ -2062,6 +2095,7 @@ public:
 		size_t connections_current_;
 		size_t connections_highest_;
 		std::chrono::system_clock::time_point newest_connection_active_for_;
+		bool active_;
 
 		std::vector<std::string> access_log_;
 		std::mutex mutex_;
@@ -2075,6 +2109,7 @@ public:
 			, connections_current_(0)
 			, connections_highest_(0)
 			, newest_connection_active_for_()
+			, active_(true)
 		{
 			access_log_.reserve(32);
 		};
@@ -2098,11 +2133,24 @@ public:
 
 			idle_calls++;
 
+			std::cout << idle_calls << "\n";
+
 			if (idle_calls >= 10)
 				ret = true;
 			return ret;
 		}
 
+		bool active()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			return active_;
+		}
+
+		void deactivate()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			active_ = false;
+		}
 
 		size_t requests_handled()
 		{
@@ -2125,6 +2173,7 @@ public:
 		void connections_accepted(size_t nr)
 		{
 			std::lock_guard<std::mutex> g(mutex_);
+			newest_connection_active_for_ = std::chrono::system_clock::now();
 			connections_accepted_ = nr;
 		}
 
@@ -2189,6 +2238,7 @@ public:
 
 			s << "\nStatistics:\n";
 			s << "connections_accepted: " << connections_accepted_ << "\n";
+			s << "newest_connection_active_for: " << (std::chrono::system_clock::now() -  newest_connection_active_for_).count() << " msec\n";
 			s << "connections_highest: " << connections_highest_ << "\n";
 			s << "connections_current: " << connections_current_ << "\n";
 			s << "requests_handled: " << requests_handled_ << "\n";
@@ -2230,6 +2280,14 @@ public:
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 	{
+	}
+
+	~server()
+	{
+			reverse_proxy_controller_.disable_upstream_server(
+				http::basic::server::configuration_.get<std::string>("upstream_node_name", "upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_)),
+				http::basic::server::configuration_.get<std::string>("node_url", "127.0.0.1:" + std::to_string(listen_port_))
+			);
 	}
 
 	server(const server&) = default;
@@ -2376,13 +2434,14 @@ public:
 			acceptor_http.listen();
 
 			reverse_proxy_controller_.enable_upstream_server(
-				http::basic::server::configuration_.get<std::string>("node_url_", "localhost:" + std::to_string(listen_port_))
+				http::basic::server::configuration_.get<std::string>("upstream_node_name", "upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_)),
+				http::basic::server::configuration_.get<std::string>("node_url", "127.0.0.1:" + std::to_string(listen_port_))
 			);
 
-			while (1)
+			while (manager().active())
 			{
 				network::tcp::socket http_socket{ 0 };
-
+				
 				acceptor_http.accept(http_socket);
 
 				network::timeout(http_socket, connection_timeout_);
@@ -2399,6 +2458,11 @@ public:
 				// new_connection_handler.proceed();
 				// std::cout << "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
 			}
+
+			reverse_proxy_controller_.disable_upstream_server(
+				http::basic::server::configuration_.get<std::string>("upstream_node_name", "upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_)),
+				http::basic::server::configuration_.get<std::string>("node_url", "127.0.0.1:" + std::to_string(listen_port_))
+			);
 		}
 		catch (...)
 		{

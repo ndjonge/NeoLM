@@ -316,7 +316,10 @@ namespace network
 
 		address make_address(const std::string& url)
 		{
-			return address{"::1", 9999};
+			std::string addr = url.substr(0, url.find_first_of(':'));
+			std::uint16_t port = atoi(url.substr(url.find_first_of(':')+1).c_str());
+
+			return address{addr, port};
 		}
 	}
 
@@ -333,6 +336,8 @@ namespace network
 
 			virtual void connect(network::error_code& ec) = 0;
 			virtual void open(std::int16_t protocol) = 0;
+			virtual void close() = 0;
+
 			std::int16_t  protocol() { return protocol_; }
 			virtual sockaddr* addr() = 0;
 			virtual int addr_size() = 0;
@@ -376,6 +381,11 @@ namespace network
 					::closesocket(socket_);
 			}
 
+			void close()
+			{
+				if (socket_)
+					::closesocket(socket_);
+			}
 
 			void connect(network::error_code& ec)
 			{
@@ -421,6 +431,12 @@ namespace network
 			}
 
 			~v6()
+			{
+				if (socket_)
+					::closesocket(socket_);
+			}
+
+			void close()
 			{
 				if (socket_)
 					::closesocket(socket_);

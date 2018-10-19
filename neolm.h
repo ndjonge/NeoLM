@@ -437,9 +437,10 @@ private:
 
 				if ((session.request().method() == "OPTIONS") && session.request().target() == "/")
 				{
-					if (manager().idling())				
-					{
-						exit(0);
+					if (S::first_cluster_node() == false && manager().idling())				
+					{					
+						manager().deactivate();
+						S::scale_in();
 					}
 
 					result = false;
@@ -450,8 +451,8 @@ private:
 					{
 						S::scale_out();
 
-						session.response().result(http::status::service_unavailable);
-						result = false;
+						//session.response().result(http::status::service_unavailable);
+						//result = false;
 					}
 				}
 
@@ -621,6 +622,15 @@ public:
 	void start_server()
 	{
 		this->api_server_.start_server();
+	}
+
+	void run()
+	{
+		while (api_server_.manager().active())
+		{
+			//load_test();
+			std::this_thread::sleep_for(10s);
+		}
 	}
 
 	instances& get_instances() { return instances_; }
