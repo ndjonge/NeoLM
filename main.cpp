@@ -32,7 +32,7 @@ int main(int argc, char* argv[])
 						  { "keepalive_count", "1024" },
 						  { "keepalive_timeout", "2" },
 						  { "thread_count", "8" },
-						  { "scale_out_command", std::accumulate(argv, argv + argc, std::string(""))},
+						  { "scale_out_command", "start " + std::accumulate(argv, argv + argc, std::string(""))},
 						  { "doc_root", "/Projects/doc_root" },
 						  { "ssl_certificate", "/Projects/ssl/ssl.crt" },
 						  { "ssl_certificate_key", "/Projects/ssl/ssl.key" } 

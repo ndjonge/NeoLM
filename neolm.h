@@ -435,12 +435,24 @@ private:
 			S::router_.use("/", [this](http::session_handler& session, const http::api::params& params) {
 				bool result = true;
 
-				if (manager().too_busy())
+				if ((session.request().method() == "OPTIONS") && session.request().target() == "/")
 				{
-					S::scale_out();
+					if (manager().idling())				
+					{
+						exit(0);
+					}
 
-					session.response().result(http::status::service_unavailable);
 					result = false;
+				}
+				else
+				{
+					if (manager().too_busy())
+					{
+						S::scale_out();
+
+						session.response().result(http::status::service_unavailable);
+						result = false;
+					}
 				}
 
 				return result;
