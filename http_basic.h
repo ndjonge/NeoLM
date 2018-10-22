@@ -1721,7 +1721,7 @@ public:
 
 	void on_http_method(const std::string& route, const std::string& http_method, R api_method) 
 	{ 
-		auto route_vector = lookup_route_vector(http_method);
+		auto& route_vector = lookup_method(http_method);
 		
 		route_vector.emplace_back(route, api_method); 
 	}
@@ -1893,7 +1893,7 @@ class reverse_proxy_controller : public P
 {
 public:
 	reverse_proxy_controller(http::configuration& configuration) 
-		: reverse_proxy_addres_(configuration.get<std::string>("proxy_address", "127.0.0.1:9999"))
+		: reverse_proxy_addres_(configuration.get<std::string>("proxy_address", "::1:9999"))
  		, reverse_proxy_this_node_url(configuration.get<std::string>("node_url_", "localhost:" + configuration.get<std::string>("listen_socket_start")))
 	{
 	}
@@ -1921,7 +1921,7 @@ public:
 		bool ret = false;
 		char buffer[4096];
 
-		network::tcp::v4 s(network::ip::make_address(proxy_addres_));
+		network::tcp::v6 s(network::ip::make_address(proxy_addres_));
 		network::ip::address reverse_proxy_this_node_url_address = network::ip::make_address(reverse_proxy_this_node_url);
 
 
@@ -1962,7 +1962,7 @@ public:
 		bool ret = false;
 		char buffer[4096];
 
-		network::tcp::v4 s(network::ip::make_address(proxy_addres_));
+		network::tcp::v6 s(network::ip::make_address(proxy_addres_));
 		network::ip::address reverse_proxy_this_node_url_address = network::ip::make_address(reverse_proxy_this_node_url);
 
 

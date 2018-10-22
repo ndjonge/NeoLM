@@ -316,8 +316,8 @@ namespace network
 
 		address make_address(const std::string& url)
 		{
-			std::string addr = url.substr(0, url.find_first_of(':'));
-			std::uint16_t port = atoi(url.substr(url.find_first_of(':')+1).c_str());
+			std::string addr = url.substr(0, url.find_last_of(':'));
+			std::uint16_t port = atoi(url.substr(url.find_last_of(':')+1).c_str());
 
 			return address{addr, port};
 		}
@@ -348,7 +348,7 @@ namespace network
 			std::int16_t protocol_;
 		};
 
-		class v4 : public endpoint
+/*		class v4 : public endpoint
 		{
 		public:
 			v4(std::int16_t port) : sock_addr_({})
@@ -410,7 +410,7 @@ namespace network
 			}
 		private:
 			sockaddr_in sock_addr_;
-		};
+		};*/
 
 		class v6 : public endpoint
 		{
@@ -429,6 +429,15 @@ namespace network
 				sock_addr_.sin6_family = AF_INET6;
 				sock_addr_.sin6_port = htons(port);
 			}
+
+			v6(const network::ip::address address) : sock_addr_({})
+			{
+				inet_pton(AF_INET6, address.first.c_str(), &(sock_addr_.sin6_addr));
+
+				sock_addr_.sin6_family = AF_INET6;
+				sock_addr_.sin6_port = htons(address.second);
+			}
+
 
 			~v6()
 			{
