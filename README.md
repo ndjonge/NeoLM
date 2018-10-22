@@ -6,7 +6,12 @@ WSL(Ubuntu 18.04) steps:
 sudo apt-get -y update
 sudo apt-get -y install neovim
 
-sudo update-alternatives --install /usr/bin/vi vi /usr/bin/nvim 60sudo update-alternatives --config visudo update-alternatives --install /usr/bin/vim vim /usr/bin/nvim 60sudo update-alternatives --config vimsudo update-alternatives --install /usr/bin/editor editor /usr/bin/nvim 60sudo update-alternatives --config editor
+sudo update-alternatives --install /usr/bin/vi vi /usr/bin/nvim 60
+sudo update-alternatives --config vi
+sudo update-alternatives --install /usr/bin/vim vim /usr/bin/nvim 60
+sudo update-alternatives --config vim
+sudo update-alternatives --install /usr/bin/editor editor /usr/bin/nvim 60
+sudo update-alternatives --config editor
 
 sudo apt-get -y purge openssh-server
 sudo apt-get -y install openssh-server
