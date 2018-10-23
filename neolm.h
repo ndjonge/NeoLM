@@ -437,9 +437,13 @@ private:
 
 				if ((session.request().method() == "OPTIONS") && session.request().target() == "/")
 				{
-					if (S::first_cluster_node() == false && manager().idling())				
+					//health check
+					S::manager().health_checks_received(S::manager().health_checks_received()+1);
+
+
+					if (S::first_cluster_node() == false && S::idling())				
 					{					
-						manager().deactivate();
+						S::deactivate();
 						S::scale_in();
 					}
 
@@ -448,7 +452,10 @@ private:
 				}
 				else
 				{
-					if (manager().too_busy())
+					if (session.request().target() != "/status")
+						S::manager().health_checks_received_consecutive(0);
+
+					if (S::too_busy())
 					{
 						auto future_ = std::async(std::launch::async, [this](){S::scale_out();});
 						//session.response().result(http::status::service_unavailable);
@@ -626,7 +633,7 @@ public:
 
 	void run()
 	{
-		while (api_server_.manager().active())
+		while (api_server_.active())
 		{
 			//load_test();
 			std::this_thread::sleep_for(10s);

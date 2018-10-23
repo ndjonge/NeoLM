@@ -1928,10 +1928,6 @@ public:
 
 		if (!ec)
 		{
-			/*
-			network::write(s.socket(), "set server upstream/node1 addr 127.0.0.1 port 3000\n"); 
-			*/ 
-
 			std::cout << "set server " + upstream_node_name + " addr "+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n";
 
 			network::write(s.socket(), "set server " + upstream_node_name + " addr "+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n"); 
@@ -2031,7 +2027,9 @@ public:
 	server(http::configuration& configuration)
 		: router_(configuration.get<std::string>("doc_root", "/var/www"))
 		, configuration_(configuration)
-		, reverse_proxy_controller_(configuration) {};
+		, reverse_proxy_controller_(configuration)
+		, active_(true)
+	{};
 
 	server(const server&) = default;
 
@@ -2067,6 +2065,40 @@ public:
 		return configuration_.get<std::uint16_t>("http_listen_socket") == configuration_.get<std::uint16_t>("listen_port_begin");
 	}
 
+	bool too_busy()
+	{
+		bool ret = false;
+
+		static auto next_limit = 2;
+
+		if ((manager_.connections_current() > next_limit))
+		{
+			ret = true;
+			next_limit = next_limit << 2;
+		}
+	
+		return ret;
+	}
+
+	bool idling()
+	{
+		bool ret = false;
+
+		if (manager_.health_checks_received_consecutive() > 20 )
+			ret = true;
+
+		return ret;
+	}
+
+	bool active()
+	{
+		return active_;
+	}
+
+	void deactivate()
+	{
+		active_ = false;
+	}
 
 	session_data* open_session()
 	{
@@ -2090,8 +2122,8 @@ public:
 		size_t connections_accepted_;
 		size_t connections_current_;
 		size_t connections_highest_;
-		std::chrono::system_clock::time_point newest_connection_active_for_;
-		bool active_;
+		size_t health_checks_received_;
+		size_t health_checks_received_consecutive_;
 
 		std::vector<std::string> access_log_;
 		std::mutex mutex_;
@@ -2104,53 +2136,11 @@ public:
 			, connections_accepted_(0)
 			, connections_current_(0)
 			, connections_highest_(0)
-			, newest_connection_active_for_()
-			, active_(true)
+			, health_checks_received_(0)
+			, health_checks_received_consecutive_(0)
 		{
 			access_log_.reserve(32);
 		};
-
-		bool too_busy()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			bool ret = false;
-			static auto next_limit = 2;
-
-			if ((connections_current_ > next_limit))
-			{
-				ret = true;
-				next_limit = next_limit << 2;
-			}
-	
-			return ret;
-		}
-
-		bool idling()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			bool ret = false;
-			static int idle_calls = 0;
-
-			idle_calls++;
-
-			std::cout << idle_calls << "\n";
-
-			if (idle_calls >= 10)
-				ret = true;
-			return ret;
-		}
-
-		bool active()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			return active_;
-		}
-
-		void deactivate()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			active_ = false;
-		}
 
 		size_t requests_handled()
 		{
@@ -2173,7 +2163,6 @@ public:
 		void connections_accepted(size_t nr)
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			newest_connection_active_for_ = std::chrono::system_clock::now();
 			connections_accepted_ = nr;
 		}
 
@@ -2200,6 +2189,31 @@ public:
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 			connections_highest_ = nr;
+		}
+
+		size_t health_checks_received()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			return health_checks_received_;
+		}
+
+		void health_checks_received(size_t nr)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			health_checks_received_ = nr;
+			health_checks_received_consecutive_++;
+		}
+
+		size_t health_checks_received_consecutive()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			return health_checks_received_consecutive_;
+		}
+
+		void health_checks_received_consecutive(size_t nr)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			health_checks_received_consecutive_ = nr;
 		}
 
 		void log_access(http::session_handler& session)
@@ -2238,10 +2252,11 @@ public:
 
 			s << "\nStatistics:\n";
 			s << "connections_accepted: " << connections_accepted_ << "\n";
-			s << "newest_connection_active_for: " << (std::chrono::system_clock::now() -  newest_connection_active_for_).count() << " msec\n";
 			s << "connections_highest: " << connections_highest_ << "\n";
 			s << "connections_current: " << connections_current_ << "\n";
 			s << "requests_handled: " << requests_handled_ << "\n";
+			s << "health_checks_received: " << health_checks_received_ << "\n";
+			s << "health_checks_received_consecutive: " << health_checks_received_consecutive_ << "\n";
 
 			s << "\nEndPoints:\n" << router_information_ << "\n";
 			s << "\nAccess Log:\n";
@@ -2261,6 +2276,7 @@ protected:
 	http::api::router<> router_;
 	http::configuration& configuration_;
 	http::cluster_node::reverse_proxy_controller<http::cluster_node::haproxy> reverse_proxy_controller_;
+	bool active_;
 };
 
 namespace threaded
@@ -2275,7 +2291,7 @@ public:
 		: http::basic::server{ configuration }
 		, thread_count_(configuration.get<int>("thread_count", 5))
 		, listen_port_(0)
-		, listen_port_begin_(configuration.get<int>("listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
+		, listen_port_begin_(configuration.get<int>("listen_port", (std::getenv("PORT_NUMBER") ? std::atoi(getenv("PORT_NUMBER")) : 3000)))
 		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
@@ -2438,7 +2454,7 @@ public:
 				http::basic::server::configuration_.get<std::string>("node_url", "127.0.0.1:" + std::to_string(listen_port_))
 			);
 
-			while (manager().active())
+			while (active())
 			{
 				network::tcp::socket http_socket{ 0 };
 				
