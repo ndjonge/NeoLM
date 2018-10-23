@@ -1322,14 +1322,9 @@ public:
 		request_.url_requested_ = request_.target_;//.substr(0, request_.target_.find_first_of('?'));
 		request_.target_ = request_path;
 
-		if (router_.call_middleware(*this))
-		{
-		}
-		else
-		{
-		}
+		bool continue_with_routing = router_.call_middleware(*this);
 
-		if (response_.body().empty())
+		if (continue_with_routing)
 		{
 			t0_ = std::chrono::system_clock::now();
 			t1_ = t0_;
@@ -1796,7 +1791,8 @@ public:
 
 			if (middleware.match(session.request().target(), params_))
 			{
-				result = middleware.endpoint_(session, params_);
+				if ((result = middleware.endpoint_(session, params_)) == false) 
+					break;
 			}
 		}
 
@@ -2118,9 +2114,13 @@ public:
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 			bool ret = false;
+			static auto next_limit = 2;
 
-			if (requests_handled_ > 4)
+			if ((connections_current_ > next_limit))
+			{
 				ret = true;
+				next_limit = next_limit << 2;
+			}
 	
 			return ret;
 		}
