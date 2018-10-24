@@ -442,7 +442,7 @@ namespace async
 			}
 
 			if (ec)
-				throw std::runtime_error("bind failed...");
+				throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(listen_port_begin_) + ":" + std::to_string(listen_port_end_) + " ]"));
 
 			acceptor_.listen();
 

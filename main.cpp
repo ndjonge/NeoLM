@@ -29,13 +29,12 @@ int main(int argc, char* argv[])
 						{
 						  { "server", "neolm/8.0.01" },
 						  { "listen_port_begin", "3000" },
-						  { "listen_port_end", "3010" },
+						  { "listen_port_end", "3016" },
 						  { "keepalive_count", "1024" },
 						  { "keepalive_timeout", "2" },
 						  { "thread_count", "8" },
-						  { "scale_out_command", "start " + std::accumulate(argv, argv + argc, std::string(""))},
-						  { "scale_too_busy_high", "4" },
-						  { "scale_too_busy_low", "1" },
+						  { "scale_out_command", "start /b " + std::accumulate(argv, argv + argc, std::string(""))},
+						  { "scale_in_command", ""},
 						  { "doc_root", "/Projects/doc_root" },
 						  { "ssl_certificate", "/Projects/ssl/ssl.crt" },
 						  { "ssl_certificate_key", "/Projects/ssl/ssl.key" } 

@@ -443,9 +443,12 @@ private:
 
 					if (S::first_cluster_node() == false && S::idling())				
 					{					
-						S::deactivate();
 						S::scale_in();
+						S::deactivate();
 					}
+					else if (S::first_cluster_node() && S::manager().scale_count() > 0 )
+						S::manager().scale_count(S::manager().scale_count()-1);
+
 
 					session.response().result(http::status::ok);
 					result = false;
@@ -455,11 +458,17 @@ private:
 					if (session.request().target() != "/status")
 						S::manager().health_checks_received_consecutive(0);
 
+
 					if (S::too_busy())
 					{
-						auto future_ = std::async(std::launch::async, [this](){S::scale_out();});
-						//session.response().result(http::status::service_unavailable);
-						//result = false;
+						std::chrono::system_clock::time_point t0 = std::chrono::system_clock::now();
+						//std::this_thread::sleep_for(20us);
+						if (S::manager().scale_count() < 4)
+						{
+							auto future_ = std::async(std::launch::async, [this](){S::scale_out();});
+							//std::cout << "scaling out took: " << (std::chrono::system_clock::now() - t0).count() << "msec\n";
+							S::manager().scale_count(S::manager().scale_count()+1);
+						}
 					}
 				}
 

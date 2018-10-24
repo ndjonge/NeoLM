@@ -2035,27 +2035,30 @@ public:
 
 	bool scale_out() const
 	{
-		auto command = configuration_.get<std::string>("scale_out_command");
+		auto& command = configuration_.get<std::string>("scale_out_command");
 		auto res = false;
 
 		if (!command.empty())
+		{
 			res = std::system(command.c_str());
+		}
+	
 
-		std::cout << "too busy, scaling out! : " << command << " result: " << std::to_string(res) << "\n";
+		//std::cout << "scale out!: " << command << " result: " << std::to_string(res) << "\n";
 
 		return res;
 	}
 
 	bool scale_in()
 	{
-		auto command = configuration_.get<std::string>("scale_in_command");
+		auto& command = configuration_.get<std::string>("scale_in_command");
 
 		auto res = false;
 
 		if (!command.empty())
 			res = std::system(command.c_str());
 
- 		std::cout << "too idle, scaling in! : " << command << " result: " << std::to_string(res) << "\n";
+ 		std::cout << "scale in! : " << command << " result: " << std::to_string(res) << "\n";
 
 		return res;
 	} 
@@ -2069,12 +2072,9 @@ public:
 	{
 		bool ret = false;
 
-		static auto next_limit = 2;
-
-		if ((manager_.connections_current() > next_limit))
+		if ((manager_.connections_current() > 2))
 		{
 			ret = true;
-			next_limit = next_limit << 2;
 		}
 	
 		return ret;
@@ -2084,7 +2084,7 @@ public:
 	{
 		bool ret = false;
 
-		if (manager_.health_checks_received_consecutive() > 20 )
+		if (manager_.health_checks_received_consecutive() > 5 )
 			ret = true;
 
 		return ret;
@@ -2124,6 +2124,7 @@ public:
 		size_t connections_highest_;
 		size_t health_checks_received_;
 		size_t health_checks_received_consecutive_;
+		size_t scale_count_; 
 
 		std::vector<std::string> access_log_;
 		std::mutex mutex_;
@@ -2138,6 +2139,7 @@ public:
 			, connections_highest_(0)
 			, health_checks_received_(0)
 			, health_checks_received_consecutive_(0)
+			, scale_count_(0)
 		{
 			access_log_.reserve(32);
 		};
@@ -2216,6 +2218,18 @@ public:
 			health_checks_received_consecutive_ = nr;
 		}
 
+
+		size_t scale_count()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			return scale_count_;
+		}
+
+		void scale_count(size_t nr)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			scale_count_ = nr;
+		}
 		void log_access(http::session_handler& session)
 		{
 			std::stringstream s;
@@ -2257,6 +2271,7 @@ public:
 			s << "requests_handled: " << requests_handled_ << "\n";
 			s << "health_checks_received: " << health_checks_received_ << "\n";
 			s << "health_checks_received_consecutive: " << health_checks_received_consecutive_ << "\n";
+			s << "scale_count: " << scale_count_ << "\n";	
 
 			s << "\nEndPoints:\n" << router_information_ << "\n";
 			s << "\nAccess Log:\n";
@@ -2351,11 +2366,11 @@ public:
 					listen_port_++;
 					endpoint_http.port(listen_port_);
 				}
-				else
-				{
-					throw std::runtime_error("https bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
-				}
 			}
+
+			if (ec)
+				throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(listen_port_begin_) + ":" + std::to_string(listen_port_end_) + " ]"));
+
 
 			acceptor_https.listen();
 
@@ -2441,18 +2456,19 @@ public:
 					listen_port_++;
 					endpoint_http.port(listen_port_);
 				}
-				else
-				{
-					throw std::runtime_error("http bind failed on port: " + std::to_string(listen_port_) + " ec: " + std::to_string(ec));
-				}
 			}
 
-			acceptor_http.listen();
+			if (ec)
+				throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(listen_port_begin_) + ":" + std::to_string(listen_port_end_) + " ]"));
 
 			reverse_proxy_controller_.enable_upstream_server(
 				http::basic::server::configuration_.get<std::string>("upstream_node_name", "upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_)),
 				http::basic::server::configuration_.get<std::string>("node_url", "127.0.0.1:" + std::to_string(listen_port_))
 			);
+
+			acceptor_http.listen();
+
+
 
 			while (active())
 			{
