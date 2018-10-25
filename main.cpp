@@ -29,8 +29,8 @@ int main(int argc, char* argv[])
 						{
 						  { "server", "neolm/8.0.01" },
 						  { "listen_port_begin", "3000" },
-						  { "listen_port_end", "3016" },
-						  { "keepalive_count", "1024" },
+						  { "listen_port_end", "3015" },
+						  { "keepalive_count", "4096" },
 						  { "keepalive_timeout", "2" },
 						  { "thread_count", "8" },
 						  { "scale_out_command", "start /b " + std::accumulate(argv, argv + argc, std::string(""))},
@@ -44,5 +44,7 @@ int main(int argc, char* argv[])
 
 	license_server.start_server();
 	license_server.run();
+
+	std::cout << "exit!\n";
 
 }

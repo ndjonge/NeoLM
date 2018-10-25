@@ -1376,8 +1376,7 @@ public:
 		{
 			keepalive_count(keepalive_count() - 1);
 			response_.set("Connection", "Keep-Alive");
-			// response_["Keep-Alive"] = std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" +
-			// std::to_string(keepalive_count());
+			response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" +std::to_string(keepalive_count()));
 		}
 		else
 		{
@@ -2291,7 +2290,7 @@ protected:
 	http::api::router<> router_;
 	http::configuration& configuration_;
 	http::cluster_node::reverse_proxy_controller<http::cluster_node::haproxy> reverse_proxy_controller_;
-	bool active_;
+	std::atomic<bool> active_;
 };
 
 namespace threaded
@@ -2369,7 +2368,10 @@ public:
 			}
 
 			if (ec)
+			{
 				throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(listen_port_begin_) + ":" + std::to_string(listen_port_end_) + " ]"));
+				exit(-1);
+			}
 
 
 			acceptor_https.listen();
@@ -2459,7 +2461,10 @@ public:
 			}
 
 			if (ec)
+			{
 				throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(listen_port_begin_) + ":" + std::to_string(listen_port_end_) + " ]"));
+				exit(-1);
+			}
 
 			reverse_proxy_controller_.enable_upstream_server(
 				http::basic::server::configuration_.get<std::string>("upstream_node_name", "upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_)),
@@ -2512,6 +2517,7 @@ public:
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
 		{
+			std::cout << "new connection!\n";
 		}
 
 		~connection_handler()
@@ -2519,6 +2525,8 @@ public:
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
 			server_.manager().connections_current(server_.manager().connections_current() - 1);
+			
+			std::cout << "connection closed!\n";
 		}
 
 		void proceed()
