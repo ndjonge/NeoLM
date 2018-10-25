@@ -2526,7 +2526,8 @@ public:
 			network::closesocket(client_socket_);
 			server_.manager().connections_current(server_.manager().connections_current() - 1);
 			
-			std::cout << "connection closed!\n";
+
+			std::cout << "connection closed! " << session_handler_.keepalive_count() << "\n";
 		}
 
 		void proceed()
