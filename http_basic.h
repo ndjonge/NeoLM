@@ -2236,7 +2236,8 @@ public:
 
 			s << "\"" << session.request().get("Remote_Addr") << "\""
 			  << " - \"" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << "\""
-			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << " - \"" << session.request().get("User-Agent") << "\"\n";
+			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << " - \"" << session.request().get("User-Agent") << " - \""
+			  << session.response().get("Keep-Alive") << "\"\n";
 
 			access_log_.emplace_back(s.str());
 
@@ -2484,10 +2485,6 @@ public:
 				network::timeout(http_socket, connection_timeout_);
 				network::tcp_nodelay(http_socket, 1);
 
-				auto current_connections = manager().connections_current();
-				manager().connections_accepted(manager().connections_accepted() + 1);
-				manager().connections_current(current_connections + 1);
-
 				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 				connection_thread.detach();
 
@@ -2517,17 +2514,12 @@ public:
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
 		{
-			std::cout << "new connection!\n";
 		}
 
 		~connection_handler()
 		{
-			network::shutdown(client_socket_, network::shutdown_send);
+			network::shutdown(client_socket_, network::shutdown_receive);
 			network::closesocket(client_socket_);
-			server_.manager().connections_current(server_.manager().connections_current() - 1);
-			
-
-			std::cout << "connection closed! " << session_handler_.keepalive_count() << "\n";
 		}
 
 		void proceed()
@@ -2537,15 +2529,26 @@ public:
 
 			while (true)
 			{
+				bool first_run = true;
+
 				int ret = network::read(client_socket_, network::buffer(buffer.data(), buffer.size()));
 
 				if (ret == 0)
 				{
+					//session_handler_.response().result(http::status::bad_request);
+					//ret = network::write(client_socket_, http::to_string(session_handler_.response()));
 					break;
 				}
 				if (ret < 0)
 				{
 					break;
+				}
+
+				if (first_run )
+				{
+					auto current_connections = server_.manager().connections_current();
+					server_.manager().connections_accepted(server_.manager().connections_accepted() + 1);
+					server_.manager().connections_current(current_connections + 1);
 				}
 
 				// store_request_data(buffer, ret);
@@ -2659,9 +2662,11 @@ public:
 					{
 						connection_data.reset();
 						session_handler_.reset();
+						std::this_thread::yield();
 					}
 					else
 					{
+						server_.manager().connections_current(server_.manager().connections_current() - 1);		
 						return;
 					}
 				}
