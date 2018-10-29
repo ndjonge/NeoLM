@@ -43,7 +43,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include <string>
 #include <thread>
 #include <vector>
-
+#include <queue>
 #include <zlib.h>
 
 #if defined(_USE_CPP17_STD_FILESYSTEM)
@@ -1996,30 +1996,6 @@ public:
 namespace basic
 {
 
-class session_data
-{
-public:
-	session_data() noexcept {};
-
-	void store_request_data(const char* data, size_t size) { data_request_.insert(std::end(data_request_), &data[0], &data[0] + size); }
-
-	void store_response_data(const std::string& response_string) { data_response_.insert(std::end(data_response_), response_string.begin(), response_string.end()); }
-
-	std::vector<char>& request_data() { return data_request_; }
-	std::vector<char>& response_data() { return data_response_; }
-
-	void reset()
-	{
-		data_request_.clear();
-		data_response_.clear();
-	}
-
-private:
-	std::vector<char> data_request_;
-	std::vector<char> data_response_;
-
-};
-
 class server
 {
 public:
@@ -2098,15 +2074,6 @@ public:
 	{
 		active_ = false;
 	}
-
-	session_data* open_session()
-	{
-		session_datas_.push_back(new session_data);
-
-		return session_datas_.back();
-	};
-
-	void close_session(session_data* session) { session_datas_.erase(std::find(std::begin(session_datas_), std::end(session_datas_), session)); };
 
 	virtual void start_server()
 	{
@@ -2287,7 +2254,6 @@ public:
 
 protected:
 	server_manager manager_;
-	std::deque<session_data*> session_datas_;
 	http::api::router<> router_;
 	http::configuration& configuration_;
 	http::cluster_node::reverse_proxy_controller<http::cluster_node::haproxy> reverse_proxy_controller_;
@@ -2332,13 +2298,42 @@ public:
 		manager_.router_information(http::basic::server::router_.to_string());
 
 		std::thread http_connection_thread([this]() { http_listener_handler(); });
+		std::thread http_connection_queue_thread([this]() { http_connection_queue_handler(); });
+
 		// al_so_create(&sync_, AL_SYNC_TYPE_SEMAPHORE|AL_SYNC_LOCKED, FALSE);
 		// al_so_add_to_ipcwait(sync_, callback, sync_);
 
 		http_connection_thread.detach();
+		http_connection_queue_thread.detach();
 
 		// std::thread https_connection_thread([this]() { https_listener_handler(); });
 		// https_connection_thread.detach();
+	}
+
+	void http_connection_queue_handler()
+	{
+		while(1)
+		{
+			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
+
+			http_connection_queue_has_connection_.wait(m);
+
+			while (!http_connection_queue_.empty())
+			{
+				auto http_socket = http_connection_queue_.front();
+				http_connection_queue_.pop();
+			
+				network::timeout(http_socket, connection_timeout_);
+				network::tcp_nodelay(http_socket, 1);
+
+				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
+				connection_thread.detach();
+
+				auto current_connections = manager_.connections_current();
+				manager_.connections_accepted(manager_.connections_accepted() + 1);
+				manager_.connections_current(current_connections + 1);
+			}
+		}
 	}
 
 	void https_listener_handler()
@@ -2392,7 +2387,7 @@ public:
 				https_socket.handshake(network::ssl::stream_base::server);
 
 				auto current_connections = manager().connections_current();
-				manager().connections_accepted(server_manager().connections_accepted() + 1);
+				manager().connections_accepted(manager().connections_accepted() + 1);
 				manager().connections_current(current_connections + 1);
 
 				if (current_connections < thread_count_)
@@ -2402,7 +2397,7 @@ public:
 					connection_thread.detach();
 				}
 				{
-					while (server_manager().connections_current() >= thread_count_)
+					while (manager().connections_current() >= thread_count_)
 					{
 						std::this_thread::yield();
 					}
@@ -2474,23 +2469,19 @@ public:
 
 			acceptor_http.listen();
 
-
-
 			while (active())
 			{
 				network::tcp::socket http_socket{ 0 };
 				
 				acceptor_http.accept(http_socket);
 
-				network::timeout(http_socket, connection_timeout_);
-				network::tcp_nodelay(http_socket, 1);
+				if (http_socket > 0)
+				{
+					std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
+					http_connection_queue_.push(http_socket);
+					http_connection_queue_has_connection_.notify_one();
+				}
 
-				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
-				connection_thread.detach();
-
-				// connection_handler<network::tcp::socket> new_connection_handler(*this, http_socket, connection_timeout_, gzip_min_length_);
-				// new_connection_handler.proceed();
-				// std::cout << "Accepting+thread-create took:" << diff.count() * 1000 << "ms \n";
 			}
 
 			reverse_proxy_controller_.disable_upstream_server(
@@ -2520,38 +2511,27 @@ public:
 		{
 			network::shutdown(client_socket_, network::shutdown_receive);
 			network::closesocket(client_socket_);
+
+			auto current_connections = server_.manager().connections_current();
+			server_.manager().connections_current(current_connections - 1);
 		}
 
 		void proceed()
 		{
 			std::array<char, 4096> buffer;
-			http::basic::session_data connection_data;
 
 			while (true)
 			{
-				bool first_run = true;
-
 				int ret = network::read(client_socket_, network::buffer(buffer.data(), buffer.size()));
 
 				if (ret == 0)
 				{
-					//session_handler_.response().result(http::status::bad_request);
-					//ret = network::write(client_socket_, http::to_string(session_handler_.response()));
 					break;
 				}
 				if (ret < 0)
 				{
 					break;
 				}
-
-				if (first_run )
-				{
-					auto current_connections = server_.manager().connections_current();
-					server_.manager().connections_accepted(server_.manager().connections_accepted() + 1);
-					server_.manager().connections_current(current_connections + 1);
-				}
-
-				// store_request_data(buffer, ret);
 
 				http::session_handler::result_type parse_result;
 				std::array<char, 4096>::iterator c = std::begin(buffer);
@@ -2565,7 +2545,6 @@ public:
 				{
 					auto x = c - std::begin(buffer);
 
-					// request.body().reserve((ret - x));
 					request.body().assign(buffer.data() + x, (ret - x));
 
 					if (request.content_length() > std::uint64_t(ret - x))
@@ -2605,9 +2584,6 @@ public:
 
 				if ((parse_result == http::request_parser::result_type::good) || (parse_result == http::request_parser::result_type::bad))
 				{
-
-					//request_data().clear();
-					//response_data().clear();
 
 					if (parse_result == http::request_parser::result_type::good)
 					{
@@ -2660,20 +2636,17 @@ public:
 
 					if (response.connection_keep_alive() == true)
 					{
-						connection_data.reset();
 						session_handler_.reset();
 						std::this_thread::yield();
 					}
 					else
 					{
-						server_.manager().connections_current(server_.manager().connections_current() - 1);		
 						return;
 					}
 				}
 				else
 				{
 					// TODO send http error
-					connection_data.reset();
 					session_handler_.reset();
 					return;
 				}
@@ -2708,6 +2681,10 @@ private:
 	int listen_port_;
 	int connection_timeout_;
 	size_t gzip_min_length_;
+	std::condition_variable http_connection_queue_has_connection_;
+
+	std::mutex http_connection_queue_mutex_;
+	std::queue<network::tcp::socket> http_connection_queue_;
 };
 
 } // namespace threaded
