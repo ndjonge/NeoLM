@@ -44,6 +44,8 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include <thread>
 #include <vector>
 #include <queue>
+#include <ratio>
+
 #include <zlib.h>
 
 #if defined(_USE_CPP17_STD_FILESYSTEM)
@@ -1259,7 +1261,7 @@ public:
 		: configuration_(configuration)
 		, keepalive_count_(configuration.get<int>("keepalive_count", 10))
 		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
-		, t0_(std::chrono::system_clock::now())
+		, t0_(std::chrono::steady_clock::now())
 	{
 	}
 
@@ -1326,7 +1328,7 @@ public:
 
 		if (continue_with_routing)
 		{
-			t0_ = std::chrono::system_clock::now();
+			t0_ = std::chrono::steady_clock::now();
 			t1_ = t0_;
 		
 			if (router_.call_route(*this))
@@ -1397,14 +1399,14 @@ public:
 
 	void reset()
 	{
-		t0_ = std::chrono::system_clock::now();
+		t0_ = std::chrono::steady_clock::now();
 
 		request_parser_.reset();
 		request_.reset();
 		response_.reset();
 	}
 
-	std::chrono::system_clock::time_point t0_;
+	std::chrono::steady_clock::time_point t0_;
 
 
 private:
@@ -1416,7 +1418,7 @@ private:
 	int keepalive_count_;
 	int keepalive_max_;
 
-	std::chrono::system_clock::time_point t1_;
+	std::chrono::steady_clock::time_point t1_;
 };
 
 namespace api
@@ -1478,16 +1480,18 @@ public:
 	{
 		route_metrics() : request_latency_(0), processing_duration_(0), hit_count_(0) {}
 
+		std::chrono::duration<double, std::milli> request_latency_;
+		std::chrono::duration<double, std::milli> processing_duration_;
 
-		std::int64_t request_latency_;
-		std::int64_t processing_duration_;
 		std::int64_t hit_count_;
 
 		std::string to_string()
 		{
 			std::stringstream s;
 
-			s << request_latency_ << ", " << processing_duration_ << ", " << hit_count_;
+			s << request_latency_.count()  << "ms, " 
+			  << processing_duration_.count() << "ms, " 
+			  << hit_count_ <<"x";
 
 			return s.str();
 		};
@@ -1498,14 +1502,14 @@ public:
 	std::vector<std::string> tokens_;
 	route_metrics metrics_;
 
-	void request_latency(std::int64_t request_duration)
+	void request_latency(std::chrono::duration<double, std::milli> request_duration)
 	{
 		metrics_.request_latency_ = request_duration;
 	}
 
-	void processing_duration(std::int64_t new_processing_duration_)
+	void processing_duration(std::chrono::duration<double, std::milli> new_processing_duration_)
 	{
-		metrics_.processing_duration_ = static_cast<std::int32_t>(new_processing_duration_);
+		metrics_.processing_duration_ = new_processing_duration_;
 	}
 
 	void increase_hitcount()
@@ -1814,15 +1818,15 @@ public:
 
 				if (route.match(url, params_))
 				{
-					auto t0 = std::chrono::system_clock::now(); 
+					auto t0 = std::chrono::steady_clock::now(); 
 
-					route.request_latency(static_cast<std::int64_t>((t0 - session.t0_).count()) );
+					route.request_latency(std::chrono::duration<std::int64_t,std::nano>(t0 - session.t0_) );
 
 					route.endpoint_(session, params_);
-					auto t1 = std::chrono::system_clock::now(); 
+					auto t1 = std::chrono::steady_clock::now(); 
 					
 
-					route.processing_duration(static_cast<std::int64_t>((t1 - t0).count()));
+					route.processing_duration(std::chrono::duration<std::int64_t,std::nano>(t1 - t0));
 					route.increase_hitcount();
 					return true;
 				}
