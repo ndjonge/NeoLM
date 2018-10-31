@@ -2320,22 +2320,30 @@ public:
 		{
 			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 
-			http_connection_queue_has_connection_.wait(m);
+			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
-			while (!http_connection_queue_.empty())
+			if (http_connection_queue_.empty())
 			{
-				auto http_socket = http_connection_queue_.front();
-				http_connection_queue_.pop();
+				std::this_thread::yield();
+			}
+			else
+			{
+				std::cout << "new connection\n";
+				while (!http_connection_queue_.empty())
+				{
+					auto http_socket = http_connection_queue_.front();
+					http_connection_queue_.pop();
 			
-				network::timeout(http_socket, connection_timeout_);
-				network::tcp_nodelay(http_socket, 1);
+					network::timeout(http_socket, connection_timeout_);
+					network::tcp_nodelay(http_socket, 1);
 
-				std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
-				connection_thread.detach();
+					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
+					connection_thread.detach();
 
-				auto current_connections = manager_.connections_current();
-				manager_.connections_accepted(manager_.connections_accepted() + 1);
-				manager_.connections_current(current_connections + 1);
+					auto current_connections = manager_.connections_current();
+					manager_.connections_accepted(manager_.connections_accepted() + 1);
+					manager_.connections_current(current_connections + 1);
+				}
 			}
 		}
 	}

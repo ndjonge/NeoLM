@@ -514,7 +514,7 @@ namespace network
 
 			void listen() noexcept
 			{
-				::listen(endpoint_->socket(), 1);
+				::listen(endpoint_->socket(), 5);
 			}
 
 			void accept(socket& socket) noexcept
