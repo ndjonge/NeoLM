@@ -1983,8 +1983,8 @@ public:
 		if (!ec)
 		{
 
-			std::cout << "set server " + upstream_node_name + " state drain\n";
-			network::write(s.socket(), "set server " + upstream_node_name + " state drain\n");
+			std::cout << "set server " + upstream_node_name + " state down\n";
+			network::write(s.socket(), "set server " + upstream_node_name + " state down\n");
 			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
 		}
 
@@ -2063,7 +2063,7 @@ public:
 	{
 		bool ret = false;
 
-		if (manager_.health_checks_received_consecutive() > 5 )
+		if (manager_.health_checks_received_consecutive() > 20 )
 			ret = true;
 
 		return ret;
@@ -2328,7 +2328,6 @@ public:
 			}
 			else
 			{
-				std::cout << "new connection\n";
 				while (!http_connection_queue_.empty())
 				{
 					auto http_socket = http_connection_queue_.front();
@@ -2517,11 +2516,12 @@ public:
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
 		{
+			std::cout<< "connection :" << std::to_string(server_.manager().connections_accepted()+1) << "\n";
 		}
 
 		~connection_handler()
 		{
-			network::shutdown(client_socket_, network::shutdown_receive);
+			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
 
 			auto current_connections = server_.manager().connections_current();
@@ -2531,16 +2531,13 @@ public:
 		void proceed()
 		{
 			std::array<char, 4096> buffer;
+			size_t no_data = 0;
 
 			while (true)
 			{
 				int ret = network::read(client_socket_, network::buffer(buffer.data(), buffer.size()));
 
-				if (ret == 0)
-				{
-					break;
-				}
-				if (ret < 0)
+				if (ret <= 0)
 				{
 					break;
 				}
