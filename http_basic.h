@@ -1893,7 +1893,7 @@ class reverse_proxy_controller : public P
 public:
 	reverse_proxy_controller(http::configuration& configuration) 
 		: reverse_proxy_addres_(configuration.get<std::string>("proxy_address", "::1:9999"))
- 		, reverse_proxy_this_node_url(configuration.get<std::string>("node_url_", "localhost:" + configuration.get<std::string>("listen_socket_start")))
+ 		, reverse_proxy_this_node_url(configuration.get<std::string>("node_url", "localhost:" + configuration.get<std::string>("listen_socket_start")))
 	{
 	}
 
@@ -1920,7 +1920,7 @@ public:
 		bool ret = false;
 		char buffer[4096];
 
-		network::tcp::v6 s(network::ip::make_address(proxy_addres_));
+		network::tcp::v4 s(network::ip::make_address(proxy_addres_));
 		network::ip::address reverse_proxy_this_node_url_address = network::ip::make_address(reverse_proxy_this_node_url);
 
 
@@ -2475,7 +2475,7 @@ public:
 
 			reverse_proxy_controller_.enable_upstream_server(
 				http::basic::server::configuration_.get<std::string>("upstream_node_name", "upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_)),
-				http::basic::server::configuration_.get<std::string>("node_url", "127.0.0.1:" + std::to_string(listen_port_))
+				http::basic::server::configuration_.get<std::string>("node_url", "192.168.131.1:" + std::to_string(listen_port_))
 			);
 
 			acceptor_http.listen();
@@ -2646,7 +2646,7 @@ public:
 					if (response.connection_keep_alive() == true)
 					{
 						session_handler_.reset();
-						std::this_thread::yield();
+						//std::this_thread::yield();
 					}
 					else
 					{

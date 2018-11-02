@@ -348,7 +348,7 @@ namespace network
 			std::int16_t protocol_;
 		};
 
-/*		class v4 : public endpoint
+		class v4 : public endpoint
 		{
 		public:
 			v4(std::int16_t port) : sock_addr_({})
@@ -410,7 +410,7 @@ namespace network
 			}
 		private:
 			sockaddr_in sock_addr_;
-		};*/
+		};
 
 		class v6 : public endpoint
 		{
