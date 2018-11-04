@@ -1897,7 +1897,7 @@ public:
 	{
 	}
 
-	bool enable_upstream_server(const std::string& node_name, std::string& reverse_proxy_this_node_url)
+	bool enable_upstream_server(const std::string& node_name, const std::string& reverse_proxy_this_node_url)
 	{
 		return static_cast<P*>(this)->enable_upstream_server_impl(reverse_proxy_addres_, node_name, reverse_proxy_this_node_url);
 	}
@@ -2014,7 +2014,7 @@ public:
 
 	bool scale_out() const
 	{
-		auto& command = configuration_.get<std::string>("scale_out_command");
+		auto command = configuration_.get<std::string>("scale_out_command");
 		auto res = false;
 
 		if (!command.empty())
@@ -2030,7 +2030,7 @@ public:
 
 	bool scale_in()
 	{
-		auto& command = configuration_.get<std::string>("scale_in_command");
+		auto command = configuration_.get<std::string>("scale_in_command");
 
 		auto res = false;
 
@@ -2474,8 +2474,8 @@ public:
 			}
 
 			reverse_proxy_controller_.enable_upstream_server(
-				http::basic::server::configuration_.get<std::string>("upstream_node_name", "upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_)),
-				http::basic::server::configuration_.get<std::string>("node_url", "192.168.131.1:" + std::to_string(listen_port_))
+				this->configuration_.get<std::string>("upstream_node_name", std::string("upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_))),
+				this->configuration_.get<std::string>("node_url", std::string("127.0.0.1:") + std::to_string(listen_port_))
 			);
 
 			acceptor_http.listen();
@@ -2496,8 +2496,8 @@ public:
 			}
 
 			reverse_proxy_controller_.disable_upstream_server(
-				http::basic::server::configuration_.get<std::string>("upstream_node_name", "upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_)),
-				http::basic::server::configuration_.get<std::string>("node_url", "127.0.0.1:" + std::to_string(listen_port_))
+				this->configuration_.get<std::string>("upstream_node_name", "upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_)),
+				this->configuration_.get<std::string>("node_url", "127.0.0.1:" + std::to_string(listen_port_))
 			);
 		}
 		catch (...)
@@ -2678,8 +2678,8 @@ public:
 		void reset_session()
 		{
 			session_handler_.reset();
-			data_request_.clear();
-			data_response_.clear();
+			//data_request_.clear();
+			//data_response_.clear();
 		}
 	};
 

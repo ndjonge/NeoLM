@@ -10,6 +10,8 @@
 
 #include <signal.h>
 
+using namespace std::literals;
+
 namespace neolm
 {
 class instance;
@@ -37,8 +39,8 @@ public:
 		, description_(description)
 		, model_(m){};
 
-
-	friend json::value to_json(const product<M>& m);
+    friend json::value to_json(const product<M>& m)
+    {}
 
 private:
 	std::string id_;
@@ -46,7 +48,6 @@ private:
 
 	M model_;
 };
-
 
 class user
 {
@@ -295,7 +296,7 @@ json::value to_json(const instance::license_aquired& license_aquired)
 	return ret;
 }
 
-
+/*
 json::value to_json(const product<concurrent_user_license>& concurrent_user_license)
 {
 	json::object ret;
@@ -327,7 +328,7 @@ json::value to_json(const product<named_user_license>& name_user_license)
 	// product_json.emplace(std::string("id"), json::string(product.second.model_));
 
 	return ret;
-}
+}*/
 
 json::value to_json(const named_user_licenses& name_user_licenses)
 {
@@ -463,7 +464,7 @@ private:
 					{
 						//std::chrono::system_clock::time_point t0 = std::chrono::system_clock::now();
 						
-						if (S::first_cluster_node() && S::manager().scale_count() < 63)
+						if (S::first_cluster_node() && S::manager().scale_count() < 15)
 						{
 							auto future_ = std::async(std::launch::async, [this](){S::scale_out();});
 							//std::cout << "scaling out took: " << (std::chrono::system_clock::now() - t0).count() << "msec\n";
@@ -485,7 +486,7 @@ private:
 					instance_id = "main";
 				}
 
-				auto instance = license_manager_.get_instances().at(instance_id);
+				const auto& instance = license_manager_.get_instances().at(instance_id);
 
 				json::object return_json;
 
@@ -535,7 +536,7 @@ private:
 						instance_id = "main";
 					}
 
-					auto& instance = license_manager_.get_instances().at(instance_id);
+					auto instance = license_manager_.get_instances().at(instance_id);
 
 					// 1 - Process
 					auto request_json = json::parser::parse(session.request().body());
@@ -565,9 +566,9 @@ private:
 
 					const std::string& product_id = params.get("product-id");
 
-					auto& instance = license_manager_.get_instances().at(instance_id);
+					auto instance = license_manager_.get_instances().at(instance_id);
 
-					auto& return_json = instance.confirm_license(license_id);
+					const auto& return_json = instance.confirm_license(license_id);
 
 					session.response().body() = json::serializer::serialize(return_json).str();
 					session.response().type("json");					
@@ -587,9 +588,9 @@ private:
 
 					const std::string& product_id = params.get("product-id");
 
-					auto& instance = license_manager_.get_instances().at(instance_id);
+					auto instance = license_manager_.get_instances().at(instance_id);
 
-					auto& return_json = instance.release_license(license_id);
+					auto return_json = instance.release_license(license_id);
 
 					session.response().body() = json::serializer::serialize(return_json).str();
 					session.response().type("json");					
@@ -612,7 +613,7 @@ private:
 	};
 
 public:
-	license_manager(http::configuration& configuration, std::string home_dir)
+	license_manager(http::configuration configuration, std::string home_dir)
 		: configuration_{configuration}
 		, api_server_(*this, configuration_)
 		, home_dir_(home_dir)

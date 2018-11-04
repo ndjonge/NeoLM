@@ -29,13 +29,13 @@ int main(int argc, char* argv[])
 						{
 						  { "server", "neolm/8.0.01" },
 						  { "listen_port_begin", "3000" },
-						  { "listen_port_end", "3063" },
+						  { "listen_port_end", "3015" },
 						  { "keepalive_count", "4096" },
 						  { "keepalive_timeout", "30" },
 						  { "thread_count", "8" },
 						  { "scale_out_command", "start /b " + std::accumulate(argv, argv + argc, std::string(""))},
 						  { "scale_in_command", ""},
-						  { "proxy_address", "192.168.131.129:9999" },
+						  { "proxy_address", "127.0.0.1:9999" },
 						  { "doc_root", "/Projects/doc_root" },
 						  { "ssl_certificate", "/Projects/ssl/ssl.crt" },
 						  { "ssl_certificate_key", "/Projects/ssl/ssl.key" } 
