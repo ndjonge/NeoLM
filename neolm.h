@@ -486,7 +486,7 @@ private:
 					instance_id = "main";
 				}
 
-				const auto& instance = license_manager_.get_instances().at(instance_id);
+				auto instance = license_manager_.get_instances().at(instance_id);
 
 				json::object return_json;
 
@@ -623,6 +623,8 @@ public:
 		for (auto& instance_definition : instance_definitions.get_array())
 		{
 			std::string instance_id = instance_definition["instance"].as_string();
+
+            std::cout << instance_id << "\n";
 
 			std::string license_file = home_dir_ + instance_id + "/license.json";
 			std::string allocation_file = home_dir_ + instance_id + "/allocation.json";
