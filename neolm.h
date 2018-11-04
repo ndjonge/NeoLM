@@ -40,7 +40,15 @@ public:
 		, model_(m){};
 
     friend json::value to_json(const product<M>& m)
-    {}
+    {
+		json::object ret;
+
+		ret.emplace(std::string("id"), json::string(m.id_));
+		ret.emplace(std::string("description"), json::string(m.description_));
+		// product_json.emplace(std::string("id"), json::string(product.second.model_));
+
+		return ret;	
+	}
 
 private:
 	std::string id_;
@@ -295,40 +303,6 @@ json::value to_json(const instance::license_aquired& license_aquired)
 
 	return ret;
 }
-
-/*
-json::value to_json(const product<concurrent_user_license>& concurrent_user_license)
-{
-	json::object ret;
-
-	ret.emplace(std::string("id"), json::string(concurrent_user_license.id_));
-	ret.emplace(std::string("description"), json::string(concurrent_user_license.description_));
-	// product_json.emplace(std::string("id"), json::string(product.second.model_));
-
-	return ret;
-}
-
-json::value to_json(const product<named_server_license>& name_server_license)
-{
-	json::object ret;
-
-	ret.emplace(std::string("id"), json::string(name_server_license.id_));
-	ret.emplace(std::string("description"), json::string(name_server_license.description_));
-	// product_json.emplace(std::string("id"), json::string(product.second.model_));
-
-	return ret;
-}
-
-json::value to_json(const product<named_user_license>& name_user_license)
-{
-	json::object ret;
-
-	ret.emplace(std::string("id"), json::string(name_user_license.id_));
-	ret.emplace(std::string("description"), json::string(name_user_license.description_));
-	// product_json.emplace(std::string("id"), json::string(product.second.model_));
-
-	return ret;
-}*/
 
 json::value to_json(const named_user_licenses& name_user_licenses)
 {
