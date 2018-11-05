@@ -413,7 +413,7 @@ private:
 				if ((session.request().method() == "OPTIONS") && session.request().target() == "/")
 				{
 					//health check
-					S::manager().health_checks_received(S::manager().health_checks_received()+1);
+					S::manager().health_checks_received_increase();
 
 
 					if (S::first_cluster_node() == false && S::idling())				
@@ -431,7 +431,7 @@ private:
 				else
 				{
 					if (session.request().target() != "/status")
-						S::manager().health_checks_received_consecutive(0);
+						S::manager().health_checks_received_consecutive_reset();
 
 
 					if (S::too_busy())
@@ -597,9 +597,6 @@ public:
 		for (auto& instance_definition : instance_definitions.get_array())
 		{
 			std::string instance_id = instance_definition["instance"].as_string();
-
-            std::cout << instance_id << "\n";
-
 			std::string license_file = home_dir_ + instance_id + "/license.json";
 			std::string allocation_file = home_dir_ + instance_id + "/allocation.json";
 

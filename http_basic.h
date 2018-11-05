@@ -2023,7 +2023,7 @@ public:
 		}
 	
 
-		//std::cout << "scale out!: " << command << " result: " << std::to_string(res) << "\n";
+		std::cout << "scale out!: " << command << " result: " << std::to_string(res) << "\n";
 
 		return res;
 	}
@@ -2132,10 +2132,16 @@ public:
 			return connections_accepted_;
 		}
 
-		void connections_accepted(size_t nr)
+		void connections_accepted_increase()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			connections_accepted_ = nr;
+			connections_accepted_++;
+		}
+
+		void connections_accepted_decrease()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			connections_accepted_--;
 		}
 
 		size_t connections_current()
@@ -2144,23 +2150,25 @@ public:
 			return connections_current_;
 		}
 
-		void connections_current(size_t nr)
+		void connections_current_increase()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			connections_current_ = nr;
+			connections_current_++;
 			if (connections_current_ > connections_highest_) connections_highest_ = connections_current_;
 		}
+
+		void connections_current_decrease()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			connections_current_--;
+		}
+
+		
 
 		size_t connections_highest()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 			return connections_highest_;
-		}
-
-		void connections_highest(size_t nr)
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			connections_highest_ = nr;
 		}
 
 		size_t health_checks_received()
@@ -2169,10 +2177,10 @@ public:
 			return health_checks_received_;
 		}
 
-		void health_checks_received(size_t nr)
+		void health_checks_received_increase()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			health_checks_received_ = nr;
+			health_checks_received_++;
 			health_checks_received_consecutive_++;
 		}
 
@@ -2182,12 +2190,17 @@ public:
 			return health_checks_received_consecutive_;
 		}
 
-		void health_checks_received_consecutive(size_t nr)
+		void health_checks_received_consecutive_increase()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			health_checks_received_consecutive_ = nr;
+			health_checks_received_consecutive_++;
 		}
 
+		void health_checks_received_consecutive_reset()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			health_checks_received_consecutive_=0;
+		}
 
 		size_t scale_count()
 		{
@@ -2200,6 +2213,7 @@ public:
 			std::lock_guard<std::mutex> g(mutex_);
 			scale_count_ = nr;
 		}
+
 		void log_access(http::session_handler& session)
 		{
 			std::stringstream s;
@@ -2339,9 +2353,8 @@ public:
 					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
 
-					auto current_connections = manager_.connections_current();
-					manager_.connections_accepted(manager_.connections_accepted() + 1);
-					manager_.connections_current(current_connections + 1);
+					manager_.connections_accepted_increase();
+					manager_.connections_current_increase();
 				}
 			}
 		}
@@ -2397,11 +2410,10 @@ public:
 				network::timeout(https_socket.lowest_layer(), connection_timeout_);
 				https_socket.handshake(network::ssl::stream_base::server);
 
-				auto current_connections = manager().connections_current();
-				manager().connections_accepted(manager().connections_accepted() + 1);
-				manager().connections_current(current_connections + 1);
+				manager().connections_accepted_increase();
+				manager().connections_current_increase();
 
-				if (current_connections < thread_count_)
+				if (manager().connections_current() < thread_count_)
 				{
 					std::thread connection_thread(
 						[new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, https_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
@@ -2516,26 +2528,26 @@ public:
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
 		{
-			std::cout<< "connection :" << std::to_string(server_.manager().connections_accepted()+1) << "\n";
 		}
 
 		~connection_handler()
 		{
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
-
-			auto current_connections = server_.manager().connections_current();
-			server_.manager().connections_current(current_connections - 1);
+			server_.manager().connections_current_decrease();
 		}
 
 		void proceed()
 		{
-			std::array<char, 4096> buffer;
-			size_t no_data = 0;
+			using data_store_buffer_t = std::array<char, 1024 * 8>;
+			data_store_buffer_t buffer;
+			data_store_buffer_t::iterator c = std::begin(buffer);
 
 			while (true)
 			{
-				int ret = network::read(client_socket_, network::buffer(buffer.data(), buffer.size()));
+				size_t left_of_buffer_size = buffer.size() - (c - std::begin(buffer));
+			
+				int ret = network::read(client_socket_, network::buffer(&(*c), 2018));
 
 				if (ret <= 0)
 				{
@@ -2543,12 +2555,12 @@ public:
 				}
 
 				http::session_handler::result_type parse_result;
-				std::array<char, 4096>::iterator c = std::begin(buffer);
+
 
 				auto& response = session_handler_.response();
 				auto& request = session_handler_.request();
 
-				std::tie(parse_result, c) = session_handler_.parse_request(c, std::end(buffer));
+				std::tie(parse_result, c) = session_handler_.parse_request(c, c + ret);
 
 				if ((parse_result == http::request_parser::result_type::good) && (request.has_content_lenght()))
 				{
@@ -2646,18 +2658,18 @@ public:
 					if (response.connection_keep_alive() == true)
 					{
 						session_handler_.reset();
-						//std::this_thread::yield();
+						std::fill(buffer.begin(), buffer.end(),0);
+						c = buffer.begin();
+
 					}
 					else
 					{
 						return;
 					}
 				}
-				else
+				else if (parse_result == http::request_parser::result_type::indeterminate)
 				{
-					// TODO send http error
-					session_handler_.reset();
-					return;
+					continue;
 				}
 			}
 		}

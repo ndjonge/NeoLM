@@ -474,9 +474,8 @@ namespace async
 				return;
 			}
 
-			auto current_connections = server_manager().connections_current();
-			server_manager().connections_accepted(server_manager().connections_accepted() + 1);
-			server_manager().connections_current(current_connections + 1);
+			manager().connections_accepted_increase();
+			manager().connections_current_increase();
 
 			handler->start();
 

@@ -321,6 +321,14 @@ namespace network
 
 			return address{addr, port};
 		}
+
+		address make_address_from_name(const std::string& url)
+		{
+			std::string addr = url.substr(0, url.find_last_of(':'));
+			std::uint16_t port = atoi(url.substr(url.find_last_of(':')+1).c_str());
+
+			return address{addr, port};
+		}
 	}
 
 	namespace tcp
