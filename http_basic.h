@@ -1274,6 +1274,7 @@ public:
 		response_.type("text");
 		response_.result(http::status::ok);
 		response_.set("Server", configuration_.get<std::string>("server", "http server 0.0"));
+		response_.set("Host", configuration_.get<std::string>("host", "localhost:"+configuration_.get<std::string>("http_listen_socket", "3000")));
 
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
@@ -1983,8 +1984,8 @@ public:
 		if (!ec)
 		{
 
-			std::cout << "set server " + upstream_node_name + " state down\n";
-			network::write(s.socket(), "set server " + upstream_node_name + " state down\n");
+			std::cout << "set server " + upstream_node_name + " state drain\n";
+			network::write(s.socket(), "set server " + upstream_node_name + " state drain\n");
 			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
 		}
 

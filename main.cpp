@@ -33,7 +33,7 @@ int main(int argc, char* argv[])
 						  { "keepalive_count", "4096" },
 						  { "keepalive_timeout", "30" },
 						  { "thread_count", "8" },
-						  { "scale_out_command", "start /b " + std::accumulate(argv, argv + argc, std::string(""))},
+						  { "scale_out_command", "" + std::accumulate(argv, argv + argc, std::string("")) + " &"},
 						  { "scale_in_command", ""},
 						  { "proxy_address", "127.0.0.1:9999" },
 						  { "doc_root", "/Projects/doc_root" },

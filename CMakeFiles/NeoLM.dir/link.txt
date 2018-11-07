@@ -1,0 +1,1 @@
+/usr/bin/c++     CMakeFiles/NeoLM.dir/main.cpp.o  -o NeoLM /projects/vcpkg/installed/x64-linux/debug/lib/libssl.a /projects/vcpkg/installed/x64-linux/debug/lib/libcrypto.a /projects/vcpkg/installed/x64-linux/debug/lib/libz.a -lpthread -ldl 
