@@ -2533,7 +2533,7 @@ public:
 
 		~connection_handler()
 		{
-			network::shutdown(client_socket_, network::shutdown_send);
+			//network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
 			server_.manager().connections_current_decrease();
 		}
