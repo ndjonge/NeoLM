@@ -2348,8 +2348,8 @@ public:
 					auto http_socket = http_connection_queue_.front();
 					http_connection_queue_.pop();
 			
-					network::timeout(http_socket, connection_timeout_);
-					network::tcp_nodelay(http_socket, 1);
+					//network::timeout(http_socket, connection_timeout_);
+					//network::tcp_nodelay(http_socket, 1);
 
 					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
@@ -2457,7 +2457,7 @@ public:
 
 			network::use_portsharding(endpoint_http.socket(), 1);
 
-			network::no_linger(endpoint_http.socket(), 1);
+			//network::no_linger(endpoint_http.socket(), 1);
 
 			network::error_code ec = network::error::success;
 
@@ -2465,7 +2465,7 @@ public:
 			{
 				acceptor_http.bind(endpoint_http, ec);
 
-				network::no_linger(endpoint_http.socket(), 1);
+				//network::no_linger(endpoint_http.socket(), 1);
 
 				if (ec == network::error::success)
 				{
@@ -2528,12 +2528,20 @@ public:
 			, session_handler_(server.configuration_)
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
+			, bytes_received_(0)
+			, bytes_send_(0)
+
 		{
 		}
 
 		~connection_handler()
 		{
-			//network::shutdown(client_socket_, network::shutdown_send);
+			std::string msg = "close connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
+
+			std::cout << msg;
+			
+			network::shutdown(client_socket_, network::shutdown_send);
+			std::this_thread::sleep_for(2s);
 			network::closesocket(client_socket_);
 			server_.manager().connections_current_decrease();
 		}
@@ -2555,8 +2563,9 @@ public:
 					break;
 				}
 
-				http::session_handler::result_type parse_result;
+				bytes_received_ += ret;
 
+				http::session_handler::result_type parse_result;
 
 				auto& response = session_handler_.response();
 				auto& request = session_handler_.request();
@@ -2585,6 +2594,8 @@ public:
 							{
 								break;
 							}
+
+							bytes_received_ += ret;
 
 							request.body().append(buffer.data(), buffer.data() + ret);
 
@@ -2681,6 +2692,8 @@ public:
 		http::session_handler session_handler_;
 		int connection_timeout_;
 		size_t gzip_min_length_;
+		size_t bytes_received_;
+		size_t bytes_send_;
 
 /*		std::vector<char> data_request_;
 		std::vector<char> data_response_;
