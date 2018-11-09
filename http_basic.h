@@ -1762,7 +1762,7 @@ public:
 
 	void on_option(const std::string& route, R api_method) 
 	{
-		on_option.emplace_back(route, api_method);
+		on_options_.emplace_back(route, api_method);
 	}
 
 	void use(const std::string& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
@@ -2541,7 +2541,6 @@ public:
 			std::cout << msg;
 			
 			network::shutdown(client_socket_, network::shutdown_send);
-			std::this_thread::sleep_for(2s);
 			network::closesocket(client_socket_);
 			server_.manager().connections_current_decrease();
 		}
