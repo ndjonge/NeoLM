@@ -414,7 +414,8 @@ private:
 				{
 					//health check
 					S::manager().health_checks_received_increase();
-
+					
+					session.request().set("X-Health-Check", "ok");
 
 					if (S::first_cluster_node() == false && S::idling())				
 					{					
@@ -424,11 +425,11 @@ private:
 					else if (S::first_cluster_node() && S::manager().scale_count() > 0 )
 						S::manager().scale_count(S::manager().scale_count()-1);
 
-
 					session.response().result(http::status::ok);
+
 					result = false;
 				}
-				else
+				else				
 				{
 					if (session.request().target() != "/status")
 						S::manager().health_checks_received_consecutive_reset();

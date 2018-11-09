@@ -1418,7 +1418,7 @@ private:
 
 	int keepalive_count_;
 	int keepalive_max_;
-
+	
 	std::chrono::steady_clock::time_point t1_;
 };
 
@@ -2619,10 +2619,17 @@ public:
 
 					if (parse_result == http::request_parser::result_type::good)
 					{
-						session_handler_.request().set("Remote_Addr", network::get_client_info(client_socket_));
+						session_handler_.request().set("Remote_Addr", session_handler_.request().get("X-Forwarded-For", network::get_client_info(client_socket_)));
+
 						session_handler_.handle_request(server_.router_);
-						server_.manager().requests_handled(server_.manager().requests_handled() + 1);
-						server_.manager().log_access(session_handler_);
+
+						bool health_check_ok = (session_handler_.request().get("X-Health-Check") == "ok");
+
+						if (!health_check_ok)
+						{
+							server_.manager().requests_handled(server_.manager().requests_handled() + 1);
+							server_.manager().log_access(session_handler_);
+						}
 					}
 					else
 					{
