@@ -265,8 +265,6 @@ public:
 		return get_object()[key];
 	}
 
-	std::size_t count() const {};
-
 	json::value& operator = (const json::value& source)
 	{
 		using std::copy;
@@ -747,7 +745,7 @@ json::value parseNull(const std::string& str, std::string::const_iterator& i)
 	}
 	else
 	{
-		return json::value(nullptr);
+		return json::value();
 	}
 }
 
@@ -933,7 +931,7 @@ std::stringstream serialize(const json::value& v, std::int16_t indent_depth = 0)
 			break;
 
 		case json::boolean_type:
-			result << v.as_bool() ? "true" : "false";
+			result << (v.as_bool() ? "true" : "false");
 			break;
 
 		case json::number_unsigned_integer_type:
