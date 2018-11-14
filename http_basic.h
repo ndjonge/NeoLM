@@ -2052,7 +2052,7 @@ public:
 	{
 		bool ret = false;
 
-		if ((manager_.connections_current() > 2))
+		if ((manager_.connections_current() > 4))
 		{
 			ret = true;
 		}
@@ -2064,7 +2064,7 @@ public:
 	{
 		bool ret = false;
 
-		if (manager_.health_checks_received_consecutive() > 20 )
+		if (manager_.health_checks_received_consecutive() > 4 )
 			ret = true;
 
 		return ret;
@@ -2536,7 +2536,8 @@ public:
 
 		~connection_handler()
 		{
-			std::string msg = "close connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
+			std::string port = std::to_string(server_.listen_port_);
+			std::string msg = port + " close connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
 
 			std::cout << msg;
 			

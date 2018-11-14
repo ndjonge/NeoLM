@@ -439,7 +439,7 @@ private:
 					{
 						//std::chrono::system_clock::time_point t0 = std::chrono::system_clock::now();
 						
-						if (S::first_cluster_node() && S::manager().scale_count() < 15)
+						if (S::first_cluster_node() && S::manager().scale_count() < 63)
 						{
 							auto future_ = std::async(std::launch::async, [this](){S::scale_out();});
 							//std::cout << "scaling out took: " << (std::chrono::system_clock::now() - t0).count() << "msec\n";
