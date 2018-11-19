@@ -1983,7 +1983,6 @@ public:
 
 		if (!ec)
 		{
-
 			std::cout << "set server " + upstream_node_name + " state drain\n";
 			network::write(s.socket(), "set server " + upstream_node_name + " state drain\n");
 			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
@@ -2016,6 +2015,7 @@ public:
 	bool scale_out() const
 	{
 		auto command = configuration_.get<std::string>("scale_out_command");
+
 		auto res = false;
 
 		if (!command.empty())
@@ -2052,7 +2052,7 @@ public:
 	{
 		bool ret = false;
 
-		if ((manager_.connections_current() > 4))
+		if ((manager_.connections_current() > 1))
 		{
 			ret = true;
 		}
@@ -2532,6 +2532,11 @@ public:
 			, bytes_send_(0)
 
 		{
+			std::string port = std::to_string(server_.listen_port_);
+			std::string msg = port + " open connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
+
+			std::cout << msg;
+
 		}
 
 		~connection_handler()
