@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
 						  { "server", "neolm/8.0.01" },
 						  { "listen_port_begin", "3000" },
 						  { "listen_port_end", "3063" },
-						  { "keepalive_count", "128" },
+						  { "keepalive_count", "1024" },
 						  { "keepalive_timeout", "30" },
 						  { "thread_count", "8" },
 						  { "health_check_route", "OPTIONS /" },

@@ -2052,7 +2052,7 @@ public:
 	{
 		bool ret = false;
 
-		if ((manager_.connections_current() > 1))
+		if ((manager_.connections_current() > 3))
 		{
 			ret = true;
 		}
@@ -2532,19 +2532,17 @@ public:
 			, bytes_send_(0)
 
 		{
-			std::string port = std::to_string(server_.listen_port_);
-			std::string msg = port + " open connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
-
-			std::cout << msg;
 
 		}
 
 		~connection_handler()
 		{
-			std::string port = std::to_string(server_.listen_port_);
-			std::string msg = port + " close connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
-
-			std::cout << msg;
+			if (1024 != session_handler_.keepalive_count())
+			{
+				std::string port = std::to_string(server_.listen_port_);
+				std::string msg = port + " open connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
+				std::cout << msg;
+			}
 			
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
