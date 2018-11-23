@@ -439,7 +439,7 @@ private:
 					{
 						//std::chrono::system_clock::time_point t0 = std::chrono::system_clock::now();
 						
-						if (S::first_cluster_node() && S::manager().scale_count() < 63)
+						if (S::first_cluster_node() && S::manager().scale_count() < 8)
 						{
 							auto future_ = std::async(std::launch::async, [this](){S::scale_out();});
 							//std::cout << "scaling out took: " << (std::chrono::system_clock::now() - t0).count() << "msec\n";
@@ -450,6 +450,13 @@ private:
 
 				return result;
 			});
+
+			S::router_.on_get(
+				"/sleep/10", [this](http::session_handler& session, const http::api::params& params) {
+
+				std::this_thread::sleep_for(1s);
+			});
+
 
 			S::router_.on_get(
 				"/licenses/configuration", [this](http::session_handler& session, const http::api::params& params) {

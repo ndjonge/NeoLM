@@ -2532,10 +2532,10 @@ public:
 			, bytes_send_(0)
 
 		{
-			std::string port = std::to_string(server_.listen_port_);
-			std::string msg = port + " open connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
+/*			std::string port = std::to_string(server_.listen_port_);
+			std::string msg = port + " open connection\n";
 
-			std::cout << msg;
+			std::cout << msg;*/
 
 		}
 
