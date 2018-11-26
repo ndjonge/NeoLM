@@ -1273,7 +1273,7 @@ public:
 
 		response_.type("text");
 		response_.result(http::status::ok);
-		response_.set("Server", configuration_.get<std::string>("server", "http server 0.0"));
+		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
 		response_.set("Host", configuration_.get<std::string>("host", "localhost:"+configuration_.get<std::string>("http_listen_socket", "3000")));
 
 		if (!http::request_parser::url_decode(request_.target(), request_path))
@@ -1377,9 +1377,9 @@ public:
 		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false)
 			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && request_.connection_close() == false))
 		{
-			keepalive_count(keepalive_count() - 1);
+			keepalive_count_decr();
 			response_.set("Connection", "Keep-Alive");
-			response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" +std::to_string(keepalive_count()));
+			//response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" +std::to_string(keepalive_count()));
 		}
 		else
 		{
@@ -1388,7 +1388,7 @@ public:
 
 	}
 
-	void keepalive_count(const int& keepalive_count) { keepalive_count_ = keepalive_count; };
+	void keepalive_count_decr() { --keepalive_count_;};
 	int keepalive_count() const { return keepalive_count_; };
 
 	void keepalive_max(const int& keepalive_max) { keepalive_max_ = keepalive_max; };
@@ -1884,119 +1884,6 @@ protected:
 };
 } // namespace api
 
-
-namespace cluster_node
-{
-
-template<typename P>
-class reverse_proxy_controller : public P
-{
-public:
-	reverse_proxy_controller(http::configuration& configuration) 
-		: reverse_proxy_addres_(configuration.get<std::string>("proxy_address", "::1:9999"))
- 		, reverse_proxy_this_node_url(configuration.get<std::string>("node_url", "localhost:" + configuration.get<std::string>("listen_socket_start")))
-	{
-	}
-
-	bool enable_upstream_server(const std::string& node_name, const std::string& reverse_proxy_this_node_url)
-	{
-		return static_cast<P*>(this)->enable_upstream_server_impl(reverse_proxy_addres_, node_name, reverse_proxy_this_node_url);
-	}
-
-	bool disable_upstream_server(const std::string& node_name, const std::string& reverse_proxy_this_node_url)
-	{
-		return static_cast<P*>(this)->disable_upstream_server_impl(reverse_proxy_addres_, node_name, reverse_proxy_this_node_url);
-	}
-
-private:
-	std::string reverse_proxy_addres_;
-	std::string reverse_proxy_this_node_url;
-};
-
-class haproxy
-{
-public:
-	bool enable_upstream_server_impl(const std::string& proxy_addres_, const std::string& upstream_node_name, const std::string& reverse_proxy_this_node_url)
-	{
-		bool ret = false;
-		char buffer[4096];
-
-		network::tcp::v4 s(network::ip::make_address(proxy_addres_));
-		network::ip::address reverse_proxy_this_node_url_address = network::ip::make_address(reverse_proxy_this_node_url);
-
-
-		network::error_code ec;
-
-		s.connect(ec);
-
-
-		if (!ec)
-		{
-			std::cout << "set server " + upstream_node_name + " addr "+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n";
-
-			network::write(s.socket(), "set server " + upstream_node_name + " addr "+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n"); 
-			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
-
-		}
-
-		s.close();
-		s.connect(ec);
-
-		if (!ec)
-		{
-
-			std::cout << "enable server " + upstream_node_name + " state ready\n";
-			network::write(s.socket(), "enable server " + upstream_node_name + " state ready\n");
-			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
-		}
-
-		return ret;
-	}
-
-	bool disable_upstream_server_impl(const std::string& proxy_addres_, const std::string& upstream_node_name, const std::string& reverse_proxy_this_node_url)
-	{
-		bool ret = false;
-		char buffer[4096];
-
-		network::tcp::v6 s(network::ip::make_address(proxy_addres_));
-		network::ip::address reverse_proxy_this_node_url_address = network::ip::make_address(reverse_proxy_this_node_url);
-
-
-		network::error_code ec;
-
-		s.connect(ec);
-
-/*
-		if (!ec)
-		{
-
-			std::cout << "set server " + upstream_node_name + " addr "+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n";
-
-			network::write(s.socket(), "set server " + upstream_node_name + " addr "+ reverse_proxy_this_node_url_address.first + " port " + std::to_string(reverse_proxy_this_node_url_address.second) + "\n"); 
-			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
-
-		}
-
-		s.close();
-		*/
-		s.connect(ec);
-
-		if (!ec)
-		{
-			std::cout << "set server " + upstream_node_name + " state drain\n";
-			network::write(s.socket(), "set server " + upstream_node_name + " state drain\n");
-			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
-		}
-
-		return ret;
-	}
-};
-
-}
-
-
-
-
 namespace basic
 {
 
@@ -2006,69 +1893,10 @@ public:
 	server(http::configuration& configuration)
 		: router_(configuration.get<std::string>("doc_root", "/var/www"))
 		, configuration_(configuration)
-		, reverse_proxy_controller_(configuration)
 		, active_(true)
 	{};
 
 	server(const server&) = default;
-
-	bool scale_out() const
-	{
-		auto command = configuration_.get<std::string>("scale_out_command");
-
-		auto res = false;
-
-		if (!command.empty())
-		{
-			res = std::system(command.c_str());
-		}
-	
-
-		std::cout << "scale out!: " << command << " result: " << std::to_string(res) << "\n";
-
-		return res;
-	}
-
-	bool scale_in()
-	{
-		auto command = configuration_.get<std::string>("scale_in_command");
-
-		auto res = false;
-
-		if (!command.empty())
-			res = std::system(command.c_str());
-
- 		std::cout << "scale in! : " << command << " result: " << std::to_string(res) << "\n";
-
-		return res;
-	} 
-
-	bool first_cluster_node()
-	{
-		return configuration_.get<std::uint16_t>("http_listen_socket") == configuration_.get<std::uint16_t>("listen_port_begin");
-	}
-
-	bool too_busy()
-	{
-		bool ret = false;
-
-		if ((manager_.connections_current() > 1))
-		{
-			ret = true;
-		}
-	
-		return ret;
-	}
-
-	bool idling()
-	{
-		bool ret = false;
-
-		if (manager_.health_checks_received_consecutive() > 4 )
-			ret = true;
-
-		return ret;
-	}
 
 	bool active()
 	{
@@ -2275,7 +2103,6 @@ protected:
 	server_manager manager_;
 	http::api::router<> router_;
 	http::configuration& configuration_;
-	http::cluster_node::reverse_proxy_controller<http::cluster_node::haproxy> reverse_proxy_controller_;
 	std::atomic<bool> active_;
 };
 
@@ -2300,10 +2127,6 @@ public:
 
 	~server()
 	{
-			reverse_proxy_controller_.disable_upstream_server(
-				http::basic::server::configuration_.get<std::string>("upstream_node_name", "upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_)),
-				http::basic::server::configuration_.get<std::string>("node_url", "127.0.0.1:" + std::to_string(listen_port_))
-			);
 	}
 
 	server(const server&) = default;
@@ -2486,11 +2309,6 @@ public:
 				exit(-1);
 			}
 
-			reverse_proxy_controller_.enable_upstream_server(
-				this->configuration_.get<std::string>("upstream_node_name", std::string("upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_))),
-				this->configuration_.get<std::string>("node_url", std::string("127.0.0.1:") + std::to_string(listen_port_))
-			);
-
 			acceptor_http.listen();
 
 			while (active())
@@ -2505,13 +2323,8 @@ public:
 					http_connection_queue_.push(http_socket);
 					http_connection_queue_has_connection_.notify_one();
 				}
-
 			}
 
-			reverse_proxy_controller_.disable_upstream_server(
-				this->configuration_.get<std::string>("upstream_node_name", "upstream/node" + std::to_string(1 + listen_port_ - listen_port_begin_)),
-				this->configuration_.get<std::string>("node_url", "127.0.0.1:" + std::to_string(listen_port_))
-			);
 		}
 		catch (...)
 		{
@@ -2541,10 +2354,10 @@ public:
 
 		~connection_handler()
 		{
-			std::string port = std::to_string(server_.listen_port_);
+/*			std::string port = std::to_string(server_.listen_port_);
 			std::string msg = port + " close connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
 
-			std::cout << msg;
+			std::cout << msg;*/
 			
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
@@ -2561,7 +2374,7 @@ public:
 			{
 				size_t left_of_buffer_size = buffer.size() - (c - std::begin(buffer));
 			
-				int ret = network::read(client_socket_, network::buffer(&(*c), 2018));
+				int ret = network::read(client_socket_, network::buffer(&(*c), buffer.size()));
 
 				if (ret <= 0)
 				{
@@ -2629,9 +2442,9 @@ public:
 
 						session_handler_.handle_request(server_.router_);
 
-						bool health_check_ok = (session_handler_.request().get("X-Health-Check") == "ok");
+						//bool health_check_ok = (session_handler_.request().get("X-Health-Check") == "ok");
 
-						if (!health_check_ok)
+						//if (!health_check_ok)
 						{
 							server_.manager().requests_handled(server_.manager().requests_handled() + 1);
 							server_.manager().log_access(session_handler_);

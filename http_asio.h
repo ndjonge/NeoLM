@@ -260,7 +260,7 @@ namespace async
 					|| (session_handler_.request().http_version11() == false && session_handler_.request().connection_keep_alive() && session_handler_.keepalive_count() > 1
 						&& session_handler_.request().connection_close() == false))
 				{
-					session_handler_.keepalive_count(session_handler_.keepalive_count() - 1);
+					session_handler_.keepalive_count_decr();
 					session_handler_.response().set("Connection", "Keep-Alive");
 					//session_handler_.response().set("Keep-Alive", std::string("timeout=") + std::to_string(session_handler_.keepalive_max()) + ", max="  + std::to_string(session_handler_.keepalive_count()));
 				}

@@ -406,55 +406,21 @@ private:
             S::router_.use("/");
             S::router_.use("/files/");
 			// License instance configuration routes..
+		
+			S::router_.on_get(
+				"/sleep/1000", [this](http::session_handler& session, const http::api::params& params) {
 
-			S::router_.use("/", [this](http::session_handler& session, const http::api::params& params) {
-				bool result = true;
-
-				if ((session.request().method() == "OPTIONS") && session.request().target() == "/")
-				{
-					//health check
-					S::manager().health_checks_received_increase();
-					
-					session.request().set("X-Health-Check", "ok");
-
-					if (S::first_cluster_node() == false && S::idling())				
-					{					
-						S::scale_in();
-						S::deactivate();
-					}
-					else if (S::first_cluster_node() && S::manager().scale_count() > 0 )
-						S::manager().scale_count(S::manager().scale_count()-1);
-
-					session.response().result(http::status::ok);
-
-					result = false;
-				}
-				else				
-				{
-					if (session.request().target() != "/status")
-						S::manager().health_checks_received_consecutive_reset();
-
-
-					if (S::too_busy())
-					{
-						//std::chrono::system_clock::time_point t0 = std::chrono::system_clock::now();
-						
-						if (S::first_cluster_node() && S::manager().scale_count() < 8)
-						{
-							auto future_ = std::async(std::launch::async, [this](){S::scale_out();});
-							//std::cout << "scaling out took: " << (std::chrono::system_clock::now() - t0).count() << "msec\n";
-							S::manager().scale_count(S::manager().scale_count()+1);
-						}
-					}
-				}
-
-				return result;
+				std::this_thread::sleep_for(1000ms);
 			});
 
 			S::router_.on_get(
-				"/sleep/10", [this](http::session_handler& session, const http::api::params& params) {
+				"/sleep/500", [this](http::session_handler& session, const http::api::params& params) {
+				std::this_thread::sleep_for(500ms);
+			});
 
-				std::this_thread::sleep_for(1s);
+			S::router_.on_get(
+				"/sleep/100", [this](http::session_handler& session, const http::api::params& params) {
+				std::this_thread::sleep_for(100ms);
 			});
 
 
