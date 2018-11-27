@@ -2050,8 +2050,7 @@ public:
 
 			s << "\"" << session.request().get("Remote_Addr") << "\""
 			  << " - \"" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << "\""
-			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << " - \"" << session.request().get("User-Agent") << " - \""
-			  << session.response().get("Keep-Alive") << "\"\n";
+			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << " - \"" << session.request().get("User-Agent") << "\"\n";
 
 			access_log_.emplace_back(s.str());
 
@@ -2122,6 +2121,7 @@ public:
 		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
+		, reverse_proxy_(configuration)
 	{
 	}
 
@@ -2369,12 +2369,11 @@ public:
 			using data_store_buffer_t = std::array<char, 1024 * 8>;
 			data_store_buffer_t buffer;
 			data_store_buffer_t::iterator c = std::begin(buffer);
-
 			while (true)
 			{
 				size_t left_of_buffer_size = buffer.size() - (c - std::begin(buffer));
 			
-				int ret = network::read(client_socket_, network::buffer(&(*c), buffer.size()));
+				int ret = network::read(client_socket_, network::buffer(&(*c), left_of_buffer_size));
 
 				if (ret <= 0)
 				{
@@ -2495,7 +2494,7 @@ public:
 					if (response.connection_keep_alive() == true)
 					{
 						session_handler_.reset();
-						std::fill(buffer.begin(), buffer.end(),0);
+						//std::fill(buffer.begin(), buffer.end(),0);
 						c = buffer.begin();
 
 					}
@@ -2534,6 +2533,46 @@ public:
 		}
 	};
 
+	class reverse_proxy
+	{
+	public:
+		using backend_list = std::vector<std::string>;
+
+		reverse_proxy(http::configuration& c) : configuration_(c)
+		{
+		}
+
+		bool delegate_request_to_backend(http::request_message& request, http::response_message& response) 
+		{
+			auto available_node = std::find_if(std::begin(backend_nodes_), std::end(backend_nodes_), [](auto& v)
+			{ 
+				return v.available_ == true; 
+			});
+		
+			network::write(available_node->socket_, http::to_string(request));
+
+		}
+
+	private:
+		class node
+		{
+
+		public:
+			bool available_;
+			std::string adress_s_;
+			size_t requests_;
+			network::ip::address adress_; 
+
+			network::tcp::socket socket_;
+		};
+		
+		std::vector<node> backend_nodes_;
+		http::configuration& configuration_;
+
+	public:
+	
+	};
+
 private:
 	int thread_count_;
 	int listen_port_begin_;
@@ -2545,6 +2584,8 @@ private:
 
 	std::mutex http_connection_queue_mutex_;
 	std::queue<network::tcp::socket> http_connection_queue_;
+
+	reverse_proxy reverse_proxy_;
 };
 
 } // namespace threaded

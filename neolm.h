@@ -423,6 +423,10 @@ private:
 				std::this_thread::sleep_for(100ms);
 			});
 
+			S::router_.on_get(
+				"/hoi", [this](http::session_handler& session, const http::api::params& params) {
+				session.response().body() = "hoi1";
+			});
 
 			S::router_.on_get(
 				"/licenses/configuration", [this](http::session_handler& session, const http::api::params& params) {
