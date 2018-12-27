@@ -349,25 +349,95 @@ namespace network
 	{
 		using socket = socket_t;
 
+		class internet_protocol
+		{
+		public:
+			
+		private:
+
+		};
+
 		class endpoint
 		{
 		public:
-			endpoint() noexcept : socket_(0), protocol_(SOCK_STREAM) {}
-			endpoint(const std::string& ip, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) {}
-			virtual ~endpoint() {};
 
-			virtual void connect(network::error_code& ec) = 0;
-			virtual void open(std::int16_t protocol) = 0;
-			virtual void close() = 0;
+			endpoint() noexcept : socket_(0), protocol_(SOCK_STREAM) {
+				data_.v4.sin_family = AF_INET;
+				data_.v4.sin_port = 0;
+				data_.v4.sin_addr.s_addr = INADDR_ANY;			
+			}
 
-			std::int16_t  protocol() { return protocol_; }
-			virtual sockaddr* addr() = 0;
-			virtual int addr_size() = 0;
+			//endpoint(const std::string& ip, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) {}
+			
+			endpoint(sockaddr& addr, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) 
+			{
+				std::memcpy(&data_, &addr, sizeof(sockaddr_storage)); 
+			}		
+
+			virtual ~endpoint() 
+			{
+				if (socket_)
+					::closesocket(socket_);
+			};
+
+			void close()
+			{
+				if (socket_)
+					::closesocket(socket_);
+			}
+
+			void connect(network::error_code& ec)
+			{
+				open(protocol_);
+				int ret = ::connect(socket_, addr(), addr_size());
+
+				if (ret == -1)
+				{
+					ec = network::error::connection_refused;
+				}
+				else
+					ec = network::error::success;
+			}
+
+			sockaddr* addr() { return reinterpret_cast<sockaddr*>(&data_.base); };
+			std::int32_t addr_size() { return static_cast<std::int32_t>(sizeof(&data_.base)); }
+
+			void open(std::int16_t protocol)
+			{
+				socket_ = ::socket(data_.base.sa_family, protocol, 0);
+			}
+
 			tcp::socket& socket() { return socket_; };
+
+			std::string to_string()
+			{
+				char c[INET6_ADDRSTRLEN];
+
+				if (data_.base.sa_family == AF_INET6)
+				{			
+					inet_ntop(AF_INET6, &data_.v6.sin6_addr, c, INET6_ADDRSTRLEN);
+				}
+				else
+				{
+					inet_ntop(AF_INET, &data_.v4.sin_addr, c, INET_ADDRSTRLEN);
+				}
+
+				return std::string(c);
+			}
 
 		protected:
 			tcp::socket  socket_;
-			std::int16_t protocol_;
+			uint8_t	protocol_;
+
+		private:
+			union data_union
+			{
+				sockaddr base;
+				sockaddr_in v4;
+				sockaddr_in6 v6;
+				sockaddr_storage ss;
+			} data_;
+
 		};
 
 		class v4 : public endpoint
@@ -509,6 +579,57 @@ namespace network
 		private:
 			sockaddr_in6 sock_addr_;
 		};
+
+		class resolver
+		{
+		public:
+
+			using resolver_results = std::vector<network::tcp::endpoint>;
+
+			resolver() 
+			{
+			}
+
+			const resolver_results& resolve(const std::string& hostname, const std::string& service)
+			{
+				addrinfo hints = { 0 };
+				addrinfo* adresses = nullptr;
+				addrinfo* item = nullptr;
+
+				memset(&hints, 0, sizeof hints);
+				hints.ai_family = AF_UNSPEC; 
+				hints.ai_socktype = SOCK_STREAM;
+
+				if(getaddrinfo(hostname.c_str(), NULL, &hints, &adresses) != 0)
+				{
+					return resolver_results_;
+				}
+
+
+				for(item = adresses; item != NULL; item = item->ai_next)
+				{
+
+					if (item->ai_addr->sa_family == AF_INET6)
+					{			
+						resolver_results_.emplace_back(*item->ai_addr, 80);
+					}
+					else
+					{
+						resolver_results_.emplace_back(*item->ai_addr, 80);
+					}
+
+				}
+
+				freeaddrinfo(adresses);
+
+				return resolver_results_;
+			}
+
+		private:
+
+			resolver_results resolver_results_;
+		};
+
 
 		class acceptor
 		{

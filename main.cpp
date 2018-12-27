@@ -25,6 +25,14 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
+	network::tcp::resolver resolver;
+
+	auto results = resolver.resolve("localhost", "http");
+
+	for (auto& result : results)
+		std::cout << result.to_string() << "\n";
+
+
 	neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
 						{
 						  { "server", "neolm/8.0.01" },
