@@ -26,6 +26,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 
 #include "http_basic.h"
+#include "http_network.h"
 
 namespace http
 {
@@ -33,8 +34,19 @@ namespace http
 namespace reverse_proxy_controller
 {
 
-namespace nginx
+class nginx
 {
+public:
+	nginx(const std::string& nginx_endpoint = "http://localhost:4000/dynamic") : nginx_endpoint_(network::resolver::from_string(nginx_endpoint))
+	{
+		http::session_handler::request 
+	}
+
+	nginx(network::tcp::endpoint& nginx_endpoint)
+	{
+	}
+
+
 	bool add_cluster_node()
 	{
 	}
@@ -50,6 +62,9 @@ namespace nginx
 	bool remove_cluster_node()
 	{
 	}
+
+private:
+	network::tcp::endpoint& nginx_endpoint_;
 }
 
 }
