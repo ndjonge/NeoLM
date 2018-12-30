@@ -246,6 +246,7 @@ inline std::string decompress(const char* data, std::size_t size)
 namespace http
 {
 class request_parser;
+class response_parser;
 class session_handler;
  
 namespace util
@@ -358,6 +359,11 @@ enum status_t
 	bad_gateway = 502,
 	service_unavailable = 503
 };
+
+inline status_t to_status(std::uint16_t status_nr)
+{
+	return static_cast<status_t>(status_nr);
+}
 
 inline const char* to_string(status_t s)
 {
@@ -623,19 +629,23 @@ template <> class header<response_specialization> : public fields
 private:
 	std::string reason_;
 	http::status::status_t status_ = http::status::bad_request;
-	unsigned int version_ = 11;
+	unsigned int status_nr_ = 400;
+	unsigned int version_nr_ = 11;
 
+	friend class http::response_parser;
 public:
 	header() = default;
-	const unsigned int& version() const noexcept { return version_; }
-	void version(unsigned int value) noexcept { version_ = value; }
+	const unsigned int& version_nr() const noexcept { return version_nr_; }
+	void version(unsigned int value) noexcept { version_nr_ = value; }
 	void status(http::status::status_t status) { status_ = status; }
 	http::status::status_t status() const { return status_; }
+
+	const std::string version() const { return std::string("HTTP ") + (version_nr_ == 10 ? "1.0" : "1.1"); }
 
 	void headers_reset()
 	{
 		this->fields_.clear();
-		version_ = 0;
+		version_nr_ = 0;
 	}
 
 	std::string header_to_string() const
@@ -1244,8 +1254,490 @@ public:
 		}
 		return true;
 	}
+};
 
 
+
+class response_parser
+{
+public:
+	response_parser() noexcept
+		: state_(http_version_h){};
+
+	void reset() { state_ = http_version_h; };
+
+	enum result_type
+	{
+		good,
+		bad,
+		indeterminate
+	};
+
+	template <typename InputIterator> std::tuple<result_type, InputIterator> parse(http::response_message& req, InputIterator begin, InputIterator end)
+	{
+		while (begin != end)
+		{
+			result_type result = consume(req, *begin++);
+
+			if (result == good)
+			{
+				state_ = http_version_h;
+				return std::make_tuple(result, begin);
+			}
+			else if (result == bad)
+			{
+				state_ = http_version_h;
+				return std::make_tuple(result, begin);
+			}
+		}
+
+		return std::make_tuple(indeterminate, begin);
+	}
+
+private:
+	result_type consume(http::response_message& res, char input)
+	{
+		switch (state_)
+		{
+		case http_version_h:
+			if (input == 'H')
+			{
+				state_ = http_version_t_1;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case http_version_t_1:
+			if (input == 'T')
+			{
+				state_ = http_version_t_2;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case http_version_t_2:
+			if (input == 'T')
+			{
+				state_ = http_version_p;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case http_version_p:
+			if (input == 'P')
+			{
+				state_ = http_version_slash;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case http_version_slash:
+			if (input == '/')
+			{
+				res.version_nr_ = 0;
+				state_ = http_version_major_start;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case http_version_major_start:
+			if (is_digit(input))
+			{
+				res.version_nr_ = (10 * (input - '0'));
+				state_ = http_version_major;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case http_version_major:
+			if (input == '.')
+			{
+				state_ = http_version_minor_start;
+				return indeterminate;
+			}
+			else if (is_digit(input))
+			{
+				res.version_nr_ = (10 * (input - '0'));
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case http_version_minor_start:
+			if (is_digit(input))
+			{
+				res.version_nr_ = res.version_nr_ + (input - '0');
+				state_ = http_version_minor;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case http_version_minor:
+			if (input == ' ')
+			{
+				state_ = space_before_status_code;
+				return indeterminate;
+			}
+			else if (is_digit(input))
+			{
+				res.version_nr_ = res.version_nr_ + (input - '0');
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case space_before_status_code:
+			if (is_digit(input))
+			{
+				res.status_nr_ = (100 * (input - '0'));
+
+				state_ = status_code_1;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case status_code_1:
+			if (is_digit(input))
+			{
+				res.status_nr_ += (10 * (input - '0'));
+
+				state_ = status_code_2;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case status_code_2:
+			if (is_digit(input))
+			{
+				res.status_nr_ += (1 * (input - '0'));
+
+				res.status_ = http::status::to_status(res.status_nr_);
+				state_ = status_code_3;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case status_code_3:
+			if (input == ' ')
+			{
+				state_ = space_after_status_code;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case space_after_status_code:
+			if (is_char(input) && !is_ctl(input) && !is_tspecial(input))
+			{
+				state_ = status_phrase;
+				res.reason_.push_back(input);
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case status_phrase:
+			if (input == '\r')
+			{
+				state_ = expecting_newline_1;
+				return indeterminate;
+			}
+			else if (is_ctl(input) || is_tspecial(input))
+			{
+				return bad;
+			}
+			else
+			{
+				res.reason_.push_back(input);
+				return indeterminate;
+			}
+
+		case expecting_newline_1:
+			if (input == '\n')
+			{
+				state_ = header_line_start;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case header_line_start:
+			if (input == '\r')
+			{
+				state_ = expecting_newline_3;
+				return indeterminate;
+			}
+			else if (!res.fields_empty() && (input == ' ' || input == '\t'))
+			{
+				state_ = header_lws;
+				return indeterminate;
+			}
+			else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
+			{
+				return bad;
+			}
+			else
+			{
+				auto i = res.new_field();
+				i->name.push_back(input);
+				state_ = header_name;
+				return indeterminate;
+			}
+		case header_lws:
+			if (input == '\r')
+			{
+				state_ = expecting_newline_2;
+				return indeterminate;
+			}
+			else if (input == ' ' || input == '\t')
+			{
+				return indeterminate;
+			}
+			else if (is_ctl(input))
+			{
+				return bad;
+			}
+			else
+			{
+				state_ = header_value;
+				res.last_new_field()->value.push_back(input);
+				return indeterminate;
+			}
+		case header_name:
+			if (input == ':')
+			{
+				state_ = space_before_header_value;
+				return indeterminate;
+			}
+			else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
+			{
+				return bad;
+			}
+			else
+			{
+				res.last_new_field()->name.push_back(input);
+				return indeterminate;
+			}
+		case space_before_header_value:
+			if (input == ' ')
+			{
+				state_ = header_value;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case header_value:
+			if (input == '\r')
+			{
+				state_ = expecting_newline_2;
+				return indeterminate;
+			}
+			else if (is_ctl(input))
+			{
+				return bad;
+			}
+			else
+			{
+				res.last_new_field()->value.push_back(input);
+				return indeterminate;
+			}
+		case expecting_newline_2:
+			if (input == '\n')
+			{
+				state_ = header_line_start;
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
+			}
+		case expecting_newline_3:
+			if (input == '\n') return (input == '\n') ? good : bad;
+		default:
+			return bad;
+		}
+	}
+
+	/// Check if a byte is an HTTP character.
+	static bool is_char(int c) { return c >= 0 && c <= 127; }
+
+	/// Check if a byte is an HTTP control character.
+	static bool is_ctl(int c) { return (c >= 0 && c <= 31) || (c == 127); }
+	/// Check if a byte is defined as an HTTP tspecial character.
+	static bool is_tspecial(int c)
+	{
+		switch (c)
+		{
+		case '(':
+		case ')':
+		case '<':
+		case '>':
+		case '@':
+		case ',':
+		case ';':
+		case ':':
+		case '\\':
+		case '"':
+		case '/':
+		case '[':
+		case ']':
+		case '?':
+		case '=':
+		case '{':
+		case '}':
+		case ' ':
+		case '\t':
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	/// Check if a byte is a digit.
+	static bool is_digit(int c) { return c >= '0' && c <= '9'; }
+
+	/// The current state of the parser.
+	enum state
+	{
+		method_start,
+		method,
+		target,
+		http_version_h,
+		http_version_t_1,
+		http_version_t_2,
+		http_version_p,
+		http_version_slash,
+		http_version_major_start,
+		http_version_major,
+		http_version_minor_start,
+		http_version_minor,
+		space_before_status_code,
+		status_code_1,
+		status_code_2,
+		status_code_3,
+		space_after_status_code,
+		status_phrase,
+		expecting_newline_1,
+		header_line_start,
+		header_lws,
+		header_name,
+		space_before_header_value,
+		header_value,
+		expecting_newline_2,
+		expecting_newline_3,
+		body_start,
+		body_end
+	} state_;
+
+public:
+	static std::string url_decode(const std::string& in)
+	{
+		std::string ret;
+		ret.reserve(in.size());
+
+		for (std::size_t i = 0; i < in.size(); ++i)
+		{
+			if (in[i] == '%')
+			{
+				if (i + 3 <= in.size())
+				{
+					int value = 0;
+					std::istringstream is(in.substr(i + 1, 2));
+					if (is >> std::hex >> value)
+					{
+						ret += static_cast<char>(value);
+						i += 2;
+					}
+					else
+					{
+						return "";
+					}
+				}
+				else
+				{
+					return "";
+				}
+			}
+			else if (in[i] == '+')
+			{
+				ret += ' ';
+			}
+			else
+			{
+				ret += in[i];
+			}
+		}
+		return ret;
+	}
+
+
+	/// Perform URL-decoding on a string. Returns false if the encoding was
+	/// invalid.
+	static bool url_decode(const std::string& in, std::string& out)
+	{
+		out.clear();
+		out.reserve(in.size());
+		for (std::size_t i = 0; i < in.size(); ++i)
+		{
+			if (in[i] == '%')
+			{
+				if (i + 3 <= in.size())
+				{
+					int value = 0;
+					std::istringstream is(in.substr(i + 1, 2));
+					if (is >> std::hex >> value)
+					{
+						out += static_cast<char>(value);
+						i += 2;
+					}
+					else
+					{
+						return false;
+					}
+				}
+				else
+				{
+					return false;
+				}
+			}
+			else if (in[i] == '+')
+			{
+				out += ' ';
+			}
+			else
+			{
+				out += in[i];
+			}
+		}
+		return true;
+	}
 };
 
 class session_handler
@@ -1266,6 +1758,12 @@ public:
 	}
 
 	template <typename InputIterator> std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end) { return request_parser_.parse(request_, begin, end); }
+
+	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator> parse_response(InputIterator begin, InputIterator end) { return response_parser_.parse(response_, begin, end); }
+
+	void handle_response()
+	{
+	}
 
 	template <typename router_t> void handle_request(router_t& router_)
 	{

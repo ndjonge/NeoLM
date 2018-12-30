@@ -26,12 +26,26 @@ int main(int argc, char* argv[])
 	network::ssl::init();
 
 	network::tcp::resolver resolver;
+	auto results = resolver.resolve("localhost", "4000");
 
-	auto results = resolver.resolve("localhost", "http");
+	network::tcp::socket s;
+	network::connect(s, results);
 
-	for (auto& result : results)
-		std::cout << result.to_string() << "\n";
+	http::request_message request{"GET", "/dynamic?upstream=backend"};
+	request.set("Host", "localhost");
 
+	std::array<char, 8192> data;
+	auto request_result  = network::write(s, http::to_string(request));
+	auto response_result = network::read(s, network::buffer(data.data(), data.size()));
+
+	http::session_handler session{http::configuration{}};
+
+	http::response_parser p;
+	http::response_message message;
+
+	auto parse_result = p.parse(message, data.begin(), data.end());
+
+	session.request_url()
 
 	neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
 						{

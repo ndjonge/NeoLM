@@ -369,7 +369,7 @@ namespace network
 
 			//endpoint(const std::string& ip, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) {}
 			
-			endpoint(sockaddr& addr, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) 
+			endpoint(sockaddr& addr) : socket_(0), protocol_(SOCK_STREAM) 
 			{
 				std::memcpy(&data_, &addr, sizeof(sockaddr_storage)); 
 			}		
@@ -399,8 +399,20 @@ namespace network
 					ec = network::error::success;
 			}
 
-			sockaddr* addr() { return reinterpret_cast<sockaddr*>(&data_.base); };
-			std::int32_t addr_size() { return static_cast<std::int32_t>(sizeof(&data_.base)); }
+			sockaddr* addr() { 
+				if (data_.base.sa_family == AF_INET6)
+					return reinterpret_cast<sockaddr*>(&data_.v6);
+				else
+					return reinterpret_cast<sockaddr*>(&data_.v4);
+			};
+
+			std::int32_t addr_size() { 
+				if (data_.base.sa_family == AF_INET6)
+					return static_cast<std::int32_t>(sizeof(data_.v6));
+				else
+					return static_cast<std::int32_t>(sizeof(data_.v4));
+
+			}
 
 			void open(std::int16_t protocol)
 			{
@@ -411,18 +423,23 @@ namespace network
 
 			std::string to_string()
 			{
-				char c[INET6_ADDRSTRLEN];
+				char address[INET6_ADDRSTRLEN + 8];
+				std::uint16_t port;
 
 				if (data_.base.sa_family == AF_INET6)
 				{			
-					inet_ntop(AF_INET6, &data_.v6.sin6_addr, c, INET6_ADDRSTRLEN);
+					inet_ntop(AF_INET6, &data_.v6.sin6_addr, address, INET6_ADDRSTRLEN);
+
+					port = ntohs(data_.v6.sin6_port);
 				}
 				else
 				{
-					inet_ntop(AF_INET, &data_.v4.sin_addr, c, INET_ADDRSTRLEN);
+					inet_ntop(AF_INET, &data_.v4.sin_addr, address, INET_ADDRSTRLEN);
+					port = ntohs(data_.v4.sin_port);
+
 				}
 
-				return std::string(c);
+				return std::string(address + std::string(":") + std::to_string(port));
 			}
 
 		protected:
@@ -600,7 +617,9 @@ namespace network
 				hints.ai_family = AF_UNSPEC; 
 				hints.ai_socktype = SOCK_STREAM;
 
-				if(getaddrinfo(hostname.c_str(), NULL, &hints, &adresses) != 0)
+				resolver_results_.clear();
+
+				if(getaddrinfo(hostname.c_str(), service.c_str(), &hints, &adresses) != 0)
 				{
 					return resolver_results_;
 				}
@@ -608,14 +627,13 @@ namespace network
 
 				for(item = adresses; item != NULL; item = item->ai_next)
 				{
-
 					if (item->ai_addr->sa_family == AF_INET6)
 					{			
-						resolver_results_.emplace_back(*item->ai_addr, 80);
+						resolver_results_.emplace_back(*item->ai_addr);
 					}
 					else
 					{
-						resolver_results_.emplace_back(*item->ai_addr, 80);
+						resolver_results_.emplace_back(*item->ai_addr);
 					}
 
 				}
@@ -672,6 +690,23 @@ namespace network
 			std::int16_t protocol_;
 			endpoint* endpoint_;
 		};
+	}
+
+	error_code connect(tcp::socket& s, tcp::resolver::resolver_results& results)
+	{
+		network::error_code ret = error::host_unreachable;
+		
+		for (auto& result:results)
+		{
+			result.connect(ret);
+
+			s = result.socket();
+
+			if (ret == error::success)
+				break;
+		}
+
+		return ret;
 	}
 
 	std::int32_t read(socket_t s, const buffer& b) noexcept
