@@ -1761,8 +1761,81 @@ public:
 
 	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator> parse_response(InputIterator begin, InputIterator end) { return response_parser_.parse(response_, begin, end); }
 
-	void handle_response()
+	class url
 	{
+	public:
+		url(const std::string& protocol, const std::string hostname, const std::string& port, const std::string& target) : protocol_(protocol), hostname_(hostname), port_(port), target_(target){}
+	
+		url(const std::string& url)
+		{
+			// protocol://host:port/target
+			// http://[FEDC:BA98:7654:3210:FEDC:BA98:7654:3210]:80/index.html
+
+			auto p1 = url.find_first_of(":");
+
+			protocol_ = url.substr(0, p1);
+			
+			auto p2 = url.find_first_of("/", p1+3);
+
+			hostname_ = url.substr(p1+3 , p2 - (p1+3));
+
+			auto p3 = hostname_.find_last_of(":");
+
+			if (p3 != std::string::npos)
+			{
+				port_ = hostname_.substr(p3+1);
+				hostname_ = hostname_.substr(0, p3);
+			}
+			else
+			{
+				port_ = "80";
+			}
+
+			target_ = url.substr(p2+1);
+		}
+
+	private:
+		std::string protocol_;
+		std::string hostname_;
+		std::string port_;
+		std::string target_;
+	};
+
+	http::response_message get(const std::string& url, http::response_header headers = {})
+	{
+		// protocol
+		// host
+		// port
+		// target
+
+		auto url_split = util::split(url, "://");
+
+		std::string url_target = "localhost";
+
+		http::request_message request{"GET", url_target};
+
+		//request.headers_set(headers);
+
+		request.set("Host", "localhost");
+
+		network::tcp::resolver resolver;
+		auto results = resolver.resolve("localhost", "4000");
+
+		network::tcp::socket s;
+		network::connect(s, results);;
+
+
+		std::array<char, 8192> data;
+		auto request_result  = network::write(s, http::to_string(request));
+		auto response_result = network::read(s, network::buffer(data.data(), data.size()));
+
+
+		http::response_parser p;
+		http::response_message message;
+
+		p.parse(message, data.begin(), data.end());
+
+		return message;
 	}
 
 	template <typename router_t> void handle_request(router_t& router_)

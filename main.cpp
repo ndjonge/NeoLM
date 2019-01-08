@@ -24,6 +24,9 @@ int main(int argc, char* argv[])
 {
 	network::init();
 	network::ssl::init();
+	
+	http::session_handler::url url("http://[FEDC:BA98:7654:3210:FEDC:BA98:7654:3210]:80/index.html");
+
 
 	network::tcp::resolver resolver;
 	auto results = resolver.resolve("localhost", "4000");
@@ -40,12 +43,12 @@ int main(int argc, char* argv[])
 
 	http::session_handler session{http::configuration{}};
 
-	http::response_parser p;
-	http::response_message message;
+//	http::response_parser p;
+//	http::response_message message;
 
-	auto parse_result = p.parse(message, data.begin(), data.end());
+//	auto parse_result = p.parse(message, data.begin(), data.end());
 
-	session.request_url()
+	auto result = session.get("http:://localhost:4000/dynamic?upstream=backend");
 
 	neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
 						{
