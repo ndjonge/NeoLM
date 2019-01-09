@@ -1791,8 +1791,13 @@ public:
 				port_ = "80";
 			}
 
-			target_ = url.substr(p2+1);
+			target_ = url.substr(p2);
 		}
+
+		const std::string& protocol() const noexcept {return protocol_;};
+		const std::string& hostname() const noexcept {return hostname_;};
+		const std::string& port() const noexcept {return port_;};
+		const std::string& target() const noexcept {return target_;};
 
 	private:
 		std::string protocol_;
@@ -1801,34 +1806,25 @@ public:
 		std::string target_;
 	};
 
-	http::response_message get(const std::string& url, http::response_header headers = {})
+	http::response_message get(const std::string& url_string, http::response_header headers = {})
 	{
-		// protocol
-		// host
-		// port
-		// target
+		http::session_handler::url u{url_string};
 
-		auto url_split = util::split(url, "://");
-
-		std::string url_target = "localhost";
-
-		http::request_message request{"GET", url_target};
+		http::request_message request{"GET", u.target()};
 
 		//request.headers_set(headers);
 
-		request.set("Host", "localhost");
+		request.set("Host", u.hostname() + ":" + u.port());
 
 		network::tcp::resolver resolver;
-		auto results = resolver.resolve("localhost", "4000");
+		auto results = resolver.resolve(u.hostname(), u.port());
 
 		network::tcp::socket s;
 		network::connect(s, results);;
 
-
 		std::array<char, 8192> data;
 		auto request_result  = network::write(s, http::to_string(request));
 		auto response_result = network::read(s, network::buffer(data.data(), data.size()));
-
 
 		http::response_parser p;
 		http::response_message message;

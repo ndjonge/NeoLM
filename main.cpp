@@ -24,22 +24,19 @@ int main(int argc, char* argv[])
 {
 	network::init();
 	network::ssl::init();
-	
-	http::session_handler::url url("http://[FEDC:BA98:7654:3210:FEDC:BA98:7654:3210]:80/index.html");
 
+//	network::tcp::resolver resolver;
+//	auto results = resolver.resolve("localhost", "4000");
 
-	network::tcp::resolver resolver;
-	auto results = resolver.resolve("localhost", "4000");
+//	network::tcp::socket s;
+//	network::connect(s, results);
 
-	network::tcp::socket s;
-	network::connect(s, results);
+//	http::request_message request{"GET", "/dynamic?upstream=backend"};
+//	request.set("Host", "localhost");
 
-	http::request_message request{"GET", "/dynamic?upstream=backend"};
-	request.set("Host", "localhost");
-
-	std::array<char, 8192> data;
-	auto request_result  = network::write(s, http::to_string(request));
-	auto response_result = network::read(s, network::buffer(data.data(), data.size()));
+//	std::array<char, 8192> data;
+//	auto request_result  = network::write(s, http::to_string(request));
+//	auto response_result = network::read(s, network::buffer(data.data(), data.size()));
 
 	http::session_handler session{http::configuration{}};
 
@@ -48,7 +45,7 @@ int main(int argc, char* argv[])
 
 //	auto parse_result = p.parse(message, data.begin(), data.end());
 
-	auto result = session.get("http:://localhost:4000/dynamic?upstream=backend");
+	auto result = session.get("http://localhost:4000/dynamic?upstream=backend", {});
 
 	neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
 						{
