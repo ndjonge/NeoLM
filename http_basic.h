@@ -702,6 +702,9 @@ static std::string extension_to_type(const std::string& extension)
 
 template <message_specializations specialization> class message : public header<specialization>
 {
+//friend response_parser;
+//friend request_parser;
+
 private:
 	std::string body_;
 
@@ -1282,6 +1285,9 @@ public:
 			if (result == good)
 			{
 				state_ = http_version_h;
+
+
+				std::copy(begin, end, std::back_inserter(req.body()));
 				return std::make_tuple(result, begin);
 			}
 			else if (result == bad)
