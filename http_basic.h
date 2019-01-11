@@ -1278,6 +1278,8 @@ public:
 
 	template <typename InputIterator> std::tuple<result_type, InputIterator> parse(http::response_message& req, InputIterator begin, InputIterator end)
 	{
+		auto data_size = end - begin;
+
 		while (begin != end)
 		{
 			result_type result = consume(req, *begin++);
@@ -1814,6 +1816,8 @@ public:
 
 	http::response_message get(const std::string& url_string, http::response_header headers = {})
 	{
+		http::response_message message;
+
 		http::session_handler::url u{url_string};
 
 		http::request_message request{"GET", u.target()};
@@ -1826,17 +1830,20 @@ public:
 		auto results = resolver.resolve(u.hostname(), u.port());
 
 		network::tcp::socket s;
-		network::connect(s, results);;
 
-		std::array<char, 8192> data;
-		auto request_result  = network::write(s, http::to_string(request));
-		auto response_result = network::read(s, network::buffer(data.data(), data.size()));
+		auto ec = network::connect(s, results);;
 
-		http::response_parser p;
-		http::response_message message;
+		if (ec == network::error::success)
+		{
+			std::array<char, 8192> data;
+			auto request_result_size  = network::write(s, http::to_string(request));
+			auto response_result_size = network::read(s, network::buffer(data.data(), data.size()));
 
-		p.parse(message, data.begin(), data.end());
+			http::response_parser p;
 
+			if (response_result_size != -1)
+				p.parse(message, data.begin(), data.begin() + response_result_size);
+		}
 		return message;
 	}
 
