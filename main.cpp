@@ -45,8 +45,10 @@ int main(int argc, char* argv[])
 
 //	auto parse_result = p.parse(message, data.begin(), data.end());
 
-	auto result = session.get("http://localhost:4000/dynamic?upstream=backend", {});
+	auto result1 = session.get("http://localhost:4000/dynamic?upstream=backend", {});
+	auto result2 = session.get("http://localhost:4000/status", {});
 
+	
 	neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
 						{
 						  { "server", "neolm/8.0.01" },
