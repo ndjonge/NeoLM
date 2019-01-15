@@ -361,11 +361,38 @@ namespace network
 		{
 		public:
 
+			enum family
+			{
+				v4 = AF_INET,
+				v6 = AF_INET6
+			};
+
 			endpoint() noexcept : socket_(0), protocol_(SOCK_STREAM) {
-				data_.v4.sin_family = AF_INET;
+				data_.v4.sin_family = static_cast<ADDRESS_FAMILY>(family::v4);
 				data_.v4.sin_port = 0;
 				data_.v4.sin_addr.s_addr = INADDR_ANY;			
 			}
+
+			endpoint(std::uint16_t port, family fam) noexcept : socket_(0), protocol_(SOCK_STREAM) {
+				if(fam == v6)
+					std::memset(&endpoint::data_.v6, 0, sizeof(data_.v6));
+				else
+					std::memset(&endpoint::data_.v4, 0, sizeof(data_.v6));
+
+				data_.base.sa_family = static_cast<ADDRESS_FAMILY>(fam);
+
+				if(fam == v6)
+				{
+					data_.v6.sin6_port = htons(port);
+					data_.v6.sin6_addr = in6addr_any;
+				}
+				else
+				{
+					data_.v4.sin_port = htons(port);
+					data_.v4.sin_addr.s_addr = INADDR_ANY;
+				}
+			}
+
 
 			//endpoint(const std::string& ip, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) {}
 			
@@ -446,7 +473,7 @@ namespace network
 			tcp::socket  socket_;
 			uint8_t	protocol_;
 
-		private:
+		protected:
 			union data_union
 			{
 				sockaddr base;
@@ -457,15 +484,15 @@ namespace network
 
 		};
 
+		/*
 		class v4 : public endpoint
 		{
 		public:
-			v4(std::int16_t port) : sock_addr_({})
+			v4(std::int16_t port) : endpoint(port)
 			{
-				protocol_ = SOCK_STREAM;
-				sock_addr_.sin_family = AF_INET;
-				sock_addr_.sin_port = htons(port);
-				sock_addr_.sin_addr.s_addr = htonl(INADDR_ANY);
+				data_.v4.sin_family = AF_INET;
+				data_.v4.sin_port = htons(port);
+				data_.v4.sin_addr.s_addr = htonl(INADDR_ANY);
 			}
 
 			v4(const network::ip::address address) : sock_addr_({})
@@ -489,112 +516,41 @@ namespace network
 				if (socket_)
 					::closesocket(socket_);
 			}
-
-			void close()
-			{
-				if (socket_)
-					::closesocket(socket_);
-			}
-
-			void connect(network::error_code& ec)
-			{
-				open(protocol_);
-				int ret = ::connect(socket_, addr(), addr_size());
-
-				if (ret == -1)
-				{
-					ec = network::error::connection_refused;
-				}
-				else
-					ec = network::error::success;
-			}
-
-
-			sockaddr* addr() { return reinterpret_cast<sockaddr*>(&sock_addr_); };
-			std::int32_t addr_size() { return static_cast<std::int32_t>(sizeof(this->sock_addr_)); }
-
-			void open(std::int16_t protocol)
-			{
-				socket_ = ::socket(sock_addr_.sin_family, protocol, 0);
-			}
 		private:
-			sockaddr_in sock_addr_;
 		};
+		*/
+
 
 		class v6 : public endpoint
 		{
 		public:
-			v6(std::int16_t port) : sock_addr_({})
+			v6(std::int16_t port) : endpoint{port, endpoint::v6}
 			{
-				sock_addr_.sin6_family = AF_INET6;
-				sock_addr_.sin6_port = htons(port);
-				sock_addr_.sin6_addr = in6addr_any;
 			}
 
-			v6(const std::string& ip, std::int16_t port) : sock_addr_({})
+			v6(const std::string& ip, std::int16_t port) : endpoint{port, endpoint::v6}
 			{
-				inet_pton(AF_INET6, ip.c_str(), &(sock_addr_.sin6_addr));
-
-				sock_addr_.sin6_family = AF_INET6;
-				sock_addr_.sin6_port = htons(port);
+				inet_pton(AF_INET6, ip.c_str(), &(endpoint::data_.v6.sin6_addr));
 			}
 
-			v6(const network::ip::address address) : sock_addr_({})
+			v6(const network::ip::address address) : endpoint{0, endpoint::v6}
 			{
-				inet_pton(AF_INET6, address.first.c_str(), &(sock_addr_.sin6_addr));
+				inet_pton(AF_INET6, address.first.c_str(), &(endpoint::data_.v6.sin6_addr));
 
-				sock_addr_.sin6_family = AF_INET6;
-				sock_addr_.sin6_port = htons(address.second);
+				endpoint::data_.v6.sin6_port = htons(address.second);;
 			}
 
-
-			~v6()
+			std::uint16_t protocol()
 			{
-				if (socket_)
-					::closesocket(socket_);
+				return endpoint::protocol_;
 			}
 
-			void close()
+			void port(std::int32_t& value)
 			{
-				if (socket_)
-					::closesocket(socket_);
+				endpoint::data_.v6.sin6_port = htons(value);
 			}
-
-			void connect(network::error_code& ec)
-			{
-				open(protocol_);
-				int ret = ::connect(socket_, addr(), addr_size());
-
-				if (ret == -1)
-				{
-					ec = network::error::connection_refused;
-				}
-				else
-					ec = network::error::success;
-			}
-
-			std::int16_t protocol()
-			{
-				socket_ = ::socket(sock_addr_.sin6_family, SOCK_STREAM, 0);
-				return SOCK_STREAM;
-			}
-
-			void open(std::int16_t protocol)
-			{
-				socket_ = ::socket(sock_addr_.sin6_family, protocol, 0);
-			}
-
-			void port(std::int16_t port)
-			{
-				sock_addr_.sin6_port = htons(port);
-			}
-
-			sockaddr* addr() { return reinterpret_cast<sockaddr*>(&sock_addr_); };
-			std::int32_t addr_size() { return static_cast<std::int32_t>(sizeof(this->sock_addr_)); }
-
 
 		private:
-			sockaddr_in6 sock_addr_;
 		};
 
 		class resolver
@@ -663,7 +619,12 @@ namespace network
 
 				int use_portsharding = 1;
 
+				auto x = endpoint_->addr();
+				auto y = endpoint_->addr_size();
+
 				ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
+
+				auto error = WSAGetLastError();
 
 				if (ret == -1)
 					ec = network::error::address_in_use;

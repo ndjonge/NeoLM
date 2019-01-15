@@ -1290,6 +1290,7 @@ public:
 
 
 				std::copy(begin, end, std::back_inserter(req.body()));
+
 				return std::make_tuple(result, begin);
 			}
 			else if (result == bad)
@@ -1833,16 +1834,50 @@ public:
 
 		auto ec = network::connect(s, results);;
 
+
+
 		if (ec == network::error::success)
 		{
-			std::array<char, 8192> data;
+			using data_store_buffer_t = std::array<char, 64>;
+			data_store_buffer_t buffer;
+			data_store_buffer_t::iterator c = std::begin(buffer);
+
 			auto request_result_size  = network::write(s, http::to_string(request));
-			auto response_result_size = network::read(s, network::buffer(data.data(), data.size()));
-
 			http::response_parser p;
+			http::response_parser::result_type parse_result;
 
-			if (response_result_size != -1)
-				p.parse(message, data.begin(), data.begin() + response_result_size);
+			if (request_result_size != -1)
+			{
+				do
+				{
+					auto response_result_size = network::read(s, network::buffer(buffer.data(), buffer.size()));
+
+					if (response_result_size != -1)
+					{
+						std::tie(parse_result, c) = p.parse(message, buffer.begin(), buffer.begin() + response_result_size);
+
+						if (parse_result == http::response_parser::result_type::good && message.content_length() > message.body().size() )
+						{
+							message.body().reserve(message.content_length());
+
+							do 
+							{
+								auto response_result_size_body = network::read(s, network::buffer(buffer.data(), buffer.size()));
+								if (response_result_size != -1)
+								{
+									message.body().append(buffer.begin(), buffer.end());
+								}
+								else
+								{
+									message = http::response_message();
+									return message;
+								}
+
+							} while (response_result_size != -1 && message.body().size() < message.content_length()); 
+						}
+					}
+				}while(parse_result == http::response_parser::result_type::indeterminate);
+			}
 		}
 		return message;
 	}
