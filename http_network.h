@@ -50,7 +50,6 @@ namespace network
 	using socket_t = SOCKET;
 	using error_code = std::int32_t;
 
-
 	namespace error
 	{
 		enum errc_t
@@ -349,6 +348,14 @@ namespace network
 	{
 		using socket = socket_t;
 
+		class socket
+		{
+			// todo
+
+			asdfasdfa
+				;
+		};
+
 		class internet_protocol
 		{
 		public:
@@ -370,7 +377,7 @@ namespace network
 			endpoint() noexcept : socket_(0), protocol_(SOCK_STREAM) {
 				data_.v4.sin_family = static_cast<ADDRESS_FAMILY>(family::v4);
 				data_.v4.sin_port = 0;
-				data_.v4.sin_addr.s_addr = INADDR_ANY;			
+				data_.v4.sin_addr.s_addr = INADDR_ANY;							
 			}
 
 			endpoint(std::uint16_t port, family fam) noexcept : socket_(0), protocol_(SOCK_STREAM) {
@@ -393,9 +400,7 @@ namespace network
 				}
 			}
 
-
-			//endpoint(const std::string& ip, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) {}
-			
+		
 			endpoint(sockaddr& addr) : socket_(0), protocol_(SOCK_STREAM) 
 			{
 				std::memcpy(&data_, &addr, sizeof(sockaddr_storage)); 
@@ -444,6 +449,7 @@ namespace network
 			void open(std::int16_t protocol)
 			{
 				socket_ = ::socket(data_.base.sa_family, protocol, 0);
+				
 			}
 
 			tcp::socket& socket() { return socket_; };
@@ -472,6 +478,7 @@ namespace network
 		protected:
 			tcp::socket  socket_;
 			uint8_t	protocol_;
+			state state_;
 
 		protected:
 			union data_union
@@ -618,9 +625,8 @@ namespace network
 				endpoint_ = &endpoint;
 
 				int use_portsharding = 1;
-
-				auto x = endpoint_->addr();
-				auto y = endpoint_->addr_size();
+		
+				endpoint_->open(protocol_);
 
 				ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
 
@@ -742,6 +748,12 @@ namespace network
 	{
 		int ipv6only = value;
 		return ::setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
+	}
+
+	int ipv6only(network::tcp::endpoint& e, int value)
+	{
+		int ipv6only = value;
+		return ::setsockopt(e.socket(), IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
 	}
 
 	int use_portsharding(network::tcp::socket& s, int value)
