@@ -291,7 +291,7 @@ namespace network
 			void handshake(stream_base::handshake_type type)
 			{
 				ssl_ = SSL_new(context_.native());
-				SSL_set_fd(ssl_, (int)(lowest_layer_));
+				SSL_set_fd(ssl_, (int)(lowest_layer_.lowest_layer()));
 
 				if (SSL_accept(ssl_) <= 0) {
 					ERR_print_errors_fp(stderr);
@@ -347,19 +347,35 @@ namespace network
 
 	namespace tcp
 	{
-		using socket = socket_t;
-
-		class internet_protocol
+		enum protocol
 		{
-		public:
-			
-		private:
-
+			stream = SOCK_STREAM
 		};
 
-		class endpoint
+		enum options
 		{
+			none,
+			ipv6only,
+			reuseaddr,
+			nolinger,
+			nodelay,
+			size
+		};
+
+		inline options operator | (options a, options b) { return options(((int)a) | ((int)b)); } \
+		inline options &operator |= (options &a, options b) { return (options &)(((int &)a) |= ((int)b)); } \
+		inline options operator & (options a, options b) { return options(((int)a) & ((int)b)); } \
+		inline options &operator &= (options &a, options b) { return (options &)(((int &)a) &= ((int)b)); } \
+		inline options operator ~ (options a) { return options(~((int)a)); } \
+		inline options operator ^ (options a, options b) { return options(((int)a) ^ ((int)b)); } \
+		inline options &operator ^= (options &a, options b) { return (options &)(((int &)a) ^= ((int)b)); } \
+
+		class socket
+		{	
 		public:
+			socket() = default;
+			
+			socket(socket_t s) : socket_(s), options_(none){};
 
 			enum family
 			{
@@ -367,21 +383,80 @@ namespace network
 				v6 = AF_INET6
 			};
 
-			endpoint() noexcept : socket_(0), protocol_(SOCK_STREAM) {
-				data_.v4.sin_family = static_cast<ADDRESS_FAMILY>(family::v4);
+			virtual ~socket() 
+			{ 
+			};
+
+			socket_t open(family fam, protocol prot)
+			{
+				socket_ = ::socket(fam, protocol::stream, 0);	
+
+				int opt_ret  = 0;
+				if (options_ & options::ipv6only)
+					opt_ret = ::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&option_values_[options::ipv6only], sizeof(std::int32_t));
+				else if (options_ & options::reuseaddr)
+				{
+					//etc TODO finsish option setting in socket.
+				}
+
+				return socket_;
+			}
+
+			socket_t close()
+			{
+				if (socket_) 
+				{
+					::closesocket(socket_);
+					socket_ = 0;
+				}
+
+				return socket_;
+			}
+
+			bool is_open() const { return socket_ != 0; }
+
+			const socket_t& lowest_layer() const
+			{
+				return socket_;
+			}
+
+			socket_t& lowest_layer()
+			{
+				return socket_;
+			}
+
+			void set_options(options option, std::int16_t option_value)
+			{
+				options_ |= option;
+				option_values_[option] = option_value;
+			}
+
+		private:
+			socket_t socket_;
+			options options_;
+			std::int32_t option_values_[options::size];
+		};
+
+		class endpoint
+		{
+		public:
+
+
+			endpoint() noexcept : protocol_(protocol::stream) {
+				data_.v4.sin_family = static_cast<ADDRESS_FAMILY>(socket::family::v4);
 				data_.v4.sin_port = 0;
 				data_.v4.sin_addr.s_addr = INADDR_ANY;			
 			}
 
-			endpoint(std::uint16_t port, family fam) noexcept : socket_(0), protocol_(SOCK_STREAM) {
-				if(fam == v6)
+			endpoint(std::uint16_t port, socket::family fam) noexcept : protocol_(protocol::stream) {
+				if(fam == socket::family::v6)
 					std::memset(&endpoint::data_.v6, 0, sizeof(data_.v6));
 				else
 					std::memset(&endpoint::data_.v4, 0, sizeof(data_.v6));
 
 				data_.base.sa_family = static_cast<ADDRESS_FAMILY>(fam);
 
-				if(fam == v6)
+				if(fam == socket::family::v6)
 				{
 					data_.v6.sin6_port = htons(port);
 					data_.v6.sin6_addr = in6addr_any;
@@ -396,27 +471,27 @@ namespace network
 
 			//endpoint(const std::string& ip, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) {}
 			
-			endpoint(sockaddr& addr) : socket_(0), protocol_(SOCK_STREAM) 
+			endpoint(sockaddr& addr) : protocol_(protocol::stream) 
 			{
 				std::memcpy(&data_, &addr, sizeof(sockaddr_storage)); 
 			}		
 
 			virtual ~endpoint() 
 			{
-				if (socket_)
-					::closesocket(socket_);
+				if (socket_.is_open())
+					socket_.close();
 			};
 
 			void close()
 			{
-				if (socket_)
-					::closesocket(socket_);
+				if (socket_.is_open())
+					socket_.close();
 			}
 
 			void connect(network::error_code& ec)
 			{
 				open(protocol_);
-				int ret = ::connect(socket_, addr(), addr_size());
+				int ret = ::connect(socket_.lowest_layer(), addr(), addr_size());
 
 				if (ret == -1)
 				{
@@ -443,7 +518,7 @@ namespace network
 
 			void open(std::int16_t protocol)
 			{
-				socket_ = ::socket(data_.base.sa_family, protocol, 0);
+				socket_.open(static_cast<network::tcp::socket::family>(data_.base.sa_family) , protocol_);
 			}
 
 			tcp::socket& socket() { return socket_; };
@@ -471,7 +546,7 @@ namespace network
 
 		protected:
 			tcp::socket  socket_;
-			uint8_t	protocol_;
+			protocol protocol_;
 
 		protected:
 			union data_union
@@ -524,16 +599,16 @@ namespace network
 		class v6 : public endpoint
 		{
 		public:
-			v6(std::int16_t port) : endpoint{port, endpoint::v6}
+			v6(std::int16_t port) : endpoint{port, tcp::socket::family::v6}
 			{
 			}
 
-			v6(const std::string& ip, std::int16_t port) : endpoint{port, endpoint::v6}
+			v6(const std::string& ip, std::int16_t port) : endpoint{port, tcp::socket::family::v6}
 			{
 				inet_pton(AF_INET6, ip.c_str(), &(endpoint::data_.v6.sin6_addr));
 			}
 
-			v6(const network::ip::address address) : endpoint{0, endpoint::v6}
+			v6(const network::ip::address address) : endpoint{0, tcp::socket::family::v6}
 			{
 				inet_pton(AF_INET6, address.first.c_str(), &(endpoint::data_.v6.sin6_addr));
 
@@ -621,8 +696,10 @@ namespace network
 
 				auto x = endpoint_->addr();
 				auto y = endpoint_->addr_size();
+				
+				endpoint_->open(protocol_);
 
-				ret = ::bind(endpoint_->socket(), endpoint_->addr(), endpoint_->addr_size());
+				ret = ::bind(endpoint_->socket().lowest_layer(), endpoint_->addr(), endpoint_->addr_size());
 
 				auto error = WSAGetLastError();
 
@@ -636,14 +713,14 @@ namespace network
 
 			void listen() noexcept
 			{
-				::listen(endpoint_->socket(), 5);
+				::listen(endpoint_->socket().lowest_layer(), 5);
 			}
 
 			void accept(socket& socket) noexcept
 			{
 				socklen_t len = static_cast<socklen_t>(endpoint_->addr_size());
 				socket = static_cast<socket_t>(-1);
-				socket = ::accept(endpoint_->socket(), endpoint_->addr(), &len);
+				socket = ::accept(endpoint_->socket().lowest_layer(), endpoint_->addr(), &len);
 
 			}
 
@@ -670,19 +747,19 @@ namespace network
 		return ret;
 	}
 
-	std::int32_t read(socket_t s, const buffer& b) noexcept
+	std::int32_t read(const network::tcp::socket& s, const buffer& b) noexcept
 	{
-		return ::recv(s, b.data(), static_cast<int>(b.size()), 0);
+		return ::recv(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0);
 	}
 
-	std::int32_t write(socket_t s, const buffer& b) noexcept
+	std::int32_t write(const network::tcp::socket& s, const buffer& b) noexcept
 	{
-		return ::send(s, b.data(), static_cast<int>(b.size()), 0);
+		return ::send(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0);
 	}
 
-	std::int32_t write(socket_t s, const std::string& str) noexcept
+	std::int32_t write(const network::tcp::socket& s, const std::string& str) noexcept
 	{
-		return ::send(s, str.data(), static_cast<int>(str.size()), 0);
+		return ::send(s.lowest_layer(), str.data(), static_cast<int>(str.size()), 0);
 	}
 
 	std::int32_t read(ssl::stream<tcp::socket> s, const buffer& b) noexcept
@@ -706,7 +783,7 @@ namespace network
 		socklen_t sl = sizeof(sa);
 		char c[INET6_ADDRSTRLEN];
 
-		getpeername(client_socket.lowest_layer(), (sockaddr*)&sa, &sl);
+		getpeername(client_socket.lowest_layer().lowest_layer(), (sockaddr*)&sa, &sl);
 
 		inet_ntop(AF_INET6, &(sa.sin6_addr), c, INET6_ADDRSTRLEN);
 
@@ -719,7 +796,7 @@ namespace network
 		socklen_t sl = sizeof(sa);
 		char c[INET6_ADDRSTRLEN];
 
-		getpeername(client_socket, (sockaddr*)&sa, &sl);
+		getpeername(client_socket.lowest_layer(), (sockaddr*)&sa, &sl);
 
 		inet_ntop(AF_INET6, &(sa.sin6_addr), c, INET6_ADDRSTRLEN);
 
@@ -729,26 +806,27 @@ namespace network
 	int tcp_nodelay(network::tcp::socket& s, int value)
 	{
 		int reuseaddr = value;
-		return ::setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (char*)&reuseaddr, sizeof(reuseaddr));
+		return ::setsockopt(s.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, (char*)&reuseaddr, sizeof(reuseaddr));
 	}
 
 	int reuse_address(network::tcp::socket& s, int value)
 	{
 		int reuseaddr = value;
-		return ::setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
+		return ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
 	}
 
 	int ipv6only(network::tcp::socket& s, int value)
 	{
-		int ipv6only = value;
-		return ::setsockopt(s, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only));
+		s.set_options(network::tcp::options::ipv6only, value);
+
+		return 0;
 	}
 
 	int use_portsharding(network::tcp::socket& s, int value)
 	{
 		int use_portsharding = value;
 #ifdef LINUX
-		int ret = ::setsockopt(s, SOL_SOCKET, SO_REUSEPORT, (char*)&use_portsharding, sizeof(use_portsharding));
+		int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_REUSEPORT, (char*)&use_portsharding, sizeof(use_portsharding));
 		return ret;
 #endif
 		return -1;
@@ -771,7 +849,7 @@ namespace network
 			linger_.l_linger = 5;
 		}
 
-		int ret = ::setsockopt(s, SOL_SOCKET, SO_LINGER, (char*)&linger_, sizeof(linger));
+		int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_LINGER, (char*)&linger_, sizeof(linger));
 
 		return ret;
 	}
@@ -780,7 +858,7 @@ namespace network
 	{
 #if defined(_WIN32)
 		DWORD timeout_value = static_cast<DWORD>(value) * 1000;
-		int ret = ::setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
+		int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
 #else
 		timeval timeout;
 		timeout.tv_sec = value;
@@ -793,18 +871,18 @@ namespace network
 
 	void closesocket(network::tcp::socket& client_socket)
 	{
-		::closesocket(client_socket);
+		::closesocket(client_socket.lowest_layer());
 	}
 
 	void closesocket(network::ssl::stream<network::tcp::socket>& client_socket)
 	{
 		client_socket.close();
-		::closesocket(client_socket.lowest_layer());
+		::closesocket(client_socket.lowest_layer().lowest_layer());
 	}
 
 	void shutdown(network::tcp::socket& client_socket, int how)
 	{
-		::shutdown(client_socket, how);
+		::shutdown(client_socket.lowest_layer(), how);
 	}
 
 	enum shutdown_type
@@ -814,7 +892,7 @@ namespace network
 
 	void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, shutdown_type how)
 	{
-		::shutdown(client_socket.lowest_layer(), static_cast<int>(how));
+		::shutdown(client_socket.lowest_layer().lowest_layer(), static_cast<int>(how));
 	}
 
 }

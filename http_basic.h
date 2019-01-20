@@ -2932,7 +2932,7 @@ public:
 				
 				acceptor_http.accept(http_socket);
 
-				if (http_socket > 0)
+				if (http_socket.lowest_layer() > 0)
 				{
 					std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 					http_connection_queue_.push(http_socket);
