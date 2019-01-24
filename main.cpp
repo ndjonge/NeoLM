@@ -25,35 +25,20 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-//	network::tcp::resolver resolver;
-//	auto results = resolver.resolve("localhost", "4000");
-
-//	network::tcp::socket s;
-//	network::connect(s, results);
-
-//	http::request_message request{"GET", "/dynamic?upstream=backend"};
-//	request.set("Host", "localhost");
-
-//	std::array<char, 8192> data;
-//	auto request_result  = network::write(s, http::to_string(request));
-//	auto response_result = network::read(s, network::buffer(data.data(), data.size()));
-
 	http::session_handler session{http::configuration{}};
 
-//	http::response_parser p;
-//	http::response_message message;
+	//	auto result1 = session.get("http://localhost:4000/dynamic?upstream=backend", {});
 
-//	auto parse_result = p.parse(message, data.begin(), data.end());
-
-//	auto result1 = session.get("http://localhost:4000/dynamic?upstream=backend", {});
-//	auto result2 = session.get("http://localhost:4000/status", {});
-
-	
 	neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
 		{
 			{ "server", "neolm/8.0.01" },
 			{ "listen_port_begin", "3000" },
 			{ "listen_port_end", "3063" },
+			{ "cluster-downstream-nginx-endpoint", "http://localhost:4000/dynamic"},
+			{ "cluster-downstream-nginx-endpoint-api", "ngx_dynamic_upstream"},
+			{ "cluster-scaling-mode", "self-scale"},
+			{ "cluster-scale-connection-limit-high", "2"},
+			{ "cluster-scale-connection-limit-lwo", "0"},
 			{ "keepalive_count", "1048576" },
 			{ "keepalive_timeout", "30" },
 			{ "thread_count", "8" },
