@@ -388,11 +388,11 @@ json::value to_json(const instances& instances)
 }
 
 template<class S>
-class license_manager
+class license_manager 
 {
 public:
 private:
-	class api_server : public S
+	class api_server : public S, public http::upstream::enable_server_as_upstream<http::upstream::for_nginx>
 	{
 	public:
 		api_server(license_manager& license_manager, http::configuration& configuration)
