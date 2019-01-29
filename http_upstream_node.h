@@ -59,8 +59,24 @@ public:
 	enable_server_as_upstream(http::configuration& configuration) : configuration_(configuration) {};
 private:
 	http::configuration& configuration_;
-
 };
+
+template<servertype_specialisations::for_nginx>
+class enable_server_as_upstream
+{
+public:
+	enable_server_as_upstream(http::configuration& configuration) : configuration_(configuration) {};
+private:
+};
+
+template<servertype_specialisations::for_haproxy>
+class enable_server_as_upstream
+{
+public:
+	enable_server_as_upstream(http::configuration& configuration) : configuration_(configuration) {};
+private:
+};
+
 
 //CRTP
 template<class I>
