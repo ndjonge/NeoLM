@@ -51,27 +51,26 @@ enum servertype_specialisations
 	for_nginx,
 	for_haproxy
 };
-template<class I>
-class upstream_node_controller;
 
 template<servertype_specialisations>
 class enable_server_as_upstream
 {
 public:
-	enable_server_as_upstream
-protected:
-	upstream_node_controller upstream_node_controller_;
+	enable_server_as_upstream(http::configuration& configuration) : configuration_(configuration) {};
+private:
+	http::configuration& configuration_;
+
 };
 
 //CRTP
 template<class I>
-class upstream_node_controller
+class upstream_controller
 {
 
 public:
 	const result add(std::string& myurl) const noexcept
 	{
-		return static_cast<T*>(this)->add_impl(myrl);
+		return static_cast<T*>add_impl(myrl);
 	}
 
 	const result remove(std::string& myurl) const noexcept
@@ -98,7 +97,7 @@ public:
 namespace implementations 
 {
 
-class nginx : public upstream_node_controller<nginx>
+class nginx : public upstream_controller<nginx>
 {
 public:
 	nginx(const std::string& nginx_endpoint = "http://localhost:4000/dynamic")
