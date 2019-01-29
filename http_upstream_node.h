@@ -55,11 +55,16 @@ enum servertype_specialisations
 template<servertype_specialisations>
 class enable_server_as_upstream
 {
+public:
+	enable_server_as_upstream(http::configuration& configuration) : configuration_(configuration) {};
+private:
+	http::configuration& configuration_;
+
 };
 
 //CRTP
 template<class I>
-class upstream_node_interface
+class upstream_controller
 {
 
 public:
@@ -92,7 +97,7 @@ public:
 namespace implementations 
 {
 
-class nginx : public upstream_node_interface<nginx>
+class nginx : public upstream_controller<nginx>
 {
 public:
 	nginx(const std::string& nginx_endpoint = "http://localhost:4000/dynamic")

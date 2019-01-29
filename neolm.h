@@ -397,6 +397,7 @@ private:
 	public:
 		api_server(license_manager& license_manager, http::configuration& configuration)
 			: S(configuration)
+			, enable_server_as_upstream(configuration)
 			, license_manager_(license_manager)
 		{
             S::router_.use("/static/");
