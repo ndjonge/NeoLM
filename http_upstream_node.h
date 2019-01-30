@@ -61,20 +61,24 @@ private:
 	http::configuration& configuration_;
 };
 
-template<servertype_specialisations::for_nginx>
-class enable_server_as_upstream
+template<>
+class enable_server_as_upstream<for_nginx>
 {
 public:
 	enable_server_as_upstream(http::configuration& configuration) : configuration_(configuration) {};
 private:
+	http::configuration& configuration_;
+	implementations::nginx upstream_controller_;
 };
 
-template<servertype_specialisations::for_haproxy>
-class enable_server_as_upstream
+template<>
+class enable_server_as_upstream<for_haproxy>
 {
 public:
 	enable_server_as_upstream(http::configuration& configuration) : configuration_(configuration) {};
 private:
+	http::configuration& configuration_;
+	implementations::haproxy upstream_controller_;
 };
 
 
@@ -121,6 +125,46 @@ public:
 	}
 
 	nginx(network::tcp::endpoint& nginx_endpoint)
+	{
+	}
+
+	const result add(std::string& myurl) const noexcept
+	{
+		return http::upstream::sucess;
+	}
+
+	const result remove(std::string& myurl) const noexcept
+	{
+		return http::upstream::sucess;
+	}
+
+	const result enable(std::string& myurl) const noexcept
+	{
+		return http::upstream::sucess;
+	}
+
+	const result disable(std::string& myurl) const noexcept
+	{
+		return http::upstream::sucess;
+	}
+
+	const std::string list(std::string& myurl) const noexcept
+	{
+		return "";
+	}
+
+private:
+//	network::tcp::endpoint& nginx_endpoint_;
+};
+
+class haproxy : public upstream_controller<haproxy>
+{
+public:
+	haproxy(const std::string& haproxy_endpoint = "localhost:4000")
+	{ 
+	}
+
+	haproxy(network::tcp::endpoint& nginx_endpoint)
 	{
 	}
 
