@@ -2736,7 +2736,6 @@ public:
 		, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
-		, reverse_proxy_(configuration)
 	{
 	}
 
@@ -3148,46 +3147,6 @@ public:
 		}
 	};
 
-	class reverse_proxy
-	{
-	public:
-		using backend_list = std::vector<std::string>;
-
-		reverse_proxy(http::configuration& c) : configuration_(c)
-		{
-		}
-
-		bool delegate_request_to_backend(http::request_message& request, http::response_message& response) 
-		{
-			auto available_node = std::find_if(std::begin(backend_nodes_), std::end(backend_nodes_), [](auto& v)
-			{ 
-				return v.available_ == true; 
-			});
-		
-			network::write(available_node->socket_, http::to_string(request));
-
-		}
-
-	private:
-		class node
-		{
-
-		public:
-			bool available_;
-			std::string adress_s_;
-			size_t requests_;
-			network::ip::address adress_; 
-
-			network::tcp::socket socket_;
-		};
-		
-		std::vector<node> backend_nodes_;
-		http::configuration& configuration_;
-
-	public:
-	
-	};
-
 private:
 	int thread_count_;
 	int listen_port_begin_;
@@ -3199,8 +3158,6 @@ private:
 
 	std::mutex http_connection_queue_mutex_;
 	std::queue<network::tcp::socket> http_connection_queue_;
-
-	reverse_proxy reverse_proxy_;
 };
 
 } // namespace threaded

@@ -30,10 +30,10 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 
 //		{ "upstream-node-nginx-endpoint", "http://localhost:4000/dynamic" },
-//		{ "upstream-node-nginx-endpoint-api", "ngx_dynamic_upstream" },
+//		{ "upstream-node-nginx-endpoint-downstream", "backend" },
 //		{ "upstream-node-scaling", "self-scale" },
-//		{ "upstream-node-connection-limit-high", "2" },
-//		{ "upstream-node-connection-limit-lwo", "0"},
+//		{ "upstream-node-scaling-limit-high", "2" },
+//		{ "upstream-node-scaling-limit-lwo", "0"},
 
 namespace http
 {
@@ -45,6 +45,20 @@ enum result
 	failed,
 	sucess
 };
+
+namespace scaling
+{
+
+class scale_controller
+{
+public:
+//	on_too_busy
+//	on_health_check
+//	on_idle
+private:
+};
+
+}
 
 enum servertype_specialisations 
 {
@@ -89,9 +103,9 @@ public:
 		return static_cast<T*>(this)->enable_impl(myrl);
 	}
 
-	const std::string list(const std::string& myurl) const noexcept
+	const std::string list() const noexcept
 	{
-		return static_cast<T*>(this)->enable_impl(myrl);
+		return static_cast<T*>(this)->enable_impl();
 	}
 
 protected:
@@ -104,37 +118,74 @@ namespace implementations
 class nginx : public upstream_controller<nginx>
 {
 public:
-	nginx(http::configuration& configuration) : upstream_controller(configuration) {};
+	nginx(http::configuration& configuration) : upstream_controller(configuration) {
+		endpoint_base_url_ = configuration_.get("upstream-node-nginx-endpoint") + 
+			"?upstream=" + 
+			configuration_.get("upstream-node-nginx-endpoint-downstream"); 
+	};
 
-	const result add(const std::string& myurl) const noexcept
+	const result add(const std::string& server) const noexcept
 	{
-		auto& endpoint_url = configuration_.get("upstream-node-nginx-endpoint");
+		http::session_handler session{http::configuration{}};
 
+		auto result = session.get(endpoint_base_url_ + "&add=&server=" + server, {});
 
-		return http::upstream::sucess;
+		if (result.status() == http::status::ok)
+			return http::upstream::sucess;
+		else
+			return http::upstream::failed;
 	}
 
-	const result remove(const std::string& myurl) const noexcept
+	const result remove(const std::string& server) const noexcept
 	{
-		return http::upstream::sucess;
+		http::session_handler session{http::configuration{}};
+
+		auto result = session.get(endpoint_base_url_ + "&remove=&server=" + server, {});
+
+		if (result.status() == http::status::ok)
+			return http::upstream::sucess;
+		else
+			return http::upstream::failed;
 	}
 
-	const result enable(const std::string& myurl) const noexcept
+	const result enable(const std::string& server) const noexcept
 	{
-		return http::upstream::sucess;
+		http::session_handler session{http::configuration{}};
+
+		auto result = session.get(endpoint_base_url_ + "&server=" + server+ "&up", {});
+
+		if (result.status() == http::status::ok)
+			return http::upstream::sucess;
+		else
+			return http::upstream::failed;
 	}
 
-	const result disable(const std::string& myurl) const noexcept
+	const result disable(const std::string& server) const noexcept
 	{
-		return http::upstream::sucess;
+		http::session_handler session{http::configuration{}};
+
+		auto result = session.get(endpoint_base_url_ + "&server=" + server + "&down", {});
+
+		if (result.status() == http::status::ok)
+			return http::upstream::sucess;
+		else
+			return http::upstream::failed;
 	}
 
-	const std::string list(const std::string& myurl) const noexcept
+	const std::string list() const noexcept
 	{
-		return "";
+		http::session_handler session{http::configuration{}};
+
+		auto result = session.get(endpoint_base_url_, {});
+
+		if (result.status() == http::status::ok)
+			return result.body();
+		else
+			return "";
 	}
 
 private:
+	std::string endpoint_base_url_;
 //	network::tcp::endpoint& nginx_endpoint_;
 };
 
