@@ -63,9 +63,40 @@ private:
 
 template<class I> class upstream_controller;
 
-namespace implementations 
+//CRTP
+template<class I>
+class upstream_controller
 {
 
+public:
+	const result add(std::string& myurl) const noexcept
+	{
+		return static_cast<T*>add_impl(myrl);
+	}
+
+	const result remove(std::string& myurl) const noexcept
+	{
+		return static_cast<T*>(this)->remove_impl(myrl);
+	}
+
+	const result enable(std::string& myurl) const noexcept
+	{
+		return static_cast<T*>(this)->enable_impl(myrl);
+	}
+
+	const result disable(std::string& myurl) const noexcept
+	{
+		return static_cast<T*>(this)->enable_impl(myrl);
+	}
+
+	const std::string list(std::string& myurl) const noexcept
+	{
+		return static_cast<T*>(this)->enable_impl(myrl);
+	}
+};
+
+namespace implementations 
+{
 
 class nginx : public upstream_controller<nginx>
 {
@@ -147,6 +178,7 @@ private:
 //	network::tcp::endpoint& nginx_endpoint_;
 };
 
+}
 
 template<>
 class enable_server_as_upstream<for_nginx>
@@ -167,43 +199,6 @@ private:
 	http::configuration& configuration_;
 	implementations::haproxy upstream_controller_;
 };
-
-
-//CRTP
-template<class I>
-class upstream_controller
-{
-
-public:
-	const result add(std::string& myurl) const noexcept
-	{
-		return static_cast<T*>add_impl(myrl);
-	}
-
-	const result remove(std::string& myurl) const noexcept
-	{
-		return static_cast<T*>(this)->remove_impl(myrl);
-	}
-
-	const result enable(std::string& myurl) const noexcept
-	{
-		return static_cast<T*>(this)->enable_impl(myrl);
-	}
-
-	const result disable(std::string& myurl) const noexcept
-	{
-		return static_cast<T*>(this)->enable_impl(myrl);
-	}
-
-	const std::string list(std::string& myurl) const noexcept
-	{
-		return static_cast<T*>(this)->enable_impl(myrl);
-	}
-};
-
-
-}
-
 }
 
 }
