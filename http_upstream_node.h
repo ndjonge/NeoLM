@@ -61,38 +61,41 @@ private:
 	http::configuration& configuration_;
 };
 
-template<class I> class upstream_controller;
-
 //CRTP
 template<class I>
 class upstream_controller
-{
-
+{	
 public:
-	const result add(std::string& myurl) const noexcept
+	upstream_controller(http::configuration& configuration) : configuration_(configuration) {
+	}
+
+	const result add(const std::string& myurl) const noexcept
 	{
 		return static_cast<T*>add_impl(myrl);
 	}
 
-	const result remove(std::string& myurl) const noexcept
+	const result remove(const std::string& myurl) const noexcept
 	{
 		return static_cast<T*>(this)->remove_impl(myrl);
 	}
 
-	const result enable(std::string& myurl) const noexcept
+	const result enable(const std::string& myurl) const noexcept
 	{
 		return static_cast<T*>(this)->enable_impl(myrl);
 	}
 
-	const result disable(std::string& myurl) const noexcept
+	const result disable(const std::string& myurl) const noexcept
 	{
 		return static_cast<T*>(this)->enable_impl(myrl);
 	}
 
-	const std::string list(std::string& myurl) const noexcept
+	const std::string list(const std::string& myurl) const noexcept
 	{
 		return static_cast<T*>(this)->enable_impl(myrl);
 	}
+
+protected:
+	http::configuration& configuration_;
 };
 
 namespace implementations 
@@ -101,35 +104,32 @@ namespace implementations
 class nginx : public upstream_controller<nginx>
 {
 public:
-	nginx(const std::string& nginx_endpoint = "http://localhost:4000/dynamic")
-	{ 
-	}
+	nginx(http::configuration& configuration) : upstream_controller(configuration) {};
 
-	nginx(network::tcp::endpoint& nginx_endpoint)
+	const result add(const std::string& myurl) const noexcept
 	{
+		auto& endpoint_url = configuration_.get("upstream-node-nginx-endpoint");
+
+
+		return http::upstream::sucess;
 	}
 
-	const result add(std::string& myurl) const noexcept
+	const result remove(const std::string& myurl) const noexcept
 	{
 		return http::upstream::sucess;
 	}
 
-	const result remove(std::string& myurl) const noexcept
+	const result enable(const std::string& myurl) const noexcept
 	{
 		return http::upstream::sucess;
 	}
 
-	const result enable(std::string& myurl) const noexcept
+	const result disable(const std::string& myurl) const noexcept
 	{
 		return http::upstream::sucess;
 	}
 
-	const result disable(std::string& myurl) const noexcept
-	{
-		return http::upstream::sucess;
-	}
-
-	const std::string list(std::string& myurl) const noexcept
+	const std::string list(const std::string& myurl) const noexcept
 	{
 		return "";
 	}
@@ -141,13 +141,7 @@ private:
 class haproxy : public upstream_controller<haproxy>
 {
 public:
-	haproxy(const std::string& haproxy_endpoint = "localhost:4000")
-	{ 
-	}
-
-	haproxy(network::tcp::endpoint& nginx_endpoint)
-	{
-	}
+	haproxy(http::configuration& configuration) : upstream_controller(configuration) {};
 
 	const result add(std::string& myurl) const noexcept
 	{
@@ -184,9 +178,10 @@ template<>
 class enable_server_as_upstream<for_nginx>
 {
 public:
-	enable_server_as_upstream(http::configuration& configuration) : configuration_(configuration) {};
+	enable_server_as_upstream(http::configuration& configuration) : upstream_controller_(configuration) {};
+protected:
+	implementations::nginx& upstream_controller() {return upstream_controller_;};
 private:
-	http::configuration& configuration_;
 	implementations::nginx upstream_controller_;
 };
 
@@ -194,9 +189,8 @@ template<>
 class enable_server_as_upstream<for_haproxy>
 {
 public:
-	enable_server_as_upstream(http::configuration& configuration) : configuration_(configuration) {};
+	enable_server_as_upstream(http::configuration& configuration) : upstream_controller_(configuration) {};
 private:
-	http::configuration& configuration_;
 	implementations::haproxy upstream_controller_;
 };
 }

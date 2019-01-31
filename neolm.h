@@ -590,7 +590,7 @@ public:
 
 	void start_server()
 	{
-		this->api_server_.
+		this->api_server_.upstream_controller().add("x");
 		this->api_server_.start_server();
 	}
 
