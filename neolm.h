@@ -387,12 +387,19 @@ json::value to_json(const instances& instances)
 	return ret;
 }
 
+
+//							auto future_ = std::async(std::launch::async, [this](){S::scale_out();});
+//							S::manager().scale_count(S::manager().scale_count()+1);
+
+
 template<class S>
 class license_manager 
 {
 public:
 private:
-	class api_server : public S, public http::upstream::enable_server_as_upstream<http::upstream::for_nginx>
+	class api_server : 
+		public S, 
+		public http::upstream::enable_server_as_upstream<http::upstream::for_nginx>
 	{
 	public:
 		api_server(license_manager& license_manager, http::configuration& configuration)
@@ -408,6 +415,15 @@ private:
             S::router_.use("/files/");
 			// License instance configuration routes..
 		
+
+
+			S::router_.use("/", [this](http::session_handler& session, const http::api::params& params) {
+				bool result = true;
+				session.response().result(http::status::ok);
+				return result;
+			});
+
+
 			S::router_.on_get(
 				"/sleep/1000", [this](http::session_handler& session, const http::api::params& params) {
 
