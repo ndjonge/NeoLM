@@ -46,20 +46,6 @@ enum result
 	sucess
 };
 
-namespace scaling
-{
-
-class scale_controller
-{
-public:
-//	on_too_busy
-//	on_health_check
-//	on_idle
-private:
-};
-
-}
-
 enum servertype_specialisations 
 {
 	for_nginx,
@@ -70,9 +56,10 @@ template<servertype_specialisations>
 class enable_server_as_upstream
 {
 public:
-	enable_server_as_upstream(http::configuration& configuration) : configuration_(configuration) {};
+	enable_server_as_upstream(http::configuration& configuration, http::basic::server& server) : configuration_(configuration), server_(server) {};
 private:
 	http::configuration& configuration_;
+	http::basic::server& server_;
 };
 
 //CRTP
@@ -80,8 +67,8 @@ template<class I>
 class upstream_controller
 {	
 public:
-	upstream_controller(http::configuration& configuration) : configuration_(configuration) {
-	}
+	upstream_controller(http::configuration& configuration, http::basic::server& server) : configuration_(configuration), server_(server) 
+	{}
 
 	const result add(const std::string& myurl) const noexcept
 	{
@@ -110,6 +97,7 @@ public:
 
 protected:
 	http::configuration& configuration_;
+	http::basic::server& server_;
 };
 
 namespace implementations 
@@ -118,7 +106,7 @@ namespace implementations
 class nginx : public upstream_controller<nginx>
 {
 public:
-	nginx(http::configuration& configuration) : upstream_controller(configuration) {
+	nginx(http::configuration& configuration, http::basic::server& server) : upstream_controller(configuration, server) {
 		endpoint_base_url_ = configuration_.get("upstream-node-nginx-endpoint") + 
 			"?upstream=" + 
 			configuration_.get("upstream-node-nginx-endpoint-downstream"); 
@@ -183,16 +171,15 @@ public:
 		else
 			return "";
 	}
-
+	
 private:
 	std::string endpoint_base_url_;
-//	network::tcp::endpoint& nginx_endpoint_;
 };
 
 class haproxy : public upstream_controller<haproxy>
 {
 public:
-	haproxy(http::configuration& configuration) : upstream_controller(configuration) {};
+	haproxy(http::configuration& configuration, http::basic::server& server) : upstream_controller(configuration, server) {};
 
 	const result add(std::string& myurl) const noexcept
 	{
@@ -229,7 +216,7 @@ template<>
 class enable_server_as_upstream<for_nginx>
 {
 public:
-	enable_server_as_upstream(http::configuration& configuration) : upstream_controller_(configuration) {};
+	enable_server_as_upstream(http::configuration& configuration, http::basic::server& server) : upstream_controller_(configuration, server) {};
 protected:
 	implementations::nginx& upstream_controller() {return upstream_controller_;};
 private:
@@ -240,7 +227,7 @@ template<>
 class enable_server_as_upstream<for_haproxy>
 {
 public:
-	enable_server_as_upstream(http::configuration& configuration) : upstream_controller_(configuration) {};
+	enable_server_as_upstream(http::configuration& configuration, http::basic::server& server) : upstream_controller_(configuration, server) {};
 private:
 	implementations::haproxy upstream_controller_;
 };

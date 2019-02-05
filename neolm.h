@@ -404,7 +404,7 @@ private:
 	public:
 		api_server(license_manager& license_manager, http::configuration& configuration)
 			: S(configuration)
-			, enable_server_as_upstream(configuration)
+			, enable_server_as_upstream(configuration, *this)
 			, license_manager_(license_manager)
 		{
             S::router_.use("/static/");
@@ -413,13 +413,18 @@ private:
             S::router_.use("/index.html");
             S::router_.use("/");
             S::router_.use("/files/");
-			// License instance configuration routes..
-		
 
+			// License instance configuration routes..
 
 			S::router_.use("/", [this](http::session_handler& session, const http::api::params& params) {
 				bool result = true;
+
+				if (manager().connections_current() >= 1)
+				{
+				}
+
 				session.response().result(http::status::ok);
+
 				return result;
 			});
 

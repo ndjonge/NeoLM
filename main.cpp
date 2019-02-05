@@ -17,7 +17,6 @@
 
 using namespace std::literals;
 
-
 int main(int argc, char* argv[])
 {
 	network::init();
