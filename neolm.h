@@ -423,7 +423,6 @@ private:
 				return result;
 			});
 
-
 			S::router_.on_get(
 				"/sleep/1000", [this](http::session_handler& session, const http::api::params& params) {
 
