@@ -1889,7 +1889,7 @@ public:
 		response_.type("text");
 		response_.result(http::status::ok);
 		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
-		response_.set("Host", configuration_.get<std::string>("host", "localhost:"+configuration_.get<std::string>("http_listen_socket", "3000")));
+		response_.set("Host", configuration_.get<std::string>("host", "localhost:"+configuration_.get<std::string>("http_listen_port", "3000")));
 
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
@@ -2508,7 +2508,7 @@ public:
 	server(http::configuration& configuration)
 		: router_(configuration.get<std::string>("doc_root", "/var/www"))
 		, configuration_(configuration)
-		, active_(true)
+		, active_(false)
 	{};
 
 	server(const server&) = default;
@@ -2516,6 +2516,11 @@ public:
 	bool active()
 	{
 		return active_;
+	}
+
+	void activate()
+	{
+		active_ = true;
 	}
 
 	void deactivate()
@@ -2762,6 +2767,11 @@ public:
 		http_connection_thread.detach();
 		http_connection_queue_thread.detach();
 
+		while(!active())
+		{
+			std::this_thread::yield();
+		}
+
 		// std::thread https_connection_thread([this]() { https_listener_handler(); });
 		// https_connection_thread.detach();
 	}
@@ -2833,6 +2843,7 @@ public:
 
 
 			acceptor_https.listen();
+
 
 			network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
@@ -2906,7 +2917,7 @@ public:
 
 				if (ec == network::error::success)
 				{
-					this->configuration_.set("http_listen_socket", std::to_string(listen_port_));
+					this->configuration_.set("http_listen_port", std::to_string(listen_port_));
 
 					break;
 				}
@@ -2924,6 +2935,8 @@ public:
 			}
 
 			acceptor_http.listen();
+
+			activate();
 
 			while (active())
 			{

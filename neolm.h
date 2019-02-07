@@ -421,9 +421,9 @@ private:
 
 				if (manager().connections_current() >= 1)
 				{
+					result = false;
+					session.response().result(http::status::service_unavailable);
 				}
-
-				session.response().result(http::status::ok);
 
 				return result;
 			});
@@ -610,8 +610,8 @@ public:
 
 	void start_server()
 	{
-		this->api_server_.upstream_controller().add("x");
 		this->api_server_.start_server();
+		this->api_server_.upstream_controller().add("127.0.0.1:" + configuration_.get("http_listen_port"));
 	}
 
 	void run()

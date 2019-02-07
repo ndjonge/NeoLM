@@ -35,6 +35,8 @@ int main(int argc, char* argv[])
 		{ "ssl_certificate_key", "/Projects/ssl/ssl.key" }, 
 		// http_upstream_node.h
 		{ "upstream-node-nginx-endpoint", "http://localhost:4000/dynamic" },
+		{ "upstream-node-nginx-endpoint-downstream", "backend" },
+
 		{ "upstream-node-nginx-endpoint-api", "ngx_dynamic_upstream" },
 		{ "upstream-node-scaling", "self-scale" },
 		{ "upstream-node-connection-limit-high", "2" },
