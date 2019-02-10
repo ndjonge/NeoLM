@@ -57,6 +57,7 @@ class enable_server_as_upstream
 {
 public:
 	enable_server_as_upstream(http::configuration& configuration, http::basic::server& server) : configuration_(configuration), server_(server) {};
+
 private:
 	http::configuration& configuration_;
 	http::basic::server& server_;
@@ -69,6 +70,17 @@ class upstream_controller
 public:
 	upstream_controller(http::configuration& configuration, http::basic::server& server) : configuration_(configuration), server_(server) 
 	{}
+
+	bool fork()
+	{
+		auto future_ = std::async(std::launch::async, [this]()
+		{
+			auto result = std::system(configuration_.get("upstream-node-scaling-fork-cmd").c_str());
+			server_.manager().scale_count(server_.manager().scale_count()+1);
+		});
+
+		return true;
+	}
 
 	const result add(const std::string& myurl) const noexcept
 	{

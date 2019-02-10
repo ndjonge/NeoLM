@@ -387,11 +387,6 @@ json::value to_json(const instances& instances)
 	return ret;
 }
 
-
-//							auto future_ = std::async(std::launch::async, [this](){S::scale_out();});
-//							S::manager().scale_count(S::manager().scale_count()+1);
-
-
 template<class S>
 class license_manager 
 {
@@ -421,8 +416,7 @@ private:
 
 				if (manager().connections_current() >= 1)
 				{
-					result = false;
-					session.response().result(http::status::service_unavailable);
+					upstream_controller().fork();	
 				}
 
 				return result;
@@ -611,7 +605,10 @@ public:
 	void start_server()
 	{
 		this->api_server_.start_server();
-		this->api_server_.upstream_controller().add("127.0.0.1:" + configuration_.get("http_listen_port"));
+		if (this->api_server_.upstream_controller().add("127.0.0.1:" + configuration_.get("http_listen_port")) == http::upstream::sucess)
+			std::cout << "server listening on port : " + configuration_.get("http_listen_port") + " and added to upstream\n";
+		else
+			std::cout << "server listening on port : " + configuration_.get("http_listen_port") + "\n";
 	}
 
 	void run()

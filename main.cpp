@@ -36,9 +36,9 @@ int main(int argc, char* argv[])
 		// http_upstream_node.h
 		{ "upstream-node-nginx-endpoint", "http://localhost:4000/dynamic" },
 		{ "upstream-node-nginx-endpoint-downstream", "backend" },
-
 		{ "upstream-node-nginx-endpoint-api", "ngx_dynamic_upstream" },
 		{ "upstream-node-scaling", "self-scale" },
+		{ "upstream-node-scaling-fork-cmd", "start /b " + std::accumulate(argv, argv + argc, std::string("")) },
 		{ "upstream-node-connection-limit-high", "2" },
 		{ "upstream-node-connection-limit-lwo", "0"}
 		// http_upstream_node.h
