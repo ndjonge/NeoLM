@@ -39,12 +39,12 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include <future>
 #include <map>
 #include <mutex>
+#include <queue>
+#include <ratio>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
-#include <queue>
-#include <ratio>
 
 #include <zlib.h>
 
@@ -54,51 +54,42 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 #include "http_network.h"
 
-
-//using boost::hash_combine
-template <class T>
-inline void hash_combine(std::size_t& seed, T const& v)
-{
-    seed ^= std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-}
+// using boost::hash_combine
+template <class T> inline void hash_combine(std::size_t& seed, T const& v) { seed ^= std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2); }
 
 namespace std
 {
-    template<typename T>
-    struct hash<vector<T>>
-    {
-        typedef vector<T> argument_type;
-        typedef std::size_t result_type;
-        result_type operator()(argument_type const& in) const
-        {
-            size_t size = in.size();
-            size_t seed = 0;
-            for (size_t i = 0; i < size; i++)
-                //Combine the hash of the current vector with the hashes of the previous ones
-                hash_combine(seed, in[i]);
-            return seed;
-        }
-    };
-    
-    template<typename F, typename S>
-    struct hash<pair<F, S>>
-    {
-        using argument_type = pair<F, S>;
-        using result_type = std::size_t;
-        
-        result_type operator()(argument_type const& in) const
-        {
-            size_t seed = 0;
-            
-            hash_combine(seed, in.first);
-            hash_combine(seed, in.second);
-            
-            return seed;
-        }
-    };    
-}
+template <typename T> struct hash<vector<T>>
+{
+	typedef vector<T> argument_type;
+	typedef std::size_t result_type;
+	result_type operator()(argument_type const& in) const
+	{
+		size_t size = in.size();
+		size_t seed = 0;
+		for (size_t i = 0; i < size; i++)
+			// Combine the hash of the current vector with the hashes of the previous ones
+			hash_combine(seed, in[i]);
+		return seed;
+	}
+};
 
+template <typename F, typename S> struct hash<pair<F, S>>
+{
+	using argument_type = pair<F, S>;
+	using result_type = std::size_t;
 
+	result_type operator()(argument_type const& in) const
+	{
+		size_t seed = 0;
+
+		hash_combine(seed, in.first);
+		hash_combine(seed, in.second);
+
+		return seed;
+	}
+};
+} // namespace std
 
 namespace filesystem
 {
@@ -248,7 +239,7 @@ namespace http
 class request_parser;
 class response_parser;
 class session_handler;
- 
+
 namespace util
 {
 inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
@@ -288,29 +279,25 @@ template <typename T> T& split_(T& result, const typename T::value_type& s, cons
 
 std::vector<std::string> split(const std::string& str, const std::string& delimiters)
 {
-    std::vector<std::string> output;
+	std::vector<std::string> output;
 
-	output.reserve(str.size()/2);
+	output.reserve(str.size() / 2);
 
-    auto first = std::cbegin(str);
+	auto first = std::cbegin(str);
 
-    while (first != std::cend(str))
-    {
-        const auto second = std::find_first_of(first, std::cend(str), 
-                  std::cbegin(delimiters), std::cend(delimiters));
+	while (first != std::cend(str))
+	{
+		const auto second = std::find_first_of(first, std::cend(str), std::cbegin(delimiters), std::cend(delimiters));
 
-        if (first != second)
-            output.emplace_back(first, second);
+		if (first != second) output.emplace_back(first, second);
 
-        if (second == std::cend(str))
-            break;
+		if (second == std::cend(str)) break;
 
-        first = std::next(second);
-    }
+		first = std::next(second);
+	}
 
-    return output;
+	return output;
 }
-
 
 bool read_from_disk(const std::string& file_path, const std::function<bool(std::array<char, 8192>&, size_t)>& read)
 {
@@ -360,10 +347,7 @@ enum status_t
 	service_unavailable = 503
 };
 
-inline status_t to_status(std::uint16_t status_nr)
-{
-	return static_cast<status_t>(status_nr);
-}
+inline status_t to_status(std::uint16_t status_nr) { return static_cast<status_t>(status_nr); }
 
 inline const char* to_string(status_t s)
 {
@@ -548,13 +532,9 @@ public:
 		}
 	}
 
-	inline size_t size() const noexcept {return fields_.size();}
+	inline size_t size() const noexcept { return fields_.size(); }
 
-	const http::field& operator[](size_t index) const noexcept
-	{
-		return fields_[index];
-	}
-
+	const http::field& operator[](size_t index) const noexcept { return fields_[index]; }
 };
 
 using configuration = http::fields;
@@ -633,6 +613,7 @@ private:
 	unsigned int version_nr_ = 11;
 
 	friend class http::response_parser;
+
 public:
 	header() = default;
 	const unsigned int& version_nr() const noexcept { return version_nr_; }
@@ -702,8 +683,8 @@ static std::string extension_to_type(const std::string& extension)
 
 template <message_specializations specialization> class message : public header<specialization>
 {
-//friend response_parser;
-//friend request_parser;
+	// friend response_parser;
+	// friend request_parser;
 
 private:
 	std::string body_;
@@ -720,17 +701,11 @@ public:
 		header<specialization>::target_ = target;
 	}
 
-	std::string target() const
-	{
-		return header<specialization>::target_;
-	}
+	std::string target() const { return header<specialization>::target_; }
 
 	void target(const std::string& target) { header<specialization>::target_ = target; }
 
-	const std::vector<http::field>& headers()
-	{
-		return header<specialization>::fields_;
-	}
+	const std::vector<http::field>& headers() { return header<specialization>::fields_; }
 
 	void reset()
 	{
@@ -1216,7 +1191,6 @@ public:
 		return ret;
 	}
 
-
 	/// Perform URL-decoding on a string. Returns false if the encoding was
 	/// invalid.
 	static bool url_decode(const std::string& in, std::string& out)
@@ -1259,8 +1233,6 @@ public:
 	}
 };
 
-
-
 class response_parser
 {
 public:
@@ -1287,7 +1259,6 @@ public:
 			if (result == good)
 			{
 				state_ = http_version_h;
-
 
 				std::copy(begin, end, std::back_inserter(req.body()));
 
@@ -1706,7 +1677,6 @@ public:
 		return ret;
 	}
 
-
 	/// Perform URL-decoding on a string. Returns false if the encoding was
 	/// invalid.
 	static bool url_decode(const std::string& in, std::string& out)
@@ -1773,8 +1743,14 @@ public:
 	class url
 	{
 	public:
-		url(const std::string& protocol, const std::string hostname, const std::string& port, const std::string& target) : protocol_(protocol), hostname_(hostname), port_(port), target_(target){}
-	
+		url(const std::string& protocol, const std::string hostname, const std::string& port, const std::string& target)
+			: protocol_(protocol)
+			, hostname_(hostname)
+			, port_(port)
+			, target_(target)
+		{
+		}
+
 		url(const std::string& url)
 		{
 			// protocol://host:port/target
@@ -1783,16 +1759,16 @@ public:
 			auto p1 = url.find_first_of(":");
 
 			protocol_ = url.substr(0, p1);
-			
-			auto p2 = url.find_first_of("/", p1+3);
 
-			hostname_ = url.substr(p1+3 , p2 - (p1+3));
+			auto p2 = url.find_first_of("/", p1 + 3);
+
+			hostname_ = url.substr(p1 + 3, p2 - (p1 + 3));
 
 			auto p3 = hostname_.find_last_of(":");
 
 			if (p3 != std::string::npos)
 			{
-				port_ = hostname_.substr(p3+1);
+				port_ = hostname_.substr(p3 + 1);
 				hostname_ = hostname_.substr(0, p3);
 			}
 			else
@@ -1803,10 +1779,10 @@ public:
 			target_ = url.substr(p2);
 		}
 
-		const std::string& protocol() const noexcept {return protocol_;};
-		const std::string& hostname() const noexcept {return hostname_;};
-		const std::string& port() const noexcept {return port_;};
-		const std::string& target() const noexcept {return target_;};
+		const std::string& protocol() const noexcept { return protocol_; };
+		const std::string& hostname() const noexcept { return hostname_; };
+		const std::string& port() const noexcept { return port_; };
+		const std::string& target() const noexcept { return target_; };
 
 	private:
 		std::string protocol_;
@@ -1819,11 +1795,11 @@ public:
 	{
 		http::response_message message;
 
-		http::session_handler::url u{url_string};
+		http::session_handler::url u{ url_string };
 
-		http::request_message request{"GET", u.target()};
+		http::request_message request{ "GET", u.target() };
 
-		//request.headers_set(headers);
+		// request.headers_set(headers);
 
 		request.set("Host", u.hostname() + ":" + u.port());
 
@@ -1832,9 +1808,8 @@ public:
 
 		network::tcp::socket s;
 
-		auto ec = network::connect(s, results);;
-
-
+		auto ec = network::connect(s, results);
+		;
 
 		if (ec == network::error::success)
 		{
@@ -1842,7 +1817,7 @@ public:
 			data_store_buffer_t buffer;
 			data_store_buffer_t::iterator c = std::begin(buffer);
 
-			auto request_result_size  = network::write(s, http::to_string(request));
+			auto request_result_size = network::write(s, http::to_string(request));
 			http::response_parser p;
 			http::response_parser::result_type parse_result;
 
@@ -1856,11 +1831,11 @@ public:
 					{
 						std::tie(parse_result, c) = p.parse(message, buffer.begin(), buffer.begin() + response_result_size);
 
-						if (parse_result == http::response_parser::result_type::good && message.content_length() > message.body().size() )
+						if (parse_result == http::response_parser::result_type::good && message.content_length() > message.body().size())
 						{
 							message.body().reserve(message.content_length());
 
-							do 
+							do
 							{
 								auto response_result_size_body = network::read(s, network::buffer(buffer.data(), buffer.size()));
 								if (response_result_size != -1)
@@ -1873,10 +1848,10 @@ public:
 									return message;
 								}
 
-							} while (response_result_size != -1 && message.body().size() < message.content_length()); 
+							} while (response_result_size != -1 && message.body().size() < message.content_length());
 						}
 					}
-				}while(parse_result == http::response_parser::result_type::indeterminate);
+				} while (parse_result == http::response_parser::result_type::indeterminate);
 			}
 		}
 		return message;
@@ -1889,7 +1864,7 @@ public:
 		response_.type("text");
 		response_.result(http::status::ok);
 		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
-		response_.set("Host", configuration_.get<std::string>("host", "localhost:"+configuration_.get<std::string>("http_listen_port", "3000")));
+		response_.set("Host", configuration_.get<std::string>("host", "localhost:" + configuration_.get<std::string>("http_listen_port", "3000")));
 
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
@@ -1935,9 +1910,9 @@ public:
 			request_.body() = gzip::decompress(request_.body().c_str(), request_.content_length());
 		}
 
-		//std::string url_1 = url_requested.substr(0, request_.find_first_of('?'));
+		// std::string url_1 = url_requested.substr(0, request_.find_first_of('?'));
 
-		request_.url_requested_ = request_.target_;//.substr(0, request_.target_.find_first_of('?'));
+		request_.url_requested_ = request_.target_; //.substr(0, request_.target_.find_first_of('?'));
 		request_.target_ = request_path;
 
 		bool continue_with_routing = router_.call_middleware(*this);
@@ -1946,11 +1921,11 @@ public:
 		{
 			t0_ = std::chrono::steady_clock::now();
 			t1_ = t0_;
-		
+
 			if (router_.call_route(*this))
 			{
-				//end_of_endpoint_handling_ = std::chrono::high_resolution_clock::now();
-//
+				// end_of_endpoint_handling_ = std::chrono::high_resolution_clock::now();
+				//
 
 				// Route has a valid handler, response body is set.
 				// Check bodys size and set headers.
@@ -1994,16 +1969,15 @@ public:
 		{
 			keepalive_count_decr();
 			response_.set("Connection", "Keep-Alive");
-			//response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" +std::to_string(keepalive_count()));
+			// response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" +std::to_string(keepalive_count()));
 		}
 		else
 		{
 			response_.set("Connection", "close");
 		}
-
 	}
 
-	void keepalive_count_decr() { --keepalive_count_;};
+	void keepalive_count_decr() { --keepalive_count_; };
 	int keepalive_count() const { return keepalive_count_; };
 
 	void keepalive_max(const int& keepalive_max) { keepalive_max_ = keepalive_max; };
@@ -2024,7 +1998,6 @@ public:
 
 	std::chrono::steady_clock::time_point t0_;
 
-
 private:
 	http::request_message request_;
 	http::response_message response_;
@@ -2033,7 +2006,7 @@ private:
 
 	int keepalive_count_;
 	int keepalive_max_;
-	
+
 	std::chrono::steady_clock::time_point t1_;
 };
 
@@ -2094,7 +2067,12 @@ public:
 
 	struct route_metrics
 	{
-		route_metrics() : request_latency_(0), processing_duration_(0), hit_count_(0) {}
+		route_metrics()
+			: request_latency_(0)
+			, processing_duration_(0)
+			, hit_count_(0)
+		{
+		}
 
 		std::chrono::duration<double, std::milli> request_latency_;
 		std::chrono::duration<double, std::milli> processing_duration_;
@@ -2105,9 +2083,7 @@ public:
 		{
 			std::stringstream s;
 
-			s << request_latency_.count()  << "ms, " 
-			  << processing_duration_.count() << "ms, " 
-			  << hit_count_ <<"x";
+			s << request_latency_.count() << "ms, " << processing_duration_.count() << "ms, " << hit_count_ << "x";
 
 			return s.str();
 		};
@@ -2118,31 +2094,18 @@ public:
 	std::vector<std::string> tokens_;
 	route_metrics metrics_;
 
-	void request_latency(std::chrono::duration<double, std::milli> request_duration)
-	{
-		metrics_.request_latency_ = request_duration;
-	}
+	void request_latency(std::chrono::duration<double, std::milli> request_duration) { metrics_.request_latency_ = request_duration; }
 
-	void processing_duration(std::chrono::duration<double, std::milli> new_processing_duration_)
-	{
-		metrics_.processing_duration_ = new_processing_duration_;
-	}
+	void processing_duration(std::chrono::duration<double, std::milli> new_processing_duration_) { metrics_.processing_duration_ = new_processing_duration_; }
 
-	void increase_hitcount()
-	{
-		metrics_.hit_count_++;
-	}
+	void increase_hitcount() { metrics_.hit_count_++; }
 
-	route_metrics& metrics() 
-	{
-		return metrics_;
-	}
+	route_metrics& metrics() { return metrics_; }
 
 	bool match(const std::string& url, params& params) const
 	{
 		// route: /route/:param1/subroute/:param2/subroute
 		// url:   /route/parameter
-
 
 		if (url == route_)
 		{
@@ -2164,17 +2127,17 @@ public:
 
 			if (tokens_[token].size() > 2 && (tokens_[token][1] == ':' || tokens_[token][1] == '{'))
 			{
-				std::string value = url.substr(b+1, e - b-1);
+				std::string value = url.substr(b + 1, e - b - 1);
 
-				http::request_parser::url_decode(url.substr(b+1, e - b-1), value);
+				http::request_parser::url_decode(url.substr(b + 1, e - b - 1), value);
 
 				if (tokens_[token][1] == ':')
 				{
-					params.insert(tokens_[token].substr(2, tokens_[token].size()-2), value);
+					params.insert(tokens_[token].substr(2, tokens_[token].size() - 2), value);
 				}
 				else
 				{
-					params.insert(tokens_[token].substr(2, tokens_[token].size()-3), value);
+					params.insert(tokens_[token].substr(2, tokens_[token].size() - 3), value);
 				}
 			}
 			else if (tokens_[token] != url.substr(b, e - b))
@@ -2182,11 +2145,11 @@ public:
 				match = false;
 				break;
 			}
-/*			else if (tokens_.size() - 1 == token)
-			{
-				// still matches, this is the last token
-				match = true;
-			}*/
+			/*			else if (tokens_.size() - 1 == token)
+						{
+							// still matches, this is the last token
+							match = true;
+						}*/
 
 			b = url.find_first_of("/", e);
 			e = url.find_first_of("/", b + 1);
@@ -2259,17 +2222,17 @@ public:
 
 		for (token = 0; ((b != std::string::npos) && (token < tokens_.size())); token++)
 		{
-			//std::string current_token = url.substr(b, e - b);
+			// std::string current_token = url.substr(b, e - b);
 
 			if (tokens_[token].size() > 2 && (tokens_[token][1] == ':' || tokens_[token][1] == '{'))
 			{
 				if (tokens_[token][1] == ':')
 				{
-					params.insert(tokens_[token].substr(2, tokens_[token].size()-2), url.substr(b+1, e - b-1));
+					params.insert(tokens_[token].substr(2, tokens_[token].size() - 2), url.substr(b + 1, e - b - 1));
 				}
 				else
 				{
-					params.insert(tokens_[token].substr(2, tokens_[token].size()-3), url.substr(b+1, e - b-1));
+					params.insert(tokens_[token].substr(2, tokens_[token].size() - 3), url.substr(b + 1, e - b - 1));
 				}
 			}
 			else if (tokens_[token] != url.substr(b, e - b))
@@ -2298,29 +2261,25 @@ public:
 		: doc_root_("/var/www"){};
 
 	router(const std::string& doc_root)
-		: doc_root_(doc_root)
-	{
-	};
+		: doc_root_(doc_root){};
 
 	std::string to_string()
 	{
 		std::stringstream s;
 
 		std::map<std::string, api::route<route_function_t>*> m;
-		
+
 		for (auto& route : on_gets_)
-			m[route.route_+"|GET"] = &route;
+			m[route.route_ + "|GET"] = &route;
 
 		for (auto& route : on_posts_)
-			m[route.route_+"|POST"] = &route;
+			m[route.route_ + "|POST"] = &route;
 
 		for (auto& route : on_puts_)
-			m[route.route_+"|PUT"] = &route;
+			m[route.route_ + "|PUT"] = &route;
 
 		for (auto& route : on_deletes_)
-			m[route.route_+"|DELETE"] = &route;
-
-
+			m[route.route_ + "|DELETE"] = &route;
 
 		for (auto& l : m)
 		{
@@ -2332,53 +2291,28 @@ public:
 
 	void use(const std::string& path) { static_content_routes.emplace_back(path); }
 
-
-	void on_http_method(const std::string& route, const std::string& http_method, R api_method) 
-	{ 
+	void on_http_method(const std::string& route, const std::string& http_method, R api_method)
+	{
 		auto& route_vector = lookup_method(http_method);
-		
-		route_vector.emplace_back(route, api_method); 
+
+		route_vector.emplace_back(route, api_method);
 	}
 
-	void on_get(const std::string& route, R api_method) 
-	{
-		on_gets_.emplace_back(route, api_method);
-	}
+	void on_get(const std::string& route, R api_method) { on_gets_.emplace_back(route, api_method); }
 
-	void on_post(const std::string& route, R api_method) 
-	{
-		on_posts_.emplace_back(route, api_method);
-	}
+	void on_post(const std::string& route, R api_method) { on_posts_.emplace_back(route, api_method); }
 
-	void on_head(const std::string& route, R api_method) 
-	{
-		on_heads_.emplace_back(route, api_method);
-	}
+	void on_head(const std::string& route, R api_method) { on_heads_.emplace_back(route, api_method); }
 
-	void on_put(const std::string& route, R api_method) 
-	{
-		on_puts_.emplace_back(route, api_method);
-	}
+	void on_put(const std::string& route, R api_method) { on_puts_.emplace_back(route, api_method); }
 
-	void on_update(const std::string& route, R api_method) 
-	{
-		on_updates_.emplace_back(route, api_method);
-	}
+	void on_update(const std::string& route, R api_method) { on_updates_.emplace_back(route, api_method); }
 
-	void on_delete(const std::string& route, R api_method) 
-	{
-		on_deletes_.emplace_back(route, api_method);
-	}
+	void on_delete(const std::string& route, R api_method) { on_deletes_.emplace_back(route, api_method); }
 
-	void on_patch(const std::string& route, R api_method) 
-	{
-		on_patches_.emplace_back(route, api_method);
-	}
+	void on_patch(const std::string& route, R api_method) { on_patches_.emplace_back(route, api_method); }
 
-	void on_option(const std::string& route, R api_method) 
-	{
-		on_options_.emplace_back(route, api_method);
-	}
+	void on_option(const std::string& route, R api_method) { on_options_.emplace_back(route, api_method); }
 
 	void use(const std::string& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
 
@@ -2410,8 +2344,7 @@ public:
 
 			if (middleware.match(session.request().target(), params_))
 			{
-				if ((result = middleware.endpoint_(session, params_)) == false) 
-					break;
+				if ((result = middleware.endpoint_(session, params_)) == false) break;
 			}
 		}
 
@@ -2434,15 +2367,14 @@ public:
 
 				if (route.match(url, params_))
 				{
-					auto t0 = std::chrono::steady_clock::now(); 
+					auto t0 = std::chrono::steady_clock::now();
 
-					route.request_latency(std::chrono::duration<std::int64_t,std::nano>(t0 - session.t0_) );
+					route.request_latency(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0_));
 
 					route.endpoint_(session, params_);
-					auto t1 = std::chrono::steady_clock::now(); 
-					
+					auto t1 = std::chrono::steady_clock::now();
 
-					route.processing_duration(std::chrono::duration<std::int64_t,std::nano>(t1 - t0));
+					route.processing_duration(std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 					route.increase_hitcount();
 					return true;
 				}
@@ -2466,29 +2398,21 @@ protected:
 	{
 		static std::vector<api::route<route_function_t>> unknown;
 
-		if (method == "GET")
-			return on_gets_;
+		if (method == "GET") return on_gets_;
 
-		if (method == "POST")
-			return on_gets_;
+		if (method == "POST") return on_gets_;
 
-		if (method == "HEAD")
-			return on_gets_;
+		if (method == "HEAD") return on_gets_;
 
-		if (method == "OPTIONS")
-			return on_gets_;
+		if (method == "OPTIONS") return on_gets_;
 
-		if (method == "PUTS")
-			return on_gets_;
+		if (method == "PUTS") return on_gets_;
 
-		if (method == "UPDATE")
-			return on_gets_;
+		if (method == "UPDATE") return on_gets_;
 
-		if (method == "DELETE")
-			return on_gets_;
+		if (method == "DELETE") return on_gets_;
 
-		if (method == "PATCH")
-			return on_gets_;
+		if (method == "PATCH") return on_gets_;
 
 		return unknown;
 	};
@@ -2508,29 +2432,17 @@ public:
 	server(http::configuration& configuration)
 		: router_(configuration.get<std::string>("doc_root", "/var/www"))
 		, configuration_(configuration)
-		, active_(false)
-	{};
+		, active_(false){};
 
 	server(const server&) = default;
 
-	bool active()
-	{
-		return active_;
-	}
+	bool active() { return active_; }
 
-	void activate()
-	{
-		active_ = true;
-	}
+	void activate() { active_ = true; }
 
-	void deactivate()
-	{
-		active_ = false;
-	}
+	void deactivate() { active_ = false; }
 
-	virtual void start_server()
-	{
-	}
+	virtual void start_server() {}
 
 	class server_manager
 	{
@@ -2543,7 +2455,8 @@ public:
 		size_t connections_highest_;
 		size_t health_checks_received_;
 		size_t health_checks_received_consecutive_;
-		size_t scale_count_; 
+		size_t scale_count_;
+		bool is_idle_;
 
 		std::vector<std::string> access_log_;
 		std::mutex mutex_;
@@ -2559,9 +2472,22 @@ public:
 			, health_checks_received_(0)
 			, health_checks_received_consecutive_(0)
 			, scale_count_(0)
+			, is_idle_(false)
 		{
 			access_log_.reserve(32);
 		};
+
+		void idle(bool value)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			is_idle_ = value;
+		}
+
+		bool idle() 
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			return is_idle_;
+		}
 
 		size_t requests_handled()
 		{
@@ -2612,8 +2538,6 @@ public:
 			connections_current_--;
 		}
 
-		
-
 		size_t connections_highest()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
@@ -2648,7 +2572,7 @@ public:
 		void health_checks_received_consecutive_reset()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			health_checks_received_consecutive_=0;
+			health_checks_received_consecutive_ = 0;
 		}
 
 		size_t scale_count()
@@ -2704,7 +2628,8 @@ public:
 			s << "requests_handled: " << requests_handled_ << "\n";
 			s << "health_checks_received: " << health_checks_received_ << "\n";
 			s << "health_checks_received_consecutive: " << health_checks_received_consecutive_ << "\n";
-			s << "scale_count: " << scale_count_ << "\n";	
+			s << "scale_count: " << scale_count_ << "\n";
+			s << "idle: " << is_idle_ << "\n";
 
 			s << "\nEndPoints:\n" << router_information_ << "\n";
 			s << "\nAccess Log:\n";
@@ -2744,9 +2669,7 @@ public:
 	{
 	}
 
-	~server()
-	{
-	}
+	~server() {}
 
 	server(const server&) = default;
 
@@ -2767,7 +2690,7 @@ public:
 		http_connection_thread.detach();
 		http_connection_queue_thread.detach();
 
-		while(!active())
+		while (!active())
 		{
 			std::this_thread::yield();
 		}
@@ -2778,7 +2701,7 @@ public:
 
 	void http_connection_queue_handler()
 	{
-		while(1)
+		while (1)
 		{
 			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 
@@ -2787,16 +2710,20 @@ public:
 			if (http_connection_queue_.empty())
 			{
 				std::this_thread::yield();
+				if (manager_.connections_current() == 0) 
+					manager_.idle(true);
 			}
 			else
 			{
+				manager_.idle(false);
+
 				while (!http_connection_queue_.empty())
 				{
 					auto http_socket = http_connection_queue_.front();
 					http_connection_queue_.pop();
-			
-					//network::timeout(http_socket, connection_timeout_);
-					//network::tcp_nodelay(http_socket, 1);
+
+					// network::timeout(http_socket, connection_timeout_);
+					// network::tcp_nodelay(http_socket, 1);
 
 					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
@@ -2841,9 +2768,7 @@ public:
 				exit(-1);
 			}
 
-
 			acceptor_https.listen();
-
 
 			network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
@@ -2905,7 +2830,7 @@ public:
 
 			network::use_portsharding(endpoint_http.socket(), 1);
 
-			//network::no_linger(endpoint_http.socket(), 1);
+			// network::no_linger(endpoint_http.socket(), 1);
 
 			network::error_code ec = network::error::success;
 
@@ -2913,7 +2838,7 @@ public:
 			{
 				acceptor_http.bind(endpoint_http, ec);
 
-				//network::no_linger(endpoint_http.socket(), 1);
+				// network::no_linger(endpoint_http.socket(), 1);
 
 				if (ec == network::error::success)
 				{
@@ -2941,7 +2866,7 @@ public:
 			while (active())
 			{
 				network::tcp::socket http_socket{ 0 };
-				
+
 				acceptor_http.accept(http_socket);
 
 				if (http_socket.lowest_layer() > 0)
@@ -2951,7 +2876,6 @@ public:
 					http_connection_queue_has_connection_.notify_one();
 				}
 			}
-
 		}
 		catch (...)
 		{
@@ -2972,20 +2896,19 @@ public:
 			, bytes_send_(0)
 
 		{
-/*			std::string port = std::to_string(server_.listen_port_);
-			std::string msg = port + " open connection\n";
+			/*			std::string port = std::to_string(server_.listen_port_);
+						std::string msg = port + " open connection\n";
 
-			std::cout << msg;*/
-
+						std::cout << msg;*/
 		}
 
 		~connection_handler()
 		{
-/*			std::string port = std::to_string(server_.listen_port_);
-			std::string msg = port + " close connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
+			/*			std::string port = std::to_string(server_.listen_port_);
+						std::string msg = port + " close connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
 
-			std::cout << msg;*/
-			
+						std::cout << msg;*/
+
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
 			server_.manager().connections_current_decrease();
@@ -2999,7 +2922,7 @@ public:
 			while (true)
 			{
 				size_t left_of_buffer_size = buffer.size() - (c - std::begin(buffer));
-			
+
 				int ret = network::read(client_socket_, network::buffer(&(*c), left_of_buffer_size));
 
 				if (ret <= 0)
@@ -3068,9 +2991,9 @@ public:
 
 						session_handler_.handle_request(server_.router_);
 
-						//bool health_check_ok = (session_handler_.request().get("X-Health-Check") == "ok");
+						// bool health_check_ok = (session_handler_.request().get("X-Health-Check") == "ok");
 
-						//if (!health_check_ok)
+						// if (!health_check_ok)
 						{
 							server_.manager().requests_handled(server_.manager().requests_handled() + 1);
 							server_.manager().log_access(session_handler_);
@@ -3121,9 +3044,8 @@ public:
 					if (response.connection_keep_alive() == true)
 					{
 						session_handler_.reset();
-						//std::fill(buffer.begin(), buffer.end(),0);
+						// std::fill(buffer.begin(), buffer.end(),0);
 						c = buffer.begin();
-
 					}
 					else
 					{
@@ -3146,17 +3068,17 @@ public:
 		size_t bytes_received_;
 		size_t bytes_send_;
 
-/*		std::vector<char> data_request_;
-		std::vector<char> data_response_;
+		/*		std::vector<char> data_request_;
+				std::vector<char> data_response_;
 
-		std::vector<char>& request_data() { return data_request_; }
-		std::vector<char>& response_data() { return data_response_; }*/
+				std::vector<char>& request_data() { return data_request_; }
+				std::vector<char>& response_data() { return data_response_; }*/
 
 		void reset_session()
 		{
 			session_handler_.reset();
-			//data_request_.clear();
-			//data_response_.clear();
+			// data_request_.clear();
+			// data_response_.clear();
 		}
 	};
 

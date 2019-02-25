@@ -34,8 +34,9 @@ int main(int argc, char* argv[])
 		{ "ssl_certificate", "/Projects/ssl/ssl.crt" },
 		{ "ssl_certificate_key", "/Projects/ssl/ssl.key" }, 
 		// http_upstream_node.h
-		{ "upstream-node-nginx-endpoint", "http://localhost:4000/dynamic" },
+		{ "upstream-node-nginx-endpoint", "http://nlbalndjonge01.mshome.net:4000/dynamic" },
 		{ "upstream-node-nginx-endpoint-downstream", "backend" },
+		{ "upstream-node-nginx-endpoint-myip", "172.17.245.161" },
 		{ "upstream-node-nginx-endpoint-api", "ngx_dynamic_upstream" },
 		{ "upstream-node-scaling", "self-scale" },
 		{ "upstream-node-scaling-fork-cmd", "start /b " + std::accumulate(argv, argv + argc, std::string("")) },

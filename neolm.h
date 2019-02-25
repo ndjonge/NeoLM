@@ -605,7 +605,7 @@ public:
 	void start_server()
 	{
 		this->api_server_.start_server();
-		if (this->api_server_.upstream_controller().add("127.0.0.1:" + configuration_.get("http_listen_port")) == http::upstream::sucess)
+		if (this->api_server_.upstream_controller().add(configuration_.get("upstream-node-nginx-endpoint-myip") + ":" + configuration_.get("http_listen_port")) == http::upstream::sucess)
 			std::cout << "server listening on port : " + configuration_.get("http_listen_port") + " and added to upstream\n";
 		else
 			std::cout << "server listening on port : " + configuration_.get("http_listen_port") + "\n";
