@@ -409,19 +409,24 @@ private:
             S::router_.use("/");
             S::router_.use("/files/");
 
-			// License instance configuration routes..
-
-			S::router_.use("/", [this](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_busy([this]() 
+			{
 				bool result = true;
 
-				if (manager().connections_current() >= 1)
-				{
-					upstream_controller().fork();	
-				}
+				std::cout << "busy...\n";
 
 				return result;
 			});
 
+			S::router_.on_idle([this](){
+				bool result = true;
+
+				std::cout << "idle...\n";
+
+				return result;
+			});
+
+			// License instance configuration routes..
 			S::router_.on_get(
 				"/sleep/1000", [this](http::session_handler& session, const http::api::params& params) {
 

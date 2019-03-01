@@ -2298,6 +2298,10 @@ public:
 		route_vector.emplace_back(route, api_method);
 	}
 
+	void on_busy(std::function<bool()> on_busy_callback) { on_busy_ = on_busy_callback; }
+
+	void on_idle(std::function<bool()> on_idle_callback) { on_idle_ = on_idle_callback; }
+
 	void on_get(const std::string& route, R api_method) { on_gets_.emplace_back(route, api_method); }
 
 	void on_post(const std::string& route, R api_method) { on_posts_.emplace_back(route, api_method); }
@@ -2384,7 +2388,14 @@ public:
 		return false;
 	}
 
+	bool call_on_busy() { return on_busy_(); }
+
+	bool call_on_idle() { return on_idle_(); }
+
 protected:
+	std::function<bool()> on_busy_;
+	std::function<bool()> on_idle_;
+
 	std::vector<api::route<route_function_t>> on_gets_;
 	std::vector<api::route<route_function_t>> on_posts_;
 	std::vector<api::route<route_function_t>> on_heads_;
@@ -2449,14 +2460,24 @@ public:
 	private:
 		std::string server_information_;
 		std::string router_information_;
+
 		size_t requests_handled_;
+		size_t requests_handled_prev_;
+		size_t requests_per_second_;
+
 		size_t connections_accepted_;
+		size_t connections_accepted_prev_;
+		size_t connections_accepted_per_second_;
+
 		size_t connections_current_;
 		size_t connections_highest_;
-		size_t health_checks_received_;
+
 		size_t health_checks_received_consecutive_;
-		size_t scale_count_;
+
 		bool is_idle_;
+		bool is_busy_;
+
+		std::chrono::steady_clock::time_point t0_;
 
 		std::vector<std::string> access_log_;
 		std::mutex mutex_;
@@ -2466,27 +2487,60 @@ public:
 			: server_information_("")
 			, router_information_("")
 			, requests_handled_(0)
+			, requests_handled_prev_(0)
+			, requests_per_second_(0)
 			, connections_accepted_(0)
+			, connections_accepted_prev_(0)
+			, connections_accepted_per_second_(0)
 			, connections_current_(0)
 			, connections_highest_(0)
-			, health_checks_received_(0)
 			, health_checks_received_consecutive_(0)
-			, scale_count_(0)
 			, is_idle_(false)
+			, is_busy_(false)
+			, t0_(std::chrono::steady_clock::now())
 		{
 			access_log_.reserve(32);
 		};
+
+		void update_stats() 
+		{ 
+			std::lock_guard<std::mutex> g(mutex_);
+			std::chrono::steady_clock::time_point t1_ = std::chrono::steady_clock::now();
+			std::chrono::duration<std::int64_t, std::nano> duration(t1_ - t0_);
+
+			requests_per_second_ = ((requests_handled_ - requests_handled_prev_) * 100000000000) / duration.count();
+			connections_accepted_per_second_ = ((connections_accepted_ - connections_accepted_prev_) * 100000000000) / duration.count();
+
+			t0_ = std::chrono::steady_clock::now();
+
+			requests_handled_prev_ = requests_handled_;			
+			connections_accepted_prev_ = connections_accepted_;
+		}
 
 		void idle(bool value)
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 			is_idle_ = value;
+			is_busy_ = false;
 		}
 
-		bool idle() 
+		bool is_idle()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 			return is_idle_;
+		}
+
+		void busy(bool value)
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			is_busy_ = value;
+			is_idle_ = false;
+		}
+
+		bool is_busy()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			return is_busy_;
 		}
 
 		size_t requests_handled()
@@ -2544,16 +2598,9 @@ public:
 			return connections_highest_;
 		}
 
-		size_t health_checks_received()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			return health_checks_received_;
-		}
-
 		void health_checks_received_increase()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			health_checks_received_++;
 			health_checks_received_consecutive_++;
 		}
 
@@ -2573,18 +2620,6 @@ public:
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 			health_checks_received_consecutive_ = 0;
-		}
-
-		size_t scale_count()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			return scale_count_;
-		}
-
-		void scale_count(size_t nr)
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			scale_count_ = nr;
 		}
 
 		void log_access(http::session_handler& session)
@@ -2626,12 +2661,15 @@ public:
 			s << "connections_highest: " << connections_highest_ << "\n";
 			s << "connections_current: " << connections_current_ << "\n";
 			s << "requests_handled: " << requests_handled_ << "\n";
-			s << "health_checks_received: " << health_checks_received_ << "\n";
 			s << "health_checks_received_consecutive: " << health_checks_received_consecutive_ << "\n";
-			s << "scale_count: " << scale_count_ << "\n";
+			s << "busy: " << is_busy_ << "\n";
 			s << "idle: " << is_idle_ << "\n";
+			s << "requests_per_second: " << requests_per_second_ / 100.0 << "\n";
+			s << "connections_accepted_per_second: " << connections_accepted_per_second_ / 100.0 << "\n";
+
 
 			s << "\nEndPoints:\n" << router_information_ << "\n";
+
 			s << "\nAccess Log:\n";
 
 			for (auto& access_log_entry : access_log_)
@@ -2648,7 +2686,7 @@ protected:
 	http::api::router<> router_;
 	http::configuration& configuration_;
 	std::atomic<bool> active_;
-};
+}; // namespace basic
 
 namespace threaded
 {
@@ -2710,12 +2748,29 @@ public:
 			if (http_connection_queue_.empty())
 			{
 				std::this_thread::yield();
-				if (manager_.connections_current() == 0) 
-					manager_.idle(true);
+
+				manager_.update_stats();
+
+				if (manager_.connections_current() == 0)
+				{
+					if (router_.call_on_idle())
+					{
+						manager_.idle(true);
+					}
+				}
 			}
 			else
 			{
 				manager_.idle(false);
+
+				if (manager_.connections_current() >= 4)
+				{
+					manager_.busy(router_.call_on_busy());
+				}
+				else
+				{
+					manager_.busy(false);
+				}
 
 				while (!http_connection_queue_.empty())
 				{

@@ -76,7 +76,6 @@ public:
 		auto future_ = std::async(std::launch::async, [this]()
 		{
 			auto result = std::system(configuration_.get("upstream-node-scaling-fork-cmd").c_str());
-			server_.manager().scale_count(server_.manager().scale_count()+1);
 		});
 
 		return true;
