@@ -24,9 +24,11 @@ int main(int argc, char* argv[])
 
 	neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
 	{
-		{ "server", "neolm/8.0.01" },
-		{ "listen_port_begin", "3000" },
-		{ "listen_port_end", "3063" },
+		{ "http_server_identification", "neolm/8.0.01" },
+		{ "http_listen_port_begin", "3000" },
+		{ "http_listen_port_end", "3063" },
+		{ "https_listen_port_begin", "5000" },
+		{ "https_listen_port_end", "5063" },
 		{ "keepalive_count", "1048576" },
 		{ "keepalive_timeout", "30" },
 		{ "thread_count", "8" },

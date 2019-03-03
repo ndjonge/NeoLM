@@ -380,10 +380,13 @@ namespace async
 		server(http::configuration& configuration)
 			: http::basic::server{ configuration }
 			, thread_count_(configuration.get<int>("thread_count", 5))
-			, listen_port_(0)
-			, listen_port_begin_(
-				  configuration.get<int>("listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
-			, listen_port_end_(configuration.get<int>("listen_port_end", listen_port_begin_))
+			, http_listen_port_(0)
+			, http_listen_port_begin_(
+				  configuration.get<int>("http_listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
+			, http_http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
+//			, https_listen_port_(0)
+//			, https_listen_port_begin_(configuration.get<int>("https_listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
+//			, https_http_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
 			, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 			, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 			, acceptor_(io_service)
@@ -404,18 +407,18 @@ namespace async
 		void start_server()
 		{
 			//auto https_handler = std::make_shared<server::connection_handler_https>(io_service, *this, configuration_, ssl_context);
-			//asio::ip::tcp::endpoint https_endpoint(asio::ip::tcp::v6(), listen_port_begin_+1);
+			//asio::ip::tcp::endpoint https_endpoint(asio::ip::tcp::v6(), http_listen_port_begin_+1);
 			//ssl_acceptor_.open(https_endpoint.protocol());
 			//ssl_acceptor_.bind(https_endpoint);
 			//ssl_acceptor_.listen();
 
 			auto http_handler = std::make_shared<server::connection_handler_http>(io_service, *this, configuration_);
 
-			asio::ip::tcp::endpoint http_endpoint(asio::ip::tcp::v6(), listen_port_begin_);
+			asio::ip::tcp::endpoint http_endpoint(asio::ip::tcp::v6(), http_listen_port_begin_);
 
 			acceptor_.open(http_endpoint.protocol());
 
-			if (listen_port_begin_ == listen_port_end_)
+			if (http_listen_port_begin_ == http_http_listen_port_end_)
 			{
 				acceptor_.set_option(asio::ip::tcp::acceptor::reuse_address(true));
 			}
@@ -423,17 +426,17 @@ namespace async
 			asio::error_code ec;
 			acceptor_.bind(http_endpoint, ec);
 
-			if ((ec == asio::error::address_in_use) && (listen_port_begin_ < listen_port_end_))
+			if ((ec == asio::error::address_in_use) && (http_listen_port_begin_ < http_http_listen_port_end_))
 			{
-				for (listen_port_ = listen_port_begin_; listen_port_ <= listen_port_end_;)
+				for (http_listen_port_ = http_listen_port_begin_; http_listen_port_ <= http_http_listen_port_end_;)
 				{
-					http_endpoint.port(listen_port_);
+					http_endpoint.port(http_listen_port_);
 					acceptor_.close();
 					acceptor_.open(http_endpoint.protocol());
 					acceptor_.bind(http_endpoint, ec);
 					if (ec)
 					{
-						listen_port_++;
+						http_listen_port_++;
 						continue;						
 					}
 					else
@@ -442,7 +445,7 @@ namespace async
 			}
 
 			if (ec)
-				throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(listen_port_begin_) + ":" + std::to_string(listen_port_end_) + " ]"));
+				throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":" + std::to_string(http_http_listen_port_end_) + " ]"));
 
 			acceptor_.listen();
 
@@ -500,9 +503,9 @@ namespace async
 		}
 
 		int thread_count_;
-		int listen_port_begin_;
-		int listen_port_end_;
-		int listen_port_;
+		int http_listen_port_begin_;
+		int http_http_listen_port_end_;
+		int http_listen_port_;
 		int connection_timeout_;
 		size_t gzip_min_length_;
 
