@@ -33,8 +33,8 @@ int main(int argc, char* argv[])
 		{ "keepalive_timeout", "30" },
 		{ "thread_count", "8" },
 		{ "doc_root", "/Projects/doc_root" },
-		{ "ssl_certificate", "/Projects/ssl/ssl.crt" },
-		{ "ssl_certificate_key", "/Projects/ssl/ssl.key" }, 
+		{ "ssl_certificate", "/Projects/ssl/server.crt" },
+		{ "ssl_certificate_key", "/Projects/ssl/server.key" }, 
 		// http_upstream_node.h
 		{ "upstream-node-nginx-endpoint", "http://nlbalndjonge01.mshome.net:4000/dynamic" },
 		{ "upstream-node-nginx-endpoint-downstream", "backend" },

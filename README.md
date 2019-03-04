@@ -28,4 +28,41 @@ sh -c "$(curl -fsSL https://raw.github.com/robbyrussell/oh-my-zsh/master/tools/i
 vi ~/.zshrc
 ZSH_THEME="agnoster"
 
+hosts
+	127.0.0.1       tls.server.local
+	
+	
+	
+	::1             tls.server.local
+
+Openssl:
+openssl req \
+   -newkey rsa:2048 \
+   -x509 \
+   -nodes \
+   -keyout server.key \
+   -new \
+   -out server.crt \
+   -subj /CN=tls.server.local \
+   -reqexts SAN \
+   -extensions SAN \
+   -config <(cat ./config.cfg \
+       <(printf '[SAN]\nsubjectAltName=DNS:tls.server.local')) \
+   -sha256 \
+   -days 3650
+
+Config:
+default_bits        = 2048
+distinguished_name  = dn
+x509_extensions     = san
+req_extensions      = san
+extensions          = san
+prompt              = no
+[ dn ]
+countryName         = US
+stateOrProvinceName = Massachusetts
+localityName        = Boston
+organizationName    = MyCompany
+[ san ]
+subjectAltName      = DNS:tls.server.local
 
