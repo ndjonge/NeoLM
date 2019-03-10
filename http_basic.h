@@ -2448,10 +2448,8 @@ public:
 	server(const server&) = default;
 
 	bool active() { return active_; }
-
-	void activate() { active_ = true; }
-
-	void deactivate() { active_ = false; }
+	virtual void activate() { active_ = true; }
+	virtual void deactivate() { active_ = false; }
 
 	virtual void start_server() {}
 
@@ -2478,6 +2476,7 @@ public:
 		bool is_busy_;
 
 		std::chrono::steady_clock::time_point t0_;
+		std::chrono::steady_clock::time_point idle_t0_;
 
 		std::vector<std::string> access_log_;
 		std::mutex mutex_;
@@ -2498,12 +2497,13 @@ public:
 			, is_idle_(false)
 			, is_busy_(false)
 			, t0_(std::chrono::steady_clock::now())
+			, idle_t0_()
 		{
 			access_log_.reserve(32);
 		};
 
-		void update_stats() 
-		{ 
+		void update_stats()
+		{
 			std::lock_guard<std::mutex> g(mutex_);
 			std::chrono::steady_clock::time_point t1_ = std::chrono::steady_clock::now();
 			std::chrono::duration<std::int64_t, std::nano> duration(t1_ - t0_);
@@ -2513,15 +2513,27 @@ public:
 
 			t0_ = std::chrono::steady_clock::now();
 
-			requests_handled_prev_ = requests_handled_;			
+			requests_handled_prev_ = requests_handled_;
 			connections_accepted_prev_ = connections_accepted_;
 		}
 
 		void idle(bool value)
 		{
 			std::lock_guard<std::mutex> g(mutex_);
+
+			if (!is_idle_ && value == true)
+				idle_t0_ = std::chrono::steady_clock::now();
+			else if (is_idle_ && value == false)
+				idle_t0_ = {};
+
 			is_idle_ = value;
 			is_busy_ = false;
+		}
+
+		const std::int64_t idle_duration()
+		{
+			std::lock_guard<std::mutex> g(mutex_);
+			return is_idle_ ? std::chrono::nanoseconds(std::chrono::steady_clock::now() - idle_t0_).count() / 1000000000 : 0;
 		}
 
 		bool is_idle()
@@ -2667,7 +2679,6 @@ public:
 			s << "requests_per_second: " << requests_per_second_ / 100.0 << "\n";
 			s << "connections_accepted_per_second: " << connections_accepted_per_second_ / 100.0 << "\n";
 
-
 			s << "\nEndPoints:\n" << router_information_ << "\n";
 
 			s << "\nAccess Log:\n";
@@ -2702,9 +2713,11 @@ public:
 		, http_listen_port_(0)
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", (std::getenv("PORT_NUMBER") ? std::atoi(getenv("PORT_NUMBER")) : 3000)))
 		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
+		, endpoint_http_(http_listen_port_begin_)
 		, https_listen_port_(0)
 		, https_listen_port_begin_(configuration.get<int>("https_listen_port_begin", (std::getenv("PORT_NUMBER") ? std::atoi(getenv("PORT_NUMBER")) : 2000)))
 		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
+		, endpoint_https_(https_listen_port_begin_)
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 	{
@@ -2740,9 +2753,17 @@ public:
 		}
 	}
 
+	virtual void deactivate()
+	{
+		http::basic::server::deactivate();
+
+		endpoint_https_.close();
+		endpoint_http_.close();
+	}
+
 	void http_connection_queue_handler()
 	{
-		while (1)
+		while (active())
 		{
 			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 
@@ -2795,7 +2816,7 @@ public:
 
 	void https_connection_queue_handler()
 	{
-		while (1)
+		while (active())
 		{
 			std::unique_lock<std::mutex> m(https_connection_queue_mutex_);
 
@@ -2830,13 +2851,15 @@ public:
 
 				while (!https_connection_queue_.empty())
 				{
-					auto http_socket = https_connection_queue_.front();
-					https_connection_queue_.pop();
-
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
-					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
+
+					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
+													   *this, https_connection_queue_.front(), connection_timeout_, gzip_min_length_)]() {
+						new_connection_handler->proceed();
+					});
 					connection_thread.detach();
+					https_connection_queue_.pop();
 
 					manager_.connections_accepted_increase();
 					manager_.connections_current_increase();
@@ -2847,23 +2870,23 @@ public:
 
 	void https_listener_handler()
 	{
-		
+
 		try
 		{
-			network::tcp::v6 endpoint_https(https_listen_port_begin_);
+			// network::tcp::v6 endpoint_https(https_listen_port_begin_);
 
 			network::tcp::acceptor acceptor_https{};
 
-			acceptor_https.open(endpoint_https.protocol());
+			acceptor_https.open(endpoint_https_.protocol());
 
 			if (https_listen_port_begin_ == https_listen_port_end_)
-				network::reuse_address(endpoint_https.socket(), 1);
+				network::reuse_address(endpoint_https_.socket(), 1);
 			else
-				network::reuse_address(endpoint_https.socket(), 0);
+				network::reuse_address(endpoint_https_.socket(), 0);
 
-			network::ipv6only(endpoint_https.socket(), 0);
+			network::ipv6only(endpoint_https_.socket(), 0);
 
-			network::use_portsharding(endpoint_https.socket(), 1);
+			network::use_portsharding(endpoint_https_.socket(), 1);
 
 			// network::no_linger(endpoint_http.socket(), 1);
 
@@ -2871,19 +2894,19 @@ public:
 
 			for (https_listen_port_ = https_listen_port_begin_; https_listen_port_ <= https_listen_port_end_;)
 			{
-				acceptor_https.bind(endpoint_https, ec);
+				acceptor_https.bind(endpoint_https_, ec);
 				std::cout << "binding https to: " << std::to_string(https_listen_port_) << "\n";
 
 				if (ec == network::error::success)
 				{
-//					this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
+					//					this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
 
 					break;
 				}
 				else if (ec == network::error::address_in_use)
 				{
 					https_listen_port_++;
-					endpoint_https.port(https_listen_port_);
+					endpoint_https_.port(https_listen_port_);
 				}
 			}
 
@@ -2899,7 +2922,6 @@ public:
 			ssl_context.use_private_key_file(configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
 
 			acceptor_https.listen();
-
 
 			while (active())
 			{
@@ -2917,7 +2939,6 @@ public:
 					https_connection_queue_.push(https_socket);
 					https_connection_queue_has_connection_.notify_one();
 				}
-
 			}
 		}
 		catch (...)
@@ -2930,20 +2951,20 @@ public:
 	{
 		try
 		{
-			network::tcp::v6 endpoint_http(http_listen_port_begin_);
+			// network::tcp::v6 endpoint_http(http_listen_port_begin_);
 
 			network::tcp::acceptor acceptor_http{};
 
-			acceptor_http.open(endpoint_http.protocol());
+			acceptor_http.open(endpoint_http_.protocol());
 
 			if (http_listen_port_begin_ == http_listen_port_end_)
-				network::reuse_address(endpoint_http.socket(), 1);
+				network::reuse_address(endpoint_http_.socket(), 1);
 			else
-				network::reuse_address(endpoint_http.socket(), 0);
+				network::reuse_address(endpoint_http_.socket(), 0);
 
-			network::ipv6only(endpoint_http.socket(), 0);
+			network::ipv6only(endpoint_http_.socket(), 0);
 
-			network::use_portsharding(endpoint_http.socket(), 1);
+			network::use_portsharding(endpoint_http_.socket(), 1);
 
 			// network::no_linger(endpoint_http.socket(), 1);
 
@@ -2951,7 +2972,7 @@ public:
 
 			for (http_listen_port_ = http_listen_port_begin_; http_listen_port_ <= http_listen_port_end_;)
 			{
-				acceptor_http.bind(endpoint_http, ec);
+				acceptor_http.bind(endpoint_http_, ec);
 
 				// network::no_linger(endpoint_http.socket(), 1);
 
@@ -2964,7 +2985,7 @@ public:
 				else if (ec == network::error::address_in_use)
 				{
 					http_listen_port_++;
-					endpoint_http.port(http_listen_port_);
+					endpoint_http_.port(http_listen_port_);
 				}
 			}
 
@@ -3003,7 +3024,7 @@ public:
 	public:
 		connection_handler(http::basic::threaded::server& server, S client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
-			, client_socket_(client_socket)
+			, client_socket_(std::move(client_socket))
 			, session_handler_(server.configuration_)
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
@@ -3203,9 +3224,13 @@ private:
 	int http_listen_port_end_;
 	int http_listen_port_;
 
+	network::tcp::v6 endpoint_http_;
+
 	int https_listen_port_begin_;
 	int https_listen_port_end_;
 	int https_listen_port_;
+
+	network::tcp::v6 endpoint_https_;
 
 	int connection_timeout_;
 	size_t gzip_min_length_;

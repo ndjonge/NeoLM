@@ -422,9 +422,10 @@ private:
 
 			S::router_.on_idle([this](){
 				bool result = true;
-
-				std::cout << "idle...\n";
-
+				
+				if (S::manager().idle_duration() >= 10)
+					deactivate();
+				
 				return result;
 			});
 
