@@ -65,4 +65,3 @@ localityName        = Boston
 organizationName    = MyCompany
 [ san ]
 subjectAltName      = DNS:tls.server.local
-
