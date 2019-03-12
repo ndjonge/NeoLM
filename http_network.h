@@ -270,25 +270,31 @@ public:
 
 	~stream()
 	{
-		if (ssl_) 
-			close();
+		if (ssl_) close();
 	}
 
-	stream(const stream& s) : context_(s.context_), lowest_layer_(s.lowest_layer_), ssl_(s.ssl_) { }
+	stream(const stream& s) = delete;
+	//		: context_(s.context_)
+	//		, lowest_layer_(s.lowest_layer_)
+	//		, ssl_(s.ssl_)
+	//	{
+	//	}
 	stream& operator=(const stream&) = delete;
 
 	stream(stream&& s)
 		: context_(s.context_)
-		, lowest_layer_(s.lowest_layer_)
+		, lowest_layer_(std::move(s.lowest_layer_))
 		, ssl_(s.ssl_)
 	{
-		s.lowest_layer_ = 0;
+		s.lowest_layer_.assign(-1);
 		s.ssl_ = nullptr;
 	}
 
 	void close()
 	{
 		SSL_free(ssl_);
+
+		std::cout << "close ssl: " << std::to_string(reinterpret_cast<std::size_t>(ssl_)) << "\n";
 		ssl_ = nullptr;
 	}
 
@@ -395,7 +401,35 @@ public:
 		v6 = AF_INET6
 	};
 
-	virtual ~socket(){};
+	socket(socket&& s)
+		: socket_(s.socket_)
+		, options_(s.options_)
+	{
+		s.socket_ = 0;
+	}
+
+	socket(const socket& s)
+		: socket_(s.socket_)
+		, options_(s.options_)
+	{
+	}
+
+	socket& operator=(const socket& s) = delete;
+	//	{
+	//		socket_ = s.socket_;
+	//		options_ = options_;
+
+	//		return *this;
+	//	}
+
+	~socket() { close(); };
+
+	void assign(socket_t native_socket) { socket_ = native_socket; };
+	void assign(socket&& socket)
+	{
+		socket_ = socket.lowest_layer();
+		socket.lowest_layer() = -1;
+	};
 
 	socket_t open(family fam, protocol prot)
 	{
@@ -631,7 +665,7 @@ public:
 
 	resolver() {}
 
-	const resolver_results& resolve(const std::string& hostname, const std::string& service)
+	resolver_results& resolve(const std::string& hostname, const std::string& service)
 	{
 		addrinfo hints = { 0 };
 		addrinfo* adresses = nullptr;
@@ -702,11 +736,14 @@ public:
 
 	void listen() noexcept { ::listen(endpoint_->socket().lowest_layer(), 5); }
 
-	void accept(socket& socket) noexcept
+	void accept(socket& s, network::error_code& ec) noexcept
 	{
 		socklen_t len = static_cast<socklen_t>(endpoint_->addr_size());
-		socket = static_cast<socket_t>(-1);
-		socket = ::accept(endpoint_->socket().lowest_layer(), endpoint_->addr(), &len);
+
+		auto client_socket = ::accept(endpoint_->socket().lowest_layer(), endpoint_->addr(), &len);
+		s.assign(client_socket);
+
+		if (s.lowest_layer() == -1) ec = network::error::interrupted;
 	}
 
 private:
@@ -723,7 +760,7 @@ error_code connect(tcp::socket& s, tcp::resolver::resolver_results& results)
 	{
 		result.connect(ret);
 
-		s = result.socket();
+		s.assign(std::move(result.socket()));
 
 		if (ret == error::success) break;
 	}

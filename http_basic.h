@@ -1804,12 +1804,11 @@ public:
 		request.set("Host", u.hostname() + ":" + u.port());
 
 		network::tcp::resolver resolver;
-		auto results = resolver.resolve(u.hostname(), u.port());
+		auto& results = resolver.resolve(u.hostname(), u.port());
 
 		network::tcp::socket s;
 
 		auto ec = network::connect(s, results);
-		;
 
 		if (ec == network::error::success)
 		{
@@ -2798,14 +2797,15 @@ public:
 
 				while (!http_connection_queue_.empty())
 				{
-					auto http_socket = http_connection_queue_.front();
-					http_connection_queue_.pop();
 
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
 
-					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, http_socket, connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
+					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_)]() {
+						new_connection_handler->proceed(); });
 					connection_thread.detach();
+
+					http_connection_queue_.pop();
 
 					manager_.connections_accepted_increase();
 					manager_.connections_current_increase();
@@ -2854,8 +2854,7 @@ public:
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
 
-					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
-													   *this, https_connection_queue_.front(), connection_timeout_, gzip_min_length_)]() {
+					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_)]() {
 						new_connection_handler->proceed();
 					});
 					connection_thread.detach();
@@ -2926,17 +2925,19 @@ public:
 			while (active())
 			{
 				network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
+				network::error_code ec;
 
-				acceptor_https.accept(https_socket.lowest_layer());
+				acceptor_https.accept(https_socket.lowest_layer(), ec);
+
+				if (ec == network::error::interrupted) break;
 
 				network::timeout(https_socket.lowest_layer(), connection_timeout_);
-
 				https_socket.handshake(network::ssl::stream_base::server);
 
 				if (https_socket.lowest_layer().lowest_layer() > 0)
 				{
 					std::unique_lock<std::mutex> m(https_connection_queue_mutex_);
-					https_connection_queue_.push(https_socket);
+					https_connection_queue_.push(std::move(https_socket));
 					https_connection_queue_has_connection_.notify_one();
 				}
 			}
@@ -3002,13 +3003,17 @@ public:
 			while (active())
 			{
 				network::tcp::socket http_socket{ 0 };
+				network::error_code ec;
 
-				acceptor_http.accept(http_socket);
+				acceptor_http.accept(http_socket, ec);
+
+				if (ec == network::error::interrupted) 
+					break;
 
 				if (http_socket.lowest_layer() > 0)
 				{
 					std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
-					http_connection_queue_.push(http_socket);
+					http_connection_queue_.push(std::move(http_socket));
 					http_connection_queue_has_connection_.notify_one();
 				}
 			}
@@ -3022,7 +3027,7 @@ public:
 	template <class S> class connection_handler
 	{
 	public:
-		connection_handler(http::basic::threaded::server& server, S client_socket, int connection_timeout, size_t gzip_min_length)
+		connection_handler(http::basic::threaded::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
 			, client_socket_(std::move(client_socket))
 			, session_handler_(server.configuration_)
