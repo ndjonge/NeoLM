@@ -1738,7 +1738,7 @@ public:
 
 	template <typename InputIterator> std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end) { return request_parser_.parse(request_, begin, end); }
 
-	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator> parse_response(InputIterator begin, InputIterator end) { return response_parser_.parse(response_, begin, end); }
+//	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator> parse_response(InputIterator begin, InputIterator end) { return response_parser_.parse(response_, begin, end); }
 
 	class url
 	{

@@ -38,6 +38,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <netdb.h>
 #endif
 
 #include "openssl/err.h"
@@ -481,12 +482,12 @@ public:
 	endpoint() noexcept
 		: protocol_(protocol::stream)
 	{
-		data_.v4.sin_family = static_cast<ADDRESS_FAMILY>(socket::family::v4);
+		data_.v4.sin_family = static_cast<std::int16_t>(socket::family::v4);
 		data_.v4.sin_port = 0;
 		data_.v4.sin_addr.s_addr = INADDR_ANY;
 	}
 
-	endpoint(std::uint16_t port, socket::family fam) noexcept
+	endpoint(std::int16_t port, socket::family fam) noexcept
 		: protocol_(protocol::stream)
 	{
 		if (fam == socket::family::v6)
@@ -494,7 +495,7 @@ public:
 		else
 			std::memset(&endpoint::data_.v4, 0, sizeof(data_.v6));
 
-		data_.base.sa_family = static_cast<ADDRESS_FAMILY>(fam);
+		data_.base.sa_family = static_cast<std::int16_t>(fam);
 
 		if (fam == socket::family::v6)
 		{
@@ -724,8 +725,6 @@ public:
 
 		ret = ::bind(endpoint_->socket().lowest_layer(), endpoint_->addr(), endpoint_->addr_size());
 
-		auto error = WSAGetLastError();
-
 		if (ret == -1)
 			ec = network::error::address_in_use;
 		else
@@ -866,7 +865,7 @@ int timeout(network::tcp::socket& s, int value)
 	timeval timeout;
 	timeout.tv_sec = value;
 	timeout.tv_usec = 0;
-	int ret = setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+	int ret = setsockopt(s.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 #endif
 
 	return ret;

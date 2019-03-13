@@ -410,7 +410,7 @@ private:
 				if (S::manager().idle_duration() >= 10)
 				{
 					std::cout << "deactivate\n";
-					deactivate();
+                    S::deactivate();
 				}
 				return result;
 			});

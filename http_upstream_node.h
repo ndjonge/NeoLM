@@ -64,7 +64,7 @@ private:
 };
 
 //CRTP
-template<class I>
+template<class T>
 class upstream_controller
 {	
 public:
@@ -83,22 +83,22 @@ public:
 
 	const result add(const std::string& myurl) const noexcept
 	{
-		return static_cast<T*>add_impl(myrl);
+		return static_cast<T*>(this)->add_impl(myurl);
 	}
 
 	const result remove(const std::string& myurl) const noexcept
 	{
-		return static_cast<T*>(this)->remove_impl(myrl);
+		return static_cast<T*>(this)->remove_impl(myurl);
 	}
 
 	const result enable(const std::string& myurl) const noexcept
 	{
-		return static_cast<T*>(this)->enable_impl(myrl);
+		return static_cast<T*>(this)->enable_impl(myurl);
 	}
 
 	const result disable(const std::string& myurl) const noexcept
 	{
-		return static_cast<T*>(this)->enable_impl(myrl);
+		return static_cast<T*>(this)->enable_impl(myurl);
 	}
 
 	const std::string list() const noexcept
@@ -125,7 +125,8 @@ public:
 
 	const result add(const std::string& server) const noexcept
 	{
-		http::session_handler session{http::configuration{}};
+        http::configuration c{};
+        http::session_handler session{c};
 
 		auto result = session.get(endpoint_base_url_ + "&add=&server=" + server, {});
 
@@ -137,7 +138,8 @@ public:
 
 	const result remove(const std::string& server) const noexcept
 	{
-		http::session_handler session{http::configuration{}};
+        http::configuration c{};
+		http::session_handler session{c};
 
 		auto result = session.get(endpoint_base_url_ + "&remove=&server=" + server, {});
 
@@ -148,8 +150,9 @@ public:
 	}
 
 	const result enable(const std::string& server) const noexcept
-	{
-		http::session_handler session{http::configuration{}};
+    {	
+        http::configuration c{};
+		http::session_handler session{c};
 
 		auto result = session.get(endpoint_base_url_ + "&server=" + server+ "&up", {});
 
@@ -161,7 +164,8 @@ public:
 
 	const result disable(const std::string& server) const noexcept
 	{
-		http::session_handler session{http::configuration{}};
+        http::configuration c{};
+		http::session_handler session{c};
 
 		auto result = session.get(endpoint_base_url_ + "&server=" + server + "&down", {});
 
@@ -173,7 +177,8 @@ public:
 
 	const std::string list() const noexcept
 	{
-		http::session_handler session{http::configuration{}};
+        http::configuration c{};
+		http::session_handler session{c};
 
 		auto result = session.get(endpoint_base_url_, {});
 
