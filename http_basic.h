@@ -2754,10 +2754,22 @@ public:
 
 	virtual void deactivate()
 	{
-		http::basic::server::deactivate();
+        static bool once = false;
+        std::cout << "NN\n";
+        once = true;
 
-		endpoint_https_.close();
-		endpoint_http_.close();
+        if (once)
+        {
+            once = false;
+    		http::basic::server::deactivate();
+
+            network::shutdown(endpoint_https_.socket(), network::shutdown_receive);
+            network::shutdown(endpoint_http_.socket(), network::shutdown_receive);
+
+            endpoint_https_.close();
+		    endpoint_http_.close();
+
+        }
 	}
 
 	void http_connection_queue_handler()

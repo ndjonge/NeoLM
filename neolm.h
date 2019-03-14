@@ -379,12 +379,12 @@ template <class S> class license_manager
 {
 public:
 private:
-	class api_server : public S, public http::upstream::enable_server_as_upstream<http::upstream::for_nginx>
+	class api_server : public S //, public http::upstream::enable_server_as_upstream<http::upstream::for_nginx>
 	{
 	public:
 		api_server(license_manager& license_manager, http::configuration& configuration)
 			: S(configuration)
-			, enable_server_as_upstream(configuration, *this)
+//			, enable_server_as_upstream(configuration, *this)
 			, license_manager_(license_manager)
 		{
 			S::router_.use("/static/");
@@ -399,7 +399,7 @@ private:
 
 				std::cout << "busy...\n";
 
-				upstream_controller().fork();
+//				upstream_controller().fork();
 
 				return result;
 			});
@@ -568,9 +568,9 @@ public:
 	void start_server()
 	{
 		this->api_server_.start_server();
-		if (this->api_server_.upstream_controller().add(configuration_.get("upstream-node-nginx-endpoint-myip") + ":" + configuration_.get("http_listen_port")) == http::upstream::sucess)
+/*		if (this->api_server_.upstream_controller().add(configuration_.get("upstream-node-nginx-endpoint-myip") + ":" + configuration_.get("http_listen_port")) == http::upstream::sucess)
 			std::cout << "server listening on port : " + configuration_.get("http_listen_port") + " and added to upstream\n";
-		else
+		else */
 			std::cout << "server listening on port : " + configuration_.get("http_listen_port") + "\n";
 	}
 
