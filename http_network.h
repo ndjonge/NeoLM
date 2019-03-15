@@ -34,11 +34,11 @@ OTHER DEALINGS IN THE SOFTWARE.
 #define SOCKET int
 #define closesocket close
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <netdb.h>
 #endif
 
 #include "openssl/err.h"
@@ -742,7 +742,10 @@ public:
 		auto client_socket = ::accept(endpoint_->socket().lowest_layer(), endpoint_->addr(), &len);
 		s.assign(client_socket);
 
-		if (s.lowest_layer() == -1) ec = network::error::interrupted;
+		if (client_socket == -1)
+		{
+			ec = network::error::interrupted;
+		}
 	}
 
 private:

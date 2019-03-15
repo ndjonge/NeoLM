@@ -407,7 +407,7 @@ private:
 			S::router_.on_idle([this]() {
 				bool result = true;
 
-				if (S::manager().idle_duration() >= 10)
+				if (S::manager().idle_duration() >= 5)
 				{
 					std::cout << "deactivate\n";
                     S::deactivate();

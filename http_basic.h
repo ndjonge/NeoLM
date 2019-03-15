@@ -2755,20 +2755,19 @@ public:
 	virtual void deactivate()
 	{
         static bool once = false;
-        std::cout << "NN\n";
         once = true;
 
         if (once)
         {
             once = false;
-    		http::basic::server::deactivate();
 
-            network::shutdown(endpoint_https_.socket(), network::shutdown_receive);
             network::shutdown(endpoint_http_.socket(), network::shutdown_receive);
+			endpoint_http_.close();
 
+			network::shutdown(endpoint_https_.socket(), network::shutdown_receive);
             endpoint_https_.close();
-		    endpoint_http_.close();
 
+    		http::basic::server::deactivate();
         }
 	}
 
