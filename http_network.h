@@ -438,10 +438,12 @@ public:
 
 		int opt_ret = 0;
 		if (options_ & options::ipv6only)
+        {
 			opt_ret = ::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&option_values_[options::ipv6only], sizeof(std::int32_t));
-		else if (options_ & options::reuseaddr)
+        }
+        else if (options_ & options::reuseaddr)
 		{
-			// etc TODO finsish option setting in socket.
+			opt_ret = ::setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, (char*)&option_values_[options::reuseaddr], sizeof(std::int32_t));
 		}
 
 		return socket_;
@@ -449,7 +451,7 @@ public:
 
 	socket_t close()
 	{
-		if (socket_)
+		if (socket_ && socket_ != -1)
 		{
 			::closesocket(socket_);
 			socket_ = 0;
@@ -816,8 +818,8 @@ int tcp_nodelay(network::tcp::socket& s, int value)
 
 int reuse_address(network::tcp::socket& s, int value)
 {
-	int reuseaddr = value;
-	return ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_REUSEADDR, (char*)&reuseaddr, sizeof(reuseaddr));
+	s.set_options(network::tcp::options::reuseaddr, value);
+	return 0; 
 }
 
 int ipv6only(network::tcp::socket& s, int value)

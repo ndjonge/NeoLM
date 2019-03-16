@@ -579,7 +579,9 @@ public:
 		while (api_server_.active())
 		{
 			// load_test();
-			std::this_thread::sleep_for(10s);
+			std::this_thread::sleep_for(1s);
+            std::cout << "run\n";
+
 		}
 	}
 

@@ -2446,9 +2446,9 @@ public:
 
 	server(const server&) = default;
 
-	bool active() { return active_; }
-	virtual void activate() { active_ = true; }
-	virtual void deactivate() { active_ = false; }
+    std::atomic<bool>& active() { return active_; }
+	virtual void activate() { active_.store(true); }
+	virtual void deactivate() { active_.store(false); }
 
 	virtual void start_server() {}
 
@@ -2695,7 +2695,7 @@ protected:
 	server_manager manager_;
 	http::api::router<> router_;
 	http::configuration& configuration_;
-	std::atomic<bool> active_;
+    std::atomic<bool> active_;
 }; // namespace basic
 
 namespace threaded
@@ -2749,6 +2749,7 @@ public:
 		while (!active())
 		{
 			std::this_thread::yield();
+            std::cout << "not active!\n";
 		}
 	}
 
@@ -2762,10 +2763,10 @@ public:
             once = false;
 
             network::shutdown(endpoint_http_.socket(), network::shutdown_receive);
-			endpoint_http_.close();
+			//endpoint_http_.close();
 
 			network::shutdown(endpoint_https_.socket(), network::shutdown_receive);
-            endpoint_https_.close();
+            //endpoint_https_.close();
 
     		http::basic::server::deactivate();
         }
@@ -2778,6 +2779,8 @@ public:
 			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 
 			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
+
+            std::cout << "http_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
 
 			if (http_connection_queue_.empty())
 			{
@@ -2833,19 +2836,20 @@ public:
 
 			https_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
+            std::cout << "https_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
 			if (https_connection_queue_.empty())
 			{
 				std::this_thread::yield();
 
 				manager_.update_stats();
 
-				if (manager_.connections_current() == 0)
+			/*	if (manager_.connections_current() == 0)
 				{
 					if (router_.call_on_idle())
 					{
 						manager_.idle(true);
 					}
-				}
+				}*/
 			}
 			else
 			{
@@ -2889,11 +2893,6 @@ public:
 
 			acceptor_https.open(endpoint_https_.protocol());
 
-			if (https_listen_port_begin_ == https_listen_port_end_)
-				network::reuse_address(endpoint_https_.socket(), 1);
-			else
-				network::reuse_address(endpoint_https_.socket(), 0);
-
 			network::ipv6only(endpoint_https_.socket(), 0);
 
 			network::use_portsharding(endpoint_https_.socket(), 1);
@@ -2909,7 +2908,7 @@ public:
 
 				if (ec == network::error::success)
 				{
-					//					this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
+					//this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
 
 					break;
 				}
@@ -2936,8 +2935,7 @@ public:
 			while (active())
 			{
 				network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
-				network::error_code ec;
-
+                ec = network::error::success;
 				acceptor_https.accept(https_socket.lowest_layer(), ec);
 
 				if (ec == network::error::interrupted) break;
@@ -2952,6 +2950,7 @@ public:
 					https_connection_queue_has_connection_.notify_one();
 				}
 			}
+            std::cout << "end\n";
 		}
 		catch (...)
 		{
@@ -2990,7 +2989,8 @@ public:
 
 				if (ec == network::error::success)
 				{
-					this->configuration_.set("http_listen_port", std::to_string(http_listen_port_));
+                    //std::scoped_lock<std::mutex> g(configuration_mutex_);
+					//this->configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
 					break;
 				}
@@ -3014,7 +3014,7 @@ public:
 			while (active())
 			{
 				network::tcp::socket http_socket{ 0 };
-				network::error_code ec;
+				ec = network::error::success;
 
 				acceptor_http.accept(http_socket, ec);
 
@@ -3028,6 +3028,7 @@ public:
 					http_connection_queue_has_connection_.notify_one();
 				}
 			}
+            std::cout << "end2\n";
 		}
 		catch (...)
 		{
@@ -3255,6 +3256,7 @@ private:
 
 	std::mutex http_connection_queue_mutex_;
 	std::mutex https_connection_queue_mutex_;
+    std::mutex configuration_mutex_;
 
 	std::queue<network::tcp::socket> http_connection_queue_;
 	std::queue<network::ssl::stream<network::tcp::socket>> https_connection_queue_;
