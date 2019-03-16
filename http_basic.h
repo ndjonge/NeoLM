@@ -2719,10 +2719,20 @@ public:
 		, endpoint_https_(https_listen_port_begin_)
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
+		, http_connection_thread_([this]() { http_listener_handler(); })
+		, https_connection_thread_([this]() { https_listener_handler(); })
+		, http_connection_queue_thread_([this]() { http_connection_queue_handler(); }) 
+		, https_connection_queue_thread_([this]() { https_connection_queue_handler(); })
 	{
 	}
 
-	~server() {}
+	~server() 
+	{
+		http_connection_thread_.join();
+		https_connection_thread_.join();
+		http_connection_queue_thread_.join();
+		https_connection_queue_thread_.join();
+	}
 
 	server(const server&) = default;
 
@@ -2734,17 +2744,11 @@ public:
 		manager_.server_information(http::basic::server::configuration_.to_string());
 		manager_.router_information(http::basic::server::router_.to_string());
 
-		std::thread http_connection_thread([this]() { http_listener_handler(); });
-		std::thread https_connection_thread([this]() { https_listener_handler(); });
+		//http_connection_thread_.detach();
+		//http_connection_queue_thread_.detach();
 
-		std::thread http_connection_queue_thread([this]() { http_connection_queue_handler(); });
-		std::thread https_connection_queue_thread([this]() { https_connection_queue_handler(); });
-
-		http_connection_thread.detach();
-		http_connection_queue_thread.detach();
-
-		https_connection_thread.detach();
-		https_connection_queue_thread.detach();
+		//https_connection_thread_.detach();
+		//https_connection_queue_thread_.detach();
 
 		while (!active())
 		{
@@ -2755,21 +2759,7 @@ public:
 
 	virtual void deactivate()
 	{
-        static bool once = false;
-        once = true;
-
-        if (once)
-        {
-            once = false;
-
-            network::shutdown(endpoint_http_.socket(), network::shutdown_receive);
-			//endpoint_http_.close();
-
-			network::shutdown(endpoint_https_.socket(), network::shutdown_receive);
-            //endpoint_https_.close();
-
-    		http::basic::server::deactivate();
-        }
+    	http::basic::server::deactivate();
 	}
 
 	void http_connection_queue_handler()
@@ -2826,6 +2816,8 @@ public:
 				}
 			}
 		}
+		std::cout << "end1\n";
+
 	}
 
 	void https_connection_queue_handler()
@@ -2880,6 +2872,8 @@ public:
 				}
 			}
 		}
+		std::cout << "end2\n";
+
 	}
 
 	void https_listener_handler()
@@ -2936,9 +2930,11 @@ public:
 			{
 				network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
                 ec = network::error::success;
-				acceptor_https.accept(https_socket.lowest_layer(), ec);
+				acceptor_https.accept(https_socket.lowest_layer(), ec, 5);
 
-				if (ec == network::error::interrupted) break;
+				if (ec == network::error::interrupted || ec == network::error::operation_would_block) 
+					break;
+
 
 				network::timeout(https_socket.lowest_layer(), connection_timeout_);
 				https_socket.handshake(network::ssl::stream_base::server);
@@ -2950,7 +2946,7 @@ public:
 					https_connection_queue_has_connection_.notify_one();
 				}
 			}
-            std::cout << "end\n";
+            std::cout << "end1\n";
 		}
 		catch (...)
 		{
@@ -3016,9 +3012,9 @@ public:
 				network::tcp::socket http_socket{ 0 };
 				ec = network::error::success;
 
-				acceptor_http.accept(http_socket, ec);
+				acceptor_http.accept(http_socket, ec, 5);
 
-				if (ec == network::error::interrupted) 
+				if (ec == network::error::interrupted || ec == network::error::operation_would_block) 
 					break;
 
 				if (http_socket.lowest_layer() > 0)
@@ -3251,6 +3247,7 @@ private:
 
 	int connection_timeout_;
 	size_t gzip_min_length_;
+	
 	std::condition_variable http_connection_queue_has_connection_;
 	std::condition_variable https_connection_queue_has_connection_;
 
@@ -3260,6 +3257,12 @@ private:
 
 	std::queue<network::tcp::socket> http_connection_queue_;
 	std::queue<network::ssl::stream<network::tcp::socket>> https_connection_queue_;
+
+	std::thread http_connection_thread_;
+	std::thread https_connection_thread_;
+
+	std::thread http_connection_queue_thread_;
+	std::thread https_connection_queue_thread_;
 };
 
 } // namespace threaded

@@ -750,6 +750,43 @@ public:
 		}
 	}
 
+	void accept(socket& s, network::error_code& ec, std::int16_t timeout) noexcept
+	{
+		socklen_t len = static_cast<socklen_t>(endpoint_->addr_size());
+
+		fd_set set;
+		timeval t;
+		int rv;
+
+		FD_ZERO(&set); /* clear the set */
+		FD_SET(endpoint_->socket().lowest_layer(), &set); /* add our file descriptor to the set */
+
+		t.tv_sec = timeout;
+		t.tv_usec = 0;
+
+		rv = select(static_cast<int>(endpoint_->socket().lowest_layer()) + 1, &set, NULL, NULL, &t);
+		
+		if(rv == -1)
+		{
+			perror("select"); /* an error accured */
+			return;
+		}
+		else if(rv == 0)
+		{
+			ec = network::error::operation_would_block;
+		}
+		else
+		{
+			auto client_socket = ::accept(endpoint_->socket().lowest_layer(), endpoint_->addr(), &len);
+			s.assign(client_socket);
+
+			if (client_socket == -1)
+			{
+				ec = network::error::interrupted;
+			}
+		}
+	}
+
 private:
 	std::int16_t protocol_;
 	endpoint* endpoint_;
