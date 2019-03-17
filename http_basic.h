@@ -2442,7 +2442,7 @@ public:
 	server(http::configuration& configuration)
 		: router_(configuration.get<std::string>("doc_root", "/var/www"))
 		, configuration_(configuration)
-		, active_(false){};
+		{};
 
 	server(const server&) = default;
 
@@ -2695,7 +2695,7 @@ protected:
 	server_manager manager_;
 	http::api::router<> router_;
 	http::configuration& configuration_;
-    std::atomic<bool> active_;
+    std::atomic<bool> active_{false};
 }; // namespace basic
 
 namespace threaded
@@ -3005,9 +3005,11 @@ public:
 
 			acceptor_http.listen();
 
-			activate();
 
-			while (active())
+            active_.store(true);
+			
+
+			while (active().load())
 			{
 				network::tcp::socket http_socket{ 0 };
 				ec = network::error::success;
