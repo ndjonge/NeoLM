@@ -22,7 +22,7 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-	for (;;)
+	for (int i{0}; i!=20; i++)
 	{
 
 		neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
@@ -55,6 +55,9 @@ int main(int argc, char* argv[])
 		license_server.start_server();
 
 		license_server.run();
+
+		std::string loop = "loop" + std::to_string(i) + "\n";
+		std::cout << loop;
 
 	}
 	std::cout << "exit!\n";
