@@ -1,0 +1,1 @@
+/usr/bin/c++     CMakeFiles/NeoLM.dir/main.cpp.o  -o NeoLM /home/ndjonge/vcpkg/installed/x64-linux/debug/lib/libssl.a /home/ndjonge/vcpkg/installed/x64-linux/debug/lib/libcrypto.a /home/ndjonge/vcpkg/installed/x64-linux/debug/lib/libz.a -lpthread -fsanitize=undefined -fno-omit-frame-pointer -ldl 
