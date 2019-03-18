@@ -390,11 +390,14 @@ inline options& operator^=(options& a, options b) { return (options&)(((int&)a) 
 class socket
 {
 public:
-	socket() = default;
+	socket()
+		: socket_(-1)
+		, options_(none)
+	{}
 
 	socket(socket_t s)
 		: socket_(s)
-		, options_(none){};
+		, options_(none){}
 
 	enum family
 	{
@@ -480,7 +483,7 @@ public:
 private:
 	socket_t socket_;
 	options options_;
-	std::int32_t option_values_[options::size];
+	std::int32_t option_values_[options::size] = {};
 };
 
 class endpoint
