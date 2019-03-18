@@ -576,11 +576,11 @@ public:
 
 	void run()
 	{
-		while (api_server_.active())
+		while (api_server_.active().load(std::memory_order_seq_cst))
 		{
 			// load_test();
 			std::this_thread::sleep_for(1s);
-            std::cout << "run\n";
+            std::cout << "run neolm\n";
 
 		}
 	}

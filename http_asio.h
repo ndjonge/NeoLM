@@ -380,10 +380,10 @@ namespace async
 		server(http::configuration& configuration)
 			: http::basic::server{ configuration }
 			, thread_count_(configuration.get<int>("thread_count", 5))
-			, http_listen_port_(0)
 			, http_listen_port_begin_(
 				  configuration.get<int>("http_listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
 			, http_http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
+			, http_listen_port_(0)
 //			, https_listen_port_(0)
 //			, https_listen_port_begin_(configuration.get<int>("https_listen_port", (getenv("PORT_NUMBER") ? atoi(getenv("PORT_NUMBER")) : 3000)))
 //			, https_http_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
