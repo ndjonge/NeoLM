@@ -409,7 +409,6 @@ private:
 
 				if (S::manager().idle_duration() >= 5)
 				{
-					std::cout << "deactivate\n";
                     S::deactivate();
 				}
 				return result;
@@ -576,13 +575,13 @@ public:
 
 	void run()
 	{
-		while (api_server_.active().load(std::memory_order_seq_cst))
+		do 
 		{
 			// load_test();
 			std::this_thread::sleep_for(1s);
-            std::cout << "run neolm\n";
+            std::cout << "neolm::run\n";
 
-		}
+		} while (api_server_.active_ == true);
 	}
 
 	instances& get_instances() { return instances_; }

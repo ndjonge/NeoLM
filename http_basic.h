@@ -2443,16 +2443,13 @@ class server
 public:
 	server(http::configuration& configuration)
 		: router_(configuration.get<std::string>("doc_root", "/var/www"))
-		, configuration_(configuration)
-		{};
+		, configuration_(configuration){};
 
 	server(const server&) = default;
 
-	std::atomic<bool>& active() { return active_; }
-	virtual void activate() { active_.store(true); }
-	virtual void deactivate() { active_.store(false); }
+	// std::atomic<bool>& active() { return active_; }
 
-	virtual void start_server() {}
+	virtual void start_server() { active_ = true; }
 
 	class server_manager
 	{
@@ -2697,7 +2694,7 @@ protected:
 	server_manager manager_;
 	http::api::router<> router_;
 	http::configuration& configuration_;
-    std::atomic<bool> active_{false};
+	std::atomic<bool> active_{ true };
 }; // namespace basic
 
 namespace threaded
@@ -2740,30 +2737,21 @@ public:
 
 	virtual void start_server()
 	{
-		network::init();
-		network::ssl::init();
-
 		manager_.server_information(http::basic::server::configuration_.to_string());
 		manager_.router_information(http::basic::server::router_.to_string());
 
-		// http_connection_thread_.detach();
-		// http_connection_queue_thread_.detach();
-
-		// https_connection_thread_.detach();
-		// https_connection_queue_thread_.detach();
-
-		while (!active())
-		{
-			std::this_thread::yield();
-			std::cout << "not active!\n";
-		}
+		http::basic::server::start_server();
 	}
 
-	virtual void deactivate() { http::basic::server::deactivate(); }
+	virtual void deactivate()
+	{
+		http::basic::server::active_ = false;
+		std::cout << "\ndeactivated!\n";
+	}
 
 	void http_connection_queue_handler()
 	{
-		while (active())
+		while (active_ == true)
 		{
 			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 
@@ -2816,12 +2804,12 @@ public:
 				}
 			}
 		}
-		std::cout << "end1\n";
+		std::cout << "http_connection_queue_::end1\n";
 	}
 
 	void https_connection_queue_handler()
 	{
-		while (active())
+		while (active_ == true)
 		{
 			std::unique_lock<std::mutex> m(https_connection_queue_mutex_);
 
@@ -2870,7 +2858,7 @@ public:
 				}
 			}
 		}
-		std::cout << "end2\n";
+		std::cout << "https_connection_queue_::end2\n";
 	}
 
 	void https_listener_handler()
@@ -2923,7 +2911,7 @@ public:
 
 			acceptor_https.listen();
 
-			while (active())
+			while (active_ == true)
 			{
 				network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
 				ec = network::error::success;
@@ -2941,7 +2929,7 @@ public:
 					https_connection_queue_has_connection_.notify_one();
 				}
 			}
-			std::cout << "end1\n";
+			std::cout << "https_listener_handler_::end1\n";
 		}
 		catch (...)
 		{
@@ -3000,11 +2988,7 @@ public:
 
 			acceptor_http.listen();
 
-
-            active_.store(true);
-			
-
-			while (active().load())
+			while (active_ == true)
 			{
 				network::tcp::socket http_socket{ 0 };
 				ec = network::error::success;
@@ -3020,7 +3004,7 @@ public:
 					http_connection_queue_has_connection_.notify_one();
 				}
 			}
-			std::cout << "end2\n";
+			std::cout << "https_listener_handler_::end2\n";
 		}
 		catch (...)
 		{
