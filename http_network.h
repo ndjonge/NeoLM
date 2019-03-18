@@ -446,13 +446,11 @@ public:
 		if (options_ & options::ipv6only)
         {
 			opt_ret = ::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&option_values_[options::ipv6only], sizeof(std::int32_t));
-            std::cout << "IPV6_ONLY: " << std::to_string(opt_ret) << "\n";
         }
-        else if (options_ & options::reuseaddr)
+        
+		if (options_ & options::reuseaddr)
 		{
 			opt_ret = ::setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, (char*)&option_values_[options::reuseaddr], sizeof(std::int32_t));
-
-            std::cout << "SO_REUSEADDR: " << std::to_string(opt_ret) << "\n";
         }
 
 		return socket_;
