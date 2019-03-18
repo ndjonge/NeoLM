@@ -425,7 +425,12 @@ public:
 
 	~socket() { close(); };
 
-	void assign(socket_t native_socket) { socket_ = native_socket; };
+	void assign(socket_t native_socket) 
+	{ 
+		socket_ = native_socket;
+		options_ = none;
+	};
+
 	void assign(socket&& socket)
 	{
 		socket_ = socket.lowest_layer();

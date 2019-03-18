@@ -1738,7 +1738,7 @@ public:
 
 	template <typename InputIterator> std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end) { return request_parser_.parse(request_, begin, end); }
 
-//	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator> parse_response(InputIterator begin, InputIterator end) { return response_parser_.parse(response_, begin, end); }
+	//	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator> parse_response(InputIterator begin, InputIterator end) { return response_parser_.parse(response_, begin, end); }
 
 	class url
 	{
@@ -1995,7 +1995,8 @@ public:
 		response_.reset();
 	}
 
-	std::chrono::steady_clock::time_point t0_;
+	std::chrono::steady_clock::time_point t0() const noexcept { return t0_; };
+	std::chrono::steady_clock::time_point t1() const noexcept { return t1_; };
 
 private:
 	http::request_message request_;
@@ -2006,6 +2007,7 @@ private:
 	int keepalive_count_;
 	int keepalive_max_;
 
+	std::chrono::steady_clock::time_point t0_;
 	std::chrono::steady_clock::time_point t1_;
 };
 
@@ -2372,7 +2374,7 @@ public:
 				{
 					auto t0 = std::chrono::steady_clock::now();
 
-					route.request_latency(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0_));
+					route.request_latency(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()));
 
 					route.endpoint_(session, params_);
 					auto t1 = std::chrono::steady_clock::now();
@@ -2446,7 +2448,7 @@ public:
 
 	server(const server&) = default;
 
-    std::atomic<bool>& active() { return active_; }
+	std::atomic<bool>& active() { return active_; }
 	virtual void activate() { active_.store(true); }
 	virtual void deactivate() { active_.store(false); }
 
@@ -2695,7 +2697,7 @@ protected:
 	server_manager manager_;
 	http::api::router<> router_;
 	http::configuration& configuration_;
-    std::atomic<bool> active_;
+	std::atomic<bool> active_;
 }; // namespace basic
 
 namespace threaded
@@ -2709,24 +2711,24 @@ public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
 		, thread_count_(configuration.get<int>("thread_count", 5))
-		, http_listen_port_(0)
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", (std::getenv("PORT_NUMBER") ? std::atoi(getenv("PORT_NUMBER")) : 3000)))
 		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
+		, http_listen_port_(0)
 		, endpoint_http_(http_listen_port_begin_)
-		, https_listen_port_(0)
 		, https_listen_port_begin_(configuration.get<int>("https_listen_port_begin", (std::getenv("PORT_NUMBER") ? std::atoi(getenv("PORT_NUMBER")) : 2000)))
 		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
+		, https_listen_port_(0)
 		, endpoint_https_(https_listen_port_begin_)
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 		, http_connection_thread_([this]() { http_listener_handler(); })
 		, https_connection_thread_([this]() { https_listener_handler(); })
-		, http_connection_queue_thread_([this]() { http_connection_queue_handler(); }) 
+		, http_connection_queue_thread_([this]() { http_connection_queue_handler(); })
 		, https_connection_queue_thread_([this]() { https_connection_queue_handler(); })
 	{
 	}
 
-	~server() 
+	~server()
 	{
 		http_connection_thread_.join();
 		https_connection_thread_.join();
@@ -2744,23 +2746,20 @@ public:
 		manager_.server_information(http::basic::server::configuration_.to_string());
 		manager_.router_information(http::basic::server::router_.to_string());
 
-		//http_connection_thread_.detach();
-		//http_connection_queue_thread_.detach();
+		// http_connection_thread_.detach();
+		// http_connection_queue_thread_.detach();
 
-		//https_connection_thread_.detach();
-		//https_connection_queue_thread_.detach();
+		// https_connection_thread_.detach();
+		// https_connection_queue_thread_.detach();
 
 		while (!active())
 		{
 			std::this_thread::yield();
-            std::cout << "not active!\n";
+			std::cout << "not active!\n";
 		}
 	}
 
-	virtual void deactivate()
-	{
-    	http::basic::server::deactivate();
-	}
+	virtual void deactivate() { http::basic::server::deactivate(); }
 
 	void http_connection_queue_handler()
 	{
@@ -2770,7 +2769,7 @@ public:
 
 			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
-            std::cout << "http_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
+			std::cout << "http_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
 
 			if (http_connection_queue_.empty())
 			{
@@ -2806,7 +2805,8 @@ public:
 					// network::tcp_nodelay(http_socket, 1);
 
 					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_)]() {
-						new_connection_handler->proceed(); });
+						new_connection_handler->proceed();
+					});
 					connection_thread.detach();
 
 					http_connection_queue_.pop();
@@ -2817,7 +2817,6 @@ public:
 			}
 		}
 		std::cout << "end1\n";
-
 	}
 
 	void https_connection_queue_handler()
@@ -2828,20 +2827,20 @@ public:
 
 			https_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
-            std::cout << "https_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
+			std::cout << "https_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
 			if (https_connection_queue_.empty())
 			{
 				std::this_thread::yield();
 
 				manager_.update_stats();
 
-			/*	if (manager_.connections_current() == 0)
-				{
-					if (router_.call_on_idle())
+				/*	if (manager_.connections_current() == 0)
 					{
-						manager_.idle(true);
-					}
-				}*/
+						if (router_.call_on_idle())
+						{
+							manager_.idle(true);
+						}
+					}*/
 			}
 			else
 			{
@@ -2861,9 +2860,8 @@ public:
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
 
-					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_)]() {
-						new_connection_handler->proceed();
-					});
+					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
+													   *this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
 					https_connection_queue_.pop();
 
@@ -2873,7 +2871,6 @@ public:
 			}
 		}
 		std::cout << "end2\n";
-
 	}
 
 	void https_listener_handler()
@@ -2902,7 +2899,7 @@ public:
 
 				if (ec == network::error::success)
 				{
-					//this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
+					// this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
 
 					break;
 				}
@@ -2929,12 +2926,10 @@ public:
 			while (active())
 			{
 				network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
-                ec = network::error::success;
+				ec = network::error::success;
 				acceptor_https.accept(https_socket.lowest_layer(), ec, 5);
 
-				if (ec == network::error::interrupted || ec == network::error::operation_would_block) 
-					break;
-
+				if (ec == network::error::interrupted || ec == network::error::operation_would_block) break;
 
 				network::timeout(https_socket.lowest_layer(), connection_timeout_);
 				https_socket.handshake(network::ssl::stream_base::server);
@@ -2946,7 +2941,7 @@ public:
 					https_connection_queue_has_connection_.notify_one();
 				}
 			}
-            std::cout << "end1\n";
+			std::cout << "end1\n";
 		}
 		catch (...)
 		{
@@ -2985,8 +2980,8 @@ public:
 
 				if (ec == network::error::success)
 				{
-                    //std::scoped_lock<std::mutex> g(configuration_mutex_);
-					//this->configuration_.set("http_listen_port", std::to_string(http_listen_port_));
+					// std::scoped_lock<std::mutex> g(configuration_mutex_);
+					// this->configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
 					break;
 				}
@@ -3014,8 +3009,7 @@ public:
 
 				acceptor_http.accept(http_socket, ec, 5);
 
-				if (ec == network::error::interrupted || ec == network::error::operation_would_block) 
-					break;
+				if (ec == network::error::interrupted || ec == network::error::operation_would_block) break;
 
 				if (http_socket.lowest_layer() > 0)
 				{
@@ -3024,7 +3018,7 @@ public:
 					http_connection_queue_has_connection_.notify_one();
 				}
 			}
-            std::cout << "end2\n";
+			std::cout << "end2\n";
 		}
 		catch (...)
 		{
@@ -3247,13 +3241,13 @@ private:
 
 	int connection_timeout_;
 	size_t gzip_min_length_;
-	
+
 	std::condition_variable http_connection_queue_has_connection_;
 	std::condition_variable https_connection_queue_has_connection_;
 
 	std::mutex http_connection_queue_mutex_;
 	std::mutex https_connection_queue_mutex_;
-    std::mutex configuration_mutex_;
+	std::mutex configuration_mutex_;
 
 	std::queue<network::tcp::socket> http_connection_queue_;
 	std::queue<network::ssl::stream<network::tcp::socket>> https_connection_queue_;
