@@ -294,8 +294,6 @@ public:
 	void close()
 	{
 		SSL_free(ssl_);
-
-		std::cout << "close ssl: " << std::to_string(reinterpret_cast<std::size_t>(ssl_)) << "\n";
 		ssl_ = nullptr;
 	}
 
@@ -448,11 +446,14 @@ public:
 		if (options_ & options::ipv6only)
         {
 			opt_ret = ::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&option_values_[options::ipv6only], sizeof(std::int32_t));
+            std::cout << "IPV6_ONLY: " << std::to_string(opt_ret) << "\n";
         }
         else if (options_ & options::reuseaddr)
 		{
 			opt_ret = ::setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, (char*)&option_values_[options::reuseaddr], sizeof(std::int32_t));
-		}
+
+            std::cout << "SO_REUSEADDR: " << std::to_string(opt_ret) << "\n";
+        }
 
 		return socket_;
 	}
@@ -863,7 +864,8 @@ int tcp_nodelay(network::tcp::socket& s, int value)
 
 int reuse_address(network::tcp::socket& s, int value)
 {
-	s.set_options(network::tcp::options::reuseaddr, value);
+    std::cout << "reuse_addr" << value << "\n";
+    s.set_options(network::tcp::options::reuseaddr, value);
 	return 0; 
 }
 
