@@ -7,8 +7,6 @@
 #include <unordered_map>
 #include <numeric>
 
-#include <signal.h>
-
 #include "http_basic.h"
 #include "http_upstream_node.h"
 

@@ -61,8 +61,8 @@ namespace std
 {
 template <typename T> struct hash<vector<T>>
 {
-	typedef vector<T> argument_type;
-	typedef std::size_t result_type;
+	using argument_type=std::vector<T>;
+	using result_type=std::size_t;
 	result_type operator()(argument_type const& in) const
 	{
 		size_t size = in.size();
@@ -117,13 +117,12 @@ namespace gzip
 
 class compressor
 {
-	std::size_t max_;
+	std::size_t max_{0};
 	int level_;
 
 public:
 	compressor(int level = Z_DEFAULT_COMPRESSION) noexcept
-		: max_(0)
-		, level_(level)
+		: level_(level)
 	{
 	}
 
@@ -178,7 +177,7 @@ inline std::string compress(const char* data, std::size_t size, int level = Z_DE
 class decompressor
 {
 public:
-	decompressor() noexcept {}
+	decompressor() noexcept =default; 
 
 	template <typename OutputType> void decompress(OutputType& output, const char* data, std::size_t size) const
 	{
@@ -402,9 +401,9 @@ class field
 public:
 	field() = default;
 
-	field(const std::string& name, const std::string& value = "")
-		: name(name)
-		, value(value){};
+	field(std::string name, std::string value = "")
+		: name(std::move(name))
+		, value(std::move(value)){};
 
 	std::string name;
 	std::string value;
@@ -426,8 +425,7 @@ public:
 	fields(std::initializer_list<fields::value_type> init_list)
 		: fields_(init_list){};
 
-	fields(const http::fields& f)
-		: fields_(f.fields_){};
+	fields(const http::fields& f) = default; 
 
 	inline std::string to_string() const noexcept
 	{
@@ -444,7 +442,7 @@ public:
 
 	inline std::vector<fields::value_type>::reverse_iterator new_field()
 	{
-		fields_.push_back(field());
+		fields_.emplace_back(field());
 		return fields_.rbegin();
 	}
 
@@ -794,8 +792,7 @@ using response_message = http::message<response_specialization>;
 class request_parser
 {
 public:
-	request_parser() noexcept
-		: state_(method_start){};
+	request_parser() noexcept = default;
 
 	void reset() { state_ = method_start; };
 
@@ -1148,7 +1145,7 @@ private:
 		expecting_newline_3,
 		body_start,
 		body_end
-	} state_;
+	} state_ = {method_start};
 
 public:
 	static std::string url_decode(const std::string& in)
@@ -1634,7 +1631,7 @@ private:
 		expecting_newline_3,
 		body_start,
 		body_end
-	} state_;
+	} state_={method_start};
 
 public:
 	static std::string url_decode(const std::string& in)
@@ -1743,11 +1740,11 @@ public:
 	class url
 	{
 	public:
-		url(const std::string& protocol, const std::string hostname, const std::string& port, const std::string& target)
-			: protocol_(protocol)
-			, hostname_(hostname)
-			, port_(port)
-			, target_(target)
+		url(std::string protocol, std::string hostname, std::string port, std::string target)
+			: protocol_(std::move(protocol))
+			, hostname_(std::move(hostname))
+			, port_(std::move(port))
+			, target_(std::move(target))
 		{
 		}
 
@@ -1814,7 +1811,7 @@ public:
 		{
 			using data_store_buffer_t = std::array<char, 64>;
 			data_store_buffer_t buffer;
-			data_store_buffer_t::iterator c = std::begin(buffer);
+			auto c = std::begin(buffer);
 
 			auto request_result_size = network::write(s, http::to_string(request));
 			http::response_parser p;
@@ -2046,9 +2043,9 @@ using middleware_function_t = std::function<bool(session_handler_type& session, 
 template <typename R = route_function_t> class route
 {
 public:
-	route(const std::string& route, R endpoint)
-		: route_(route)
-		, endpoint_(endpoint)
+	route(std::string route, R endpoint)
+		: route_(std::move(route))
+		, endpoint_(std::move(endpoint))
 	{
 		size_t b = route_.find_first_of("/");
 		size_t e = route_.find_first_of("/", b + 1);
@@ -2071,14 +2068,13 @@ public:
 		route_metrics()
 			: request_latency_(0)
 			, processing_duration_(0)
-			, hit_count_(0)
 		{
 		}
 
 		std::chrono::duration<double, std::milli> request_latency_;
 		std::chrono::duration<double, std::milli> processing_duration_;
 
-		std::int64_t hit_count_;
+		std::int64_t hit_count_{0};
 
 		std::string to_string()
 		{
@@ -2261,8 +2257,8 @@ public:
 	router()
 		: doc_root_("/var/www"){};
 
-	router(const std::string& doc_root)
-		: doc_root_(doc_root){};
+	router(const std::string doc_root)
+		: doc_root_(std::move(doc_root)){};
 
 	std::string to_string()
 	{
@@ -2284,7 +2280,7 @@ public:
 
 		for (auto& l : m)
 		{
-			s << "\"" << l.first << "\"," << l.second->metrics().to_string() << "\n";
+			s << R"(")" << l.first <<  R"(",)" << l.second->metrics().to_string() << "\n";
 		}
 
 		return s.str();
@@ -2457,21 +2453,21 @@ public:
 		std::string server_information_;
 		std::string router_information_;
 
-		size_t requests_handled_;
-		size_t requests_handled_prev_;
-		size_t requests_per_second_;
+		size_t requests_handled_{0};
+		size_t requests_handled_prev_{0};
+		size_t requests_per_second_{0};
 
-		size_t connections_accepted_;
-		size_t connections_accepted_prev_;
-		size_t connections_accepted_per_second_;
+		size_t connections_accepted_{0};
+		size_t connections_accepted_prev_{0};
+		size_t connections_accepted_per_second_{0};
 
-		size_t connections_current_;
-		size_t connections_highest_;
+		size_t connections_current_{0};
+		size_t connections_highest_{0};
 
-		size_t health_checks_received_consecutive_;
+		size_t health_checks_received_consecutive_{0};
 
-		bool is_idle_;
-		bool is_busy_;
+		bool is_idle_{false};
+		bool is_busy_{false};
 
 		std::chrono::steady_clock::time_point t0_;
 		std::chrono::steady_clock::time_point idle_t0_;
@@ -2483,17 +2479,6 @@ public:
 		server_manager() noexcept
 			: server_information_("")
 			, router_information_("")
-			, requests_handled_(0)
-			, requests_handled_prev_(0)
-			, requests_per_second_(0)
-			, connections_accepted_(0)
-			, connections_accepted_prev_(0)
-			, connections_accepted_per_second_(0)
-			, connections_current_(0)
-			, connections_highest_(0)
-			, health_checks_received_consecutive_(0)
-			, is_idle_(false)
-			, is_busy_(false)
 			, t0_(std::chrono::steady_clock::now())
 			, idle_t0_()
 		{
@@ -2637,9 +2622,9 @@ public:
 			std::stringstream s;
 			std::lock_guard<std::mutex> g(mutex_);
 
-			s << "\"" << session.request().get("Remote_Addr") << "\""
-			  << " - \"" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << "\""
-			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << " - \"" << session.request().get("User-Agent") << "\"\n";
+			s << R"(")" << session.request().get("Remote_Addr") << R"(")"
+			  << R"( - ")" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << R"(")"
+			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << R"( - ")" << session.request().get("User-Agent") << "\"\n";
 
 			access_log_.emplace_back(s.str());
 
@@ -2735,7 +2720,7 @@ public:
 
 	server(const server&) = default;
 
-	virtual void start_server()
+	void start_server() override
 	{
 		manager_.server_information(http::basic::server::configuration_.to_string());
 		manager_.router_information(http::basic::server::router_.to_string());
@@ -3047,7 +3032,7 @@ public:
 		{
 			using data_store_buffer_t = std::array<char, 1024 * 8>;
 			data_store_buffer_t buffer;
-			data_store_buffer_t::iterator c = std::begin(buffer);
+			auto c = std::begin(buffer);
 			while (true)
 			{
 				size_t left_of_buffer_size = buffer.size() - (c - std::begin(buffer));
