@@ -26,6 +26,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #pragma once
 
 #include <cstdint>
+#include <csignal>
 
 #if defined(_WIN32)
 #include <Ws2tcpip.h>
@@ -388,14 +389,10 @@ inline options& operator^=(options& a, options b) { return (options&)(((int&)a) 
 class socket
 {
 public:
-	socket()
-		: socket_(-1)
-		, options_(none)
-	{}
+	socket() = default;
 
 	socket(socket_t s)
-		: socket_(s)
-		, options_(none){}
+		: socket_(s) {}
 
 	enum family
 	{
@@ -480,8 +477,8 @@ public:
 	}
 
 private:
-	socket_t socket_;
-	options options_;
+	socket_t socket_{-1};
+	options options_{none};
 	std::int32_t option_values_[options::size] = {};
 };
 
@@ -489,7 +486,6 @@ class endpoint
 {
 public:
 	endpoint() noexcept
-		: protocol_(protocol::stream)
 	{
 		data_.v4.sin_family = static_cast<std::int16_t>(socket::family::v4);
 		data_.v4.sin_port = 0;
@@ -497,7 +493,6 @@ public:
 	}
 
 	endpoint(std::int16_t port, socket::family fam) noexcept
-		: protocol_(protocol::stream)
 	{
 		if (fam == socket::family::v6)
 			std::memset(&endpoint::data_.v6, 0, sizeof(data_.v6));
@@ -521,7 +516,6 @@ public:
 	// endpoint(const std::string& ip, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) {}
 
 	endpoint(sockaddr& addr)
-		: protocol_(protocol::stream)
 	{
 		std::memcpy(&data_, &addr, sizeof(sockaddr_storage));
 	}
@@ -591,7 +585,7 @@ public:
 
 protected:
 	tcp::socket socket_;
-	protocol protocol_;
+	protocol protocol_{protocol::stream};
 
 protected:
 	union data_union {
@@ -673,7 +667,7 @@ class resolver
 public:
 	using resolver_results = std::vector<network::tcp::endpoint>;
 
-	resolver() {}
+	resolver() = default; 
 
 	resolver_results& resolve(const std::string& hostname, const std::string& service)
 	{
@@ -692,7 +686,7 @@ public:
 			return resolver_results_;
 		}
 
-		for (item = adresses; item != NULL; item = item->ai_next)
+		for (item = adresses; item != nullptr; item = item->ai_next)
 		{
 			if (item->ai_addr->sa_family == AF_INET6)
 			{
@@ -746,7 +740,7 @@ public:
 
 	void accept(socket& s, network::error_code& ec) noexcept
 	{
-		socklen_t len = static_cast<socklen_t>(endpoint_->addr_size());
+		auto len = static_cast<socklen_t>(endpoint_->addr_size());
 
 		auto client_socket = ::accept(endpoint_->socket().lowest_layer(), endpoint_->addr(), &len);
 		s.assign(client_socket);
@@ -759,7 +753,7 @@ public:
 
 	void accept(socket& s, network::error_code& ec, std::int16_t timeout) noexcept
 	{
-		socklen_t len = static_cast<socklen_t>(endpoint_->addr_size());
+		auto len = static_cast<socklen_t>(endpoint_->addr_size());
 
 		fd_set set;
 		timeval t;
@@ -771,7 +765,7 @@ public:
 		t.tv_sec = timeout;
 		t.tv_usec = 0;
 
-		rv = select(static_cast<int>(endpoint_->socket().lowest_layer()) + 1, &set, NULL, NULL, &t);
+		rv = select(static_cast<int>(endpoint_->socket().lowest_layer()) + 1, &set, nullptr, nullptr, &t);
 		
 		if(rv == -1)
 		{
