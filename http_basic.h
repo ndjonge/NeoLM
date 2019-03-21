@@ -61,8 +61,8 @@ namespace std
 {
 template <typename T> struct hash<vector<T>>
 {
-	using argument_type=std::vector<T>;
-	using result_type=std::size_t;
+	using argument_type = std::vector<T>;
+	using result_type = std::size_t;
 	result_type operator()(argument_type const& in) const
 	{
 		size_t size = in.size();
@@ -95,7 +95,9 @@ namespace filesystem
 {
 inline std::uintmax_t file_size(const std::string& path)
 {
-	struct stat t{};
+	struct stat t
+	{
+	};
 
 	int ret = stat(path.c_str(), &t);
 
@@ -117,7 +119,7 @@ namespace gzip
 
 class compressor
 {
-	std::size_t max_{0};
+	std::size_t max_{ 0 };
 	int level_;
 
 public:
@@ -143,7 +145,7 @@ public:
 			throw std::runtime_error("deflate init failed");
 		}
 
-		deflate_s.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data)); //NOLINT
+		deflate_s.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data)); // NOLINT
 		deflate_s.avail_in = static_cast<unsigned int>(size);
 
 		std::size_t size_compressed = 0;
@@ -156,7 +158,7 @@ public:
 			}
 
 			deflate_s.avail_out = static_cast<unsigned int>(increase);
-			deflate_s.next_out = reinterpret_cast<Bytef*>((&output[0] + size_compressed)); //NOLINT
+			deflate_s.next_out = reinterpret_cast<Bytef*>((&output[0] + size_compressed)); // NOLINT
 			deflate(&deflate_s, Z_FINISH);
 			size_compressed += (increase - deflate_s.avail_out);
 		} while (deflate_s.avail_out == 0);
@@ -177,7 +179,7 @@ inline std::string compress(const char* data, std::size_t size, int level = Z_DE
 class decompressor
 {
 public:
-	decompressor() noexcept =default; 
+	decompressor() noexcept = default;
 
 	template <typename OutputType> void decompress(OutputType& output, const char* data, std::size_t size) const
 	{
@@ -196,7 +198,7 @@ public:
 			throw std::runtime_error("inflate init failed");
 		}
 
-		inflate_s.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data)); //NOLINT
+		inflate_s.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data)); // NOLINT
 
 		inflateEnd(&inflate_s);
 
@@ -208,7 +210,7 @@ public:
 			inflateEnd(&inflate_s);
 			output.resize(resize_to);
 			inflate_s.avail_out = static_cast<unsigned int>(2 * size);
-			inflate_s.next_out = reinterpret_cast<Bytef*>(&output[0] + size_uncompressed); //NOLINT
+			inflate_s.next_out = reinterpret_cast<Bytef*>(&output[0] + size_uncompressed); // NOLINT
 			int ret = inflate(&inflate_s, Z_FINISH);
 			if (ret != Z_STREAM_END && ret != Z_OK && ret != Z_BUF_ERROR)
 			{
@@ -425,13 +427,13 @@ public:
 	fields(std::initializer_list<fields::value_type> init_list)
 		: fields_(init_list){};
 
-	fields(const http::fields& f) = default; 
-	fields(http::fields&& f) = default; 
+	fields(const http::fields& f) = default;
+	fields(http::fields&& f) = default;
 
-    fields& operator=(const http::fields&) = default;
-    fields& operator=(http::fields&&) = default;
+	fields& operator=(const http::fields&) = default;
+	fields& operator=(http::fields&&) = default;
 
-    ~fields() = default;
+	~fields() = default;
 
 	inline std::string to_string() const noexcept
 	{
@@ -570,15 +572,14 @@ public:
 	const std::string& target() const { return target_; }
 	const std::string& url_requested() const { return url_requested_; }
 	const unsigned int& version_nr() const { return version_nr_; }
-	const std::string version() const 
-    { 
-        std::string ret="HTTP 1.0";
+	const std::string version() const
+	{
+		std::string ret = "HTTP 1.0";
 
-        if (version_nr_ == 10)
-            ret = "HTTP 1.0";
+		if (version_nr_ == 10) ret = "HTTP 1.0";
 
-        return ret; 
-    }
+		return ret;
+	}
 	void target(const std::string& target) { target_ = target; }
 
 	query_params& query() { return params_; };
@@ -633,16 +634,14 @@ public:
 	void status(http::status::status_t status) { status_ = status; }
 	http::status::status_t status() const { return status_; }
 
-	const std::string version() const 
-    { 
-        std::string ret = "HTTP 1.1";
+	const std::string version() const
+	{
+		std::string ret = "HTTP 1.1";
 
-        if (version_nr_==10)
-            ret = "HTTP 1.0";
+		if (version_nr_ == 10) ret = "HTTP 1.0";
 
-
-        return ret; 
-    }
+		return ret;
+	}
 
 	void headers_reset()
 	{
@@ -677,27 +676,24 @@ struct mapping
 {
 	const char* extension;
 	const char* mime_type;
-} const mappings[]
-	= {
-		  { "json", "application/json" }, { "text", "text/plain" }, { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" },
-		  { "html", "text/html" },		  { "jpg", "image/jpeg" },  { "jpeg", "image/jpeg" },  { "png", "image/png" }, { nullptr, nullptr}
-	  };
+} const mappings[] = { { "json", "application/json" }, { "text", "text/plain" }, { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" },
+					   { "html", "text/html" },		   { "jpg", "image/jpeg" },  { "jpeg", "image/jpeg" },  { "png", "image/png" }, { nullptr, nullptr } };
 
 static std::string extension_to_type(const std::string& extension)
 {
-    if (extension.find_first_of("/") != std::string::npos)
-        return extension;
-    else
-    {
-        for (const auto& m :  mappings)  // NOLINT: trust me i now what i am doing...
-        {
-            if (m.extension == extension)
-            {             
-                return m.mime_type;
-            }
-        }
-    }
-    return "application/octet-stream";
+	if (extension.find_first_of("/") != std::string::npos)
+		return extension;
+	else
+	{
+		for (const auto& m : mappings) // NOLINT: trust me i now what i am doing...
+		{
+			if (m.extension == extension)
+			{
+				return m.mime_type;
+			}
+		}
+	}
+	return "application/octet-stream";
 }
 } // namespace mime_types
 
@@ -712,12 +708,12 @@ private:
 public:
 	message() = default;
 	~message() = default;
-	
-    message(const message&) = default;
-    message(message&&) = default;
 
-    message& operator=(const message&) = default;
-    message& operator=(message&&) = default;
+	message(const message&) = default;
+	message(message&&) = default;
+
+	message& operator=(const message&) = default;
+	message& operator=(message&&) = default;
 
 	// TODO use enableif....
 	message(const std::string& method, const std::string& target, const int version_nr = 11)
@@ -1173,7 +1169,8 @@ private:
 		expecting_newline_3,
 		body_start,
 		body_end
-	} state_ = {method_start};
+	} state_
+		= { method_start };
 
 public:
 	static std::string url_decode(const std::string& in)
@@ -1659,7 +1656,8 @@ private:
 		expecting_newline_3,
 		body_start,
 		body_end
-	} state_={method_start};
+	} state_
+		= { method_start };
 
 public:
 	static std::string url_decode(const std::string& in)
@@ -1750,13 +1748,13 @@ class session_handler
 public:
 	using result_type = http::request_parser::result_type;
 
-	session_handler()= delete;
+	session_handler() = delete;
 	session_handler(const session_handler&) = default;
 	session_handler(session_handler&&) = default;
 	session_handler& operator=(const session_handler&) = default;
 	session_handler& operator=(session_handler&&) = default;
 
-    ~session_handler() = default;
+	~session_handler() = default;
 
 	session_handler(http::configuration& configuration)
 		: configuration_(configuration)
@@ -2098,22 +2096,31 @@ public:
 
 	struct route_metrics
 	{
-		route_metrics()
-			: request_latency_(0)
-			, processing_duration_(0)
+		route_metrics() = default;
+		route_metrics(route_metrics& r)
 		{
+			request_latency_.store(r.request_latency_);
+			processing_duration_.store(r.processing_duration_);
+			hit_count_.store(r.hit_count_);
 		}
 
-        std::atomic<std::chrono::duration<double, std::milli>> request_latency_;
-        std::atomic<std::chrono::duration<double, std::milli>> processing_duration_;
+		route_metrics& operator=(const route_metrics& r) 
+		{
+			request_latency_.store(r.request_latency_);
+			processing_duration_.store(r.processing_duration_);
+			hit_count_.store(r.hit_count_);
+		}
 
-        std::atomic<std::int64_t> hit_count_{0};
+		std::atomic<std::chrono::high_resolution_clock::duration> request_latency_{};
+		std::atomic<std::chrono::high_resolution_clock::duration> processing_duration_{};
+
+		std::atomic<std::int64_t> hit_count_{ 0 };
 
 		std::string to_string()
 		{
 			std::stringstream s;
 
-			s << request_latency_.count() << "ms, " << processing_duration_.count() << "ms, " << hit_count_ << "x";
+			s << request_latency_.load().count() << "ms, " << processing_duration_.load().count() << "ms, " << hit_count_ << "x";
 
 			return s.str();
 		};
@@ -2124,11 +2131,12 @@ public:
 	std::vector<std::string> tokens_;
 	route_metrics metrics_;
 
-	void request_latency(std::chrono::duration<double, std::milli> request_duration) { metrics_.request_latency_ = request_duration; }
-
-	void processing_duration(std::chrono::duration<double, std::milli> new_processing_duration_) { metrics_.processing_duration_ = new_processing_duration_; }
-
-	void increase_hitcount() { metrics_.hit_count_++; }
+	void update_metrics(std::chrono::high_resolution_clock::duration request_duration, std::chrono::high_resolution_clock::duration new_processing_duration_)
+	{
+		metrics_.request_latency_.store(request_duration);
+		metrics_.processing_duration_.store(new_processing_duration_);
+		metrics_.hit_count_++;
+	}
 
 	route_metrics& metrics() { return metrics_; }
 
@@ -2313,7 +2321,7 @@ public:
 
 		for (auto& l : m)
 		{
-			s << R"(")" << l.first <<  R"(",)" << l.second->metrics().to_string() << "\n";
+			s << R"(")" << l.first << R"(",)" << l.second->metrics().to_string() << "\n";
 		}
 
 		return s.str();
@@ -2403,13 +2411,10 @@ public:
 				{
 					auto t0 = std::chrono::steady_clock::now();
 
-					route.request_latency(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()));
-
 					route.endpoint_(session, params_);
 					auto t1 = std::chrono::steady_clock::now();
 
-					route.processing_duration(std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
-					route.increase_hitcount();
+					route.update_metrics(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 					return true;
 				}
 			}
@@ -2476,11 +2481,11 @@ public:
 
 	server(const server&) = delete;
 	server(server&&) = delete;
-    
-    server& operator=(server&&) = delete;
-    server& operator=(const server&) = delete;
 
-    ~server() = default;
+	server& operator=(server&&) = delete;
+	server& operator=(const server&) = delete;
+
+	~server() = default;
 
 	// std::atomic<bool>& active() { return active_; }
 
@@ -2492,21 +2497,21 @@ public:
 		std::string server_information_;
 		std::string router_information_;
 
-		size_t requests_handled_{0};
-		size_t requests_handled_prev_{0};
-		size_t requests_per_second_{0};
+		size_t requests_handled_{ 0 };
+		size_t requests_handled_prev_{ 0 };
+		size_t requests_per_second_{ 0 };
 
-		size_t connections_accepted_{0};
-		size_t connections_accepted_prev_{0};
-		size_t connections_accepted_per_second_{0};
+		size_t connections_accepted_{ 0 };
+		size_t connections_accepted_prev_{ 0 };
+		size_t connections_accepted_per_second_{ 0 };
 
-		size_t connections_current_{0};
-		size_t connections_highest_{0};
+		size_t connections_current_{ 0 };
+		size_t connections_highest_{ 0 };
 
-		size_t health_checks_received_consecutive_{0};
+		size_t health_checks_received_consecutive_{ 0 };
 
-		bool is_idle_{false};
-		bool is_busy_{false};
+		bool is_idle_{ false };
+		bool is_busy_{ false };
 
 		std::chrono::steady_clock::time_point t0_;
 		std::chrono::steady_clock::time_point idle_t0_;
@@ -2757,12 +2762,12 @@ public:
 		https_connection_queue_thread_.join();
 	}
 
-    server() = delete;
-    server(server&&) = delete;
+	server() = delete;
+	server(server&&) = delete;
 	server(const server&) = delete;
 
-    server& operator=(const server&) = delete;
-    server& operator=(const server&&) = delete;
+	server& operator=(const server&) = delete;
+	server& operator=(const server&&) = delete;
 
 	void start_server() override
 	{
@@ -2787,8 +2792,8 @@ public:
 			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
 			std::cout << "http_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
-            
-            if (http_connection_queue_.empty())
+
+			if (http_connection_queue_.empty())
 			{
 				std::this_thread::yield();
 
@@ -2805,7 +2810,7 @@ public:
 			else
 			{
 				manager_.idle(false);
-                
+
 				if (manager_.connections_current() >= 4)
 				{
 					manager_.busy(router_.call_on_busy());
@@ -2844,7 +2849,7 @@ public:
 
 			https_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
-            std::cout << "https_connection_queue_:" << std::to_string(https_connection_queue_.size()) << "\n";
+			std::cout << "https_connection_queue_:" << std::to_string(https_connection_queue_.size()) << "\n";
 			if (https_connection_queue_.empty())
 			{
 				std::this_thread::yield();
@@ -3072,11 +3077,11 @@ public:
 			server_.manager().connections_current_decrease();
 		}
 
-        connection_handler(const connection_handler&) = delete;
-        connection_handler(connection_handler&&) = delete;
+		connection_handler(const connection_handler&) = delete;
+		connection_handler(connection_handler&&) = delete;
 
-        connection_handler& operator=(connection_handler&) = delete;
-        connection_handler& operator=(const connection_handler&&) = delete;
+		connection_handler& operator=(connection_handler&) = delete;
+		connection_handler& operator=(const connection_handler&&) = delete;
 
 		void proceed()
 		{
