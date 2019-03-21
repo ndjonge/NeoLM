@@ -95,7 +95,7 @@ namespace filesystem
 {
 inline std::uintmax_t file_size(const std::string& path)
 {
-	struct stat t;
+	struct stat t{};
 
 	int ret = stat(path.c_str(), &t);
 
@@ -128,7 +128,7 @@ public:
 
 	template <typename InputType> void compress(InputType& output, const char* data, std::size_t size) const
 	{
-		z_stream deflate_s;
+		z_stream deflate_s{};
 		deflate_s.zalloc = nullptr;
 		deflate_s.zfree = nullptr;
 		deflate_s.opaque = nullptr;
@@ -143,7 +143,7 @@ public:
 			throw std::runtime_error("deflate init failed");
 		}
 
-		deflate_s.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data));
+		deflate_s.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data)); //NOLINT
 		deflate_s.avail_in = static_cast<unsigned int>(size);
 
 		std::size_t size_compressed = 0;
@@ -156,7 +156,7 @@ public:
 			}
 
 			deflate_s.avail_out = static_cast<unsigned int>(increase);
-			deflate_s.next_out = reinterpret_cast<Bytef*>((&output[0] + size_compressed));
+			deflate_s.next_out = reinterpret_cast<Bytef*>((&output[0] + size_compressed)); //NOLINT
 			deflate(&deflate_s, Z_FINISH);
 			size_compressed += (increase - deflate_s.avail_out);
 		} while (deflate_s.avail_out == 0);
@@ -181,7 +181,7 @@ public:
 
 	template <typename OutputType> void decompress(OutputType& output, const char* data, std::size_t size) const
 	{
-		z_stream inflate_s;
+		z_stream inflate_s{};
 
 		inflate_s.zalloc = nullptr;
 		inflate_s.zfree = nullptr;
@@ -196,7 +196,7 @@ public:
 			throw std::runtime_error("inflate init failed");
 		}
 
-		inflate_s.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data));
+		inflate_s.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data)); //NOLINT
 
 		inflateEnd(&inflate_s);
 
@@ -208,7 +208,7 @@ public:
 			inflateEnd(&inflate_s);
 			output.resize(resize_to);
 			inflate_s.avail_out = static_cast<unsigned int>(2 * size);
-			inflate_s.next_out = reinterpret_cast<Bytef*>(&output[0] + size_uncompressed);
+			inflate_s.next_out = reinterpret_cast<Bytef*>(&output[0] + size_uncompressed); //NOLINT
 			int ret = inflate(&inflate_s, Z_FINISH);
 			if (ret != Z_STREAM_END && ret != Z_OK && ret != Z_BUF_ERROR)
 			{
@@ -300,7 +300,7 @@ std::vector<std::string> split(const std::string& str, const std::string& delimi
 
 bool read_from_disk(const std::string& file_path, const std::function<bool(std::array<char, 8192>&, size_t)>& read)
 {
-	std::array<char, 8192> buffer;
+	std::array<char, 8192> buffer{};
 	std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
 
 	is.seekg(0, std::ifstream::ios_base::beg);
@@ -426,6 +426,12 @@ public:
 		: fields_(init_list){};
 
 	fields(const http::fields& f) = default; 
+	fields(http::fields&& f) = default; 
+
+    fields& operator=(const http::fields&) = default;
+    fields& operator=(http::fields&&) = default;
+
+    ~fields() = default;
 
 	inline std::string to_string() const noexcept
 	{
@@ -564,7 +570,15 @@ public:
 	const std::string& target() const { return target_; }
 	const std::string& url_requested() const { return url_requested_; }
 	const unsigned int& version_nr() const { return version_nr_; }
-	const std::string version() const { return std::string("HTTP ") + (version_nr_ == 10 ? "1.0" : "1.1"); }
+	const std::string version() const 
+    { 
+        std::string ret="HTTP 1.0";
+
+        if (version_nr_ == 10)
+            ret = "HTTP 1.0";
+
+        return ret; 
+    }
 	void target(const std::string& target) { target_ = target; }
 
 	query_params& query() { return params_; };
@@ -619,7 +633,16 @@ public:
 	void status(http::status::status_t status) { status_ = status; }
 	http::status::status_t status() const { return status_; }
 
-	const std::string version() const { return std::string("HTTP ") + (version_nr_ == 10 ? "1.0" : "1.1"); }
+	const std::string version() const 
+    { 
+        std::string ret = "HTTP 1.1";
+
+        if (version_nr_==10)
+            ret = "HTTP 1.0";
+
+
+        return ret; 
+    }
 
 	void headers_reset()
 	{
@@ -654,28 +677,27 @@ struct mapping
 {
 	const char* extension;
 	const char* mime_type;
-}
-
-const mappings[]
+} const mappings[]
 	= {
 		  { "json", "application/json" }, { "text", "text/plain" }, { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" },
-		  { "html", "text/html" },		  { "jpg", "image/jpeg" },  { "jpeg", "image/jpeg" },  { "png", "image/png" }
+		  { "html", "text/html" },		  { "jpg", "image/jpeg" },  { "jpeg", "image/jpeg" },  { "png", "image/png" }, { nullptr, nullptr}
 	  };
 
 static std::string extension_to_type(const std::string& extension)
 {
-	if (extension.find_first_of("/") != std::string::npos)
-		return extension;
-	else
-		for (mapping m : mappings)
-		{
-			if (m.extension == extension)
-			{
-				return m.mime_type;
-			}
-		}
-
-	return "application/octet-stream";
+    if (extension.find_first_of("/") != std::string::npos)
+        return extension;
+    else
+    {
+        for (const auto& m :  mappings)  // NOLINT: trust me i now what i am doing...
+        {
+            if (m.extension == extension)
+            {             
+                return m.mime_type;
+            }
+        }
+    }
+    return "application/octet-stream";
 }
 } // namespace mime_types
 
@@ -689,7 +711,13 @@ private:
 
 public:
 	message() = default;
-	message(const message&) = default;
+	~message() = default;
+	
+    message(const message&) = default;
+    message(message&&) = default;
+
+    message& operator=(const message&) = default;
+    message& operator=(message&&) = default;
 
 	// TODO use enableif....
 	message(const std::string& method, const std::string& target, const int version_nr = 11)
@@ -1722,8 +1750,13 @@ class session_handler
 public:
 	using result_type = http::request_parser::result_type;
 
+	session_handler()= delete;
 	session_handler(const session_handler&) = default;
+	session_handler(session_handler&&) = default;
 	session_handler& operator=(const session_handler&) = default;
+	session_handler& operator=(session_handler&&) = default;
+
+    ~session_handler() = default;
 
 	session_handler(http::configuration& configuration)
 		: configuration_(configuration)
@@ -1810,7 +1843,7 @@ public:
 		if (ec == network::error::success)
 		{
 			using data_store_buffer_t = std::array<char, 64>;
-			data_store_buffer_t buffer;
+			data_store_buffer_t buffer{};
 			auto c = std::begin(buffer);
 
 			auto request_result_size = network::write(s, http::to_string(request));
@@ -1834,7 +1867,7 @@ public:
 							do
 							{
 								auto response_result_size_body = network::read(s, network::buffer(buffer.data(), buffer.size()));
-								if (response_result_size != -1)
+								if (response_result_size_body != -1)
 								{
 									message.body().append(buffer.begin(), buffer.end());
 								}
@@ -2441,7 +2474,13 @@ public:
 		: router_(configuration.get<std::string>("doc_root", "/var/www"))
 		, configuration_(configuration){};
 
-	server(const server&) = default;
+	server(const server&) = delete;
+	server(server&&) = delete;
+    
+    server& operator=(server&&) = delete;
+    server& operator=(const server&) = delete;
+
+    ~server() = default;
 
 	// std::atomic<bool>& active() { return active_; }
 
@@ -2718,7 +2757,12 @@ public:
 		https_connection_queue_thread_.join();
 	}
 
-	server(const server&) = default;
+    server() = delete;
+    server(server&&) = delete;
+	server(const server&) = delete;
+
+    server& operator=(const server&) = delete;
+    server& operator=(const server&&) = delete;
 
 	void start_server() override
 	{
@@ -3028,10 +3072,16 @@ public:
 			server_.manager().connections_current_decrease();
 		}
 
+        connection_handler(const connection_handler&) = delete;
+        connection_handler(connection_handler&&) = delete;
+
+        connection_handler& operator=(connection_handler&) = delete;
+        connection_handler& operator=(const connection_handler&&) = delete;
+
 		void proceed()
 		{
 			using data_store_buffer_t = std::array<char, 1024 * 8>;
-			data_store_buffer_t buffer;
+			data_store_buffer_t buffer{};
 			auto c = std::begin(buffer);
 			while (true)
 			{
@@ -3120,7 +3170,7 @@ public:
 
 					if (response.body().empty())
 					{
-						std::array<char, 1024 * 8> file_buffer;
+						std::array<char, 1024 * 8> file_buffer{};
 
 						{
 							std::string headers = response.header_to_string();

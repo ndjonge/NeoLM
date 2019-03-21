@@ -379,7 +379,7 @@ enum options
 };
 
 inline options operator|(options a, options b) { return options(((int)a) | ((int)b)); }
-inline options& operator|=(options& a, options b) { return (options&)(((int&)a) |= ((int)b)); }
+inline options& operator|=(options& a, options b) { return reinterpret_cast<options&>((((int&)a) |= ((int)b))); }
 inline options operator&(options a, options b) { return options(((int)a) & ((int)b)); }
 inline options& operator&=(options& a, options b) { return (options&)(((int&)a) &= ((int)b)); }
 inline options operator~(options a) { return options(~((int)a)); }
@@ -439,15 +439,14 @@ public:
 	{
 		socket_ = ::socket(fam, protocol::stream, 0);
 
-		int opt_ret = 0;
 		if (options_ & options::ipv6only)
         {
-			opt_ret = ::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&option_values_[options::ipv6only], sizeof(std::int32_t));
+			::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&option_values_[options::ipv6only]), sizeof(std::int32_t));
         }
         
 		if (options_ & options::reuseaddr)
 		{
-			opt_ret = ::setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, (char*)&option_values_[options::reuseaddr], sizeof(std::int32_t));
+			::setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&option_values_[options::reuseaddr]), sizeof(std::int32_t));
         }
 
 		return socket_;
@@ -593,7 +592,7 @@ protected:
 		sockaddr_in v4;
 		sockaddr_in6 v6;
 		sockaddr_storage ss;
-	} data_;
+	} data_{};
 };
 
 /*
@@ -721,9 +720,6 @@ public:
 
 		int use_portsharding = 1;
 
-		auto x = endpoint_->addr();
-		auto y = endpoint_->addr_size();
-
 		endpoint_->open(protocol_);
 
 		ret = ::bind(endpoint_->socket().lowest_layer(), endpoint_->addr(), endpoint_->addr_size());
@@ -755,8 +751,8 @@ public:
 	{
 		auto len = static_cast<socklen_t>(endpoint_->addr_size());
 
-		fd_set set;
-		timeval t;
+		fd_set set{};
+		timeval t{};
 		int rv;
 
 		FD_ZERO(&set); /* clear the set */
@@ -820,7 +816,7 @@ std::int32_t read(ssl::stream<tcp::socket>& s, const buffer& b) noexcept { retur
 
 std::int32_t write(ssl::stream<tcp::socket>& s, const buffer& b) noexcept { return SSL_write(s.native(), b.data(), static_cast<int>(b.size())); }
 
-std::int32_t write(ssl::stream<tcp::socket>& s, const std::string& str) noexcept { return SSL_write(s.native(), const_cast<char*>(str.data()), static_cast<int>(str.size())); }
+std::int32_t write(ssl::stream<tcp::socket>& s, const std::string& str) noexcept { return SSL_write(s.native(), const_cast<char*>(str.data()), static_cast<int>(str.size())); } //NOLINT
 
 std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_socket)
 {
@@ -828,7 +824,7 @@ std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_s
 	socklen_t sl = sizeof(sa);
 	char c[INET6_ADDRSTRLEN];
 
-	getpeername(client_socket.lowest_layer().lowest_layer(), (sockaddr*)&sa, &sl);
+	getpeername(client_socket.lowest_layer().lowest_layer(), reinterpret_cast<sockaddr*>(&sa), &sl);
 
 	inet_ntop(AF_INET6, &(sa.sin6_addr), c, INET6_ADDRSTRLEN);
 
@@ -841,7 +837,7 @@ std::string get_client_info(const network::tcp::socket& client_socket)
 	socklen_t sl = sizeof(sa);
 	char c[INET6_ADDRSTRLEN];
 
-	getpeername(client_socket.lowest_layer(), (sockaddr*)&sa, &sl);
+	getpeername(client_socket.lowest_layer(), reinterpret_cast<sockaddr*>(&sa), &sl);
 
 	inet_ntop(AF_INET6, &(sa.sin6_addr), c, INET6_ADDRSTRLEN);
 
@@ -851,7 +847,7 @@ std::string get_client_info(const network::tcp::socket& client_socket)
 int tcp_nodelay(network::tcp::socket& s, int value)
 {
 	int reuseaddr = value;
-	return ::setsockopt(s.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, (char*)&reuseaddr, sizeof(reuseaddr));
+	return ::setsockopt(s.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&reuseaddr), sizeof(reuseaddr)); //NOLINT
 }
 
 int reuse_address(network::tcp::socket& s, int value)
@@ -881,7 +877,7 @@ int use_portsharding(network::tcp::socket& s, int value)
 int no_linger(network::tcp::socket& s, int value)
 {
 	// No linger
-	linger linger_;
+	linger linger_{};
 	memset(&linger_, 0, sizeof(linger));
 
 	if (value)
@@ -895,7 +891,7 @@ int no_linger(network::tcp::socket& s, int value)
 		linger_.l_linger = 5;
 	}
 
-	int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_LINGER, (char*)&linger_, sizeof(linger));
+	int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_LINGER, reinterpret_cast<char*>(&linger_), sizeof(linger)); //NOLINT
 
 	return ret;
 }
@@ -904,9 +900,9 @@ int timeout(network::tcp::socket& s, int value)
 {
 #if defined(_WIN32)
 	DWORD timeout_value = static_cast<DWORD>(value) * 1000;
-	int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value));
+	int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value)); //NOLINT
 #else
-	timeval timeout;
+	timeval timeout{};
 	timeout.tv_sec = value;
 	timeout.tv_usec = 0;
 	int ret = setsockopt(s.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
