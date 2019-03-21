@@ -2076,9 +2076,9 @@ using middleware_function_t = std::function<bool(session_handler_type& session, 
 template <typename R = route_function_t> class route
 {
 public:
-	route(std::string route, R endpoint)
-		: route_(std::move(route))
-		, endpoint_(std::move(endpoint))
+	route(const std::string& route, const R& endpoint)
+		: route_(route)
+		, endpoint_(endpoint)
 	{
 		size_t b = route_.find_first_of("/");
 		size_t e = route_.find_first_of("/", b + 1);

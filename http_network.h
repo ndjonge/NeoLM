@@ -378,13 +378,13 @@ enum options
 	size
 };
 
-inline options operator|(options a, options b) { return options(((int)a) | ((int)b)); }
-inline options& operator|=(options& a, options b) { return reinterpret_cast<options&>((((int&)a) |= ((int)b))); }
-inline options operator&(options a, options b) { return options(((int)a) & ((int)b)); }
-inline options& operator&=(options& a, options b) { return (options&)(((int&)a) &= ((int)b)); }
-inline options operator~(options a) { return options(~((int)a)); }
-inline options operator^(options a, options b) { return options(((int)a) ^ ((int)b)); }
-inline options& operator^=(options& a, options b) { return (options&)(((int&)a) ^= ((int)b)); }
+inline options operator|(options a, options b) { return options((static_cast<int>(a)) | (static_cast<int>(b))); }
+inline options& operator|=(options& a, options b) { return reinterpret_cast<options&>((((int&)a) |= (static_cast<int>(b)))); }
+inline options operator&(options a, options b) { return options((static_cast<int>(a)) & (static_cast<int>(b))); }
+inline options& operator&=(options& a, options b) { return reinterpret_cast<options&>(((int&)a) &= (static_cast<int>(b))); }
+inline options operator~(options a) { return options(~(static_cast<int>(a))); }
+inline options operator^(options a, options b) { return options((static_cast<int>(a)) ^ (static_cast<int>(b))); }
+inline options& operator^=(options& a, options b) { return (options&)((reinterpret_cast<int&>(a)) ^= (static_cast<int>(b))); }
 
 class socket
 {
@@ -476,7 +476,7 @@ public:
 	}
 
 private:
-	socket_t socket_{-1};
+	socket_t socket_{static_cast<socket_t>(-1)};
 	options options_{none};
 	std::int32_t option_values_[options::size] = {};
 };
