@@ -2104,10 +2104,10 @@ public:
 		{
 		}
 
-		std::chrono::duration<double, std::milli> request_latency_;
-		std::chrono::duration<double, std::milli> processing_duration_;
+        std::atomic<std::chrono::duration<double, std::milli>> request_latency_;
+        std::atomic<std::chrono::duration<double, std::milli>> processing_duration_;
 
-		std::int64_t hit_count_{0};
+        std::atomic<std::int64_t> hit_count_{0};
 
 		std::string to_string()
 		{
@@ -2787,8 +2787,8 @@ public:
 			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
 			std::cout << "http_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
-
-			if (http_connection_queue_.empty())
+            
+            if (http_connection_queue_.empty())
 			{
 				std::this_thread::yield();
 
@@ -2805,7 +2805,7 @@ public:
 			else
 			{
 				manager_.idle(false);
-
+                
 				if (manager_.connections_current() >= 4)
 				{
 					manager_.busy(router_.call_on_busy());
@@ -2844,7 +2844,7 @@ public:
 
 			https_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
-			std::cout << "https_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
+            std::cout << "https_connection_queue_:" << std::to_string(https_connection_queue_.size()) << "\n";
 			if (https_connection_queue_.empty())
 			{
 				std::this_thread::yield();
