@@ -2333,7 +2333,7 @@ public:
 	{
 		auto& route_vector = lookup_method(http_method);
 
-		route_vector.emplace_back(route, api_method);
+		route_vector.push_back(route, api_method);
 	}
 
 	void on_busy(std::function<bool()> on_busy_callback) { on_busy_ = on_busy_callback; }
@@ -2356,7 +2356,7 @@ public:
 
 	void on_option(const std::string& route, R api_method) { on_options_.emplace_back(route, api_method); }
 
-	void use(const std::string& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
+	void use(const std::string route, middleware_function_t middleware_function) { api_middleware_table.push_back(route, middleware_function); };
 
 	bool serve_static_content(session_handler_type& session)
 	{
