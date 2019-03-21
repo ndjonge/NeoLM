@@ -2097,7 +2097,7 @@ public:
 	struct route_metrics
 	{
 		route_metrics() = default;
-		route_metrics(route_metrics& r)
+		route_metrics(const route_metrics& r)
 		{
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
@@ -2105,6 +2105,20 @@ public:
 		}
 
 		route_metrics& operator=(const route_metrics& r) 
+		{
+			request_latency_.store(r.request_latency_);
+			processing_duration_.store(r.processing_duration_);
+			hit_count_.store(r.hit_count_);
+		}
+
+		route_metrics(route_metrics&& r)
+		{
+			request_latency_.store(r.request_latency_);
+			processing_duration_.store(r.processing_duration_);
+			hit_count_.store(r.hit_count_);
+		}
+
+		route_metrics& operator=(route_metrics&& r)
 		{
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
