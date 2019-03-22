@@ -54,6 +54,11 @@ namespace async
 			connection_handler_base(connection_handler_base const&) = delete;
 			void operator==(connection_handler_base const&) = delete;
 
+            connection_handler_base(connection_handler_base&& ) = delete;
+            
+            connection_handler_base& operator=(const connection_handler_base& ) = delete;
+            connection_handler_base& operator=(connection_handler_base&& ) = delete;
+
 			socket_t& socket_base() { return static_cast<connection_handler_derived*>(this)->socket(); };
 			std::string remote_address_base() { return static_cast<connection_handler_derived*>(this)->remote_address(); };
 
@@ -470,7 +475,7 @@ namespace async
 		}
 
 	private:
-		void handle_new_connection(shared_connection_handler_http_t handler, const asio::error_code error)
+		void handle_new_connection(const shared_connection_handler_http_t& handler, const asio::error_code error)
 		{
 			if (error)
 			{
@@ -487,7 +492,7 @@ namespace async
 			acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error) { this->handle_new_connection(new_handler, error); });
 		}
 
-		void handle_new_https_connection(shared_https_connection_handler_http_t handler, const asio::error_code error)
+		void handle_new_https_connection(const shared_https_connection_handler_http_t& handler, const asio::error_code error)
 		{
 			if (error)
 			{

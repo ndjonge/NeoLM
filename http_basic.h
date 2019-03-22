@@ -681,7 +681,7 @@ struct mapping
 
 static std::string extension_to_type(const std::string& extension)
 {
-	if (extension.find_first_of("/") != std::string::npos)
+	if (extension.find_first_of('/') != std::string::npos)
 		return extension;
 	else
 	{
@@ -1784,15 +1784,15 @@ public:
 			// protocol://host:port/target
 			// http://[FEDC:BA98:7654:3210:FEDC:BA98:7654:3210]:80/index.html
 
-			auto p1 = url.find_first_of(":");
+			auto p1 = url.find_first_of(':');
 
 			protocol_ = url.substr(0, p1);
 
-			auto p2 = url.find_first_of("/", p1 + 3);
+			auto p2 = url.find_first_of('/', p1 + 3);
 
 			hostname_ = url.substr(p1 + 3, p2 - (p1 + 3));
 
-			auto p3 = hostname_.find_last_of(":");
+			auto p3 = hostname_.find_last_of(':');
 
 			if (p3 != std::string::npos)
 			{
@@ -1819,7 +1819,7 @@ public:
 		std::string target_;
 	};
 
-	http::response_message get(const std::string& url_string, http::response_header headers = {})
+	http::response_message get(const std::string& url_string, const http::response_header& headers = {})
 	{
 		http::response_message message;
 
@@ -1905,8 +1905,8 @@ public:
 			return;
 		}
 
-		std::size_t last_slash_pos = request_path.find_last_of("/");
-		std::size_t last_dot_pos = request_path.find_last_of(".");
+		std::size_t last_slash_pos = request_path.find_last_of('/');
+		std::size_t last_dot_pos = request_path.find_last_of('.');
 		std::string extension;
 
 		if (last_dot_pos != std::string::npos && last_dot_pos > last_slash_pos)
@@ -2078,8 +2078,8 @@ public:
 		: route_(route)
 		, endpoint_(endpoint)
 	{
-		size_t b = route_.find_first_of("/");
-		size_t e = route_.find_first_of("/", b + 1);
+		size_t b = route_.find_first_of('/');
+		size_t e = route_.find_first_of('/', b + 1);
 		size_t token = 0;
 
 		for (token = 0; b != std::string::npos; token++)
@@ -2089,8 +2089,8 @@ public:
 
 			if (e == std::string::npos) break;
 
-			b = route_.find_first_of("/", e);
-			e = route_.find_first_of("/", b + 1);
+			b = route_.find_first_of('/', e);
+			e = route_.find_first_of('/', b + 1);
 		}
 	};
 
@@ -2168,8 +2168,8 @@ public:
 
 		// token = /-----
 
-		auto b = url.find_first_of("/");
-		auto e = url.find_first_of("/", b + 1);
+		auto b = url.find_first_of('/');
+		auto e = url.find_first_of('/', b + 1);
 		size_t token = 0;
 		bool match = false;
 
@@ -2203,8 +2203,8 @@ public:
 							match = true;
 						}*/
 
-			b = url.find_first_of("/", e);
-			e = url.find_first_of("/", b + 1);
+			b = url.find_first_of('/', e);
+			e = url.find_first_of('/', b + 1);
 
 			if ((b == std::string::npos) && (tokens_.size() - 1 == token))
 			{
@@ -2233,8 +2233,8 @@ public:
 
 		// token = /-----
 
-		size_t b = route.find_first_of("/");
-		size_t e = route.find_first_of("/", b + 1);
+		size_t b = route.find_first_of('/');
+		size_t e = route.find_first_of('/', b + 1);
 
 		for (token = 0; b != std::string::npos; token++)
 		{
@@ -2243,8 +2243,8 @@ public:
 
 			if (e == std::string::npos) break;
 
-			b = route.find_first_of("/", e);
-			e = route.find_first_of("/", b + 1);
+			b = route.find_first_of('/', e);
+			e = route.find_first_of('/', b + 1);
 		}
 	};
 
@@ -2267,8 +2267,8 @@ public:
 		size_t token = 0;
 
 		// token = /-----
-		auto b = url.find_first_of("/");
-		auto e = url.find_first_of("/", b + 1);
+		auto b = url.find_first_of('/');
+		auto e = url.find_first_of('/', b + 1);
 
 		bool match = false;
 
@@ -2293,8 +2293,8 @@ public:
 				break;
 			}
 
-			b = url.find_first_of("/", e);
-			e = url.find_first_of("/", b + 1);
+			b = url.find_first_of('/', e);
+			e = url.find_first_of('/', b + 1);
 
 			if ((b == std::string::npos) && (tokens_.size() - 1 == token))
 			{
@@ -2312,8 +2312,8 @@ public:
 	router()
 		: doc_root_("/var/www"){};
 
-	router(const std::string doc_root)
-		: doc_root_(std::move(doc_root)){};
+	router(const std::string& doc_root)
+		: doc_root_(doc_root){};
 
 	std::string to_string()
 	{
@@ -2692,13 +2692,13 @@ public:
 		void server_information(std::string info)
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			server_information_ = info;
+			server_information_ = std::move(info);
 		}
 
 		void router_information(std::string info)
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			router_information_ = info;
+			router_information_ = std::move(info);
 		}
 
 		std::string to_string()

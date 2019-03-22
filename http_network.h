@@ -144,7 +144,7 @@ void init()
 	WSADATA wsaData;
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) exit(1);
 #else
-	signal(SIGPIPE, SIG_IGN);
+	signal(SIGPIPE, SIG_IGN); //NOLINT
 #endif
 }
 
@@ -210,6 +210,13 @@ public:
 		SSL_CTX_free(context_);
 		context_ = nullptr;
 	}
+
+    context(const context&) = delete;
+    context(context&&) = delete;
+    
+    context& operator=(const context&) = delete;
+    context& operator=(context&&) = delete;
+
 
 	void use_certificate_chain_file(const char* path)
 	{
@@ -282,6 +289,7 @@ public:
 	//	{
 	//	}
 	stream& operator=(const stream&) = delete;
+	stream& operator=(stream&&) = delete;
 
 	stream(stream&& s)
 		: context_(s.context_)
@@ -379,12 +387,12 @@ enum options
 };
 
 inline options operator|(options a, options b) { return options((static_cast<int>(a)) | (static_cast<int>(b))); }
-inline options& operator|=(options& a, options b) { return reinterpret_cast<options&>((((int&)a) |= (static_cast<int>(b)))); }
+inline options& operator|=(options& a, options b) { return reinterpret_cast<options&>(((reinterpret_cast<int&>(a)) |= (static_cast<int>(b)))); }
 inline options operator&(options a, options b) { return options((static_cast<int>(a)) & (static_cast<int>(b))); }
-inline options& operator&=(options& a, options b) { return reinterpret_cast<options&>(((int&)a) &= (static_cast<int>(b))); }
+inline options& operator&=(options& a, options b) { return reinterpret_cast<options&>((reinterpret_cast<int&>(a)) &= (static_cast<int>(b))); }
 inline options operator~(options a) { return options(~(static_cast<int>(a))); }
 inline options operator^(options a, options b) { return options((static_cast<int>(a)) ^ (static_cast<int>(b))); }
-inline options& operator^=(options& a, options b) { return (options&)((reinterpret_cast<int&>(a)) ^= (static_cast<int>(b))); }
+inline options& operator^=(options& a, options b) { return reinterpret_cast<options&>(((reinterpret_cast<int&>(a)) ^= (static_cast<int>(b)))); }
 
 class socket
 {
@@ -414,6 +422,7 @@ public:
 	}
 
 	socket& operator=(const socket& s) = delete;
+	socket& operator=(socket&& s) = delete;
 	//	{
 	//		socket_ = s.socket_;
 	//		options_ = options_;
@@ -518,6 +527,12 @@ public:
 	{
 		std::memcpy(&data_, &addr, sizeof(sockaddr_storage));
 	}
+
+    endpoint(const endpoint&) = default;
+    endpoint(endpoint&&) = default;
+    endpoint& operator=(const endpoint&) = default;
+    endpoint& operator=(endpoint&&) = default;
+
 
 	virtual ~endpoint()
 	{

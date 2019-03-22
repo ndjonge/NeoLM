@@ -34,7 +34,7 @@ using servers = std::unordered_map<std::string, neolm::server>;
 template <class M> class product
 {
 public:
-	product(std::string id, std::string description, M&& m)
+	product(const std::string& id, const std::string& description, M&& m)
 		: id_(id)
 		, description_(description)
 		, model_(m){};
@@ -60,7 +60,7 @@ private:
 class user
 {
 public:
-	user(std::string name)
+	user(const std::string& name)
 		: name_(name){};
 
 	std::string name_;
@@ -69,7 +69,7 @@ public:
 class server
 {
 public:
-	server(std::string id, std::string hostname)
+	server(const std::string& id, const std::string& hostname)
 		: id_(id)
 		, hostname_(hostname){};
 
@@ -542,7 +542,7 @@ private:
 	};
 
 public:
-	license_manager(http::configuration configuration, std::string home_dir)
+	license_manager(const http::configuration& configuration, const std::string& home_dir)
 		: configuration_{ configuration }
 		, api_server_(*this, configuration_)
 		, home_dir_(home_dir)
@@ -563,6 +563,12 @@ public:
 	}
 
 	~license_manager() {}
+
+    license_manager(const license_manager&) = default;
+    license_manager(license_manager&&) = default;
+
+    license_manager& operator=(const license_manager&) = default;
+    license_manager& operator=(license_manager&&) = default;
 
 	void start_server()
 	{
