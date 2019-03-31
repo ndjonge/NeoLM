@@ -31,6 +31,32 @@ using named_server_licenses = std::unordered_map<std::string, neolm::product<neo
 using users = std::unordered_map<std::string, neolm::user>;
 using servers = std::unordered_map<std::string, neolm::server>;
 
+namespace pm
+{
+
+namespace group
+{
+class member;
+
+using group_members = std::unordered_map<std::string, pm::group::member>;
+
+class member
+{
+public:
+	member(std::string&& tenant_id, std::string&& url)
+		: tenant_id_(std::move(tenant_id))
+		, url_(std::move(url_))
+	{
+	}
+
+private:
+	std::string tenant_id_;
+	std::string url_;
+};
+
+} // namespace group
+} // namespace pm
+
 template <class M> class product
 {
 public:
@@ -384,7 +410,7 @@ private:
 	public:
 		api_server(license_manager& license_manager, http::configuration& configuration)
 			: S(configuration)
-//			, enable_server_as_upstream(configuration, *this)
+			//			, enable_server_as_upstream(configuration, *this)
 			, license_manager_(license_manager)
 		{
 			S::router_.use("/static/");
@@ -399,7 +425,7 @@ private:
 
 				std::cout << "busy...\n";
 
-//				upstream_controller().fork();
+				//				upstream_controller().fork();
 
 				return result;
 			});
@@ -409,20 +435,51 @@ private:
 
 				if (S::manager().idle_duration() >= 5)
 				{
-                    S::deactivate();
+					S::deactivate();
 				}
 				return result;
 			});
 
-			// License instance configuration routes..
-			S::router_.on_get("/sleep/1000", [this](http::session_handler& session, const http::api::params& params) { std::this_thread::sleep_for(1000ms); });
+			S::router_.on_get("/pm/:tenant/:node", [this](http::session_handler& session, const http::api::params& params)
+			{
+				const auto& tenant = params.get("tenant");
+				const auto& node = params.get("node");
 
-			S::router_.on_get("/sleep/500", [this](http::session_handler& session, const http::api::params& params) { std::this_thread::sleep_for(500ms); });
+				if (tenant.empty())
+				{
+				}
+				else if (node.empty())
+				{
+				}
+				else
+				{
+				}
+			});
 
-			S::router_.on_get("/sleep/100", [this](http::session_handler& session, const http::api::params& params) { std::this_thread::sleep_for(100ms); });
+			S::router_.on_put("/pm/:tenant/:node", [this](http::session_handler& session, const http::api::params& params) 
+			{				
+				const auto& tenant = params.get("tenant");
+				const auto& node = params.get("node");
+
+				if (tenant.empty() || node.empty())
+				{
+					session.response().result(http::status::bad_request);
+				}
+				else
+				{
+					S::group_members_.emplace(std::hash<std::string>(tenant + node), tenant, node);
+				}
+			});
+
+			S::router_.on_get("/test/sleep/1000", [this](http::session_handler& session, const http::api::params& params) { std::this_thread::sleep_for(1000ms); });
+
+			S::router_.on_get("/test/sleep/500", [this](http::session_handler& session, const http::api::params& params) { std::this_thread::sleep_for(500ms); });
+
+			S::router_.on_get("/test/sleep/100", [this](http::session_handler& session, const http::api::params& params) { std::this_thread::sleep_for(100ms); });
 
 			S::router_.on_get("/hoi", [this](http::session_handler& session, const http::api::params& params) { session.response().body() = "hoi1"; });
 
+			// License instance configuration routes..
 			S::router_.on_get("/licenses/configuration", [this](http::session_handler& session, const http::api::params& params) {
 				std::string instance_id = session.request().get("instance");
 
@@ -564,28 +621,28 @@ public:
 
 	~license_manager() {}
 
-    license_manager(const license_manager&) = default;
-    license_manager(license_manager&&) = default;
+	license_manager(const license_manager&) = default;
+	license_manager(license_manager&&) = default;
 
-    license_manager& operator=(const license_manager&) = default;
-    license_manager& operator=(license_manager&&) = default;
+	license_manager& operator=(const license_manager&) = default;
+	license_manager& operator=(license_manager&&) = default;
 
 	void start_server()
 	{
 		this->api_server_.start_server();
-/*		if (this->api_server_.upstream_controller().add(configuration_.get("upstream-node-nginx-endpoint-myip") + ":" + configuration_.get("http_listen_port")) == http::upstream::sucess)
-			std::cout << "server listening on port : " + configuration_.get("http_listen_port") + " and added to upstream\n";
-		else */
-			std::cout << "server listening on port : " + configuration_.get("http_listen_port") + "\n";
+		/*		if (this->api_server_.upstream_controller().add(configuration_.get("upstream-node-nginx-endpoint-myip") + ":" + configuration_.get("http_listen_port")) == http::upstream::sucess)
+					std::cout << "server listening on port : " + configuration_.get("http_listen_port") + " and added to upstream\n";
+				else */
+		std::cout << "server listening on port : " + configuration_.get("http_listen_port") + "\n";
 	}
 
 	void run()
 	{
-		do 
+		do
 		{
 			// load_test();
 			std::this_thread::sleep_for(1s);
-            std::cout << "neolm::run\n";
+			std::cout << "neolm::run\n";
 
 		} while (api_server_.active_ == true);
 	}
@@ -597,6 +654,8 @@ private:
 	api_server api_server_;
 	std::string home_dir_;
 	instances instances_;
+
+	pm::group::group_members group_members_;
 };
 
 } // namespace neolm
