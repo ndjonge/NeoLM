@@ -448,10 +448,7 @@ public:
 	{
 		socket_ = ::socket(fam, protocol::stream, 0);
 
-		if (options_ & options::ipv6only)
-        {
-			::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&option_values_[options::ipv6only]), sizeof(std::int32_t));
-        }
+		::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&option_values_[options::ipv6only]), sizeof(std::int32_t));
         
 		if (options_ & options::reuseaddr)
 		{
@@ -867,7 +864,6 @@ int tcp_nodelay(network::tcp::socket& s, int value)
 
 int reuse_address(network::tcp::socket& s, int value)
 {
-    std::cout << "reuse_addr" << value << "\n";
     s.set_options(network::tcp::options::reuseaddr, value);
 	return 0; 
 }
@@ -875,7 +871,6 @@ int reuse_address(network::tcp::socket& s, int value)
 int ipv6only(network::tcp::socket& s, int value)
 {
 	s.set_options(network::tcp::options::ipv6only, value);
-
 	return 0;
 }
 

@@ -43,9 +43,9 @@ using group_members = std::unordered_map<std::string, pm::group::member>;
 class member
 {
 public:
-	member(std::string&& tenant_id, std::string&& url)
-		: tenant_id_(std::move(tenant_id))
-		, url_(std::move(url_))
+	member(const std::string& tenant_id, const std::string& url)
+		: tenant_id_(tenant_id)
+		, url_(url)
 	{
 	}
 
@@ -433,15 +433,15 @@ private:
 			S::router_.on_idle([this]() {
 				bool result = true;
 
-				if (S::manager().idle_duration() >= 5)
+				if (S::manager().idle_duration() >= 3600)
 				{
 					S::deactivate();
 				}
 				return result;
 			});
 
-			S::router_.on_get("/pm/:tenant/:node", [this](http::session_handler& session, const http::api::params& params)
-			{
+			// Get secific node info, or get list of nodes per tenant-cluster.
+			S::router_.on_get("/pm/:tenant/:node", [this](http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -456,8 +456,8 @@ private:
 				}
 			});
 
-			S::router_.on_put("/pm/:tenant/:node", [this](http::session_handler& session, const http::api::params& params) 
-			{				
+			// New node, tenant must exist.
+			S::router_.on_put("/pm/:tenant/:node", [this](http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -467,17 +467,18 @@ private:
 				}
 				else
 				{
-					S::group_members_.emplace(std::hash<std::string>(tenant + node), tenant, node);
+					if (license_manager_.group_members_.find(tenant + node) != license_manager_.group_members_.end())
+					{
+						session.response().result(http::status::bad_request);
+					}
+					else
+					{
+						auto& key = license_manager_.group_members_.emplace(tenant + node, pm::group::member{ tenant, node });
+
+						session.response().result(http::status::created);
+					}
 				}
 			});
-
-			S::router_.on_get("/test/sleep/1000", [this](http::session_handler& session, const http::api::params& params) { std::this_thread::sleep_for(1000ms); });
-
-			S::router_.on_get("/test/sleep/500", [this](http::session_handler& session, const http::api::params& params) { std::this_thread::sleep_for(500ms); });
-
-			S::router_.on_get("/test/sleep/100", [this](http::session_handler& session, const http::api::params& params) { std::this_thread::sleep_for(100ms); });
-
-			S::router_.on_get("/hoi", [this](http::session_handler& session, const http::api::params& params) { session.response().body() = "hoi1"; });
 
 			// License instance configuration routes..
 			S::router_.on_get("/licenses/configuration", [this](http::session_handler& session, const http::api::params& params) {

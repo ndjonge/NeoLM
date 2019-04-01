@@ -357,9 +357,9 @@ inline const char* to_string(status_t s)
 	case http::status::ok:
 		return "HTTP/1.1 200 OK\r\n";
 	case http::status::created:
-		return "HTTP/1.1 202 Accepted\r\n";
+		return "HTTP/1.1 201 Created\r\n";
 	case http::status::accepted:
-		return "HTTP/1.1 204 No Content\r\n";
+		return "HTTP/1.1 202 Accepted\r\n";
 	case http::status::no_content:
 		return "HTTP/1.1 204 No Content\r\n";
 	case http::status::multiple_choices:
@@ -2460,19 +2460,19 @@ protected:
 
 		if (method == "GET") return on_gets_;
 
-		if (method == "POST") return on_gets_;
+		if (method == "POST") return on_posts_;
 
-		if (method == "HEAD") return on_gets_;
+		if (method == "HEAD") return on_heads_;
 
-		if (method == "OPTIONS") return on_gets_;
+		if (method == "OPTIONS") return on_options_;
 
-		if (method == "PUTS") return on_gets_;
+		if (method == "PUT") return on_puts_;
 
-		if (method == "UPDATE") return on_gets_;
+		if (method == "UPDATE") return on_updates_;
 
-		if (method == "DELETE") return on_gets_;
+		if (method == "DELETE") return on_deletes_;
 
-		if (method == "PATCH") return on_gets_;
+		if (method == "PATCH") return on_patches_;
 
 		return unknown;
 	};
@@ -2794,7 +2794,7 @@ public:
 	virtual void deactivate()
 	{
 		http::basic::server::active_ = false;
-		std::cout << "\ndeactivated!\n";
+		//std::cout << "\ndeactivated!\n";
 	}
 
 	void http_connection_queue_handler()
@@ -2805,7 +2805,7 @@ public:
 
 			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
-			std::cout << "http_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
+			//std::cout << "http_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
 
 			if (http_connection_queue_.empty())
 			{
@@ -2852,7 +2852,7 @@ public:
 				}
 			}
 		}
-		std::cout << "http_connection_queue_::end1\n";
+		//std::cout << "http_connection_queue_::end1\n";
 	}
 
 	void https_connection_queue_handler()
@@ -2863,7 +2863,7 @@ public:
 
 			https_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
-			std::cout << "https_connection_queue_:" << std::to_string(https_connection_queue_.size()) << "\n";
+			//std::cout << "https_connection_queue_:" << std::to_string(https_connection_queue_.size()) << "\n";
 			if (https_connection_queue_.empty())
 			{
 				std::this_thread::yield();
@@ -2893,7 +2893,7 @@ public:
 
 				while (!https_connection_queue_.empty())
 				{
-					// network::timeout(http_socket, connection_timeout_);
+					//network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
 
 					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
@@ -2906,7 +2906,7 @@ public:
 				}
 			}
 		}
-		std::cout << "https_connection_queue_::end2\n";
+		//std::cout << "https_connection_queue_::end2\n";
 	}
 
 	void https_listener_handler()
@@ -2931,7 +2931,7 @@ public:
 			for (https_listen_port_ = https_listen_port_begin_; https_listen_port_ <= https_listen_port_end_;)
 			{
 				acceptor_https.bind(endpoint_https_, ec);
-				std::cout << "binding https to: " << std::to_string(https_listen_port_) << "\n";
+				//std::cout << "binding https to: " << std::to_string(https_listen_port_) << "\n";
 
 				if (ec == network::error::success)
 				{
@@ -2965,7 +2965,8 @@ public:
 				ec = network::error::success;
 				acceptor_https.accept(https_socket.lowest_layer(), ec, 5);
 
-				if (ec == network::error::interrupted || ec == network::error::operation_would_block) break;
+				if (ec == network::error::interrupted) break;
+				if (ec == network::error::operation_would_block) continue;
 
 				network::timeout(https_socket.lowest_layer(), connection_timeout_);
 				https_socket.handshake(network::ssl::stream_base::server);
@@ -2977,7 +2978,7 @@ public:
 					https_connection_queue_has_connection_.notify_one();
 				}
 			}
-			std::cout << "https_listener_handler_::end1\n";
+			//std::cout << "https_listener_handler_::end1\n";
 		}
 		catch (...)
 		{
@@ -3043,7 +3044,8 @@ public:
 
 				acceptor_http.accept(http_socket, ec, 5);
 
-				if (ec == network::error::interrupted || ec == network::error::operation_would_block) break;
+				if (ec == network::error::interrupted) break; 
+				if (ec == network::error::operation_would_block) continue;
 
 				if (http_socket.lowest_layer() > 0)
 				{
@@ -3052,7 +3054,7 @@ public:
 					http_connection_queue_has_connection_.notify_one();
 				}
 			}
-			std::cout << "https_listener_handler_::end2\n";
+			//std::cout << "https_listener_handler_::end2\n";
 		}
 		catch (...)
 		{
