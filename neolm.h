@@ -49,6 +49,17 @@ public:
 	{
 	}
 
+	const std::string to_string()
+	{
+		std::stringstream ret;
+
+		ret << tenant_id_ << " : " << url_ << "\n";
+
+		return ret.str();
+	}
+
+	std::string tenant() const { return tenant_id_; }
+
 private:
 	std::string tenant_id_;
 	std::string url_;
@@ -441,23 +452,73 @@ private:
 			});
 
 			// Get secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_get("/pm/:tenant/:node", [this](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_get("/pm/tenants/:tenant/upstreams/:node", [this](http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
-				if (tenant.empty())
+				if (tenant.empty() && node.empty())
 				{
+					for (auto& member : license_manager_.group_members_)
+						session.response().body() += member.second.to_string();
 				}
 				else if (node.empty())
 				{
+					for (auto& member : license_manager_.group_members_)
+						if (member.second.tenant() == tenant) session.response().body() += member.second.to_string();
 				}
 				else
 				{
+					auto& member = license_manager_.group_members_.find(tenant + node);
+
+					if (member != license_manager_.group_members_.end())
+						session.response().body() += member->second.to_string();
+					else
+						session.response().result(http::status::not_found);
+				}
+			});
+
+			// Remove secific node info, or get list of nodes per tenant-cluster.
+			S::router_.on_delete("/pm/tenants/:tenant/upstreams/:node", [this](http::session_handler& session, const http::api::params& params) {
+				const auto& tenant = params.get("tenant");
+				const auto& node = params.get("node");
+
+				if (tenant.empty() && node.empty())
+				{
+					license_manager_.group_members_.clear();
+					session.response().result(http::status::ok);
+				}
+				else if (node.empty())
+				{
+					bool found = false;
+					for (auto& member : license_manager_.group_members_)
+					{
+						if (member.second.tenant() == tenant)
+						{
+							license_manager_.group_members_.erase(member.first);
+							found = true;
+						}
+					}
+
+					if (found)
+						session.response().result(http::status::ok);
+					else
+						session.response().result(http::status::not_found);
+				}
+				else
+				{
+					auto& member = license_manager_.group_members_.find(tenant + node);
+
+					if (member != license_manager_.group_members_.end())
+					{
+						license_manager_.group_members_.erase(member);
+						session.response().result(http::status::ok);
+					}
+					else session.response().result(http::status::not_found);
 				}
 			});
 
 			// New node, tenant must exist.
-			S::router_.on_put("/pm/:tenant/:node", [this](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_put("/pm/tenants/:tenant/upstreams/:node", [this](http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
