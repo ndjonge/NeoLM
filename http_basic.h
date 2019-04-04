@@ -1949,7 +1949,7 @@ public:
 			t0_ = std::chrono::steady_clock::now();
 			t1_ = t0_;
 
-			if (router_.call_route(*this))
+			if (router_.call_route(*this) == http::api::router_result_type::match_found)
 			{
 				// end_of_endpoint_handling_ = std::chrono::high_resolution_clock::now();
 				//
@@ -2071,11 +2071,20 @@ using session_handler_type = http::session_handler;
 using route_function_t = std::function<void(session_handler_type& session, const http::api::params& params)>;
 using middleware_function_t = std::function<bool(session_handler_type& session, const http::api::params& params)>;
 
+enum class router_result_type
+{
+	no_route,
+	no_method,
+	match_found
+};
+
+
 template <typename R = route_function_t> class route
 {
 public:
-	route(const std::string& route, const R& endpoint)
-		: route_(route)
+	route(const std::string& method, const std::string& route, const R& endpoint)
+		: method_(method)
+		, route_(route)
 		, endpoint_(endpoint)
 	{
 		size_t b = route_.find_first_of('/');
@@ -2140,6 +2149,7 @@ public:
 		};
 	};
 
+	std::string method_;
 	std::string route_;
 	R endpoint_;
 	std::vector<std::string> tokens_;
@@ -2154,14 +2164,19 @@ public:
 
 	route_metrics& metrics() { return metrics_; }
 
-	bool match(const std::string& url, params& params) const
+	router_result_type match(const std::string& method, const std::string& url, params& params) const
 	{
 		// route: /route/:param1/subroute/:param2/subroute
 		// url:   /route/parameter
 
+		if (method != method_) // NDJ must be final check!
+		{
+			return api::router_result_type::no_method;
+		}
+
 		if (url == route_)
 		{
-			return true;
+			return api::router_result_type::match_found;
 		}
 
 		// std::vector<std::string> tokens;
@@ -2218,7 +2233,11 @@ public:
 			}
 		}
 
-		return match;
+		if (match)
+			return api::router_result_type::match_found;
+		else
+			return api::router_result_type::no_route;
+
 	}
 };
 
@@ -2319,23 +2338,9 @@ public:
 	{
 		std::stringstream s;
 
-		std::map<std::string, api::route<route_function_t>*> m;
-
-		for (auto& route : on_gets_)
-			m[route.route_ + "|GET"] = &route;
-
-		for (auto& route : on_posts_)
-			m[route.route_ + "|POST"] = &route;
-
-		for (auto& route : on_puts_)
-			m[route.route_ + "|PUT"] = &route;
-
-		for (auto& route : on_deletes_)
-			m[route.route_ + "|DELETE"] = &route;
-
-		for (auto& l : m)
+		for (auto& route : route_registry_)
 		{
-			s << R"(")" << l.first << R"(",)" << l.second->metrics().to_string() << "\n";
+			s << R"(")" << route.route_ << R"(",)" << route.method_ << ", " << route.metrics().to_string() << "\n";
 		}
 
 		return s.str();
@@ -2343,32 +2348,27 @@ public:
 
 	void use(const std::string& path) { static_content_routes.emplace_back(path); }
 
-	void on_http_method(const std::string& route, const std::string& http_method, R api_method)
-	{
-		auto& route_vector = lookup_method(http_method);
-
-		route_vector.emplace_back(route, api_method);
-	}
+	void on_http_method(const std::string& route, const std::string& http_method, R api_method) { route_registry_.emplace_back(http_method, route, api_method); }
 
 	void on_busy(std::function<bool()> on_busy_callback) { on_busy_ = on_busy_callback; }
 
 	void on_idle(std::function<bool()> on_idle_callback) { on_idle_ = on_idle_callback; }
 
-	void on_get(const std::string& route, R api_method) { on_gets_.emplace_back(route, api_method); }
+	void on_get(const std::string& route, R api_method) { route_registry_.emplace_back("GET", route, api_method); }
 
-	void on_post(const std::string& route, R api_method) { on_posts_.emplace_back(route, api_method); }
+	void on_post(const std::string& route, R api_method) { route_registry_.emplace_back("POST", route, api_method); }
 
-	void on_head(const std::string& route, R api_method) { on_heads_.emplace_back(route, api_method); }
+	void on_head(const std::string& route, R api_method) { route_registry_.emplace_back("HEAD", route, api_method); }
 
-	void on_put(const std::string& route, R api_method) { on_puts_.emplace_back(route, api_method); }
+	void on_put(const std::string& route, R api_method) { route_registry_.emplace_back("PUT", route, api_method); }
 
-	void on_update(const std::string& route, R api_method) { on_updates_.emplace_back(route, api_method); }
+	void on_update(const std::string& route, R api_method) { route_registry_.emplace_back("UPDATE", route, api_method); }
 
-	void on_delete(const std::string& route, R api_method) { on_deletes_.emplace_back(route, api_method); }
+	void on_delete(const std::string& route, R api_method) { route_registry_.emplace_back("DELETE", route, api_method); }
 
-	void on_patch(const std::string& route, R api_method) { on_patches_.emplace_back(route, api_method); }
+	void on_patch(const std::string& route, R api_method) { route_registry_.emplace_back("PATCH", route, api_method); }
 
-	void on_option(const std::string& route, R api_method) { on_options_.emplace_back(route, api_method); }
+	void on_option(const std::string& route, R api_method) { route_registry_.emplace_back("OPTION", route, api_method); }
 
 	void use(const std::string route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
 
@@ -2407,21 +2407,21 @@ public:
 		return result;
 	}
 
-	bool call_route(session_handler_type& session)
+	http::api::router_result_type call_route(session_handler_type& session)
 	{
-		auto& routes = lookup_method(session.request().method());
-
 		// std::cout << session.request().target() << "\n";
 
-		if (!routes.empty())
+		if (!route_registry_.empty())
 		{
 			std::string url = session.request().url_requested().substr(0, session.request().url_requested().find_first_of('?'));
 
-			for (auto& route : routes)
+			for (auto& route : route_registry_)
 			{
 				params params_;
 
-				if (route.match(url, params_))
+				auto result = route.match(session.request().method(), url, params_);
+
+				if (result == api::router_result_type::match_found)
 				{
 					auto t0 = std::chrono::steady_clock::now();
 
@@ -2429,12 +2429,12 @@ public:
 					auto t1 = std::chrono::steady_clock::now();
 
 					route.update_metrics(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
-					return true;
+					return result;
 				}
 			}
 		}
 
-		return false;
+		return api::router_result_type::no_route;
 	}
 
 	bool call_on_busy() { return on_busy_(); }
@@ -2444,39 +2444,7 @@ public:
 protected:
 	std::function<bool()> on_busy_;
 	std::function<bool()> on_idle_;
-
-	std::vector<api::route<route_function_t>> on_gets_;
-	std::vector<api::route<route_function_t>> on_posts_;
-	std::vector<api::route<route_function_t>> on_heads_;
-	std::vector<api::route<route_function_t>> on_puts_;
-	std::vector<api::route<route_function_t>> on_updates_;
-	std::vector<api::route<route_function_t>> on_deletes_;
-	std::vector<api::route<route_function_t>> on_patches_;
-	std::vector<api::route<route_function_t>> on_options_;
-
-	std::vector<api::route<route_function_t>>& lookup_method(const std::string& method)
-	{
-		static std::vector<api::route<route_function_t>> unknown;
-
-		if (method == "GET") return on_gets_;
-
-		if (method == "POST") return on_posts_;
-
-		if (method == "HEAD") return on_heads_;
-
-		if (method == "OPTIONS") return on_options_;
-
-		if (method == "PUT") return on_puts_;
-
-		if (method == "UPDATE") return on_updates_;
-
-		if (method == "DELETE") return on_deletes_;
-
-		if (method == "PATCH") return on_patches_;
-
-		return unknown;
-	};
-
+	std::vector<api::route<route_function_t>> route_registry_;
 	std::string doc_root_;
 	std::vector<std::string> static_content_routes;
 	std::vector<api::middelware<middleware_function_t>> api_middleware_table;
