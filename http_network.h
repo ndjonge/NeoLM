@@ -25,8 +25,12 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 #pragma once
 
-#include <cstdint>
+#ifdef IPV6STRICT
+#undef IPV6STRICT
+#endif
+
 #include <csignal>
+#include <cstdint>
 
 #if defined(_WIN32)
 #include <Ws2tcpip.h>
@@ -144,7 +148,7 @@ void init()
 	WSADATA wsaData;
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) exit(1);
 #else
-	signal(SIGPIPE, SIG_IGN); //NOLINT
+	signal(SIGPIPE, SIG_IGN); // NOLINT
 #endif
 }
 
@@ -211,12 +215,11 @@ public:
 		context_ = nullptr;
 	}
 
-    context(const context&) = delete;
-    context(context&&) = delete;
-    
-    context& operator=(const context&) = delete;
-    context& operator=(context&&) = delete;
+	context(const context&) = delete;
+	context(context&&) = delete;
 
+	context& operator=(const context&) = delete;
+	context& operator=(context&&) = delete;
 
 	void use_certificate_chain_file(const char* path)
 	{
@@ -296,7 +299,7 @@ public:
 		, lowest_layer_(std::move(s.lowest_layer_))
 		, ssl_(s.ssl_)
 	{
-		s.lowest_layer_.assign(-1);
+		s.lowest_layer_.assign(static_cast<socket_t>(-1));
 		s.ssl_ = nullptr;
 	}
 
@@ -400,7 +403,9 @@ public:
 	socket() = default;
 
 	socket(socket_t s)
-		: socket_(s) {}
+		: socket_(s)
+	{
+	}
 
 	enum family
 	{
@@ -432,8 +437,8 @@ public:
 
 	~socket() { close(); };
 
-	void assign(socket_t native_socket) 
-	{ 
+	void assign(socket_t native_socket)
+	{
 		socket_ = native_socket;
 		options_ = none;
 	};
@@ -441,7 +446,7 @@ public:
 	void assign(socket&& socket)
 	{
 		socket_ = socket.lowest_layer();
-		socket.lowest_layer() = -1;
+		socket.lowest_layer() = static_cast<socket_t>(-1); // NOLINT
 	};
 
 	socket_t open(family fam, protocol prot)
@@ -449,11 +454,11 @@ public:
 		socket_ = ::socket(fam, protocol::stream, 0);
 
 		::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&option_values_[options::ipv6only]), sizeof(std::int32_t));
-        
+
 		if (options_ & options::reuseaddr)
 		{
 			::setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&option_values_[options::reuseaddr]), sizeof(std::int32_t));
-        }
+		}
 
 		return socket_;
 	}
@@ -482,8 +487,8 @@ public:
 	}
 
 private:
-	socket_t socket_{static_cast<socket_t>(-1)};
-	options options_{none};
+	socket_t socket_{ static_cast<socket_t>(-1) };
+	options options_{ none };
 	std::int32_t option_values_[options::size] = {};
 };
 
@@ -522,14 +527,14 @@ public:
 
 	endpoint(sockaddr& addr)
 	{
-		std::memcpy(&data_, &addr, sizeof(sockaddr_storage));
+		using std::memcpy;
+		memcpy(&data_, &addr, sizeof(sockaddr_storage));
 	}
 
-    endpoint(const endpoint&) = default;
-    endpoint(endpoint&&) = default;
-    endpoint& operator=(const endpoint&) = default;
-    endpoint& operator=(endpoint&&) = default;
-
+	endpoint(const endpoint&) = default;
+	endpoint(endpoint&&) = default;
+	endpoint& operator=(const endpoint&) = default;
+	endpoint& operator=(endpoint&&) = default;
 
 	virtual ~endpoint()
 	{
@@ -596,7 +601,7 @@ public:
 
 protected:
 	tcp::socket socket_;
-	protocol protocol_{protocol::stream};
+	protocol protocol_{ protocol::stream };
 
 protected:
 	union data_union {
@@ -678,7 +683,7 @@ class resolver
 public:
 	using resolver_results = std::vector<network::tcp::endpoint>;
 
-	resolver() = default; 
+	resolver() = default;
 
 	resolver_results& resolve(const std::string& hostname, const std::string& service)
 	{
@@ -774,13 +779,13 @@ public:
 		t.tv_usec = 0;
 
 		rv = select(static_cast<int>(endpoint_->socket().lowest_layer()) + 1, &set, nullptr, nullptr, &t);
-		
-		if(rv == -1)
+
+		if (rv == -1)
 		{
 			perror("select"); /* an error accured */
 			return;
 		}
-		else if(rv == 0)
+		else if (rv == 0)
 		{
 			ec = network::error::operation_would_block;
 		}
@@ -828,7 +833,7 @@ std::int32_t read(ssl::stream<tcp::socket>& s, const buffer& b) noexcept { retur
 
 std::int32_t write(ssl::stream<tcp::socket>& s, const buffer& b) noexcept { return SSL_write(s.native(), b.data(), static_cast<int>(b.size())); }
 
-std::int32_t write(ssl::stream<tcp::socket>& s, const std::string& str) noexcept { return SSL_write(s.native(), const_cast<char*>(str.data()), static_cast<int>(str.size())); } //NOLINT
+std::int32_t write(ssl::stream<tcp::socket>& s, const std::string& str) noexcept { return SSL_write(s.native(), const_cast<char*>(str.data()), static_cast<int>(str.size())); } // NOLINT
 
 std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_socket)
 {
@@ -859,13 +864,13 @@ std::string get_client_info(const network::tcp::socket& client_socket)
 int tcp_nodelay(network::tcp::socket& s, int value)
 {
 	int reuseaddr = value;
-	return ::setsockopt(s.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&reuseaddr), sizeof(reuseaddr)); //NOLINT
+	return ::setsockopt(s.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&reuseaddr), sizeof(reuseaddr)); // NOLINT
 }
 
 int reuse_address(network::tcp::socket& s, int value)
 {
-    s.set_options(network::tcp::options::reuseaddr, value);
-	return 0; 
+	s.set_options(network::tcp::options::reuseaddr, value);
+	return 0;
 }
 
 int ipv6only(network::tcp::socket& s, int value)
@@ -901,7 +906,7 @@ int no_linger(network::tcp::socket& s, int value)
 		linger_.l_linger = 5;
 	}
 
-	int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_LINGER, reinterpret_cast<char*>(&linger_), sizeof(linger)); //NOLINT
+	int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_LINGER, reinterpret_cast<char*>(&linger_), sizeof(linger)); // NOLINT
 
 	return ret;
 }
@@ -910,7 +915,7 @@ int timeout(network::tcp::socket& s, int value)
 {
 #if defined(_WIN32)
 	DWORD timeout_value = static_cast<DWORD>(value) * 1000;
-	int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value)); //NOLINT
+	int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value)); // NOLINT
 #else
 	timeval timeout{};
 	timeout.tv_sec = value;
