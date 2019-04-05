@@ -11,6 +11,7 @@ set (CMAKE_CXX_EXTENSIONS OFF)
 
 if(MSVC)
 	set(MSVC_VERSION 1900)
+	set(ignoreMe "${CMAKE_C_COMPILER}")
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 endif()
 
