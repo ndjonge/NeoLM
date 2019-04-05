@@ -300,9 +300,9 @@ std::vector<std::string> split(const std::string& str, const std::string& delimi
 	return output;
 }
 
-bool read_from_disk(const std::string& file_path, const std::function<bool(std::array<char, 8192>&, size_t)>& read)
+bool read_from_disk(const std::string& file_path, const std::function<bool(std::array<char, 4096>&, size_t)>& read)
 {
-	std::array<char, 8192> buffer{};
+	std::array<char, 4096> buffer{};
 	std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
 
 	is.seekg(0, std::ifstream::ios_base::beg);
