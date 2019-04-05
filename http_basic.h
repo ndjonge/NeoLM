@@ -342,6 +342,7 @@ enum status_t
 	unauthorized = 401,
 	forbidden = 403,
 	not_found = 404,
+	method_not_allowed = 405,
 	internal_server_error = 500,
 	not_implemented = 501,
 	bad_gateway = 502,
@@ -378,6 +379,8 @@ inline const char* to_string(status_t s)
 		return "HTTP/1.1 403 Forbidden\r\n";
 	case http::status::not_found:
 		return "HTTP/1.1 404 Not Found\r\n";
+	case http::status::method_not_allowed:
+		return "HTTP/1.1 405 Method Not Allowed\r\n";
 	case http::status::internal_server_error:
 		return "HTTP/1.1 500 Internal Server Error\r\n";
 	case http::status::not_implemented:
@@ -1949,38 +1952,60 @@ public:
 			t0_ = std::chrono::steady_clock::now();
 			t1_ = t0_;
 
-			if (router_.call_route(*this) == http::api::router_result_type::match_found)
-			{
-				// end_of_endpoint_handling_ = std::chrono::high_resolution_clock::now();
-				//
+			auto router_result = router_.call_route(*this);
 
+			switch (router_.call_route(*this))
+			{
+			case http::api::router_result_type::match_found:
+			{
 				// Route has a valid handler, response body is set.
 				// Check bodys size and set headers.
 				response_.content_length(response_.body().length());
+
+				break;
 			}
-			else if (router_.serve_static_content(*this))
+			case http::api::router_result_type::no_method:
 			{
-				if (request_path[request_path.size() - 1] == '/')
+				response_.result(http::status::method_not_allowed);
+				response_.content_length(response_.body().length());
+				break;
+			}
+			case http::api::router_result_type::no_route:
+			{
+				auto static_result = router_.serve_static_content(*this);
+
+				if (static_result)
 				{
-					request_path = request_.target() + "index.html";
-					request_.target(request_path);
-					extension = "html";
+					if (request_path[request_path.size() - 1] == '/')
+					{
+						request_path = request_.target() + "index.html";
+						request_.target(request_path);
+						extension = "html";
+					}
+
+					// Static content route.
+					// Check filesize and set headers.
+
+					auto content_size = fs::file_size(request_.target());
+
+					if (content_size == 0) // TODO: empty  files are ok?
+					{
+						response_.result(http::status::not_found);
+						response_.content_length(response_.body().length());
+					}
+					else
+					{
+						response_.type(extension);
+						response_.content_length(content_size);
+					}
 				}
-
-				// Static content route.
-				// Check filesize and set headers.
-				auto content_size = fs::file_size(request_.target());
-
-				if (content_size == 0)
+				else
 				{
 					response_.result(http::status::not_found);
 					response_.content_length(response_.body().length());
 				}
-				else
-				{
-					response_.type(extension);
-					response_.content_length(content_size);
-				}
+				break;
+			}
 			}
 		}
 		else
@@ -2078,7 +2103,6 @@ enum class router_result_type
 	match_found
 };
 
-
 template <typename R = route_function_t> class route
 {
 public:
@@ -2169,14 +2193,12 @@ public:
 		// route: /route/:param1/subroute/:param2/subroute
 		// url:   /route/parameter
 
-		if (method != method_) // NDJ must be final check!
-		{
-			return api::router_result_type::no_method;
-		}
-
 		if (url == route_)
 		{
-			return api::router_result_type::match_found;
+			if (method == method_)
+				return api::router_result_type::match_found;
+			else
+				return api::router_result_type::no_method;
 		}
 
 		// std::vector<std::string> tokens;
@@ -2233,11 +2255,12 @@ public:
 			}
 		}
 
-		if (match)
+		if (match && method_ == method)
 			return api::router_result_type::match_found;
+		else if (match)
+			return api::router_result_type::no_method;
 		else
 			return api::router_result_type::no_route;
-
 	}
 };
 
@@ -2411,6 +2434,8 @@ public:
 	{
 		// std::cout << session.request().target() << "\n";
 
+		auto best_result = api::router_result_type::no_route;
+
 		if (!route_registry_.empty())
 		{
 			std::string url = session.request().url_requested().substr(0, session.request().url_requested().find_first_of('?'));
@@ -2431,10 +2456,14 @@ public:
 					route.update_metrics(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 					return result;
 				}
+				else if (result == api::router_result_type::no_method)
+				{
+					best_result = result;
+				}
 			}
 		}
 
-		return api::router_result_type::no_route;
+		return best_result;
 	}
 
 	bool call_on_busy() { return on_busy_(); }
