@@ -60,7 +60,9 @@ public:
 
 	std::string tenant() const { return tenant_id_; }
 
-
+	void spawn(const std::string& command) 
+	{
+	}
 
 private:
 	std::string tenant_id_;
@@ -515,7 +517,8 @@ private:
 						license_manager_.group_members_.erase(member);
 						session.response().result(http::status::ok);
 					}
-					else session.response().result(http::status::not_found);
+					else
+						session.response().result(http::status::not_found);
 				}
 			});
 
