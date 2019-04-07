@@ -29,11 +29,16 @@ OTHER DEALINGS IN THE SOFTWARE.
 #include "http_network.h"
 
 
-//		{ "upstream-node-nginx-endpoint", "http://localhost:4000/dynamic" },
-//		{ "upstream-node-nginx-endpoint-downstream", "backend" },
-//		{ "upstream-node-scaling", "self-scale" },
-//		{ "upstream-node-scaling-limit-high", "2" },
-//		{ "upstream-node-scaling-limit-lwo", "0"},
+// http_upstream_node.h
+//{ "upstream-node-nginx-endpoint", "http://nlbalndjonge01.mshome.net:4000/dynamic" },
+//{ "upstream-node-nginx-endpoint-downstream", "backend" },
+//{ "upstream-node-nginx-endpoint-myip", "172.17.245.161" },
+//{ "upstream-node-nginx-endpoint-api", "ngx_dynamic_upstream" },
+//{ "upstream-node-scaling", "self-scale" },
+//{ "upstream-node-scaling-fork-cmd", "start /b " + std::accumulate(argv, argv + argc, std::string("")) },
+//{ "upstream-node-connection-limit-high", "2" },
+//{ "upstream-node-connection-limit-lwo", "0"}
+// http_upstream_node.h
 
 namespace http
 {

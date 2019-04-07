@@ -60,6 +60,8 @@ public:
 
 	std::string tenant() const { return tenant_id_; }
 
+
+
 private:
 	std::string tenant_id_;
 	std::string url_;
@@ -530,7 +532,7 @@ private:
 				{
 					if (license_manager_.group_members_.find(tenant + node) != license_manager_.group_members_.end())
 					{
-						session.response().result(http::status::bad_request);
+						session.response().result(http::status::conflict);
 					}
 					else
 					{

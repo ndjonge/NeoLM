@@ -15,13 +15,12 @@
 
 using namespace std::literals;
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]){
 	network::init();
 	network::ssl::init();
 
-	for (int i{0}; i!=20; i++)
-	{
+//	for (int i{0}; i!=20; i++)
+//	{
 
 		neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
 		{
@@ -36,28 +35,16 @@ int main(int argc, char* argv[])
 			{ "doc_root", "/Projects/doc_root" },
 			{ "ssl_certificate", "/projects/ssl/server.crt" },
 			{ "ssl_certificate_key", "/projects/ssl/server.key" }, 
-			// http_upstream_node.h
-			{ "upstream-node-nginx-endpoint", "http://nlbalndjonge01.mshome.net:4000/dynamic" },
-			{ "upstream-node-nginx-endpoint-downstream", "backend" },
-			{ "upstream-node-nginx-endpoint-myip", "172.17.245.161" },
-			{ "upstream-node-nginx-endpoint-api", "ngx_dynamic_upstream" },
-			{ "upstream-node-scaling", "self-scale" },
-			{ "upstream-node-scaling-fork-cmd", "start /b " + std::accumulate(argv, argv + argc, std::string("")) },
-			{ "upstream-node-connection-limit-high", "2" },
-			{ "upstream-node-connection-limit-lwo", "0"}
-			// http_upstream_node.h
 		},	"/projects/neolm_licenses/" };
-
-		//neolm::license_manager<http::basic::async::server> license_server{ "/projects/neolm_licenses/" };
 
 		license_server.start_server();
 
 		license_server.run();
 
-		std::string loop = "loop" + std::to_string(i) + "\n";
-		std::cout << loop;
+//		std::string loop = "loop" + std::to_string(i) + "\n";
+//		std::cout << loop;
 
-	}
+//	}
 	std::cout << "exit!\n";
 
 }
