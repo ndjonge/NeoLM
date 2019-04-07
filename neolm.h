@@ -62,6 +62,8 @@ public:
 
 	void spawn(const std::string& command) 
 	{
+		std::cout << "spawn:" << url_ << "\n";
+		auto future_ = std::async(std::launch::async, [this]() { auto result = std::system(url_.c_str()); });
 	}
 
 private:
