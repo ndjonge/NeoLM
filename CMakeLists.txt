@@ -29,16 +29,20 @@ endif()
 #    message("Json:" ${NLOHMANN_JSON_INCLUDE_DIR})	
 #endif()
 
+
 message("Asio: ${ASIO_INCLUDE_DIR}")
-#message("Json: ${NLOHMANN_JSON_INCLUDE_DIR}")	
+
+find_package(nlohmann_json CONFIG REQUIRED 3.2.0)
+message("Json: ${NLOHMANN_JSON_INCLUDE_DIR}")	
 
 include_directories(${ASIO_INCLUDE_DIR})
-#include_directories(${NLOHMANN_JSON_INCLUDE_DIR})
+include_directories(${NLOHMANN_JSON_INCLUDE_DIR} nlohmann/json.hpp HINTS)
 include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
 
 target_link_libraries( ${PROJECT_NAME} OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries( ${PROJECT_NAME} ZLIB::ZLIB)
+target_link_libraries( ${PROJECT_NAME} nlohmann_json nlohmann_json::nlohmann_json)
 
 if(WIN32)
   target_link_libraries( ${PROJECT_NAME} wsock32 ws2_32)

@@ -13,11 +13,20 @@
 #include "http_asio.h"
 #include "neolm.h"
 
+#include <nlohmann/json.hpp>
+using json_2 = nlohmann::json;
+
 using namespace std::literals;
 
 int main(int argc, char* argv[]){
 	network::init();
 	network::ssl::init();
+
+	// create an empty structure (null)
+	json_2 j;
+
+	// add a number that is stored as double (note the implicit conversion of j to an object)
+	j["pi"] = 3.141;
 
 //	for (int i{0}; i!=20; i++)
 //	{
