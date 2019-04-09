@@ -30,32 +30,24 @@ int main(int argc, char* argv[]){
 	// add a number that is stored as double (note the implicit conversion of j to an object)
 	j["pi"] = 3.141;
 
-//	for (int i{0}; i!=20; i++)
-//	{
+	neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
+	{
+		{ "http_server_identification", "neolm/8.0.01" },
+		{ "http_listen_port_begin", "3000" },
+		{ "http_listen_port_end", "3000" },
+		{ "https_listen_port_begin", "5000" },
+		{ "https_listen_port_end", "5000" },
+		{ "keepalive_count", "1048576" },
+		{ "keepalive_timeout", "30" },
+		{ "thread_count", "8" },
+		{ "doc_root", "/Projects/doc_root" },
+		{ "ssl_certificate", "/projects/ssl/server.crt" },
+		{ "ssl_certificate_key", "/projects/ssl/server.key" }, 
+	},	"/projects/neolm_licenses/" };
 
-		neolm::license_manager<http::basic::threaded::server> license_server{http::configuration
-		{
-			{ "http_server_identification", "neolm/8.0.01" },
-			{ "http_listen_port_begin", "3000" },
-			{ "http_listen_port_end", "3000" },
-			{ "https_listen_port_begin", "5000" },
-			{ "https_listen_port_end", "5000" },
-			{ "keepalive_count", "1048576" },
-			{ "keepalive_timeout", "30" },
-			{ "thread_count", "8" },
-			{ "doc_root", "/Projects/doc_root" },
-			{ "ssl_certificate", "/projects/ssl/server.crt" },
-			{ "ssl_certificate_key", "/projects/ssl/server.key" }, 
-		},	"/projects/neolm_licenses/" };
+	license_server.start_server();
 
-		license_server.start_server();
-
-		license_server.run();
-
-//		std::string loop = "loop" + std::to_string(i) + "\n";
-//		std::cout << loop;
-
-//	}
+	license_server.run();
 	std::cout << "exit!\n";
 
 }
