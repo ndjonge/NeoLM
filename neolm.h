@@ -5,32 +5,15 @@
 #include <iostream>
 #include <mutex>
 #include <unordered_map>
+#include <signal.h>
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
-
-#include <signal.h>
 
 using namespace std::literals;
 
 namespace neolm
 {
-class instance;
-template <class M> class product;
-
-class user;
-class server;
-class named_user_license;
-class concurrent_user_license;
-class named_server_license;
-
-using instances = std::unordered_map<std::string, neolm::instance>;
-using concurrent_user_licenses = std::unordered_map<std::string, neolm::product<neolm::concurrent_user_license>>;
-using named_user_licenses = std::unordered_map<std::string, neolm::product<neolm::named_user_license>>;
-using named_server_licenses = std::unordered_map<std::string, neolm::product<neolm::named_server_license>>;
-
-using users = std::unordered_map<std::string, neolm::user>;
-using servers = std::unordered_map<std::string, neolm::server>;
 
 namespace pm
 {
