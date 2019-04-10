@@ -32,7 +32,7 @@ endif()
 
 message("Asio: ${ASIO_INCLUDE_DIR}")
 
-find_package(nlohmann_json CONFIG REQUIRED 3.2.0)
+find_package(nlohmann_json CONFIG REQUIRED)
 message("Json: ${NLOHMANN_JSON_INCLUDE_DIR}")	
 
 include_directories(${ASIO_INCLUDE_DIR})

@@ -3251,17 +3251,9 @@ public:
 		size_t bytes_received_;
 		size_t bytes_send_;
 
-		/*		std::vector<char> data_request_;
-				std::vector<char> data_response_;
-
-				std::vector<char>& request_data() { return data_request_; }
-				std::vector<char>& response_data() { return data_response_; }*/
-
 		void reset_session()
 		{
 			session_handler_.reset();
-			// data_request_.clear();
-			// data_response_.clear();
 		}
 	};
 
