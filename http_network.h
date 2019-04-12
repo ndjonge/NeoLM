@@ -142,7 +142,7 @@ enum errc_t
 
 } // namespace error
 
-void init()
+inline void init()
 {
 #if defined(_WIN32)
 	WSADATA wsaData;
@@ -172,13 +172,13 @@ private:
 namespace ssl
 {
 
-void init()
+inline void init()
 {
 	SSL_load_error_strings();
 	OpenSSL_add_ssl_algorithms();
 }
 
-void cleanup() { EVP_cleanup(); }
+inline void cleanup() { EVP_cleanup(); }
 
 class context
 {
@@ -342,7 +342,7 @@ namespace ip
 {
 using address = std::pair<std::string, std::uint16_t>;
 
-address make_address(const std::string& url)
+inline address make_address(const std::string& url)
 {
 	std::string addr = url.substr(0, url.find_last_of(':'));
 	std::uint16_t port = atoi(url.substr(url.find_last_of(':') + 1).c_str());
@@ -350,7 +350,7 @@ address make_address(const std::string& url)
 	return address{ addr, port };
 }
 
-address make_address_from_name(const std::string& url)
+inline address make_address_from_name(const std::string& url)
 {
 	std::string addr = url.substr(0, url.find_last_of(':'));
 	std::uint16_t port = atoi(url.substr(url.find_last_of(':') + 1).c_str());
@@ -358,7 +358,7 @@ address make_address_from_name(const std::string& url)
 	return address{ addr, port };
 }
 
-address make_address_from_url(const std::string& url)
+inline address make_address_from_url(const std::string& url)
 {
 	// http://hostname.hostname.com:port/blablabla
 
@@ -735,8 +735,6 @@ public:
 		int ret = 0;
 		endpoint_ = &endpoint;
 
-		int use_portsharding = 1;
-
 		endpoint_->open(protocol_);
 
 		ret = ::bind(endpoint_->socket().lowest_layer(), endpoint_->addr(), endpoint_->addr_size());
@@ -807,7 +805,7 @@ private:
 };
 } // namespace tcp
 
-error_code connect(tcp::socket& s, tcp::resolver::resolver_results& results)
+inline error_code connect(tcp::socket& s, tcp::resolver::resolver_results& results)
 {
 	network::error_code ret = error::host_unreachable;
 
@@ -823,19 +821,22 @@ error_code connect(tcp::socket& s, tcp::resolver::resolver_results& results)
 	return ret;
 }
 
-std::int32_t read(const network::tcp::socket& s, const buffer& b) noexcept { return ::recv(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0); }
+inline std::int32_t read(const network::tcp::socket& s, const buffer& b) noexcept { return ::recv(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0); }
 
-std::int32_t write(const network::tcp::socket& s, const buffer& b) noexcept { return ::send(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0); }
+inline std::int32_t write(const network::tcp::socket& s, const buffer& b) noexcept { return ::send(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0); }
 
-std::int32_t write(const network::tcp::socket& s, const std::string& str) noexcept { return ::send(s.lowest_layer(), str.data(), static_cast<int>(str.size()), 0); }
+inline std::int32_t write(const network::tcp::socket& s, const std::string& str) noexcept { return ::send(s.lowest_layer(), str.data(), static_cast<int>(str.size()), 0); }
 
-std::int32_t read(ssl::stream<tcp::socket>& s, const buffer& b) noexcept { return SSL_read(s.native(), b.data(), static_cast<int>(b.size())); }
+inline std::int32_t read(ssl::stream<tcp::socket>& s, const buffer& b) noexcept { return SSL_read(s.native(), b.data(), static_cast<int>(b.size())); }
 
-std::int32_t write(ssl::stream<tcp::socket>& s, const buffer& b) noexcept { return SSL_write(s.native(), b.data(), static_cast<int>(b.size())); }
+inline std::int32_t write(ssl::stream<tcp::socket>& s, const buffer& b) noexcept { return SSL_write(s.native(), b.data(), static_cast<int>(b.size())); }
 
-std::int32_t write(ssl::stream<tcp::socket>& s, const std::string& str) noexcept { return SSL_write(s.native(), const_cast<char*>(str.data()), static_cast<int>(str.size())); } // NOLINT
+inline std::int32_t write(ssl::stream<tcp::socket>& s, const std::string& str) noexcept
+{
+	return SSL_write(s.native(), const_cast<char*>(str.data()), static_cast<int>(str.size()));
+} // NOLINT
 
-std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_socket)
+inline std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_socket)
 {
 	sockaddr_in6 sa = { 0 };
 	socklen_t sl = sizeof(sa);
@@ -848,7 +849,7 @@ std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_s
 	return c;
 }
 
-std::string get_client_info(const network::tcp::socket& client_socket)
+inline std::string get_client_info(const network::tcp::socket& client_socket)
 {
 	sockaddr_in6 sa = { 0 };
 	socklen_t sl = sizeof(sa);
@@ -861,25 +862,25 @@ std::string get_client_info(const network::tcp::socket& client_socket)
 	return c;
 }
 
-int tcp_nodelay(network::tcp::socket& s, int value)
+inline int tcp_nodelay(network::tcp::socket& s, int value)
 {
 	int reuseaddr = value;
 	return ::setsockopt(s.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&reuseaddr), sizeof(reuseaddr)); // NOLINT
 }
 
-int reuse_address(network::tcp::socket& s, int value)
+inline int reuse_address(network::tcp::socket& s, int value)
 {
 	s.set_options(network::tcp::options::reuseaddr, value);
 	return 0;
 }
 
-int ipv6only(network::tcp::socket& s, int value)
+inline int ipv6only(network::tcp::socket& s, int value)
 {
 	s.set_options(network::tcp::options::ipv6only, value);
 	return 0;
 }
 
-int use_portsharding(network::tcp::socket& s, int value)
+inline int use_portsharding(network::tcp::socket& s, int value)
 {
 	int use_portsharding = value;
 #ifdef LINUX
@@ -889,7 +890,7 @@ int use_portsharding(network::tcp::socket& s, int value)
 	return -1;
 }
 
-int no_linger(network::tcp::socket& s, int value)
+inline int no_linger(network::tcp::socket& s, int value)
 {
 	// No linger
 	linger linger_{};
@@ -911,7 +912,7 @@ int no_linger(network::tcp::socket& s, int value)
 	return ret;
 }
 
-int timeout(network::tcp::socket& s, int value)
+inline int timeout(network::tcp::socket& s, int value)
 {
 #if defined(_WIN32)
 	DWORD timeout_value = static_cast<DWORD>(value) * 1000;
@@ -926,15 +927,15 @@ int timeout(network::tcp::socket& s, int value)
 	return ret;
 }
 
-void closesocket(network::tcp::socket& client_socket) { ::closesocket(client_socket.lowest_layer()); }
+inline void closesocket(network::tcp::socket& client_socket) { ::closesocket(client_socket.lowest_layer()); }
 
-void closesocket(network::ssl::stream<network::tcp::socket>& client_socket)
+inline void closesocket(network::ssl::stream<network::tcp::socket>& client_socket)
 {
 	client_socket.close();
 	::closesocket(client_socket.lowest_layer().lowest_layer());
 }
 
-void shutdown(network::tcp::socket& client_socket, int how) { ::shutdown(client_socket.lowest_layer(), how); }
+inline void shutdown(network::tcp::socket& client_socket, int how) { ::shutdown(client_socket.lowest_layer(), how); }
 
 enum shutdown_type
 {
@@ -943,50 +944,9 @@ enum shutdown_type
 	shutdown_both
 };
 
-void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, shutdown_type how) { ::shutdown(client_socket.lowest_layer().lowest_layer(), static_cast<int>(how)); }
+inline void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, shutdown_type how)
+{
+	::shutdown(client_socket.lowest_layer().lowest_layer(), static_cast<int>(how));
+}
 
 } // namespace network
-
-void test_network()
-{
-	/*network::init();
-
-	network::ssl::init();
-	network::tcp::v6 endpoint_http{3001};
-	network::tcp::v6 endpoint_https{3000};
-
-	network::tcp::acceptor acceptor_http{};
-	network::tcp::acceptor acceptor_https{};
-
-	acceptor_http.open(endpoint_http.protocol());
-	acceptor_https.open(endpoint_https.protocol());
-
-	acceptor_http.bind(endpoint_http);
-	acceptor_https.bind(endpoint_https);
-
-	acceptor_http.listen();
-	acceptor_https.listen();
-
-	network::ssl::context ssl_context(network::ssl::context::tlsv12);
-
-	ssl_context.use_certificate_chain_file("C:\\ssl\\server.crt");
-	ssl_context.use_private_key_file("C:\\ssl\\server.key");
-
-	network::ssl::stream<network::tcp::socket> https_socket(ssl_context);*/
-	// network::tcp::socket http_socket;
-
-	// std::array<char, 4096> a;
-
-	// acceptor_http.accept(http_socket);
-
-	// auto x = network::read(http_socket, network::buffer(a.data(), a.size()));
-	// auto y = network::write(http_socket, network::buffer(a.data(), a.size()));
-
-	// acceptor_https.accept(https_socket.lowest_layer());
-	// https_socket.handshake(network::ssl::stream_base::server);
-
-	//	auto x2 = network::read(http_socket, network::buffer(a.data(), a.size()));
-	//	auto y2 = network::write(http_socket, network::buffer(a.data(), a.size()));
-
-	exit(0);
-}

@@ -278,21 +278,21 @@ template <typename T> T& split_(T& result, const typename T::value_type& s, cons
 	return result;
 }
 
-std::vector<std::string> split(const std::string& str, const std::string& delimiters)
+inline std::vector<std::string> split(const std::string& str, const std::string& delimiters)
 {
 	std::vector<std::string> output;
 
 	output.reserve(str.size() / 2);
 
-	auto first = std::cbegin(str);
+	auto first = str.cbegin();
 
-	while (first != std::cend(str))
+	while (first != str.cend())
 	{
-		const auto second = std::find_first_of(first, std::cend(str), std::cbegin(delimiters), std::cend(delimiters));
+		const auto second = std::find_first_of(first, str.cend(), delimiters.cbegin(), delimiters.cend());
 
 		if (first != second) output.emplace_back(first, second);
 
-		if (second == std::cend(str)) break;
+		if (second == str.cend()) break;
 
 		first = std::next(second);
 	}
@@ -300,7 +300,7 @@ std::vector<std::string> split(const std::string& str, const std::string& delimi
 	return output;
 }
 
-bool read_from_disk(const std::string& file_path, const std::function<bool(std::array<char, 4096>&, size_t)>& read)
+inline bool read_from_disk(const std::string& file_path, const std::function<bool(std::array<char, 4096>&, size_t)>& read)
 {
 	std::array<char, 4096> buffer{};
 	std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
@@ -401,6 +401,18 @@ namespace misc_strings
 const char name_value_separator[] = { ':', ' ' };
 const char crlf[] = { '\r', '\n' };
 } // namespace misc_strings
+
+namespace router_result
+{
+
+enum router_result_type
+{
+	no_route,
+	no_method,
+	match_found
+};
+
+}
 
 class field
 {
@@ -1768,9 +1780,13 @@ public:
 	{
 	}
 
-	template <typename InputIterator> std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end) { return request_parser_.parse(request_, begin, end); }
+	template <typename InputIterator> std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end)
+	{
+		return request_parser_.parse(request_, begin, end);
+	}
 
-	//	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator> parse_response(InputIterator begin, InputIterator end) { return response_parser_.parse(response_, begin, end); }
+	//	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator> parse_response(InputIterator begin, InputIterator end) { return
+	// response_parser_.parse(response_, begin, end); }
 
 	class url
 	{
@@ -1953,11 +1969,9 @@ public:
 			t0_ = std::chrono::steady_clock::now();
 			t1_ = t0_;
 
-			auto router_result = router_.call_route(*this);
-
 			switch (router_.call_route(*this))
 			{
-			case http::api::router_result_type::match_found:
+			case http::router_result::match_found:
 			{
 				// Route has a valid handler, response body is set.
 				// Check bodys size and set headers.
@@ -1965,13 +1979,13 @@ public:
 
 				break;
 			}
-			case http::api::router_result_type::no_method:
+			case http::router_result::no_method:
 			{
 				response_.result(http::status::method_not_allowed);
 				response_.content_length(response_.body().length());
 				break;
 			}
-			case http::api::router_result_type::no_route:
+			case http::router_result::no_route:
 			{
 				auto static_result = router_.serve_static_content(*this);
 
@@ -2097,13 +2111,6 @@ using session_handler_type = http::session_handler;
 using route_function_t = std::function<void(session_handler_type& session, const http::api::params& params)>;
 using middleware_function_t = std::function<bool(session_handler_type& session, const http::api::params& params)>;
 
-enum class router_result_type
-{
-	no_route,
-	no_method,
-	match_found
-};
-
 template <typename R = route_function_t> class route
 {
 public:
@@ -2189,7 +2196,7 @@ public:
 
 	route_metrics& metrics() { return metrics_; }
 
-	router_result_type match(const std::string& method, const std::string& url, params& params) const
+	router_result::router_result_type match(const std::string& method, const std::string& url, params& params) const
 	{
 		// route: /route/:param1/subroute/:param2/subroute
 		// url:   /route/parameter
@@ -2197,9 +2204,9 @@ public:
 		if (url == route_)
 		{
 			if (method == method_)
-				return api::router_result_type::match_found;
+				return router_result::match_found;
 			else
-				return api::router_result_type::no_method;
+				return router_result::no_method;
 		}
 
 		// std::vector<std::string> tokens;
@@ -2257,11 +2264,11 @@ public:
 		}
 
 		if (match && method_ == method)
-			return api::router_result_type::match_found;
+			return router_result::match_found;
 		else if (match)
-			return api::router_result_type::no_method;
+			return router_result::no_method;
 		else
-			return api::router_result_type::no_route;
+			return router_result::no_route;
 	}
 };
 
@@ -2431,11 +2438,11 @@ public:
 		return result;
 	}
 
-	http::api::router_result_type call_route(session_handler_type& session)
+	http::router_result::router_result_type call_route(session_handler_type& session)
 	{
 		// std::cout << session.request().target() << "\n";
 
-		auto best_result = api::router_result_type::no_route;
+		auto best_result = http::router_result::router_result_type::no_route;
 
 		if (!route_registry_.empty())
 		{
@@ -2447,7 +2454,7 @@ public:
 
 				auto result = route.match(session.request().method(), url, params_);
 
-				if (result == api::router_result_type::match_found)
+				if (result == router_result::router_result_type::match_found)
 				{
 					auto t0 = std::chrono::steady_clock::now();
 
@@ -2457,7 +2464,7 @@ public:
 					route.update_metrics(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 					return result;
 				}
-				else if (result == api::router_result_type::no_method)
+				else if (result == router_result::router_result_type::no_method)
 				{
 					best_result = result;
 				}
@@ -2467,9 +2474,21 @@ public:
 		return best_result;
 	}
 
-	bool call_on_busy() { return on_busy_(); }
+	bool call_on_busy()
+	{
+		if (on_busy_)
+			return on_busy_();
+		else
+			return false;
+	}
 
-	bool call_on_idle() { return on_idle_(); }
+	bool call_on_idle()
+	{
+		if (on_idle_)
+			return on_idle_();
+		else
+			return true;
+	}
 
 protected:
 	std::function<bool()> on_busy_;
@@ -2569,7 +2588,7 @@ public:
 			is_busy_ = false;
 		}
 
-		const std::int64_t idle_duration()
+		std::int64_t idle_duration()
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 			return is_idle_ ? std::chrono::nanoseconds(std::chrono::steady_clock::now() - idle_t0_).count() / 1000000000 : 0;
@@ -2680,7 +2699,8 @@ public:
 
 			s << R"(")" << session.request().get("Remote_Addr") << R"(")"
 			  << R"( - ")" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << R"(")"
-			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << R"( - ")" << session.request().get("User-Agent") << "\"\n";
+			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << R"( - ")"
+			  << session.request().get("User-Agent") << "\"\n";
 
 			access_log_.emplace_back(s.str());
 
@@ -2838,9 +2858,9 @@ public:
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
 
-					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_)]() {
-						new_connection_handler->proceed();
-					});
+					std::thread connection_thread(
+						[new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
+							 *this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
 
 					http_connection_queue_.pop();
@@ -2894,8 +2914,9 @@ public:
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
 
-					std::thread connection_thread([new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
-													   *this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
+					std::thread connection_thread(
+						[new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
+							 *this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
 					https_connection_queue_.pop();
 
@@ -2946,7 +2967,8 @@ public:
 
 			if (ec)
 			{
-				throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":" + std::to_string(https_listen_port_end_) + " ]"));
+				throw std::runtime_error(
+					std::string("cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":" + std::to_string(https_listen_port_end_) + " ]"));
 				exit(-1);
 			}
 
@@ -3029,7 +3051,8 @@ public:
 
 			if (ec)
 			{
-				throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":" + std::to_string(http_listen_port_end_) + " ]"));
+				throw std::runtime_error(
+					std::string("cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":" + std::to_string(http_listen_port_end_) + " ]"));
 				exit(-1);
 			}
 
@@ -3082,7 +3105,8 @@ public:
 		~connection_handler()
 		{
 			/*			std::string port = std::to_string(server_.http_listen_port_);
-						std::string msg = port + " close connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " + std::to_string(session_handler_.keepalive_count()) + "\n";
+						std::string msg = port + " close connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " +
+			   std::to_string(session_handler_.keepalive_count()) + "\n";
 
 						std::cout << msg;*/
 
@@ -3251,9 +3275,17 @@ public:
 		size_t bytes_received_;
 		size_t bytes_send_;
 
+		/*		std::vector<char> data_request_;
+				std::vector<char> data_response_;
+
+				std::vector<char>& request_data() { return data_request_; }
+				std::vector<char>& response_data() { return data_response_; }*/
+
 		void reset_session()
 		{
 			session_handler_.reset();
+			// data_request_.clear();
+			// data_response_.clear();
 		}
 	};
 

@@ -1,214 +1,290 @@
+#pragma once
+#include <Sddl.h>
 #include <string>
+#include <windows.h>
 
 namespace process
 {
 
-static void dump(HANDLE primaryToken)
+namespace
 {
-	PTOKEN_PRIVILEGES pTokenBuf = NULL;
-	DWORD dwTokenBufSize;
 
-	if (((GetTokenInformation(primaryToken, TokenPrivileges, NULL, 0, &dwTokenBufSize) == 0) && (GetLastError() != ERROR_INSUFFICIENT_BUFFER))
-		|| ((pTokenBuf = (PTOKEN_PRIVILEGES)malloc(dwTokenBufSize)) == NULL)
-		|| (GetTokenInformation(primaryToken, TokenPrivileges, pTokenBuf, dwTokenBufSize, &dwTokenBufSize) == 0))
+void RunAs(LPWSTR inUser, LPWSTR inPW, LPWSTR inCommand);
+
+} // namespace
+
+struct PRIVILAGENAME_MAPPING
+{
+	CHAR SymbolName[1024];
+	CHAR PrivilegeName[1024];
+};
+
+const PRIVILAGENAME_MAPPING PrivilegeNameMapping[] = { { "SE_CREATE_TOKEN_NAME", SE_CREATE_TOKEN_NAME },
+													   { "SE_ASSIGNPRIMARYTOKEN_NAME", SE_ASSIGNPRIMARYTOKEN_NAME },
+													   { "SE_LOCK_MEMORY_NAME", SE_LOCK_MEMORY_NAME },
+													   { "SE_INCREASE_QUOTA_NAME", SE_INCREASE_QUOTA_NAME },
+													   { "SE_UNSOLICITED_INPUT_NAME", SE_UNSOLICITED_INPUT_NAME }, // no LUID?
+													   { "SE_MACHINE_ACCOUNT_NAME", SE_MACHINE_ACCOUNT_NAME },
+													   { "SE_TCB_NAME", SE_TCB_NAME },
+													   { "SE_SECURITY_NAME", SE_SECURITY_NAME },
+													   { "SE_TAKE_OWNERSHIP_NAME", SE_TAKE_OWNERSHIP_NAME },
+													   { "SE_LOAD_DRIVER_NAME", SE_LOAD_DRIVER_NAME },
+													   { "SE_SYSTEM_PROFILE_NAME", SE_SYSTEM_PROFILE_NAME },
+													   { "SE_SYSTEMTIME_NAME", SE_SYSTEMTIME_NAME },
+													   { "SE_PROF_SINGLE_PROCESS_NAME", SE_PROF_SINGLE_PROCESS_NAME },
+													   { "SE_INC_BASE_PRIORITY_NAME", SE_INC_BASE_PRIORITY_NAME },
+													   { "SE_CREATE_PAGEFILE_NAME", SE_CREATE_PAGEFILE_NAME },
+													   { "SE_CREATE_PERMANENT_NAME", SE_CREATE_PERMANENT_NAME },
+													   { "SE_BACKUP_NAME", SE_BACKUP_NAME },
+													   { "SE_RESTORE_NAME", SE_RESTORE_NAME },
+													   { "SE_SHUTDOWN_NAME", SE_SHUTDOWN_NAME },
+													   { "SE_DEBUG_NAME", SE_DEBUG_NAME },
+													   { "SE_AUDIT_NAME", SE_AUDIT_NAME },
+													   { "SE_SYSTEM_ENVIRONMENT_NAME", SE_SYSTEM_ENVIRONMENT_NAME },
+													   { "SE_CHANGE_NOTIFY_NAME", SE_CHANGE_NOTIFY_NAME },
+													   { "SE_REMOTE_SHUTDOWN_NAME", SE_REMOTE_SHUTDOWN_NAME },
+													   { "SE_UNDOCK_NAME", SE_UNDOCK_NAME },
+													   { "SE_SYNC_AGENT_NAME", SE_SYNC_AGENT_NAME },
+													   { "SE_ENABLE_DELEGATION_NAME", SE_ENABLE_DELEGATION_NAME },
+													   { "SE_MANAGE_VOLUME_NAME", SE_MANAGE_VOLUME_NAME },
+													   { "SE_IMPERSONATE_NAME", SE_IMPERSONATE_NAME },
+													   { "SE_CREATE_GLOBAL_NAME", SE_CREATE_GLOBAL_NAME },
+													   { "SE_TRUSTED_CREDMAN_ACCESS_NAME", SE_TRUSTED_CREDMAN_ACCESS_NAME },
+													   { "SE_RELABEL_NAME", SE_RELABEL_NAME },
+													   { "SE_INC_WORKING_SET_NAME", SE_INC_WORKING_SET_NAME },
+													   { "SE_TIME_ZONE_NAME", SE_TIME_ZONE_NAME },
+													   { "SE_CREATE_SYMBOLIC_LINK_NAME", SE_CREATE_SYMBOLIC_LINK_NAME },
+													   { "", "" } };
+
+BOOL LookupPrivilegeName(
+	LPCWSTR SystemName,
+	CONST PLUID Luid,
+	LPSTR* SymbolName,
+	LPSTR PrivilegeName,
+	LPDWORD PrivilegeNameLength,
+	LPSTR DisplayName,
+	LPDWORD DisplayNameLength,
+	BOOL NoErrMsg)
+{
+	BOOL Ret = FALSE;
+	DWORD LanguageId;
+	int Index = -1;
+
+	Ret = LookupPrivilegeName(NULL, Luid, PrivilegeName, PrivilegeNameLength);
+	if (!Ret)
 	{
-		DWORD lLastError = GetLastError();
-		char lErrorText[512];
-
-		printf("Failed to retrieve TokenPrivileges information: error %lu (%s)", lLastError, lErrorText);
+		if (GetLastError() != ERROR_INSUFFICIENT_BUFFER && !NoErrMsg) wprintf(L"LookupPrivilegeName failed - 0x%08x\n", GetLastError());
+		goto cleanup;
 	}
-	else
+
+	Ret = LookupPrivilegeDisplayName(NULL, PrivilegeName, DisplayName, DisplayNameLength, &LanguageId);
+	if (!Ret)
 	{
-		char privname[256];
-		DWORD privnameSize, i;
+		if (GetLastError() != ERROR_INSUFFICIENT_BUFFER && !NoErrMsg) wprintf(L"LookupPrivilegeDisplayName failed - 0x%08x\n", GetLastError());
+		goto cleanup;
+	}
 
-		printf("Effective privileges (#%lu) of token:\n", pTokenBuf->PrivilegeCount);
-
-		/* print effective user rights */
-		for (i = 0; i < pTokenBuf->PrivilegeCount; i++)
+	Ret = FALSE;
+	const PRIVILAGENAME_MAPPING* p = PrivilegeNameMapping;
+	for (Index = 0; p->SymbolName[0] != 0; ++p, ++Index)
+	{
+		if (strcmp(PrivilegeName, p->PrivilegeName) == 0)
 		{
-			privnameSize = sizeof(privname);
-			if (LookupPrivilegeNameA(NULL, &(pTokenBuf->Privileges[i].Luid), privname, &privnameSize) != 0)
-			{
-				DWORD attr = pTokenBuf->Privileges[i].Attributes;
-				char buf[200];
-				char* pBuf = buf;
-				int nBytes;
-
-				if (attr == 0)
-				{
-					nBytes = snprintf(pBuf, sizeof(buf) - (pBuf - buf), "Disabled ");
-					if (nBytes > 0) pBuf += nBytes;
-				}
-				else
-				{
-					if (attr & SE_PRIVILEGE_ENABLED)
-					{
-						nBytes = snprintf(pBuf, sizeof(buf) - (pBuf - buf), "Enabled ");
-						if (nBytes > 0) pBuf += nBytes;
-					}
-					if (attr & SE_PRIVILEGE_ENABLED_BY_DEFAULT)
-					{
-						nBytes = snprintf(pBuf, sizeof(buf) - (pBuf - buf), "EnabledByDefault ");
-						if (nBytes > 0) pBuf += nBytes;
-					}
-					if (attr & SE_PRIVILEGE_REMOVED)
-					{
-						nBytes = snprintf(pBuf, sizeof(buf) - (pBuf - buf), "Removed ");
-						if (nBytes > 0) pBuf += nBytes;
-					}
-					if (attr & SE_PRIVILEGE_USED_FOR_ACCESS)
-					{
-						nBytes = snprintf(pBuf, sizeof(buf) - (pBuf - buf), "UsedForAccess ");
-						if (nBytes > 0) pBuf += nBytes;
-					}
-				}
-
-				printf("   %03d: %-35s %0x (%s)\n", i, privname, pTokenBuf->Privileges[i].Attributes, buf);
-			}
+			Ret = TRUE;
+			break;
 		}
 	}
 
-	if (pTokenBuf != NULL)
-	{
-		free(pTokenBuf);
-	}
+	if (Ret)
+		SymbolName = (LPSTR*)&PrivilegeNameMapping[Index].SymbolName[0];
+	else if (NoErrMsg)
+		wprintf(L"%s not found\n", PrivilegeName);
+
+cleanup:
+	return Ret;
 }
 
-BOOL SetPrivilege(HANDLE hToken, const char* aPrivilege, BOOL bEnablePrivilege, char* errorBuf, size_t errorBufSize)
+BOOL LookupPrivilegeValueEx(LPCSTR SystemName, LPCSTR Name, PLUID Luid)
 {
-	LUID luid = { 0 };
-	BOOL bRet = LookupPrivilegeValue(NULL, aPrivilege, &luid);
-	if (!bRet && errorBuf != NULL && errorBufSize != 0)
+	BOOL Ret = LookupPrivilegeValue(SystemName, Name, Luid);
+	if (!Ret && GetLastError() == ERROR_NO_SUCH_PRIVILEGE)
 	{
-		char lErrorText[512];
-		DWORD lLastError = GetLastError();
+		const PRIVILAGENAME_MAPPING* p;
+		for (p = PrivilegeNameMapping; p->SymbolName[0] != 0; ++p)
+		{
+			if (strcmp(Name, p->SymbolName) == 0) return LookupPrivilegeValue(SystemName, p->PrivilegeName, Luid);
+		}
+		SetLastError(ERROR_NO_SUCH_PRIVILEGE);
+		Ret = FALSE;
+	}
+	return Ret;
+}
+
+// >0 Enabled
+// =0 Disabled
+// <0 Not assigned
+BOOL CheckPrivilege(HANDLE Token, LPCSTR PrivilegeName, LPLONG Privileged)
+{
+	LUID luid;
+	if (!LookupPrivilegeValueEx(NULL, PrivilegeName, &luid))
+	{
+		wprintf(L"LookupPrivilegeValue failed - 0x%08x\n", GetLastError());
+		return FALSE;
 	}
 
-	if (bRet)
-	{
-		TOKEN_PRIVILEGES tp = { 0 };
+	PRIVILEGE_SET PrivilegeSet;
+	PrivilegeSet.Control = 0;
+	PrivilegeSet.PrivilegeCount = 1;
+	PrivilegeSet.Privilege[0].Luid = luid;
+	PrivilegeSet.Privilege[0].Attributes = 0; // not used
 
+	BOOL Check;
+	if (!PrivilegeCheck(Token, &PrivilegeSet, &Check))
+	{
+		wprintf(L"PrivilegeCheck failed - 0x%08x\n", GetLastError());
+		return FALSE;
+	}
+
+	if (Check)
+		*Privileged = 1;
+	else
+	{
+		TOKEN_PRIVILEGES tp;
 		tp.PrivilegeCount = 1;
 		tp.Privileges[0].Luid = luid;
-		tp.Privileges[0].Attributes = bEnablePrivilege ? SE_PRIVILEGE_ENABLED : 0;
+		tp.Privileges[0].Attributes = 0;
 
-		// Enable the privilege or disable the privilege.
-		if (AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), 0, 0))
+		if (!AdjustTokenPrivileges(Token, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), NULL, NULL))
 		{
-			DWORD lLastError = GetLastError();
-			if (lLastError == ERROR_SUCCESS)
-			{
-				// success
-				bRet = TRUE;
-			}
-			else if (lLastError == ERROR_NOT_ALL_ASSIGNED)
-			{
-				if (errorBuf != NULL && errorBufSize != 0)
-				{
-					snprintf(
-						errorBuf, errorBufSize, "AdjustTokenPrivileges: the token does not have the specified privilege %s, so it cannot be %s", aPrivilege,
-						bEnablePrivilege ? "enabled" : "disabled");
-				}
-			}
-			else
-			{
-				// according MSDN, this code should not be hit
-				if (errorBuf != NULL && errorBufSize != 0)
-				{
-					snprintf(errorBuf, errorBufSize, "AdjustTokenPrivileges failed with unexpected error %lu", lLastError);
-				}
-			}
+			wprintf(L"AdjustTokenPrivileges failed - 0x%08x\n", GetLastError());
+			return FALSE;
 		}
-		else if (errorBuf != NULL && errorBufSize != 0)
-		{
-			char lErrorText[512];
-			DWORD lLastError = GetLastError();
-			snprintf(errorBuf, errorBufSize, "AdjustTokenPrivileges failed with error %lu (%s)", lLastError, lErrorText);
-		}
+
+		*Privileged = (GetLastError() == ERROR_NOT_ALL_ASSIGNED) ? -1 : 0;
 	}
 
-	return bRet;
+	return TRUE;
 }
 
-
-void spawn_as_user(const std::string& command)
+void RunAs(LPSTR inUser, LPSTR inPW, LPSTR inCommand)
 {
-	STARTUPINFO start_info = { 0 };
-	PROCESS_INFORMATION piProcInfo = { 0 };
-	HANDLE userToken = nullptr;
-	HANDLE primaryToken = nullptr;
-	TOKEN_TYPE lTokenType;
-	DWORD lReturnLength = 0;
+	HANDLE CallerToken = NULL;
+	HANDLE CalleeToken = NULL;
+	HWINSTA WinstaOld = NULL;
+	HWINSTA Winsta0 = NULL;
+	HDESK Desktop = NULL;
+	PSID LogonSid = NULL;
+	STARTUPINFO si;
+	PROCESS_INFORMATION pi;
+	LONG PrivCheck = 0;
 
-	char* pEnvironment = nullptr;
-	char* pWorkdir = nullptr;
-
-	HANDLE hProcessToken;
-	OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &hProcessToken);
-	char lErrorText[1024];
-
-	
-	if (!SetPrivilege(hProcessToken, SE_TCB_NAME, TRUE, lErrorText, sizeof(lErrorText)))
+	if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ALL_ACCESS, &CallerToken))
 	{
-		printf("SetPrivilege(SE_TCB_NAME) failed. The error is: %s", lErrorText);
-	}
-	/* Need SE_DEBUG_NAME privilege to be able to succeed OpenProcess() for processes in different terminal
-	   server session. The OpenProcess() function is used in HAL_process_exists().
-	*/
-	if (!SetPrivilege(hProcessToken, SE_DEBUG_NAME, TRUE, lErrorText, sizeof(lErrorText)))
-	{
-		printf("SetPrivilege(SE_DEBUG_NAME) failed. The error is: %s", lErrorText);
+		wprintf(L"OpenProcessToken failed - 0x%08x\n", GetLastError());
+		goto Cleanup;
 	}
 
-	CloseHandle(hProcessToken);
+	CheckPrivilege(CallerToken, SE_INCREASE_QUOTA_NAME, &PrivCheck);
 
-	auto LogonOK = LogonUser("ndjonge", "infor", "Anne&Lena1234!", LOGON32_LOGON_NETWORK_CLEARTEXT, LOGON32_PROVIDER_DEFAULT, &userToken);
+	if (PrivCheck < 0) printf("CreateProcessAsUser requires %s.  Check the user's privileges.\n", SE_INCREASE_QUOTA_NAME);
 
+	CheckPrivilege(CallerToken, SE_ASSIGNPRIMARYTOKEN_NAME, &PrivCheck);
 
+	if (PrivCheck < 0) printf("CreateProcessAsUser requires %s.  Check the user's privileges.\n", SE_ASSIGNPRIMARYTOKEN_NAME);
 
-
-
-	dump(userToken);
-
-	DWORD lLastError;
-
-	if (!GetTokenInformation(userToken, TokenType, &lTokenType, sizeof(lTokenType), &lReturnLength))
+	if (!LogonUser(inUser, NULL, inPW, LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, &CalleeToken))
 	{
-		lLastError = GetLastError();
-		return;
+		printf("LogonUser failed - 0x%08x\n", GetLastError());
+		goto Cleanup;
 	}
 
-	if (!DuplicateTokenEx(userToken, MAXIMUM_ALLOWED, NULL, SecurityDelegation, TokenPrimary, &primaryToken))
+#ifdef _GUI
+	Winsta0 = OpenWindowStation(L"winsta0", FALSE, READ_CONTROL | WRITE_DAC);
+	if (!Winsta0)
 	{
-		lLastError = GetLastError();
-
-		const char* tokenImpersonationType = "SecurityDelegation";
-		// If delegation is not allowed, the error is usually ERROR_BAD_IMPERSONATION_LEVEL, try a lower level of impersonation.
-
-		if (!DuplicateTokenEx(userToken, MAXIMUM_ALLOWED, NULL, SecurityImpersonation, TokenPrimary, &primaryToken))
-		{
-			lLastError = GetLastError();
-			return;
-		}
+		wprintf(L"OpenWindowStation failed - 0x%08x\n", GetLastError());
+		goto Cleanup;
 	}
 
-
-	dump(userToken);
-
-	if (lTokenType != TokenPrimary)
+	WinstaOld = GetProcessWindowStation();
+	if (!SetProcessWindowStation(Winsta0))
 	{
-		start_info.lpDesktop = "WinSta0\\Default";
-
-		auto ret = CreateProcessAsUser(
-			primaryToken, nullptr, const_cast<LPSTR>(command.data()), nullptr, nullptr, TRUE,
-			CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS | CREATE_DEFAULT_ERROR_MODE | NORMAL_PRIORITY_CLASS | CREATE_SUSPENDED, pEnvironment, pWorkdir, &start_info, &piProcInfo);
-		lLastError = GetLastError();
-		CloseHandle(primaryToken);
-		CloseHandle(userToken);
+		wprintf(L"SetProcessWindowStation failed - 0x%08x\n", GetLastError());
+		goto Cleanup;
 	}
-	else
-		return;
+	Desktop = OpenDesktop(L"default", 0, FALSE, READ_CONTROL | WRITE_DAC | DESKTOP_WRITEOBJECTS | DESKTOP_READOBJECTS);
+	SetProcessWindowStation(WinstaOld);
+	if (!Desktop)
+	{
+		wprintf(L"OpenDesktop failed - 0x%08x\n", GetLastError());
+		goto Cleanup;
+	}
+
+	if (!GetLogonSidFromToken(CalleeToken, &LogonSid)) goto Cleanup;
+
+#ifdef _TRACING
+	wprintf(L"PID      : 0x%x\n", GetCurrentProcessId());
+	wprintf(L"HWINSTA  : 0x%x\n", Winsta0);
+	wprintf(L"HDESK    : 0x%x\n", Desktop);
+	wprintf(L"Logon SID: %p\n", LogonSid);
+	wprintf(L"-----\n");
+	getwchar();
+#endif
+
+	if (!AddAceToWindowStation(Winsta0, LogonSid))
+	{
+		wprintf(L"AddAceToWindowStation failed - 0x%08x\n", GetLastError());
+		goto Cleanup;
+	}
+
+	if (!AddAceToDesktop(Desktop, LogonSid))
+	{
+		wprintf(L"AddAceToDesktop failed - 0x%08x\n", GetLastError());
+		goto Cleanup;
+	}
+#endif
+
+	ZeroMemory(&si, sizeof(STARTUPINFO));
+	si.cb = sizeof(STARTUPINFO);
+
+#ifdef _GUI
+	si.lpDesktop = "winsta0\\default";
+#else
+	si.lpDesktop = "";
+#endif
+
+	if (!ImpersonateLoggedOnUser(CalleeToken))
+	{
+		wprintf(L"ImpersonateLoggedOnUser failed - 0x%08x\n", GetLastError());
+		goto Cleanup;
+	}
+
+	if (!CreateProcessAsUser(CalleeToken, NULL, inCommand, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+	{
+		wprintf(L"CreateProcessAsUser failed - 0x%08x\n", GetLastError());
+		goto Cleanup;
+	}
+
+	WaitForSingleObject(pi.hProcess, INFINITE);
+
+	RevertToSelf();
+
+#ifdef _GUI
+	RemoveAccessAllowedAcesBasedSID(Winsta0, LogonSid);
+	RemoveAccessAllowedAcesBasedSID(Desktop, LogonSid);
+#endif
+
+	CloseHandle(pi.hProcess);
+	CloseHandle(pi.hThread);
+
+Cleanup:
+	if (LogonSid) HeapFree(GetProcessHeap(), 0, LogonSid);
+	if (Winsta0) CloseWindowStation(Winsta0);
+	if (Desktop) CloseDesktop(Desktop);
+	if (CalleeToken) CloseHandle(CalleeToken);
+	if (CallerToken) CloseHandle(CallerToken);
 }
+
+void spawn_as_user(const std::string& command) { RunAs("ndjonge", "Anne&Lena1234!", "notepad"); }
 
 } // namespace process
