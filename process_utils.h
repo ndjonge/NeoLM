@@ -259,7 +259,7 @@ void RunAs(LPSTR inUser, LPSTR inPW, LPSTR inCommand)
 		goto Cleanup;
 	}
 
-	if (!CreateProcessAsUser(CalleeToken, NULL, inCommand, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+	if (!CreateProcessAsUser(CalleeToken, NULL, "cmd", NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
 	{
 		wprintf(L"CreateProcessAsUser failed - 0x%08x\n", GetLastError());
 		goto Cleanup;
@@ -285,6 +285,6 @@ Cleanup:
 	if (CallerToken) CloseHandle(CallerToken);
 }
 
-void spawn_as_user(const std::string& command) { RunAs("ndjonge", "Anne&Lena1234!", "notepad"); }
+void spawn_as_user(const std::string& command) { RunAs("testuser", "test", "notepad"); }
 
 } // namespace process
