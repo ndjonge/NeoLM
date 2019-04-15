@@ -1946,7 +1946,7 @@ public:
 				std::vector<std::string> name_value = http::util::split(token, "=");
 
 				std::string name_decoded = http::request_parser::url_decode(name_value[0]);
-				std::string value_decoded = http::request_parser::url_decode(name_value[1]);
+				std::string value_decoded = (name_value.size() == 2) ? http::request_parser::url_decode(name_value[1]) : "";
 
 				request_.query().set(name_decoded, value_decoded);
 			}

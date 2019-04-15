@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
 	network::init();
 	network::ssl::init();
 
-	process::spawn_as_user("notepad");
+	// process::spawn_as_user("notepad");
 
 	// create an empty structure (null)
 	json j;
