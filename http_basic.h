@@ -2857,17 +2857,10 @@ public:
 
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
+					auto new_connection_handler
+						= std::make_shared<connection_handler<network::tcp::socket>>(*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_);
 
-					std::thread connection_thread(
-						[
-                            new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
-							    *this, 
-                                std::move(http_connection_queue_.front()), 
-                                connection_timeout_, 
-                                gzip_min_length_
-                            )
-                        ]() { new_connection_handler->proceed(); }
-                    );
+					std::thread connection_thread([new_connection_handler]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
 
 					http_connection_queue_.pop();
