@@ -2859,8 +2859,15 @@ public:
 					// network::tcp_nodelay(http_socket, 1);
 
 					std::thread connection_thread(
-						[new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
-							 *this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
+						[
+                            new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
+							    *this, 
+                                std::move(http_connection_queue_.front()), 
+                                connection_timeout_, 
+                                gzip_min_length_
+                            )
+                        ]() { new_connection_handler->proceed(); }
+                    );
 					connection_thread.detach();
 
 					http_connection_queue_.pop();
