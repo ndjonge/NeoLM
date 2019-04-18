@@ -2914,9 +2914,10 @@ public:
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
 
-					std::thread connection_thread(
-						[new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
-							 *this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_)]() { new_connection_handler->proceed(); });
+					auto new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
+						*this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_);
+
+					std::thread connection_thread([new_connection_handler]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
 					https_connection_queue_.pop();
 
@@ -3096,20 +3097,10 @@ public:
 			, bytes_send_(0)
 
 		{
-			/*			std::string port = std::to_string(server_.http_listen_port_);
-						std::string msg = port + " open connection\n";
-
-						std::cout << msg;*/
 		}
 
 		~connection_handler()
 		{
-			/*			std::string port = std::to_string(server_.http_listen_port_);
-						std::string msg = port + " close connection after: " + std::to_string(bytes_received_) + " bytes, keepalive-count: " +
-			   std::to_string(session_handler_.keepalive_count()) + "\n";
-
-						std::cout << msg;*/
-
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
 			server_.manager().connections_current_decrease();

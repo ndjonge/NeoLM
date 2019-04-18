@@ -19,7 +19,7 @@ void spawn_as_user(const std::string& command, const std::string& user, const st
 	{
 		if (CallerToken) CloseHandle(CallerToken);
 
-		throw std::runtime_error{ "OpenProcessToken failed - " + GetLastError() };
+		throw std::runtime_error{ "OpenProcessToken failed - " + std::to_string(GetLastError()) };
 	}
 
 	//	CheckPrivilege(CallerToken, SE_INCREASE_QUOTA_NAME, &PrivCheck);
@@ -29,7 +29,7 @@ void spawn_as_user(const std::string& command, const std::string& user, const st
 	{
 		if (CallerToken) CloseHandle(CallerToken);
 
-		throw std::runtime_error{ "LogonUser failed - " + GetLastError() };
+		throw std::runtime_error{ "LogonUser failed - " + std::to_string(GetLastError()) };
 	}
 
 	ZeroMemory(&si, sizeof(STARTUPINFO));
@@ -40,14 +40,14 @@ void spawn_as_user(const std::string& command, const std::string& user, const st
 	{
 		if (CallerToken) CloseHandle(CallerToken);
 
-		throw std::runtime_error{ "ImpersonateLoggedOnUser failed - " + GetLastError() };
+		throw std::runtime_error{ "ImpersonateLoggedOnUser failed - " + std::to_string(GetLastError()) };
 	}
 
 	if (!CreateProcessAsUser(CalleeToken, NULL, const_cast<char*>(command.data()), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
 	{
 		if (CalleeToken) CloseHandle(CalleeToken);
 
-		throw std::runtime_error{ "CreateProcessAsUser failed - " + GetLastError() };
+		throw std::runtime_error{ "CreateProcessAsUser failed - " + std::to_string(GetLastError()) };
 	}
 
 	WaitForSingleObject(pi.hProcess, INFINITE);

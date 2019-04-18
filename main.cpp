@@ -22,8 +22,15 @@ int main(int argc, char* argv[])
 {
 	network::init();
 	network::ssl::init();
-
-	process::spawn_as_user("cmd", "testuser", "test");
+	
+	/*try
+	{
+		process::spawn_as_user("cmd", "testuser", "test");
+	}
+	catch (std::runtime_error& e)
+	{
+		std::cout << e.what() << "\n";
+	}*/
 
 	// create an empty structure (null)
 	json j;
