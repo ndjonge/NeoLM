@@ -4,8 +4,8 @@
 #include <future>
 #include <iostream>
 #include <mutex>
-#include <unordered_map>
 #include <signal.h>
+#include <unordered_map>
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
@@ -44,7 +44,7 @@ public:
 
 	std::string tenant() const { return tenant_id_; }
 
-	void spawn(const std::string& command) 
+	void spawn(const std::string& command)
 	{
 		std::cout << "spawn:" << url_ << "\n";
 		auto future_ = std::async(std::launch::async, [this]() { auto result = std::system(url_.c_str()); });
@@ -261,6 +261,9 @@ private:
 				S::manager().server_information(S::configuration_.to_string());
 				S::manager().router_information(S::router_.to_string());
 				session.response().body() = S::manager().to_string();
+
+				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
+
 				session.response().type("text");
 			});
 		}
@@ -289,9 +292,8 @@ public:
 	void start_server()
 	{
 		this->api_server_.start_server();
-		/*		if (this->api_server_.upstream_controller().add(configuration_.get("upstream-node-nginx-endpoint-myip") + ":" + configuration_.get("http_listen_port")) == http::upstream::sucess)
-					std::cout << "server listening on port : " + configuration_.get("http_listen_port") + " and added to upstream\n";
-				else */
+		/*		if (this->api_server_.upstream_controller().add(configuration_.get("upstream-node-nginx-endpoint-myip") + ":" + configuration_.get("http_listen_port")) ==
+		   http::upstream::sucess) std::cout << "server listening on port : " + configuration_.get("http_listen_port") + " and added to upstream\n"; else */
 		std::cout << "server listening on port : " + configuration_.get("http_listen_port") + "\n";
 	}
 

@@ -631,6 +631,31 @@ public:
 
 		return ss.str();
 	}
+
+	inline void merge_new_header()
+	{
+		auto special_merge_case = http::util::case_insensitive_equal(last_new_field()->name, "Set-Cookie")
+								  || http::util::case_insensitive_equal(last_new_field()->name, "WWW-Authenticate")
+								  || http::util::case_insensitive_equal(last_new_field()->name, "Proxy-Authenticate");
+
+		auto merged_last_new_header = false;
+
+		if (!special_merge_case && fields_.size() > 1)
+			for (auto i = fields_.rbegin() + 1; i != fields_.rend(); ++i)
+			{
+				if (http::util::case_insensitive_equal(last_new_field()->name, i->name) == true)
+				{
+					if ((last_new_field()->value.empty() == false))
+					{
+						i->value.append(", ");
+						i->value.append(last_new_field()->value);
+					}
+					merged_last_new_header = true;
+				}
+			}
+
+		if (merged_last_new_header) fields_.pop_back();
+	}
 };
 
 template <> class header<response_specialization> : public fields
@@ -1094,6 +1119,7 @@ private:
 			if (input == '\r')
 			{
 				state_ = expecting_newline_2;
+				req.merge_new_header();
 				return indeterminate;
 			}
 			else if (is_ctl(input))
