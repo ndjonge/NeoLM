@@ -590,7 +590,7 @@ public:
 	const unsigned int& version_nr() const { return version_nr_; }
 	const std::string version() const
 	{
-		std::string ret = "HTTP 1.0";
+		std::string ret = "HTTP 1.1";
 
 		if (version_nr_ == 10) ret = "HTTP 1.0";
 
@@ -3208,7 +3208,6 @@ public:
 
 				if ((parse_result == http::request_parser::result_type::good) || (parse_result == http::request_parser::result_type::bad))
 				{
-
 					if (parse_result == http::request_parser::result_type::good)
 					{
 						session_handler_.request().set("Remote_Addr", session_handler_.request().get("X-Forwarded-For", network::get_client_info(client_socket_)));
