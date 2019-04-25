@@ -2201,7 +2201,7 @@ public:
 		{
 			std::stringstream s;
 
-			s << request_latency_.load().count() << "ms, " << processing_duration_.load().count() << "ms, " << hit_count_ << "x";
+			s << request_latency_.load().count() / 1000000.0  << "ms, " << processing_duration_.load().count() / 1000000.0 << "ms, " << hit_count_ << "x";
 
 			return s.str();
 		};

@@ -299,9 +299,28 @@ public:
 
 	void run()
 	{
+		for (auto i = 0; i!=100000; i++)
+		{
+			// New node, tenant must exist.
+			std::string test_route = "/test/test/test/test/test-" + std::to_string(i) + "/:test";
+
+			api_server_.router_.on_get(test_route, [this](http::session_handler& session, const http::api::params& params) {
+				const auto& test = params.get("test");
+
+				if (test.empty())
+				{
+					session.response().result(http::status::bad_request);
+				}
+				else
+				{
+					session.response().body() = "test:" + test;
+					session.response().result(http::status::ok);
+				}
+			});
+		}
+
 		do
 		{
-			// load_test();
 			std::this_thread::sleep_for(1s);
 			std::cout << "neolm::run\n";
 
