@@ -2128,6 +2128,10 @@ public:
 		return no_ret;
 	}
 
+	inline bool empty() const noexcept { return parameters.empty(); };
+
+	inline void reset() { parameters.clear(); }
+
 private:
 	std::map<std::string, std::string> parameters;
 }; // < class Params
@@ -2201,7 +2205,7 @@ public:
 		{
 			std::stringstream s;
 
-			s << request_latency_.load().count() / 1000000.0  << "ms, " << processing_duration_.load().count() / 1000000.0 << "ms, " << hit_count_ << "x";
+			s << request_latency_.load().count() / 1000000.0 << "ms, " << processing_duration_.load().count() / 1000000.0 << "ms, " << hit_count_ << "x";
 
 			return s.str();
 		};
@@ -2222,7 +2226,7 @@ public:
 
 	route_metrics& metrics() { return metrics_; }
 
-	router_result::router_result_type match(const std::string& method, const std::string& url, params& params) const
+	router_result::router_result_type match(const std::string& method, const std::string& url, params& params) const noexcept
 	{
 		// route: /route/:param1/subroute/:param2/subroute
 		// url:   /route/parameter
@@ -2248,7 +2252,7 @@ public:
 		{
 			// std::string current_token = url.substr(b, e - b);
 
-			if (tokens_[token].size() > 2 && (tokens_[token][1] == ':' || tokens_[token][1] == '{'))
+			if (tokens_[token].size() > 2 && ((tokens_[token][1] == ':') || tokens_[token][1] == '{'))
 			{
 				std::string value = url.substr(b + 1, e - b - 1);
 
@@ -2263,16 +2267,11 @@ public:
 					params.insert(tokens_[token].substr(2, tokens_[token].size() - 3), value);
 				}
 			}
-			else if (tokens_[token] != url.substr(b, e - b))
+			else if (url.find(tokens_[token].data(), b, e - b) == std::string::npos)
 			{
 				match = false;
 				break;
 			}
-			/*			else if (tokens_.size() - 1 == token)
-						{
-							// still matches, this is the last token
-							match = true;
-						}*/
 
 			b = url.find_first_of('/', e);
 			e = url.find_first_of('/', b + 1);
@@ -2292,9 +2291,16 @@ public:
 		if (match && method_ == method)
 			return router_result::match_found;
 		else if (match)
+		{
+			if (params.empty() == false) params.reset();
+
 			return router_result::no_method;
+		}
 		else
+		{
+			if (params.empty() == false) params.reset();
 			return router_result::no_route;
+		}
 	}
 };
 
@@ -2397,7 +2403,7 @@ public:
 
 		for (auto& route : route_registry_)
 		{
-			s << R"(")" << route.route_ << R"(",)" << route.method_ << ", " << route.metrics().to_string() << "\n";
+			s << R"(")" << route.route_ << R"(", )" << route.method_ << ", " << route.metrics().to_string() << "\n";
 		}
 
 		return s.str();
@@ -2451,10 +2457,10 @@ public:
 	bool call_middleware(session_handler_type& session) const
 	{
 		auto result = true;
+		params params_;
+
 		for (auto& middleware : api_middleware_table)
 		{
-			params params_;
-
 			if (middleware.match(session.request().target(), params_))
 			{
 				if ((result = middleware.endpoint_(session, params_)) == false) break;
@@ -2466,18 +2472,15 @@ public:
 
 	http::router_result::router_result_type call_route(session_handler_type& session)
 	{
-		// std::cout << session.request().target() << "\n";
-
 		auto best_result = http::router_result::router_result_type::no_route;
 
 		if (!route_registry_.empty())
 		{
 			std::string url = session.request().url_requested().substr(0, session.request().url_requested().find_first_of('?'));
+			params params_;
 
 			for (auto& route : route_registry_)
 			{
-				params params_;
-
 				auto result = route.match(session.request().method(), url, params_);
 
 				if (result == router_result::router_result_type::match_found)
