@@ -260,10 +260,11 @@ private:
 			S::router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) {
 				S::manager().server_information(S::configuration_.to_string());
 				S::manager().router_information(S::router_.to_string());
+
+				session.response().body().reserve(8192 * 4);
 				session.response().body() = S::manager().to_string();
 
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
-
 				session.response().type("text");
 			});
 		}
@@ -301,10 +302,8 @@ public:
 	{
 		for (auto i = 0; i != 100000; i++)
 		{
-			// New node, tenant must exist.
-			std::string test_route = "/testtesttest/testtesttest/testtesttest/test-" + std::to_string(i) + "/:test";
 
-			api_server_.router_.on_get(test_route, [this](http::session_handler& session, const http::api::params& params) {
+			api_server_.router_.on_get(std::move("/testtesttest/test-" + std::to_string(i) + "/:test"), [](http::session_handler& session, const http::api::params& params) {
 				const auto& test = params.get("test");
 
 				if (test.empty())

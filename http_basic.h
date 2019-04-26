@@ -325,6 +325,95 @@ inline bool read_from_disk(const std::string& file_path, const std::function<boo
 
 } // namespace util
 
+namespace method
+{
+
+enum method_t
+{
+	unknown = 0,
+	delete_,
+	get,
+	head,
+	post,
+	put,
+	connect,
+	options,
+	trace,
+	msearch,
+	notify,
+	subscribe,
+	unsubscribe,
+	patch,
+	purge
+};
+
+inline method_t to_method(const std::string& v) noexcept
+{
+	if (v.size() < 2) return method::unknown;
+
+	switch (v[0])
+	{
+	case 'C':
+		if (v == "CONNECT") return http::method::connect;
+		break;
+	case 'D':
+		if (v == "DELETE") return http::method::delete_;
+		break;
+	case 'G':
+		if (v == "GET") return http::method::get;
+		break;
+	case 'H':
+		if (v == "HEAD") return http::method::get;
+		break;
+	case 'O':
+		if (v == "OPTIONS") return http::method::options;
+		break;
+	case 'P':
+		if (v == "PUT") return http::method::put;
+		break;
+		if (v == "POST") return http::method::post;
+		break;
+		if (v == "PATCH") return http::method::patch;
+		break;
+		if (v == "PURGE") return http::method::purge;
+		break;
+		return method::unknown;
+	}
+
+	return method::unknown;
+}
+
+inline std::string to_string(method_t method) noexcept
+{
+	switch (method)
+	{
+	case method::delete_:
+		return "DELETE";
+	case method::get:
+		return "GET";
+	case method::head:
+		return "HEAD";
+	case method::post:
+		return "POST";
+	case method::put:
+		return "PUT";
+	case method::connect:
+		return "CONNECT";
+	case method::options:
+		return "OPTIONS";
+	case method::trace:
+		return "TRACE";
+	case method::patch:
+		return "PATCH";
+	case method::purge:
+		return "PURGE";
+	case method::unknown:
+		return "<unknown>";
+	}
+}
+
+} // namespace method
+
 namespace status
 {
 enum status_t
@@ -576,7 +665,7 @@ template <> class header<request_specialization> : public fields
 	friend class http::request_parser;
 
 protected:
-	std::string method_;
+	http::method::method_t method_;
 	std::string url_requested_;
 	std::string target_;
 	query_params params_;
@@ -584,7 +673,7 @@ protected:
 
 public:
 	header() = default;
-	const std::string& method() const { return method_; }
+	const http::method::method_t& method() const { return method_; }
 	const std::string& target() const { return target_; }
 	const std::string& url_requested() const { return url_requested_; }
 	const unsigned int& version_nr() const { return version_nr_; }
@@ -603,7 +692,7 @@ public:
 	void headers_reset()
 	{
 		this->version_nr_ = 0;
-		this->method_.clear();
+		this->method_ = http::method::unknown;
 		this->target_.clear();
 		this->url_requested_.clear();
 
@@ -614,7 +703,7 @@ public:
 	{
 		std::stringstream ss;
 
-		ss << method_ << " " << target_ << " HTTP/";
+		ss << http::method::to_string(method_) << " " << target_ << " HTTP/";
 
 		if (version_nr() == 11)
 			ss << "1.1\r\n";
@@ -760,7 +849,7 @@ public:
 	message(const std::string& method, const std::string& target, const int version_nr = 11)
 	{
 		header<specialization>::version_nr_ = version_nr;
-		header<specialization>::method_ = method;
+		header<specialization>::method_ = http::method::to_method(method);
 		header<specialization>::target_ = target;
 	}
 
@@ -902,13 +991,15 @@ private:
 			else
 			{
 				state_ = method;
-				req.method_.push_back(input);
+				storage.clear();
+				storage.push_back(input);
 				return indeterminate;
 			}
 		case method:
 			if (input == ' ')
 			{
 				state_ = target;
+				req.method_ = http::method::to_method(storage);
 				return indeterminate;
 			}
 			else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
@@ -917,7 +1008,7 @@ private:
 			}
 			else
 			{
-				req.method_.push_back(input);
+				storage.push_back(input);
 				return indeterminate;
 			}
 		case target:
@@ -1213,6 +1304,8 @@ private:
 		body_end
 	} state_
 		= { method_start };
+
+	std::string storage;
 
 public:
 	static std::string url_decode(const std::string& in)
@@ -2144,7 +2237,7 @@ using middleware_function_t = std::function<bool(session_handler_type& session, 
 template <typename R = route_function_t> class route
 {
 public:
-	route(const std::string& method, const std::string& route, const R& endpoint)
+	route(http::method::method_t method, const std::string& route, const R& endpoint)
 		: method_(method)
 		, route_(route)
 		, endpoint_(endpoint)
@@ -2211,7 +2304,9 @@ public:
 		};
 	};
 
-	std::string method_;
+	std::int64_t x;
+	http::method::method_t method_;
+
 	std::string route_;
 	R endpoint_;
 	std::vector<std::string> tokens_;
@@ -2226,7 +2321,7 @@ public:
 
 	route_metrics& metrics() { return metrics_; }
 
-	router_result::router_result_type match(const std::string& method, const std::string& url, params& params) const noexcept
+	router_result::router_result_type match(const http::method::method_t& method, const std::string& url, params& params) const noexcept
 	{
 		// route: /route/:param1/subroute/:param2/subroute
 		// url:   /route/parameter
@@ -2403,7 +2498,7 @@ public:
 
 		for (auto& route : route_registry_)
 		{
-			s << R"(")" << route.route_ << R"(", )" << route.method_ << ", " << route.metrics().to_string() << "\n";
+			s << R"(")" << route.route_ << R"(", )" << http::method::to_string(route.method_) << ", " << route.metrics().to_string() << "\n";
 		}
 
 		return s.str();
@@ -2417,23 +2512,30 @@ public:
 
 	void on_idle(std::function<bool()> on_idle_callback) { on_idle_ = on_idle_callback; }
 
-	void on_get(const std::string& route, R api_method) { route_registry_.emplace_back("GET", route, api_method); }
+	void on_get(std::string&& route, R&& api_method)
+	{
+		route_registry_.emplace_back(http::method::get, route, api_method);
 
-	void on_post(const std::string& route, R api_method) { route_registry_.emplace_back("POST", route, api_method); }
+		/*std::cout << "x         :" << sizeof(route_registry_.rbegin()->x) << "\n";
+		std::cout << "endpoint_ :" << sizeof(route_registry_.rbegin()->endpoint_) << "\n";
+		std::cout << "method_   :" << sizeof(http::method::to_string(route_registry_.rbegin()->method_)) << "\n";
+		std::cout << "route_    :" << sizeof(route_registry_.rbegin()->route_) << "\n";
+		std::cout << "total_    :" << sizeof(route_registry_.rbegin()) << "\n";*/
+	}
 
-	void on_head(const std::string& route, R api_method) { route_registry_.emplace_back("HEAD", route, api_method); }
+	void on_post(std::string&& route, R api_method) { route_registry_.emplace_back(http::method::post, route, api_method); }
 
-	void on_put(const std::string& route, R api_method) { route_registry_.emplace_back("PUT", route, api_method); }
+	void on_head(std::string&& route, R api_method) { route_registry_.emplace_back(http::method::head, route, api_method); }
 
-	void on_update(const std::string& route, R api_method) { route_registry_.emplace_back("UPDATE", route, api_method); }
+	void on_put(std::string&& route, R api_method) { route_registry_.emplace_back(http::method::put, route, api_method); }
 
-	void on_delete(const std::string& route, R api_method) { route_registry_.emplace_back("DELETE", route, api_method); }
+	void on_delete(std::string&& route, R api_method) { route_registry_.emplace_back(http::method::delete_, route, api_method); }
 
-	void on_patch(const std::string& route, R api_method) { route_registry_.emplace_back("PATCH", route, api_method); }
+	void on_patch(std::string&& route, R api_method) { route_registry_.emplace_back(http::method::patch, route, api_method); }
 
-	void on_option(const std::string& route, R api_method) { route_registry_.emplace_back("OPTION", route, api_method); }
+	void on_option(std::string&& route, R api_method) { route_registry_.emplace_back(http::method::option, route, api_method); }
 
-	void use(const std::string route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
+	void use(std::string&& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
 
 	bool serve_static_content(session_handler_type& session)
 	{
