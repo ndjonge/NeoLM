@@ -426,8 +426,8 @@ public:
 	{
 	}
 
-	socket& operator=(const socket& s) = delete;
-	socket& operator=(socket&& s) = delete;
+	socket& operator=(const socket& s) = default;
+	socket& operator=(socket&& s) = default;
 	//	{
 	//		socket_ = s.socket_;
 	//		options_ = options_;
