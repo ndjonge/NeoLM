@@ -532,9 +532,9 @@ public:
 	}
 
 	endpoint(const endpoint&) = default;
-	endpoint(endpoint&&) = delete;
-	endpoint& operator=(const endpoint&) = delete;
-	endpoint& operator=(endpoint&&) = delete;
+	endpoint(endpoint&&) = default;
+	endpoint& operator=(const endpoint&) = default;
+	endpoint& operator=(endpoint&&) = default;
 
 	virtual ~endpoint()
 	{
