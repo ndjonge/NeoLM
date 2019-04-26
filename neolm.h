@@ -6,11 +6,10 @@
 #include <mutex>
 #include <signal.h>
 #include <unordered_map>
+#include <string>
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
-using namespace std::literals::string_literals;
-using namespace std::literals::chrono_literals;
 
 namespace neolm
 {
@@ -183,7 +182,7 @@ private:
 				}
 				else
 				{
-					auto& member = license_manager_.group_members_.find(tenant + node);
+					const auto& member = license_manager_.group_members_.find(tenant + node);
 
 					if (member != license_manager_.group_members_.end())
 						session.response().body() += member->second.to_string();
@@ -221,7 +220,7 @@ private:
 				}
 				else
 				{
-					auto& member = license_manager_.group_members_.find(tenant + node);
+					const auto& member = license_manager_.group_members_.find(tenant + node);
 
 					if (member != license_manager_.group_members_.end())
 					{
@@ -250,7 +249,7 @@ private:
 					}
 					else
 					{
-						auto& key = license_manager_.group_members_.emplace(tenant + node, pm::group::member{ tenant, node });
+						const auto& key = license_manager_.group_members_.emplace(tenant + node, pm::group::member{ tenant, node });
 
 						session.response().result(http::status::created);
 					}
@@ -321,7 +320,7 @@ public:
 
 		do
 		{
-			std::this_thread::sleep_for(1s);
+			std::this_thread::sleep_for(std::chrono::seconds(1));
 			std::cout << "neolm::run\n";
 
 		} while (api_server_.active_ == true);

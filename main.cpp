@@ -15,7 +15,6 @@
 
 #include "process_utils.h"
 
-using namespace std::literals::string_literals;
 using json = nlohmann::json;
 
 int main(int argc, char* argv[])

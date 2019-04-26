@@ -339,10 +339,6 @@ enum method_t
 	connect,
 	options,
 	trace,
-	msearch,
-	notify,
-	subscribe,
-	unsubscribe,
 	patch,
 	purge
 };
@@ -1885,9 +1881,9 @@ public:
 
 	session_handler() = delete;
 	session_handler(const session_handler&) = default;
-	session_handler(session_handler&&) = default;
-	session_handler& operator=(const session_handler&) = default;
-	session_handler& operator=(session_handler&&) = default;
+	session_handler(session_handler&&) = delete;
+	session_handler& operator=(const session_handler&) = delete;
+	session_handler& operator=(session_handler&&) = delete;
 
 	~session_handler() = default;
 
@@ -2533,7 +2529,7 @@ public:
 
 	void on_patch(std::string&& route, R api_method) { route_registry_.emplace_back(http::method::patch, route, api_method); }
 
-	void on_option(std::string&& route, R api_method) { route_registry_.emplace_back(http::method::option, route, api_method); }
+	void on_options(std::string&& route, R api_method) { route_registry_.emplace_back(http::method::options, route, api_method); }
 
 	void use(std::string&& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
 

@@ -1,13 +1,17 @@
 #pragma once
+
+#ifdef WIN32
 #include <Sddl.h>
 #include <string>
 #include <windows.h>
 #include <windowsx.h> 
 #include <userenv.h> 
+#endif
 
 namespace process
 {
 
+#ifdef WIN32
 void spawn_as_user(const std::string& command, const std::string& user, const std::string& password, bool gui = false)
 {
 	HANDLE CallerToken = NULL;
@@ -63,5 +67,7 @@ void spawn_as_user(const std::string& command, const std::string& user, const st
 //	if (LogonSid) HeapFree(GetProcessHeap(), 0, LogonSid);
 
 }
+
+#endif
 
 } // namespace process
