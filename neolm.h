@@ -300,22 +300,23 @@ public:
 
 	void run()
 	{
-		for (auto i = 0; i != 100000; i++)
+		for (auto i = 0; i != 2000; i++)
 		{
 
-			api_server_.router_.on_get(std::move("/testtesttest/test-" + std::to_string(i) + "/:test"), [](http::session_handler& session, const http::api::params& params) {
-				const auto& test = params.get("test");
+			api_server_.router_.on_get(
+				std::move("/testtesttest/testtesttest/testtesttest/test-" + std::to_string(i) + "/:test"), [](http::session_handler& session, const http::api::params& params) {
+					const auto& test = params.get("test");
 
-				if (test.empty())
-				{
-					session.response().result(http::status::bad_request);
-				}
-				else
-				{
-					session.response().body() = "test:" + test;
-					session.response().result(http::status::ok);
-				}
-			});
+					if (test.empty())
+					{
+						session.response().result(http::status::bad_request);
+					}
+					else
+					{
+						session.response().body() = "test:" + test;
+						session.response().result(http::status::ok);
+					}
+				});
 		}
 
 		do
