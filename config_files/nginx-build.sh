@@ -2,13 +2,14 @@
 (
 mkdir nginx-build
 cd nginx-build &&
-export NGINX_VERSION=1.15.7 &&
+export NGINX_VERSION=1.16.0 &&
 wget --no-check-certificate -O ngx_vts.zip https://github.com/vozlt/nginx-module-vts/archive/master.zip && unzip -o ngx_vts.zip &&
 wget --no-check-certificate -O ngx_dynamic_upstream.zip https://github.com/cubicdaiya/ngx_dynamic_upstream/archive/master.zip && unzip -o ngx_dynamic_upstream.zip &&
 wget http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && tar xf nginx-${NGINX_VERSION}.tar.gz &&
 cd nginx-${NGINX_VERSION} &&
 ./configure \
---prefix=/etc/nginx \
+--prefix=/usr/lib/nginx \
+--with-http_ssl_module \
 --sbin-path=/usr/sbin/nginx \
 --modules-path=/usr/lib/nginx/modules \
 --conf-path=/etc/nginx/nginx.conf \
