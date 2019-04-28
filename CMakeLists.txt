@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
 
-set (PROJECT_NAME "NeoLM" CXX)
-project (${PROJECT_NAME})
+project("mir_http_example" VERSION 0.0.1 LANGUAGES CXX)
 
-add_executable(${PROJECT_NAME} main.cpp)
+include_directories("include")
+
+add_executable(${PROJECT_NAME} example/main.cpp)
 
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
