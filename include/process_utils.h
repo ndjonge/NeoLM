@@ -12,7 +12,7 @@ namespace process
 {
 
 #ifdef WIN32
-void spawn_as_user(const std::string& command, const std::string& user, const std::string& password, bool gui = false)
+void spawn_as_user(const std::string& command, const std::string& user, const std::string& password)
 {
 	HANDLE CallerToken = NULL;
 	HANDLE CalleeToken = NULL;

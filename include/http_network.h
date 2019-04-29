@@ -191,6 +191,8 @@ public:
 	context(method m)
 		: context_(nullptr)
 		, ssl_method_(nullptr)
+		, verify_mode_(verify_peer)
+
 	{
 
 		switch (m)
@@ -251,7 +253,7 @@ public:
 
 	void set_verify_mode(verify_mode v) // network::ssl::verify_peer | boost::asio::ssl::verify_fail_if_no_peer_cert | boost::asio::ssl::verify_client_once);
 	{
-		//?
+		verify_mode_ = v;
 	}
 
 	SSL_CTX* native() { return context_; }
@@ -259,6 +261,7 @@ public:
 private:
 	SSL_CTX* context_;
 	const SSL_METHOD* ssl_method_;
+	verify_mode verify_mode_;
 };
 
 namespace stream_base
@@ -294,7 +297,7 @@ public:
 	stream& operator=(const stream&) = delete;
 	stream& operator=(stream&&) = delete;
 
-	stream(stream&& s)
+	stream(stream&& s) noexcept
 		: context_(s.context_)
 		, lowest_layer_(std::move(s.lowest_layer_))
 		, ssl_(s.ssl_)
@@ -315,7 +318,7 @@ public:
 
 	SSL* native() { return ssl_; }
 
-	void handshake(stream_base::handshake_type type)
+	void handshake(stream_base::handshake_type)
 	{
 		ssl_ = SSL_new(context_.native());
 		SSL_set_fd(ssl_, (int)(lowest_layer_.lowest_layer()));
@@ -345,7 +348,7 @@ using address = std::pair<std::string, std::uint16_t>;
 inline address make_address(const std::string& url)
 {
 	std::string addr = url.substr(0, url.find_last_of(':'));
-	std::uint16_t port = atoi(url.substr(url.find_last_of(':') + 1).c_str());
+	std::uint16_t port = static_cast < std::uint16_t>(std::atoi(url.substr(url.find_last_of(':') + 1).c_str()));
 
 	return address{ addr, port };
 }
@@ -353,7 +356,7 @@ inline address make_address(const std::string& url)
 inline address make_address_from_name(const std::string& url)
 {
 	std::string addr = url.substr(0, url.find_last_of(':'));
-	std::uint16_t port = atoi(url.substr(url.find_last_of(':') + 1).c_str());
+	std::uint16_t port = static_cast < std::uint16_t>(atoi(url.substr(url.find_last_of(':') + 1).c_str()));
 
 	return address{ addr, port };
 }
@@ -365,7 +368,7 @@ inline address make_address_from_url(const std::string& url)
 	std::string protocol = url.substr(0, url.find_first_of(':'));
 
 	std::string addr = url.substr(0, url.find_last_of(':'));
-	std::uint16_t port = atoi(url.substr(url.find_last_of(':') + 1).c_str());
+	std::uint16_t port = static_cast < std::uint16_t>(atoi(url.substr(url.find_last_of(':') + 1).c_str()));
 
 	return address{ addr, port };
 }
@@ -384,6 +387,7 @@ enum options
 	none,
 	ipv6only,
 	reuseaddr,
+	reuseport,
 	nolinger,
 	nodelay,
 	size
@@ -413,14 +417,14 @@ public:
 		v6 = AF_INET6
 	};
 
-	socket(socket&& s)
+	socket(socket&& s) noexcept
 		: socket_(s.socket_)
 		, options_(s.options_)
 	{
 		s.socket_ = 0;
 	}
 
-	socket(const socket& s)
+	socket(const socket& s) noexcept
 		: socket_(s.socket_)
 		, options_(s.options_)
 	{
@@ -451,7 +455,7 @@ public:
 
 	socket_t open(family fam, protocol prot)
 	{
-		socket_ = ::socket(fam, protocol::stream, 0);
+		socket_ = ::socket(fam, prot, 0);
 
 		::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&option_values_[options::ipv6only]), sizeof(std::int32_t));
 
@@ -480,7 +484,7 @@ public:
 
 	socket_t& lowest_layer() { return socket_; }
 
-	void set_options(options option, std::int16_t option_value)
+	void set_options(options option, std::int32_t option_value)
 	{
 		options_ |= option;
 		option_values_[option] = option_value;
@@ -502,7 +506,7 @@ public:
 		data_.v4.sin_addr.s_addr = INADDR_ANY;
 	}
 
-	endpoint(std::int16_t port, socket::family fam) noexcept
+	endpoint(std::int32_t port, socket::family fam) noexcept
 	{
 		if (fam == socket::family::v6)
 			std::memset(&endpoint::data_.v6, 0, sizeof(data_.v6));
@@ -513,12 +517,12 @@ public:
 
 		if (fam == socket::family::v6)
 		{
-			data_.v6.sin6_port = htons(port);
+			data_.v6.sin6_port = htons(static_cast <std::uint16_t>(port));
 			data_.v6.sin6_addr = in6addr_any;
 		}
 		else
 		{
-			data_.v4.sin_port = htons(port);
+			data_.v4.sin_port = htons(static_cast <std::uint16_t>(port));
 			data_.v4.sin_addr.s_addr = INADDR_ANY;
 		}
 	}
@@ -575,7 +579,7 @@ public:
 			return static_cast<std::int32_t>(sizeof(data_.v4));
 	}
 
-	void open(std::int16_t protocol) { socket_.open(static_cast<network::tcp::socket::family>(data_.base.sa_family), protocol_); }
+	void open(tcp::protocol protocol) { socket_.open(static_cast<network::tcp::socket::family>(data_.base.sa_family), protocol); }
 
 	tcp::socket& socket() { return socket_; };
 
@@ -651,12 +655,12 @@ private:
 class v6 : public endpoint
 {
 public:
-	v6(std::int16_t port)
+	v6(std::int32_t port)
 		: endpoint{ port, tcp::socket::family::v6 }
 	{
 	}
 
-	v6(const std::string& ip, std::int16_t port)
+	v6(const std::string& ip, std::int32_t port)
 		: endpoint{ port, tcp::socket::family::v6 }
 	{
 		inet_pton(AF_INET6, ip.c_str(), &(endpoint::data_.v6.sin6_addr));
@@ -671,9 +675,9 @@ public:
 		;
 	}
 
-	std::uint16_t protocol() { return endpoint::protocol_; }
+	tcp::protocol protocol() { return endpoint::protocol_; }
 
-	void port(std::int32_t& value) { endpoint::data_.v6.sin6_port = htons(value); }
+	void port(std::int32_t& value) { endpoint::data_.v6.sin6_port = htons(static_cast<std::uint16_t>(value)); }
 
 private:
 };
@@ -728,7 +732,7 @@ class acceptor
 public:
 	acceptor() = default;
 
-	void open(std::int16_t protocol) noexcept { protocol_ = protocol; }
+	void open(tcp::protocol protocol) noexcept { protocol_ = protocol; }
 
 	void bind(endpoint& endpoint, error_code& ec) noexcept
 	{
@@ -800,7 +804,7 @@ public:
 	}
 
 private:
-	std::int16_t protocol_;
+	tcp::protocol protocol_;
 	endpoint* endpoint_;
 };
 } // namespace tcp
@@ -868,26 +872,22 @@ inline int tcp_nodelay(network::tcp::socket& s, int value)
 	return ::setsockopt(s.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&reuseaddr), sizeof(reuseaddr)); // NOLINT
 }
 
-inline int reuse_address(network::tcp::socket& s, int value)
+inline int reuse_address(network::tcp::socket& s, std::int32_t value)
 {
 	s.set_options(network::tcp::options::reuseaddr, value);
 	return 0;
 }
 
-inline int ipv6only(network::tcp::socket& s, int value)
+inline int ipv6only(network::tcp::socket& s, std::int32_t value)
 {
 	s.set_options(network::tcp::options::ipv6only, value);
 	return 0;
 }
 
-inline int use_portsharding(network::tcp::socket& s, int value)
+inline int use_portsharding(network::tcp::socket& s, std::int32_t value)
 {
-	int use_portsharding = value;
-#ifdef LINUX
-	int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_REUSEPORT, (char*)&use_portsharding, sizeof(use_portsharding));
-	return ret;
-#endif
-	return -1;
+	s.set_options(network::tcp::options::ipv6only, value);
+	return 0;
 }
 
 inline int no_linger(network::tcp::socket& s, int value)

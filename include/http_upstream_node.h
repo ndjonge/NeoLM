@@ -202,27 +202,27 @@ class haproxy : public upstream_controller<haproxy>
 public:
 	haproxy(http::configuration& configuration, http::basic::server& server) : upstream_controller(configuration, server) {};
 
-	const result add(std::string& myurl) const noexcept
+	const result add(std::string& ) const noexcept
 	{
 		return http::upstream::sucess;
 	}
 
-	const result remove(std::string& myurl) const noexcept
+	const result remove(std::string& ) const noexcept
 	{
 		return http::upstream::sucess;
 	}
 
-	const result enable(std::string& myurl) const noexcept
+	const result enable(std::string& ) const noexcept
 	{
 		return http::upstream::sucess;
 	}
 
-	const result disable(std::string& myurl) const noexcept
+	const result disable(std::string& ) const noexcept
 	{
 		return http::upstream::sucess;
 	}
 
-	const std::string list(std::string& myurl) const noexcept
+	const std::string list(std::string& ) const noexcept
 	{
 		return "";
 	}

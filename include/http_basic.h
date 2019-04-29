@@ -214,7 +214,9 @@ public:
 			int ret = inflate(&inflate_s, Z_FINISH);
 			if (ret != Z_STREAM_END && ret != Z_OK && ret != Z_BUF_ERROR)
 			{
-				std::string error_msg = inflate_s.msg;
+				std::string error_msg = "unkown";
+				if (inflate_s.msg) 
+					error_msg = inflate_s.msg;
 				inflateEnd(&inflate_s);
 				throw std::runtime_error(error_msg);
 			}
@@ -366,13 +368,9 @@ inline method_t to_method(const std::string& v) noexcept
 		break;
 	case 'P':
 		if (v == "PUT") return http::method::put;
-		break;
 		if (v == "POST") return http::method::post;
-		break;
 		if (v == "PATCH") return http::method::patch;
-		break;
 		if (v == "PURGE") return http::method::purge;
-		break;
 		return method::unknown;
 	}
 
@@ -403,7 +401,7 @@ inline std::string to_string(method_t method) noexcept
 		return "PATCH";
 	case method::purge:
 		return "PURGE";
-	case method::unknown:
+	default:
 		return "<unknown>";
 	}
 }
@@ -435,7 +433,7 @@ enum status_t
 	service_unavailable = 503
 };
 
-inline status_t to_status(std::uint16_t status_nr) { return static_cast<status_t>(status_nr); }
+inline status_t to_status(std::uint32_t status_nr) { return static_cast<status_t>(status_nr); }
 
 inline const char* to_string(status_t s)
 {
@@ -661,7 +659,7 @@ template <> class header<request_specialization> : public fields
 	friend class http::request_parser;
 
 protected:
-	http::method::method_t method_;
+	http::method::method_t method_{ method::unknown };
 	std::string url_requested_;
 	std::string target_;
 	query_params params_;
@@ -1403,8 +1401,6 @@ public:
 
 	template <typename InputIterator> std::tuple<result_type, InputIterator> parse(http::response_message& req, InputIterator begin, InputIterator end)
 	{
-		auto data_size = end - begin;
-
 		while (begin != end)
 		{
 			result_type result = consume(req, *begin++);
@@ -1954,7 +1950,7 @@ public:
 		std::string target_;
 	};
 
-	http::response_message get(const std::string& url_string, const http::response_header& headers = {})
+	http::response_message get(const std::string& url_string, const http::response_header&)
 	{
 		http::response_message message;
 
@@ -1981,7 +1977,7 @@ public:
 
 			auto request_result_size = network::write(s, http::to_string(request));
 			http::response_parser p;
-			http::response_parser::result_type parse_result;
+			http::response_parser::result_type parse_result = http::response_parser::result_type::bad;
 
 			if (request_result_size != -1)
 			{
@@ -2257,28 +2253,28 @@ public:
 	struct route_metrics
 	{
 		route_metrics() = default;
-		route_metrics(const route_metrics& r)
+		route_metrics(const route_metrics& r) noexcept
 		{
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
 		}
 
-		route_metrics& operator=(const route_metrics& r)
+		route_metrics& operator=(const route_metrics& r) noexcept
 		{
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
 		}
 
-		route_metrics(route_metrics&& r)
+		route_metrics(route_metrics&& r) noexcept
 		{
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
 		}
 
-		route_metrics& operator=(route_metrics&& r)
+		route_metrics& operator=(route_metrics&& r) noexcept
 		{
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
@@ -2300,7 +2296,6 @@ public:
 		};
 	};
 
-	std::int64_t x;
 	http::method::method_t method_;
 
 	std::string route_;
@@ -3097,7 +3092,6 @@ public:
 			{
 				throw std::runtime_error(
 					std::string("cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":" + std::to_string(https_listen_port_end_) + " ]"));
-				exit(-1);
 			}
 
 			network::ssl::context ssl_context(network::ssl::context::tlsv12);
@@ -3181,7 +3175,6 @@ public:
 			{
 				throw std::runtime_error(
 					std::string("cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":" + std::to_string(http_listen_port_end_) + " ]"));
-				exit(-1);
 			}
 
 			acceptor_http.listen();
@@ -3241,7 +3234,7 @@ public:
 
 		void proceed()
 		{
-			using data_store_buffer_t = std::array<char, 1024 * 8>;
+			using data_store_buffer_t = std::array<char, 1024 * 4>;
 			data_store_buffer_t buffer{};
 			auto c = std::begin(buffer);
 			while (true)
@@ -3276,7 +3269,7 @@ public:
 						{
 							parse_result = http::request_parser::result_type::bad;
 
-							int ret = network::read(client_socket_, network::buffer(buffer.data(), buffer.size()));
+							ret = network::read(client_socket_, network::buffer(buffer.data(), buffer.size()));
 
 							if (ret == 0)
 							{
@@ -3330,7 +3323,7 @@ public:
 
 					if (response.body().empty())
 					{
-						std::array<char, 1024 * 8> file_buffer{};
+						std::array<char, 1024 * 4> file_buffer{};
 
 						{
 							std::string headers = response.header_to_string();
@@ -3408,15 +3401,15 @@ public:
 
 private:
 	int thread_count_;
-	int http_listen_port_begin_;
-	int http_listen_port_end_;
-	int http_listen_port_;
+	std::int32_t http_listen_port_begin_;
+	std::int32_t http_listen_port_end_;
+	std::int32_t http_listen_port_;
 
 	network::tcp::v6 endpoint_http_;
 
-	int https_listen_port_begin_;
-	int https_listen_port_end_;
-	int https_listen_port_;
+	std::int32_t https_listen_port_begin_;
+	std::int32_t https_listen_port_end_;
+	std::int32_t https_listen_port_;
 
 	network::tcp::v6 endpoint_https_;
 

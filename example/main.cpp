@@ -17,7 +17,7 @@
 
 using json = nlohmann::json;
 
-int main(int argc, char* argv[])
+int main()
 {
 	network::init();
 	network::ssl::init();

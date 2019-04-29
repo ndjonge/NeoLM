@@ -43,11 +43,11 @@ public:
 
 	std::string tenant() const { return tenant_id_; }
 
-	void spawn(const std::string& command)
+/*	void spawn(const std::string& command)
 	{
 		std::cout << "spawn:" << url_ << "\n";
 		auto future_ = std::async(std::launch::async, [this]() { auto result = std::system(url_.c_str()); });
-	}
+	}*/
 
 private:
 	std::string tenant_id_;
@@ -249,14 +249,14 @@ private:
 					}
 					else
 					{
-						const auto& key = license_manager_.group_members_.emplace(tenant + node, pm::group::member{ tenant, node });
+						license_manager_.group_members_.emplace(tenant + node, pm::group::member{ tenant, node });
 
 						session.response().result(http::status::created);
 					}
 				}
 			});
 
-			S::router_.on_get("/status", [this](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_get("/status", [this](http::session_handler& session, const http::api::params&) {
 				S::manager().server_information(S::configuration_.to_string());
 				S::manager().router_information(S::router_.to_string());
 
