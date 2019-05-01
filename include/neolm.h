@@ -299,11 +299,15 @@ public:
 
 	void run()
 	{
-		for (auto i = 0; i != 2000; i++)
+		int x = 0;
+		for (auto n = 0; n != 10; n++)
+		for (auto i = 0; i != 10; i++)
+		for (auto k = 0; k != 10; k++)
+		for (auto f = 0; f != 100; f++)
 		{
 
 			api_server_.router_.on_get(
-				std::move("/testtesttest/testtesttest/testtesttest/test-" + std::to_string(i) + "/:test"), [](http::session_handler& session, const http::api::params& params) {
+				std::move("/v-"+ std::to_string(n) + "/service-"+ std::to_string(i) + "/subservice-"+ std::to_string(k) + "/route/test-" + std::to_string(x++) + "/:test"), [](http::session_handler& session, const http::api::params& params) {
 					const auto& test = params.get("test");
 
 					if (test.empty())

@@ -215,8 +215,7 @@ public:
 			if (ret != Z_STREAM_END && ret != Z_OK && ret != Z_BUF_ERROR)
 			{
 				std::string error_msg = "unkown";
-				if (inflate_s.msg) 
-					error_msg = inflate_s.msg;
+				if (inflate_s.msg) error_msg = inflate_s.msg;
 				inflateEnd(&inflate_s);
 				throw std::runtime_error(error_msg);
 			}
@@ -2231,11 +2230,10 @@ template <typename R = route_function_t> class route
 public:
 	route(http::method::method_t method, const std::string& route, const R& endpoint)
 		: method_(method)
-		, route_(route)
 		, endpoint_(endpoint)
 	{
-		size_t b = route_.find_first_of('/');
-		size_t e = route_.find_first_of('/', b + 1);
+		size_t b = route.find_first_of('/');
+		size_t e = route.find_first_of('/', b + 1);
 		size_t token = 0;
 
 		for (token = 0; b != std::string::npos; token++)
@@ -2245,8 +2243,8 @@ public:
 
 			if (e == std::string::npos) break;
 
-			b = route_.find_first_of('/', e);
-			e = route_.find_first_of('/', b + 1);
+			b = route.find_first_of('/', e);
+			e = route.find_first_of('/', b + 1);
 		}
 	};
 
@@ -2297,11 +2295,18 @@ public:
 	};
 
 	http::method::method_t method_;
-
-	std::string route_;
 	R endpoint_;
 	std::vector<std::string> tokens_;
 	route_metrics metrics_;
+
+	std::string get_route() const
+	{
+		std::stringstream route;
+		for (const auto& token : tokens_)
+			route << token;
+
+		return route.str();
+	}
 
 	void update_metrics(std::chrono::high_resolution_clock::duration request_duration, std::chrono::high_resolution_clock::duration new_processing_duration_)
 	{
@@ -2317,13 +2322,13 @@ public:
 		// route: /route/:param1/subroute/:param2/subroute
 		// url:   /route/parameter
 
-		if (url == route_)
+/*		if (url == route_)
 		{
 			if (method == method_)
 				return router_result::match_found;
 			else
 				return router_result::no_method;
-		}
+		}*/
 
 		// std::vector<std::string> tokens;
 
@@ -2338,7 +2343,8 @@ public:
 		{
 			// std::string current_token = url.substr(b, e - b);
 
-			if (tokens_[token].size() > 2 && ((tokens_[token][1] == ':') || tokens_[token][1] == '{'))
+//			if (tokens_[token].size() > 2 && ((tokens_[token][1] == ':') || tokens_[token][1] == '{'))
+			if (((tokens_[token][1] == ':') || tokens_[token][1] == '{'))
 			{
 				std::string value = url.substr(b + 1, e - b - 1);
 
@@ -2353,7 +2359,7 @@ public:
 					params.insert(tokens_[token].substr(2, tokens_[token].size() - 3), value);
 				}
 			}
-			else if (url.find(tokens_[token].data(), b, e - b) == std::string::npos)
+			else if (tokens_[token] != url.substr(b, e - b))
 			{
 				match = false;
 				break;
@@ -2489,7 +2495,7 @@ public:
 
 		for (auto& route : route_registry_)
 		{
-			s << R"(")" << route.route_ << R"(", )" << http::method::to_string(route.method_) << ", " << route.metrics().to_string() << "\n";
+			s << R"(")" << route.get_route() << R"(", )" << http::method::to_string(route.method_) << ", " << route.metrics().to_string() << "\n";
 		}
 
 		return s.str();
