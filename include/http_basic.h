@@ -2295,7 +2295,7 @@ public:
 	};
 
 	http::method::method_t method_;
-	R endpoint_;
+	const R endpoint_;
 	std::vector<std::string> tokens_;
 	route_metrics metrics_;
 
@@ -2322,13 +2322,13 @@ public:
 		// route: /route/:param1/subroute/:param2/subroute
 		// url:   /route/parameter
 
-/*		if (url == route_)
-		{
-			if (method == method_)
-				return router_result::match_found;
-			else
-				return router_result::no_method;
-		}*/
+		/*		if (url == route_)
+				{
+					if (method == method_)
+						return router_result::match_found;
+					else
+						return router_result::no_method;
+				}*/
 
 		// std::vector<std::string> tokens;
 
@@ -2336,47 +2336,54 @@ public:
 
 		auto b = url.find_first_of('/');
 		auto e = url.find_first_of('/', b + 1);
-		size_t token = 0;
 		bool match = false;
 
-		for (token = 0; ((b != std::string::npos) && (token < tokens_.size())); token++)
+		// for (token = 0; ((b != std::string::npos) && (token < tokens_.size())); token++)
+
+		if (b != std::string::npos)
 		{
-			// std::string current_token = url.substr(b, e - b);
-
-//			if (tokens_[token].size() > 2 && ((tokens_[token][1] == ':') || tokens_[token][1] == '{'))
-			if (((tokens_[token][1] == ':') || tokens_[token][1] == '{'))
+			for (const auto& token : tokens_) // token = 0; ((b != std::string::npos) && (token < tokens_.size())); token++)
 			{
-				std::string value = url.substr(b + 1, e - b - 1);
+				// std::string current_token = url.substr(b, e - b);
 
-				http::request_parser::url_decode(url.substr(b + 1, e - b - 1), value);
-
-				if (tokens_[token][1] == ':')
+				//			if (tokens_[token].size() > 2 && ((tokens_[token][1] == ':') || tokens_[token][1] == '{'))
+				if (url.compare(b, e - b, token) == 0)
 				{
-					params.insert(tokens_[token].substr(2, tokens_[token].size() - 2), value);
+				}
+				else if (((token[1] == ':') || token[1] == '{'))
+				{
+					std::string value = url.substr(b + 1, e - b - 1);
+
+					http::request_parser::url_decode(url.substr(b + 1, e - b - 1), value);
+
+					if (token[1] == ':')
+					{
+						params.insert(token.substr(2, token.size() - 2), value);
+					}
+					else
+					{
+						params.insert(token.substr(2, token.size() - 3), value);
+					}
 				}
 				else
 				{
-					params.insert(tokens_[token].substr(2, tokens_[token].size() - 3), value);
+					match = false;
+					break;
 				}
-			}
-			else if (tokens_[token] != url.substr(b, e - b))
-			{
-				match = false;
-				break;
-			}
 
-			b = url.find_first_of('/', e);
-			e = url.find_first_of('/', b + 1);
+				b = url.find_first_of('/', e);
+				e = url.find_first_of('/', b + 1);
 
-			if ((b == std::string::npos) && (tokens_.size() - 1 == token))
-			{
-				match = true;
-				break;
-			}
-			else if (b == std::string::npos)
-			{
-				match = false;
-				break;
+				if ((b == std::string::npos) && (*tokens_.rbegin() == token))
+				{
+					match = true;
+					break;
+				}
+				else if (b == std::string::npos)
+				{
+					match = false;
+					break;
+				}
 			}
 		}
 
