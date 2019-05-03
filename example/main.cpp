@@ -15,7 +15,7 @@
 
 #include "process_utils.h"
 
-#include "trie.h"
+#include "http_router2.h"
 #include <vector>
 
 using json = nlohmann::json;
@@ -26,6 +26,8 @@ int main()
 	network::init();
 	network::ssl::init();
 
+	test();
+
 	/*try
 	{
 		process::spawn_as_user("cmd", "testuser", "test");
@@ -34,12 +36,6 @@ int main()
 	{
 		std::cout << e.what() << "\n";
 	}*/
-
-	// create an empty structure (null)
-	json j;
-
-	// add a number that is stored as double (note the implicit conversion of j to an object)
-	j["pi"] = 3.141;
 
 	neolm::license_manager<http::basic::threaded::server> license_server{ http::configuration{
 																			  { "http_server_identification", "neolm/8.0.01" },
