@@ -65,13 +65,28 @@ public:
 		};
 	};
 
+	class route2
+	{
+	public:
+		friend class result;
+		route2(const R& endpoint)
+			: endpoint_(endpoint){}
+
+		R& endpoint() { return endpoint_; };
+		metrics& update_metrics() { return metrics_; };
+
+	private:
+		R endpoint_;
+		metrics metrics_;
+	};
+
 	class route_part
 	{
 		friend class router2;
 
 	private:
 		std::map<T, std::unique_ptr<route_part>> link_;
-		std::map<M, std::unique_ptr<std::tuple<R, metrics>>> endpoints_;
+		std::map<M, std::unique_ptr<route2>> endpoints_;
 		T key_;
 
 	public:
@@ -90,18 +105,19 @@ public:
 	std::unique_ptr<route_part> root_;
 
 public:
-	struct result
+	class result
 	{
-		result(http::router_result::router_result_type result, const R* endpoint, const metrics* m)
-			: result_(result)
-			, endpoint_(endpoint)
-			, metrics_(m)
+	public:
+		result(http::router_result::router_result_type result, route2* route)
+			: route_(route)
 		{
 		}
 
+		route& route() { return *route_; };
+
+	private:
 		http::router_result::router_result_type result_;
-		const R* endpoint_;
-		const metrics* metrics_;
+		route* route_;
 	};
 
 	router2()
@@ -129,7 +145,7 @@ public:
 			it = l.get();
 		}
 
-		it->endpoints_[method].reset(new std::tuple<R, metrics>(end_point, metrics()));
+		it->endpoints_[method].reset(new route2{ end_point });
 	}
 
 	void remove(const T& s)
@@ -182,8 +198,9 @@ public:
 
 			if (l == std::end(it->link_))
 			{
+
 				// The path was exhausted while searching
-				return result{ router_result::no_route, nullptr, nullptr };
+				return router2::result(http::router_result::no_route, nullptr);
 			}
 
 			it = l->second.get();
@@ -193,13 +210,10 @@ public:
 
 		if (endpoint != it->endpoints_.cend())
 		{
-			auto& z = std::get<0>(*endpoint->second);
-			auto& y = std::get<1>(*endpoint->second);
-
-			return result(http::router_result::match_found, nullptr, nullptr);
+			return router2::result(http::router_result::match_found, &(*(endpoint->second)));
 		}
 
-		return result(http::router_result::match_found, nullptr, nullptr);
+		return router2::result(http::router_result::match_found, nullptr);
 	}
 
 	// typename std::basic_string<T>::size_type match(const T& s, bool require_terminal = true) const;
@@ -222,5 +236,7 @@ void test()
 
 	http::configuration c{ {} };
 	http::session_handler s(c);
+
+	if (route_result.result() == http::router_result::match_found) route_result.endpoint()(s, p);
 
 }
