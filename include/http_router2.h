@@ -69,6 +69,7 @@ public:
 	{
 	public:
 		friend class result;
+
 		route2(const R& endpoint)
 			: endpoint_(endpoint){}
 
@@ -105,19 +106,21 @@ public:
 	std::unique_ptr<route_part> root_;
 
 public:
-	class result
+	class match_result
 	{
 	public:
-		result(http::router_result::router_result_type result, route2* route)
-			: route_(route)
+		match_result(http::router_result::router_result_type result, route2* route)
+			: result_(result),
+			route_(route)
 		{
 		}
 
-		route& route() { return *route_; };
+		route2& route() { return *route_; };	
+		const http::router_result::router_result_type result() { return result_; };
 
 	private:
 		http::router_result::router_result_type result_;
-		route* route_;
+		route2* route_;
 	};
 
 	router2()
@@ -125,7 +128,7 @@ public:
 	{
 	}
 
-	void on_get(const http::method::method_t m, const std::string& r, const R& api_method) { add(m, r, api_method); }
+	void on_get(const std::string& r, const R& api_method) { add(http::method::get, r, api_method); }
 
 	void add(const M& method, const T& route, const R& end_point)
 	{
@@ -187,7 +190,7 @@ public:
 		}
 	}
 
-	result route(const http::method::method_t& method, const std::string& url, params& params) const noexcept
+	match_result route(const http::method::method_t& method, const std::string& url, params& params) const noexcept
 	{
 		auto it = root_.get();
 		auto parts = http::util::split(url, "/");
@@ -200,7 +203,7 @@ public:
 			{
 
 				// The path was exhausted while searching
-				return router2::result(http::router_result::no_route, nullptr);
+				return router2::match_result(http::router_result::no_route, nullptr);
 			}
 
 			it = l->second.get();
@@ -210,13 +213,11 @@ public:
 
 		if (endpoint != it->endpoints_.cend())
 		{
-			return router2::result(http::router_result::match_found, &(*(endpoint->second)));
+			return router2::match_result(http::router_result::match_found, &(*(endpoint->second)));
 		}
 
-		return router2::result(http::router_result::match_found, nullptr);
+		return router2::match_result(http::router_result::match_found, nullptr);
 	}
-
-	// typename std::basic_string<T>::size_type match(const T& s, bool require_terminal = true) const;
 };
 
 } // namespace api
@@ -227,8 +228,31 @@ void test()
 {
 	http::api::router2<> t;
 
-	t.on_get(http::method::get, "/v1/service1/subservice1/resource1/subresource1", [](http::session_handler& session, const http::api::params& params) { std::cout << "Hoi1!\n"; });
-	t.on_get(http::method::put, "/v1/service2/subservice1/resource1/subresource1", [](http::session_handler& session, const http::api::params& params) { std::cout << "Hoi2!\n"; });
+		int x = 0;
+		for (auto n = 0; n != 10; n++)
+			for (auto i = 0; i != 10; i++)
+				for (auto k = 0; k != 10; k++)
+					for (auto f = 0; f != 100; f++)
+					{
+
+						t.on_get(
+							std::move(
+								"/v-" + std::to_string(n) + "/service-" + std::to_string(i) + "/subservice-" + std::to_string(k) + "/route/test-" + std::to_string(x++) + "/:test"),
+							[](http::session_handler& session, const http::api::params& params) {
+								const auto& test = params.get("test");
+
+								if (test.empty())
+								{
+									session.response().result(http::status::bad_request);
+								}
+								else
+								{
+									session.response().body() = "test:" + test;
+									session.response().result(http::status::ok);
+								}
+							});
+					}
+
 
 	http::api::params p;
 
@@ -237,6 +261,6 @@ void test()
 	http::configuration c{ {} };
 	http::session_handler s(c);
 
-	if (route_result.result() == http::router_result::match_found) route_result.endpoint()(s, p);
+	if (route_result.result() == http::router_result::match_found) route_result.route().endpoint()(s, p);
 
 }
