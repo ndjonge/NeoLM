@@ -138,12 +138,12 @@ private:
 			//			, enable_server_as_upstream(configuration, *this)
 			, license_manager_(license_manager)
 		{
-			S::router_.use("/static/");
+/*			S::router_.use("/static/");
 			S::router_.use("/images/");
 			S::router_.use("/styles/");
 			S::router_.use("/index.html");
 			S::router_.use("/");
-			S::router_.use("/files/");
+			S::router_.use("/files/");*/
 
 			S::router_.on_busy([this]() {
 				bool result = true;
@@ -301,26 +301,28 @@ public:
 	{
 		int x = 0;
 		for (auto n = 0; n != 10; n++)
-		for (auto i = 0; i != 10; i++)
-		for (auto k = 0; k != 10; k++)
-		for (auto f = 0; f != 100; f++)
-		{
-
-			api_server_.router_.on_get(
-				std::move("/v-"+ std::to_string(n) + "/service-"+ std::to_string(i) + "/subservice-"+ std::to_string(k) + "/route/test-" + std::to_string(x++) + "/:test"), [](http::session_handler& session, const http::api::params& params) {
-					const auto& test = params.get("test");
-
-					if (test.empty())
+			for (auto i = 0; i != 10; i++)
+				for (auto k = 0; k != 10; k++)
+					for (auto f = 0; f != 100; f++)
 					{
-						session.response().result(http::status::bad_request);
+
+						std::string route
+							= "/v-" + std::to_string(n) + "/service-" + std::to_string(i) + "/subservice-" + std::to_string(k) + "/route/test-" + std::to_string(x++) + "/:test/aap";
+
+						api_server_.router_.on_get(std::move(route), [this](http::session_handler& session, const http::api::params& params) {
+							const auto& test = params.get("test");
+
+							if (test.empty())
+							{
+								session.response().result(http::status::bad_request);
+							}
+							else
+							{
+								session.response().body() = "test:" + test;
+								session.response().result(http::status::ok);
+							}
+						});
 					}
-					else
-					{
-						session.response().body() = "test:" + test;
-						session.response().result(http::status::ok);
-					}
-				});
-		}
 
 		do
 		{

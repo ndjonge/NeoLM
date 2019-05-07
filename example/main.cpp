@@ -26,8 +26,6 @@ int main()
 	network::init();
 	network::ssl::init();
 
-	test();
-
 	/*try
 	{
 		process::spawn_as_user("cmd", "testuser", "test");
