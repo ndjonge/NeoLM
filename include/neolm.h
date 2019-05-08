@@ -145,7 +145,7 @@ private:
 			S::router_.use("/");
 			S::router_.use("/files/");*/
 
-			S::router_.on_busy([this]() {
+			S::router_.on_busy([&]() {
 				bool result = true;
 
 				std::cout << "busy...\n";
@@ -155,7 +155,7 @@ private:
 				return result;
 			});
 
-			S::router_.on_idle([this]() {
+			S::router_.on_idle([&]() {
 				bool result = true;
 
 				if (S::manager().idle_duration() >= 3600)
@@ -166,7 +166,7 @@ private:
 			});
 
 			// Get secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_get("/pm/tenants/:tenant/upstreams/:node", [this](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_get("/pm/tenants/:tenant/upstreams/:node", [&](http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -192,7 +192,7 @@ private:
 			});
 
 			// Remove secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_delete("/pm/tenants/:tenant/upstreams/:node", [this](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_delete("/pm/tenants/:tenant/upstreams/:node", [&](http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -233,7 +233,7 @@ private:
 			});
 
 			// New node, tenant must exist.
-			S::router_.on_put("/pm/tenants/:tenant/upstreams/:node", [this](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_put("/pm/tenants/:tenant/upstreams/:node", [&](http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -309,7 +309,7 @@ public:
 						std::string route
 							= "/v-" + std::to_string(n) + "/service-" + std::to_string(i) + "/subservice-" + std::to_string(k) + "/route/test-" + std::to_string(x++) + "/:test/aap";
 
-						api_server_.router_.on_get(std::move(route), [this](http::session_handler& session, const http::api::params& params) {
+						api_server_.router_.on_get(std::move(route), [](http::session_handler& session, const http::api::params& params) {
 							const auto& test = params.get("test");
 
 							if (test.empty())
