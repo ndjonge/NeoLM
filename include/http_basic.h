@@ -53,6 +53,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 #endif
 
 #include "http_network.h"
+#include "delegate.h"
 
 // using boost::hash_combine
 template <class T> inline void hash_combine(std::size_t& seed, T const& v) { seed ^= std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2); }
@@ -2209,7 +2210,7 @@ private:
 }; // < class Params
 
 using session_handler_type = http::session_handler;
-using route_function_t = std::function<void(session_handler_type& session, const http::api::params& params)>;
+using route_function_t = delegate<void(session_handler_type& session, const http::api::params& params)>;
 using middleware_function_t = std::function<bool(session_handler_type& session, const http::api::params& params)>;
 
 namespace router_match
@@ -2295,7 +2296,7 @@ public:
 		metrics& route_metrics() { return metrics_; };
 
 	private:
-		R endpoint_;
+		const R& endpoint_;
 		metrics metrics_;
 	};
 
@@ -2406,23 +2407,23 @@ public:
 
 	void on_idle(std::function<bool()> on_idle_callback) { on_idle_ = on_idle_callback; }
 
-	void on_get(std::string&& route, const R& api_method) { on_http_method(method::get, route, api_method); }
+	void on_get(std::string&& route, R&& api_method) { on_http_method(method::get, route, std::move(api_method)); }
 
-	void on_post(std::string&& route, const R& api_method) { on_http_method(method::post, route, api_method); }
+	void on_post(std::string&& route, R&& api_method) {on_http_method(method::post, route, std::move(api_method)); }
 
-	void on_head(std::string&& route, const R& api_method) { on_http_method(method::head, route, api_method); }
+	void on_head(std::string&& route, R&& api_method) {on_http_method(method::head, route, std::move(api_method)); }
 
-	void on_put(std::string&& route, const R& api_method) { on_http_method(method::put, route, api_method); }
+	void on_put(std::string&& route, R&& api_method) {on_http_method(method::put, route, std::move(api_method)); }
 
-	void on_delete(std::string&& route, const R& api_method) { on_http_method(method::delete_, route, api_method); }
+	void on_delete(std::string&& route, R&& api_method) { on_http_method(method::delete_, route, std::move(api_method)); }
 
-	void on_patch(std::string&& route, const R& api_method) { on_http_method(method::patch, route, api_method); }
+	void on_patch(std::string&& route, R&& api_method) {on_http_method(method::patch, route, std::move(api_method)); }
 
-	void on_options(std::string&& route, const R& api_method) { on_http_method(method::options, route, api_method); }
+	void on_options(std::string&& route, R&& api_method) {on_http_method(method::options, route, std::move(api_method)); }
 
-	void on_http_method(const std::string& http_method, const T& route, const R& api_method) { on_http_method(method::to_method(http_method), route, api_method); }
+	//void on_http_method(std::string&& http_method, T&& route, R& api_method) { on_http_method(method::to_method(http_method), route, api_method); }
 
-	void on_http_method(const M& method, const T& route, const R& end_point)
+	void on_http_method(const M method, T& route, R&& end_point)
 	{
 		auto it = root_.get();
 
@@ -2449,8 +2450,6 @@ public:
 		auto it = root_.get();
 		auto parts = http::util::split(url, "/");
 
-		auto part_begin = url.find_first_of('/');
-		auto part_end = url.find_first_of('/', part_begin + 1);
 
 		for (const auto& part : parts)
 		{
@@ -3057,11 +3056,10 @@ public:
 					https_connection_queue_has_connection_.notify_one();
 				}
 			}
-			// std::cout << "https_listener_handler_::end1\n";
 		}
-		catch (...)
+		catch (std::runtime_error& e)
 		{
-			// TODO
+			std::cout << e.what();
 		}
 	}
 
@@ -3069,8 +3067,6 @@ public:
 	{
 		try
 		{
-			// network::tcp::v6 endpoint_http(http_listen_port_begin_);
-
 			network::tcp::acceptor acceptor_http{};
 
 			acceptor_http.open(endpoint_http_.protocol());
@@ -3084,20 +3080,15 @@ public:
 
 			network::use_portsharding(endpoint_http_.socket(), 1);
 
-			// network::no_linger(endpoint_http.socket(), 1);
-
 			network::error_code ec = network::error::success;
 
 			for (http_listen_port_ = http_listen_port_begin_; http_listen_port_ <= http_listen_port_end_;)
 			{
 				acceptor_http.bind(endpoint_http_, ec);
 
-				// network::no_linger(endpoint_http.socket(), 1);
-
 				if (ec == network::error::success)
 				{
-					// std::scoped_lock<std::mutex> g(configuration_mutex_);
-					// this->configuration_.set("http_listen_port", std::to_string(http_listen_port_));
+					//this->configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
 					break;
 				}

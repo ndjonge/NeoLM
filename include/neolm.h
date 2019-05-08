@@ -5,8 +5,8 @@
 #include <iostream>
 #include <mutex>
 #include <signal.h>
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
@@ -43,11 +43,11 @@ public:
 
 	std::string tenant() const { return tenant_id_; }
 
-/*	void spawn(const std::string& command)
-	{
-		std::cout << "spawn:" << url_ << "\n";
-		auto future_ = std::async(std::launch::async, [this]() { auto result = std::system(url_.c_str()); });
-	}*/
+	/*	void spawn(const std::string& command)
+		{
+			std::cout << "spawn:" << url_ << "\n";
+			auto future_ = std::async(std::launch::async, [this]() { auto result = std::system(url_.c_str()); });
+		}*/
 
 private:
 	std::string tenant_id_;
@@ -138,12 +138,12 @@ private:
 			//			, enable_server_as_upstream(configuration, *this)
 			, license_manager_(license_manager)
 		{
-/*			S::router_.use("/static/");
-			S::router_.use("/images/");
-			S::router_.use("/styles/");
-			S::router_.use("/index.html");
-			S::router_.use("/");
-			S::router_.use("/files/");*/
+			/*			S::router_.use("/static/");
+						S::router_.use("/images/");
+						S::router_.use("/styles/");
+						S::router_.use("/index.html");
+						S::router_.use("/");
+						S::router_.use("/files/");*/
 
 			S::router_.on_busy([&]() {
 				bool result = true;
@@ -289,40 +289,48 @@ public:
 	license_manager& operator=(const license_manager&) = default;
 	license_manager& operator=(license_manager&&) = default;
 
-	void start_server()
-	{
-		this->api_server_.start_server();
-		/*		if (this->api_server_.upstream_controller().add(configuration_.get("upstream-node-nginx-endpoint-myip") + ":" + configuration_.get("http_listen_port")) ==
-		   http::upstream::sucess) std::cout << "server listening on port : " + configuration_.get("http_listen_port") + " and added to upstream\n"; else */
-		std::cout << "server listening on port : " + configuration_.get("http_listen_port") + "\n";
-	}
+	void start_server() { this->api_server_.start_server(); }
 
 	void run()
 	{
-		int x = 0;
-		for (auto n = 0; n != 10; n++)
-			for (auto i = 0; i != 10; i++)
-				for (auto k = 0; k != 10; k++)
-					for (auto f = 0; f != 100; f++)
-					{
+		struct test
+		{
+			test(neolm::license_manager<S>::api_server& api_server_, std::function<void(http::session_handler&, const http::api::params&)>& test_function )
+			{
+				int x = 0;
 
-						std::string route
-							= "/v-" + std::to_string(n) + "/service-" + std::to_string(i) + "/subservice-" + std::to_string(k) + "/route/test-" + std::to_string(x++) + "/:test/aap";
+				std::stringstream s;
 
-						api_server_.router_.on_get(std::move(route), [](http::session_handler& session, const http::api::params& params) {
-							const auto& test = params.get("test");
-
-							if (test.empty())
+				for (auto n = 0; n != 10; n++)
+					for (auto i = 0; i != 10; i++)
+						for (auto k = 0; k != 10; k++)
+							for (auto f = 0; f != 100; f++)
 							{
-								session.response().result(http::status::bad_request);
+								std::stringstream route;
+
+								route << "/v-" << std::to_string(n) << "/service-" << std::to_string(i) << "/subservice-" << std::to_string(k) << "/route/test-"
+									  << std::to_string(x++) << "/:test/aap";
+
+								api_server_.router_.on_get(std::move(route.str()), std::move(test_function));
 							}
-							else
-							{
-								session.response().body() = "test:" + test;
-								session.response().result(http::status::ok);
-							}
-						});
-					}
+			}
+		};
+
+		std::function<void(http::session_handler&, const http::api::params&)> the_test = [](http::session_handler& session, const http::api::params& params) {
+			const auto& test = params.get("test");
+
+			if (test.empty())
+			{
+				session.response().result(http::status::bad_request);
+			}
+			else
+			{
+				session.response().body() = "test:" + test;
+				session.response().result(http::status::ok);
+			}
+		};
+
+		test t(this->api_server_, the_test);
 
 		do
 		{
