@@ -2072,15 +2072,11 @@ public:
 		request_.url_requested_ = request_.target_; //.substr(0, request_.target_.find_first_of('?'));
 		request_.target_ = request_path;
 
-		bool continue_with_routing = router_.call_middleware(*this);
+		t0_ = std::chrono::steady_clock::now();
+		t1_ = t0_;
 
-		if (continue_with_routing)
+		switch (router_.call_route(*this))
 		{
-			t0_ = std::chrono::steady_clock::now();
-			t1_ = t0_;
-
-			switch (router_.call_route(*this))
-			{
 			case http::api::router_match::match_found:
 			{
 				// Route has a valid handler, response body is set.
@@ -2097,50 +2093,11 @@ public:
 			}
 			case http::api::router_match::no_route:
 			{
-				auto static_result = router_.serve_static_content(*this);
-
-				if (static_result)
-				{
-					if (request_path[request_path.size() - 1] == '/')
-					{
-						request_path = request_.target() + "index.html";
-						request_.target(request_path);
-						extension = "html";
-					}
-
-					// Static content route.
-					// Check filesize and set headers.
-
-					auto content_size = fs::file_size(request_.target());
-
-					if (content_size == 0) // TODO: empty  files are ok?
-					{
-						response_.result(http::status::not_found);
-						response_.content_length(response_.body().length());
-					}
-					else
-					{
-						response_.type(extension);
-						response_.content_length(content_size);
-					}
-				}
-				else
-				{
-					response_.result(http::status::not_found);
-					response_.content_length(response_.body().length());
-				}
+				response_.result(http::status::not_found);
+				response_.content_length(response_.body().length());
 				break;
 			}
-			}
 		}
-		else
-		{
-			response_.content_length(response_.body().length());
-		}
-
-		// set connection headers in the response.request_
-		// && (response_.status() == http::status::ok || response_.status() == http::status::created)
-		// && (response_.status() == http::status::ok || response_.status() == http::status::created)
 		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false)
 			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && request_.connection_close() == false))
 		{
@@ -2222,7 +2179,6 @@ private:
 
 using session_handler_type = http::session_handler;
 using route_function_t = std::function<void(session_handler_type& session, const http::api::params& params)>;
-using middleware_function_t = std::function<bool(session_handler_type& session, const http::api::params& params)>;
 
 template <typename M = http::method::method_t, typename T = std::string, typename R = route_function_t> class router
 {
@@ -2512,51 +2468,6 @@ public:
 		root_->to_string_stream(result, path_stack);
 
 		return result.str();
-	}
-
-	bool serve_static_content(session_handler_type& )
-	{
-		/*		for (auto& static_route : static_content_routes)
-				{
-					std::string url = session.request().url_requested().substr(0, session.request().url_requested().find_first_of('?'));
-
-
-
-
-
-
-
-					if (url.find(static_route) == 0)
-					{
-						auto file_path = doc_root_ + session.request().target();
-						session.request().target(file_path);
-
-
-
-
-
-
-
-						return true;
-					}
-				}*/
-		return false;
-	}
-
-	bool call_middleware(session_handler_type& ) const
-	{
-		auto result = true;
-		/*		params params_;
-
-				for (auto& middleware : api_middleware_table)
-				{
-					if (middleware.match(session.request().target(), params_))
-					{
-						if ((result = middleware.endpoint_(session, params_)) == false) break;
-					}
-				}
-				*/
-		return result;
 	}
 
 	http::api::router_match::match_result_type call_route(session_handler_type& session)
