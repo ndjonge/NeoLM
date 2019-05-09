@@ -642,8 +642,8 @@ template <message_specializations> class header;
 template <> class header<request_specialization> : public fields
 {
 	using query_params = http::fields;
-	friend class http::session_handler;
-	friend class http::request_parser;
+	friend class session_handler;
+	friend class request_parser;
 
 protected:
 	http::method::method_t method_{ method::unknown };
@@ -1855,6 +1855,18 @@ public:
 		return true;
 	}
 };
+namespace api
+{
+namespace router_match
+{
+enum match_result_type
+{
+	no_route,
+	no_method,
+	match_found
+};
+}
+}
 
 class session_handler
 {
@@ -2069,7 +2081,7 @@ public:
 
 			switch (router_.call_route(*this))
 			{
-			case http::api::router_match::match_found:
+                case http::api::router_match::match_found:
 			{
 				// Route has a valid handler, response body is set.
 				// Check bodys size and set headers.
@@ -2077,13 +2089,13 @@ public:
 
 				break;
 			}
-			case http::api::router_match::no_method:
+                case http::api::router_match::no_method:
 			{
 				response_.result(http::status::method_not_allowed);
 				response_.content_length(response_.body().length());
 				break;
 			}
-			case http::api::router_match::no_route:
+                case http::api::router_match::no_route:
 			{
 				auto static_result = router_.serve_static_content(*this);
 
@@ -2212,16 +2224,6 @@ using session_handler_type = http::session_handler;
 using route_function_t = std::function<void(session_handler_type& session, const http::api::params& params)>;
 using middleware_function_t = std::function<bool(session_handler_type& session, const http::api::params& params)>;
 
-namespace router_match
-{
-enum match_result_type
-{
-	no_route,
-	no_method,
-	match_found
-};
-}
-
 template <typename M = http::method::method_t, typename T = std::string, typename R = route_function_t> class router
 {
 public:
@@ -2308,11 +2310,6 @@ public:
 
 	public:
 		route_part() {}
-
-		route_part(const R& endpoint)
-			: endpoint_(endpoint)
-		{
-		}
 
 		bool match_param(const std::string& url_part, params& params) const
 		{

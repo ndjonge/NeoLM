@@ -228,7 +228,7 @@ public:
 		// SSL_CTX_set_ecdh_auto(context_, 1);
 		int e = 0;
 		/* Set the key and cert */
-		if (e = SSL_CTX_use_certificate_file(context_, path, SSL_FILETYPE_PEM) <= 0)
+		if ((e = SSL_CTX_use_certificate_file(context_, path, SSL_FILETYPE_PEM)) <= 0)
 		{
 			char error[256];
 			ERR_error_string_n(e, error, sizeof(error));
@@ -241,7 +241,7 @@ public:
 	{
 		int e = 0;
 
-		if (SSL_CTX_use_PrivateKey_file(context_, path, SSL_FILETYPE_PEM) <= 0)
+		if ((SSL_CTX_use_PrivateKey_file(context_, path, SSL_FILETYPE_PEM)) <= 0)
 		{
 			char error[256];
 			ERR_error_string_n(e, error, sizeof(error));
