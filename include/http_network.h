@@ -390,7 +390,7 @@ enum protocol
 
 enum options
 {
-	none,
+	none = 0,
 	ipv6only,
 	reuseaddr,
 	reuseport,
@@ -465,10 +465,7 @@ public:
 
 		::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&option_values_[options::ipv6only]), sizeof(std::int32_t));
 
-		if (options_ & options::reuseaddr)
-		{
-			::setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&option_values_[options::reuseaddr]), sizeof(std::int32_t));
-		}
+		::setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&option_values_[options::reuseaddr]), sizeof(std::int32_t));
 
 		return socket_;
 	}
@@ -892,7 +889,7 @@ inline int ipv6only(network::tcp::socket& s, std::int32_t value)
 
 inline int use_portsharding(network::tcp::socket& s, std::int32_t value)
 {
-	s.set_options(network::tcp::options::ipv6only, value);
+	s.set_options(network::tcp::options::reuseport, value);
 	return 0;
 }
 

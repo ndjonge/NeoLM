@@ -166,7 +166,7 @@ private:
 			});
 
 			// Get secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_get("/pm/tenants/:tenant/upstreams/:node", [&](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -192,7 +192,7 @@ private:
 			});
 
 			// Remove secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_delete("/pm/tenants/:tenant/upstreams/:node", [&](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_delete("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -233,7 +233,7 @@ private:
 			});
 
 			// New node, tenant must exist.
-			S::router_.on_put("/pm/tenants/:tenant/upstreams/:node", [&](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_put("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -301,7 +301,7 @@ public:
 
 				std::stringstream s;
 
-				for (auto n = 0; n != 2; n++)
+				for (auto n = 0; n != 10; n++)
 					for (auto i = 0; i != 10; i++)
 						for (auto k = 0; k != 10; k++)
 							for (auto f = 0; f != 100; f++)
@@ -309,7 +309,7 @@ public:
 								std::stringstream route;
 
 								route << "/v-" << std::to_string(n) << "/service-" << std::to_string(i) << "/subservice-" << std::to_string(k) << "/route/test-"
-									  << std::to_string(x++) << "/:test/aap";
+									  << std::to_string(x++) << "/{test}/aap";
 
 								api_server_.router_.on_get(std::move(route.str()), std::move(test_function));
 							}

@@ -1866,7 +1866,7 @@ enum match_result_type
 	match_found
 };
 }
-}
+} // namespace api
 
 class session_handler
 {
@@ -2081,7 +2081,7 @@ public:
 
 			switch (router_.call_route(*this))
 			{
-                case http::api::router_match::match_found:
+			case http::api::router_match::match_found:
 			{
 				// Route has a valid handler, response body is set.
 				// Check bodys size and set headers.
@@ -2089,13 +2089,13 @@ public:
 
 				break;
 			}
-                case http::api::router_match::no_method:
+			case http::api::router_match::no_method:
 			{
 				response_.result(http::status::method_not_allowed);
 				response_.content_length(response_.body().length());
 				break;
 			}
-                case http::api::router_match::no_route:
+			case http::api::router_match::no_route:
 			{
 				auto static_result = router_.serve_static_content(*this);
 
@@ -2289,7 +2289,7 @@ public:
 		void update_metrics(std::chrono::high_resolution_clock::duration request_duration, std::chrono::high_resolution_clock::duration new_processing_duration_)
 		{
 			metrics_.request_latency_.store(request_duration.count());
-			metrics_.processing_duration_.store(request_duration.count());
+			metrics_.processing_duration_.store(new_processing_duration_.count());
 			metrics_.hit_count_++;
 		}
 
@@ -2314,11 +2314,18 @@ public:
 		bool match_param(const std::string& url_part, params& params) const
 		{
 			for (const auto& i : link_)
-				if (i.first[0] == ':')
+			{
+				if (*(i.first.begin()) == '{' && *(i.first.rbegin()) == '}')
 				{
-					params.insert(i.first.substr(1), url_part);
+					params.insert(i.first.substr(1, i.first.size() - 2), url_part);
 					return true;
 				}
+				else if (*(i.first.begin()) == ':')
+				{
+					params.insert(i.first.substr(1, i.first.size() - 1), url_part);
+					return true;
+				}
+			}
 			return false;
 		}
 
@@ -2500,8 +2507,6 @@ public:
 	{
 		std::stringstream result;
 
-		auto it = root_.get();
-
 		std::vector<std::string> path_stack;
 
 		root_->to_string_stream(result, path_stack);
@@ -2509,7 +2514,7 @@ public:
 		return result.str();
 	}
 
-	bool serve_static_content(session_handler_type& session)
+	bool serve_static_content(session_handler_type& )
 	{
 		/*		for (auto& static_route : static_content_routes)
 				{
@@ -2538,7 +2543,7 @@ public:
 		return false;
 	}
 
-	bool call_middleware(session_handler_type& session) const
+	bool call_middleware(session_handler_type& ) const
 	{
 		auto result = true;
 		/*		params params_;
