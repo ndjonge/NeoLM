@@ -2392,9 +2392,10 @@ public:
 		: doc_root(doc_root)
 		, root_(new router::route_part{})
 	{
-		std::cout << std::to_string(sizeof(router::route_part)) << "\n";
-		std::cout << std::to_string(sizeof(router::route)) << "\n";
-		std::cout << std::to_string(sizeof(router::metrics)) << "\n";
+		std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
+		std::cout << "sizeof(router::route_part)" << std::to_string(sizeof(router::route_part)) << "\n";
+		std::cout << "sizeof(router::route)" << std::to_string(sizeof(router::route)) << "\n";
+		std::cout << "sizeof(router::metrics)" << std::to_string(sizeof(router::metrics)) << "\n";
 	}
 
 	void use(const std::string& path)

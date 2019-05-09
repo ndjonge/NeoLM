@@ -295,13 +295,13 @@ public:
 	{
 		struct test
 		{
-			test(neolm::license_manager<S>::api_server& api_server_, std::function<void(http::session_handler&, const http::api::params&)>& test_function )
+			test(neolm::license_manager<S>::api_server& api_server_, std::function<void(http::session_handler&, const http::api::params&)>& test_function)
 			{
 				int x = 0;
 
 				std::stringstream s;
 
-				for (auto n = 0; n != 10; n++)
+				for (auto n = 0; n != 2; n++)
 					for (auto i = 0; i != 10; i++)
 						for (auto k = 0; k != 10; k++)
 							for (auto f = 0; f != 100; f++)
