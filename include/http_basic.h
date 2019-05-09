@@ -53,7 +53,6 @@ OTHER DEALINGS IN THE SOFTWARE.
 #endif
 
 #include "http_network.h"
-#include "delegate.h"
 
 // using boost::hash_combine
 template <class T> inline void hash_combine(std::size_t& seed, T const& v) { seed ^= std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2); }
@@ -2210,7 +2209,7 @@ private:
 }; // < class Params
 
 using session_handler_type = http::session_handler;
-using route_function_t = delegate<void(session_handler_type& session, const http::api::params& params)>;
+using route_function_t = std::function<void(session_handler_type& session, const http::api::params& params)>;
 using middleware_function_t = std::function<bool(session_handler_type& session, const http::api::params& params)>;
 
 namespace router_match
@@ -2296,7 +2295,7 @@ public:
 		metrics& route_metrics() { return metrics_; };
 
 	private:
-		const R& endpoint_;
+		const R endpoint_;
 		metrics metrics_;
 	};
 
@@ -2305,8 +2304,8 @@ public:
 		friend class router;
 
 	private:
-		std::map<T, std::unique_ptr<route_part>> link_;
-		std::unique_ptr<std::map<M, std::unique_ptr<route>>> endpoints_;
+		std::vector<std::pair<T, std::unique_ptr<route_part>>> link_;
+		std::unique_ptr<std::vector<std::pair<M, std::unique_ptr<route>>>> endpoints_;
 
 	public:
 		route_part() {}
@@ -2317,7 +2316,7 @@ public:
 		}
 
 		bool match_param(const std::string& url_part, params& params) const
-		{ 
+		{
 			for (const auto& i : link_)
 				if (i.first[0] == ':')
 				{
@@ -2409,19 +2408,19 @@ public:
 
 	void on_get(std::string&& route, R&& api_method) { on_http_method(method::get, route, std::move(api_method)); }
 
-	void on_post(std::string&& route, R&& api_method) {on_http_method(method::post, route, std::move(api_method)); }
+	void on_post(std::string&& route, R&& api_method) { on_http_method(method::post, route, std::move(api_method)); }
 
-	void on_head(std::string&& route, R&& api_method) {on_http_method(method::head, route, std::move(api_method)); }
+	void on_head(std::string&& route, R&& api_method) { on_http_method(method::head, route, std::move(api_method)); }
 
-	void on_put(std::string&& route, R&& api_method) {on_http_method(method::put, route, std::move(api_method)); }
+	void on_put(std::string&& route, R&& api_method) { on_http_method(method::put, route, std::move(api_method)); }
 
 	void on_delete(std::string&& route, R&& api_method) { on_http_method(method::delete_, route, std::move(api_method)); }
 
-	void on_patch(std::string&& route, R&& api_method) {on_http_method(method::patch, route, std::move(api_method)); }
+	void on_patch(std::string&& route, R&& api_method) { on_http_method(method::patch, route, std::move(api_method)); }
 
-	void on_options(std::string&& route, R&& api_method) {on_http_method(method::options, route, std::move(api_method)); }
+	void on_options(std::string&& route, R&& api_method) { on_http_method(method::options, route, std::move(api_method)); }
 
-	//void on_http_method(std::string&& http_method, T&& route, R& api_method) { on_http_method(method::to_method(http_method), route, api_method); }
+	// void on_http_method(std::string&& http_method, T&& route, R& api_method) { on_http_method(method::to_method(http_method), route, api_method); }
 
 	void on_http_method(const M method, T& route, R&& end_point)
 	{
@@ -2431,18 +2430,29 @@ public:
 
 		for (const auto& part : parts)
 		{
-			auto& l = it->link_[part];
+			// auto& l = it->link_[part];
 
-			if (!l)
+			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
+				if (l.first == part) return true;
+				return false;
+			});
+
+			if (l == it->link_.end())
 			{
-				l.reset(new route_part{});
+				l = it->link_.insert(it->link_.end(), std::pair<T, std::unique_ptr<route_part>>{ part, new router::route_part });
 			}
 
-			it = l.get();
+			it = l->second.get();
 		}
-		if (!it->endpoints_) it->endpoints_.reset(new std::map<M, std::unique_ptr<router::route>>);
 
-		(*it->endpoints_)[method].reset(new router::route{ end_point });
+		//		if (!it->endpoints_) it->endpoints_->reset(new std::map<M, std::unique_ptr<router::route>>);
+
+		if (!it->endpoints_) it->endpoints_.reset(new std::vector<std::pair<M, std::unique_ptr<router::route>>>);
+
+		it->endpoints_->insert(it->endpoints_->end(), std::pair<M, std::unique_ptr<router::route>>(method, new router::route{ end_point }));
+
+		/*		(*it->endpoints_)[method]
+					.reset(new router::route{ end_point });*/
 	}
 
 	match_result match_route(const http::method::method_t& method, const std::string& url, params& params) const noexcept
@@ -2450,12 +2460,14 @@ public:
 		auto it = root_.get();
 		auto parts = http::util::split(url, "/");
 
-
 		for (const auto& part : parts)
 		{
-			auto l = it->link_.find(part);
+			auto l = std::find_if(it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
+				if (l.first == part) return true;
+				return false;
+			});
 
-			if (l == std::end(it->link_) )
+			if (l == std::end(it->link_))
 			{
 				if (!it->match_param(part, params))
 					return match_result(http::api::router_match::no_route, nullptr);
@@ -2466,13 +2478,17 @@ public:
 			it = l->second.get();
 		}
 
-		if (!it->endpoints_) 
-			return match_result(http::api::router_match::no_route, nullptr);
+		if (!it->endpoints_) return match_result(http::api::router_match::no_route, nullptr);
 
+		// const auto& endpoint = it->endpoints_->find(method);
 
-		const auto& endpoint = it->endpoints_->find(method);
+		auto endpoint = std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<route>>& e) {
+			if (e.first == method) return true;
 
-		if (endpoint != it->endpoints_->cend())
+			return false;
+		});
+
+		if (endpoint != it->endpoints_->end())
 		{
 			return match_result(http::api::router_match::match_found, &(*(endpoint->second)));
 		}
@@ -3088,7 +3104,7 @@ public:
 
 				if (ec == network::error::success)
 				{
-					//this->configuration_.set("http_listen_port", std::to_string(http_listen_port_));
+					// this->configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
 					break;
 				}
