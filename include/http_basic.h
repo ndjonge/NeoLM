@@ -2258,16 +2258,15 @@ public:
 			hit_count_.store(r.hit_count_);
 		}
 
-		std::atomic<std::chrono::high_resolution_clock::duration> request_latency_{};
-		std::atomic<std::chrono::high_resolution_clock::duration> processing_duration_{};
-
-		std::atomic<std::int64_t> hit_count_{ 0 };
+		std::atomic<std::uint64_t> request_latency_{ 0 };
+		std::atomic<std::uint64_t> processing_duration_{ 0 };
+		std::atomic<std::uint64_t> hit_count_{ 0 };
 
 		std::string to_string()
 		{
 			std::stringstream s;
 
-			s << request_latency_.load().count() / 1000000.0 << "ms, " << processing_duration_.load().count() / 1000000.0 << "ms, " << hit_count_ << "x";
+			s << request_latency_.load() / 1000000.0 << "ms, " << processing_duration_.load() / 1000000.0 << "ms, " << hit_count_ << "x";
 
 			return s.str();
 		};
@@ -2287,8 +2286,8 @@ public:
 
 		void update_metrics(std::chrono::high_resolution_clock::duration request_duration, std::chrono::high_resolution_clock::duration new_processing_duration_)
 		{
-			metrics_.request_latency_.store(request_duration);
-			metrics_.processing_duration_.store(new_processing_duration_);
+			metrics_.request_latency_.store(request_duration.count());
+			metrics_.processing_duration_.store(request_duration.count());
 			metrics_.hit_count_++;
 		}
 
@@ -2393,6 +2392,9 @@ public:
 		: doc_root(doc_root)
 		, root_(new router::route_part{})
 	{
+		std::cout << std::to_string(sizeof(router::route_part)) << "\n";
+		std::cout << std::to_string(sizeof(router::route)) << "\n";
+		std::cout << std::to_string(sizeof(router::metrics)) << "\n";
 	}
 
 	void use(const std::string& path)
