@@ -17,7 +17,7 @@ if(MSVC)
   else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
   endif()
-elseif(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
+elseif(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
   # Update if necessary
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-long-long -pedantic")
 endif()
@@ -60,7 +60,7 @@ target_link_libraries( ${PROJECT_NAME} nlohmann_json nlohmann_json::nlohmann_jso
 if(WIN32)
   target_link_libraries( ${PROJECT_NAME} wsock32 ws2_32)
 else()
-  add_definitions(-std=c++14 -Wreorder -g -fsanitize=address -fno-omit-frame-pointer) 
+  add_definitions(-std=c++11 -Wreorder -g -fsanitize=address -fno-omit-frame-pointer) 
   target_link_libraries( ${PROJECT_NAME} pthread -fsanitize=address -fno-omit-frame-pointer) 
 endif()
 
