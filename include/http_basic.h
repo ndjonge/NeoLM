@@ -2747,30 +2747,6 @@ public:
 			return connections_highest_;
 		}
 
-		void health_checks_received_increase()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			health_checks_received_consecutive_++;
-		}
-
-		size_t health_checks_received_consecutive()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			return health_checks_received_consecutive_;
-		}
-
-		void health_checks_received_consecutive_increase()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			health_checks_received_consecutive_++;
-		}
-
-		void health_checks_received_consecutive_reset()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			health_checks_received_consecutive_ = 0;
-		}
-
 		void log_access(http::session_handler& session)
 		{
 			std::stringstream s;
