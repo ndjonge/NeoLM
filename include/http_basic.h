@@ -626,10 +626,163 @@ public:
 
 	inline size_t size() const noexcept { return fields_.size(); }
 
+	const std::vector<fields::value_type> as_vector() const { return fields_; }
+	std::vector<fields::value_type> as_vector() { return fields_; }
+
 	const http::field& operator[](size_t index) const noexcept { return fields_[index]; }
 };
 
-using configuration = http::fields;
+class configuration
+{
+public:
+	using iterator = std::vector<http::field>::iterator;
+	using value_type = http::field;
+
+public:
+	configuration() = default;
+
+	configuration(std::initializer_list<configuration::value_type> init_list)
+		: fields_(init_list){};
+
+	configuration(const http::configuration& c)
+	{
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+		fields_ = c.fields_;
+	};
+
+	configuration(http::configuration&& c)
+	{
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+		fields_ = c.fields_;
+	};
+
+	configuration& operator=(const http::configuration& c)
+	{
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+		fields_ = c.fields_;
+		return *this;
+	};
+
+	configuration& operator=(http::configuration&& c)
+	{
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+		fields_ = c.fields_;
+		return *this;
+	};
+
+	~configuration() = default;
+
+	inline std::string to_string() const noexcept
+	{
+		std::stringstream ss;
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+
+		for (auto&& field : fields_)
+		{
+			ss << field.name << ": " << field.value << "\r\n";
+		}
+
+		return ss.str();
+	}
+
+	template <typename T> typename std::enable_if<std::is_same<T, bool>::value, bool>::type get(const std::string& name, const T value = T())
+	{
+		T returnvalue = value;
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
+
+		if (i != std::end(fields_)) returnvalue = i->value == "true";
+
+		return static_cast<T>(returnvalue);
+	}
+
+	template <typename T> typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
+	{
+		T returnvalue = value;
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
+
+		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
+
+		return static_cast<T>(returnvalue);
+	}
+
+	template <typename T> typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type get(const std::string& name, const T& value = T())
+	{
+		T returnvalue = value;
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
+
+		if (i != std::end(fields_)) returnvalue = i->value;
+
+		return returnvalue;
+	}
+
+	inline const std::string& get(const char* name) const
+	{
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+		static const std::string not_found = "";
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
+
+		if (i == std::end(fields_))
+		{
+			return not_found;
+		}
+		else
+			return i->value;
+	}
+
+	inline void set(const std::string& name, const std::string& value)
+	{
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+
+		if (i != std::end(fields_))
+		{
+			i->value = value;
+		}
+		else
+		{
+			http::field field_(name, value);
+			fields_.emplace_back(std::move(field_));
+		}
+	}
+
+	inline size_t size() const noexcept
+	{
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+		return fields_.size();
+	}
+
+private:
+	std::vector<http::field> fields_;
+	mutable std::mutex configuration_mutex_;
+};
 
 enum message_specializations
 {
@@ -669,6 +822,7 @@ public:
 	void target(const std::string& target) { target_ = target; }
 
 	query_params& query() { return params_; };
+	const query_params& query() const { return params_; };
 
 	void headers_reset()
 	{
@@ -838,7 +992,8 @@ public:
 
 	void target(const std::string& target) { header<specialization>::target_ = target; }
 
-	const std::vector<http::field>& headers() { return header<specialization>::fields_; }
+	const std::vector<http::field>& headers() const { return header<specialization>::fields_; }
+	std::vector<http::field>& headers() { return header<specialization>::fields_; }
 
 	void reset()
 	{
@@ -2077,26 +2232,26 @@ public:
 
 		switch (router_.call_route(*this))
 		{
-			case http::api::router_match::match_found:
-			{
-				// Route has a valid handler, response body is set.
-				// Check bodys size and set headers.
-				response_.content_length(response_.body().length());
+		case http::api::router_match::match_found:
+		{
+			// Route has a valid handler, response body is set.
+			// Check bodys size and set headers.
+			response_.content_length(response_.body().length());
 
-				break;
-			}
-			case http::api::router_match::no_method:
-			{
-				response_.result(http::status::method_not_allowed);
-				response_.content_length(response_.body().length());
-				break;
-			}
-			case http::api::router_match::no_route:
-			{
-				response_.result(http::status::not_found);
-				response_.content_length(response_.body().length());
-				break;
-			}
+			break;
+		}
+		case http::api::router_match::no_method:
+		{
+			response_.result(http::status::method_not_allowed);
+			response_.content_length(response_.body().length());
+			break;
+		}
+		case http::api::router_match::no_route:
+		{
+			response_.result(http::status::not_found);
+			response_.content_length(response_.body().length());
+			break;
+		}
 		}
 		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false)
 			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && request_.connection_close() == false))
@@ -2172,6 +2327,10 @@ public:
 	inline bool empty() const noexcept { return parameters.empty(); };
 
 	inline void reset() { parameters.clear(); }
+
+	std::map<std::string, std::string>& as_container() { return parameters; }
+
+	const std::map<std::string, std::string>& as_container() const { return parameters; }
 
 private:
 	std::map<std::string, std::string> parameters;
@@ -2265,7 +2424,7 @@ public:
 		std::unique_ptr<std::vector<std::pair<M, std::unique_ptr<route>>>> endpoints_;
 
 	public:
-		route_part() {}
+		route_part() = default;
 
 		bool match_param(const std::string& url_part, params& params) const
 		{
@@ -2358,7 +2517,7 @@ public:
 		std::cout << "sizeof(router::metrics)" << std::to_string(sizeof(router::metrics)) << "\n";
 	}
 
-	void use(const std::string& path)
+	void use(const std::string& path, R&& middleware_function)
 	{
 		// static_content_routes.emplace_back(path);
 	}
@@ -2385,7 +2544,7 @@ public:
 
 	// void on_http_method(std::string&& http_method, T&& route, R& api_method) { on_http_method(method::to_method(http_method), route, api_method); }
 
-	void on_http_method(const M method, T& route, R&& end_point)
+	void on_http_method(const M method, const T& route, R&& end_point)
 	{
 		auto it = root_.get();
 
@@ -2772,7 +2931,24 @@ public:
 		manager_.server_information(http::basic::server::configuration_.to_string());
 		manager_.router_information(http::basic::server::router_.to_string());
 
+		auto waiting = 0;
+		auto timeout = 2;
+
+		while (!http_listen_port_ && !https_listen_port_ && waiting < timeout)
+		{
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+			waiting++;
+		}
+
+		if (!http_listen_port_) throw std::runtime_error("failed to start http listener");
+		if (!https_listen_port_) throw std::runtime_error("failed to start https listener");
+
 		http::basic::server::start_server();
+		/*		// TODO: Hack to retrieve the PORT_NUMBER from 3GL.
+				std::string pn = "PORT_NUMBER=" + std::to_string(http_listen_port_);
+				char* env = new char[pn.size() + 1];
+				strcpy(env, pn.c_str());
+				putenv(env);*/
 	}
 
 	virtual void deactivate()
@@ -2917,18 +3093,23 @@ public:
 			for (https_listen_port_ = https_listen_port_begin_; https_listen_port_ <= https_listen_port_end_;)
 			{
 				acceptor_https.bind(endpoint_https_, ec);
-				// std::cout << "binding https to: " << std::to_string(https_listen_port_) << "\n";
-
 				if (ec == network::error::success)
 				{
-					// this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
+					if (!https_listen_port_)
+					{
+						network::tcp::v6 endpoint_https_tmp{ 0 };
+						acceptor_https.get_local_endpoint(endpoint_https_tmp, ec);
+
+						https_listen_port_ = endpoint_https_tmp.port();
+					}
+					this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
 
 					break;
 				}
 				else if (ec == network::error::address_in_use)
 				{
 					https_listen_port_++;
-					endpoint_https_.port(https_listen_port_);
+					endpoint_https_.port(https_listen_port_.load());
 				}
 			}
 
@@ -2996,7 +3177,15 @@ public:
 
 				if (ec == network::error::success)
 				{
-					// this->configuration_.set("http_listen_port", std::to_string(http_listen_port_));
+					if (!http_listen_port_)
+					{
+						network::tcp::v6 endpoint_http_tmp{ 0 };
+						acceptor_http.get_local_endpoint(endpoint_http_tmp, ec);
+
+						http_listen_port_ = endpoint_http_tmp.port();
+					}
+
+					configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
 					break;
 				}
@@ -3239,13 +3428,13 @@ private:
 	int thread_count_;
 	std::int32_t http_listen_port_begin_;
 	std::int32_t http_listen_port_end_;
-	std::int32_t http_listen_port_;
+	std::atomic<std::int32_t> http_listen_port_;
 
 	network::tcp::v6 endpoint_http_;
 
 	std::int32_t https_listen_port_begin_;
 	std::int32_t https_listen_port_end_;
-	std::int32_t https_listen_port_;
+	std::atomic<std::int32_t> https_listen_port_;
 
 	network::tcp::v6 endpoint_https_;
 

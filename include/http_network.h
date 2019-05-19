@@ -354,7 +354,7 @@ using address = std::pair<std::string, std::uint16_t>;
 inline address make_address(const std::string& url)
 {
 	std::string addr = url.substr(0, url.find_last_of(':'));
-	std::uint16_t port = static_cast < std::uint16_t>(std::atoi(url.substr(url.find_last_of(':') + 1).c_str()));
+	std::uint16_t port = static_cast<std::uint16_t>(std::atoi(url.substr(url.find_last_of(':') + 1).c_str()));
 
 	return address{ addr, port };
 }
@@ -362,7 +362,7 @@ inline address make_address(const std::string& url)
 inline address make_address_from_name(const std::string& url)
 {
 	std::string addr = url.substr(0, url.find_last_of(':'));
-	std::uint16_t port = static_cast < std::uint16_t>(atoi(url.substr(url.find_last_of(':') + 1).c_str()));
+	std::uint16_t port = static_cast<std::uint16_t>(atoi(url.substr(url.find_last_of(':') + 1).c_str()));
 
 	return address{ addr, port };
 }
@@ -374,7 +374,7 @@ inline address make_address_from_url(const std::string& url)
 	std::string protocol = url.substr(0, url.find_first_of(':'));
 
 	std::string addr = url.substr(0, url.find_last_of(':'));
-	std::uint16_t port = static_cast < std::uint16_t>(atoi(url.substr(url.find_last_of(':') + 1).c_str()));
+	std::uint16_t port = static_cast<std::uint16_t>(atoi(url.substr(url.find_last_of(':') + 1).c_str()));
 
 	return address{ addr, port };
 }
@@ -520,12 +520,12 @@ public:
 
 		if (fam == socket::family::v6)
 		{
-			data_.v6.sin6_port = htons(static_cast <std::uint16_t>(port));
+			data_.v6.sin6_port = htons(static_cast<std::uint16_t>(port));
 			data_.v6.sin6_addr = in6addr_any;
 		}
 		else
 		{
-			data_.v4.sin_port = htons(static_cast <std::uint16_t>(port));
+			data_.v4.sin_port = htons(static_cast<std::uint16_t>(port));
 			data_.v4.sin_addr.s_addr = INADDR_ANY;
 		}
 	}
@@ -680,9 +680,8 @@ public:
 
 	tcp::protocol protocol() { return endpoint::protocol_; }
 
-	void port(std::int32_t& value) { endpoint::data_.v6.sin6_port = htons(static_cast<std::uint16_t>(value)); }
-
-private:
+	void port(std::int32_t value) { endpoint::data_.v6.sin6_port = ::htons(static_cast<std::uint16_t>(value)); }
+	const std::int32_t port() const { return ::ntohs(endpoint::data_.v6.sin6_port); }
 };
 
 class resolver
@@ -752,6 +751,17 @@ public:
 			ec = network::error::success;
 
 		// ec.value = ret;
+	}
+
+	void get_local_endpoint(endpoint& endpoint, error_code& ec)
+	{
+		int size = endpoint.addr_size();
+		auto ret = ::getsockname(endpoint_->socket().lowest_layer(), endpoint.addr(), &size);
+
+		if (ret == 0)
+			ec = network::error::success;
+		else
+			ec = network::error::bad_file_descriptor;
 	}
 
 	void listen() noexcept { ::listen(endpoint_->socket().lowest_layer(), 5); }
