@@ -1,28 +1,3 @@
-/*
-Copyright (c) <2018> <ndejonge@gmail.com>
-
-Permission is hereby granted, free of charge, to any person
-obtaining a copy of this software and associated documentation
-files (the "Software"), to deal in the Software without
-restriction, including without limitation the rights to use,
-copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the
-Software is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice shall be
-included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-*/
-
 #pragma once
 
 #include <cstdint>
@@ -53,43 +28,6 @@ OTHER DEALINGS IN THE SOFTWARE.
 #endif
 
 #include "http_network.h"
-
-// using boost::hash_combine
-template <class T> inline void hash_combine(std::size_t& seed, T const& v) { seed ^= std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2); }
-
-namespace std
-{
-template <typename T> struct hash<vector<T>>
-{
-	using argument_type = std::vector<T>;
-	using result_type = std::size_t;
-	result_type operator()(argument_type const& in) const
-	{
-		size_t size = in.size();
-		size_t seed = 0;
-		for (size_t i = 0; i < size; i++)
-			// Combine the hash of the current vector with the hashes of the previous ones
-			hash_combine(seed, in[i]);
-		return seed;
-	}
-};
-
-template <typename F, typename S> struct hash<pair<F, S>>
-{
-	using argument_type = pair<F, S>;
-	using result_type = std::size_t;
-
-	result_type operator()(argument_type const& in) const
-	{
-		size_t seed = 0;
-
-		hash_combine(seed, in.first);
-		hash_combine(seed, in.second);
-
-		return seed;
-	}
-};
-} // namespace std
 
 namespace filesystem
 {
@@ -1370,6 +1308,7 @@ private:
 			}
 		case expecting_newline_3:
 			if (input == '\n') return (input == '\n') ? good : bad;
+			// fall through
 		default:
 			return bad;
 		}
@@ -2944,11 +2883,6 @@ public:
 		if (!https_listen_port_) throw std::runtime_error("failed to start https listener");
 
 		http::basic::server::start_server();
-		/*		// TODO: Hack to retrieve the PORT_NUMBER from 3GL.
-				std::string pn = "PORT_NUMBER=" + std::to_string(http_listen_port_);
-				char* env = new char[pn.size() + 1];
-				strcpy(env, pn.c_str());
-				putenv(env);*/
 	}
 
 	virtual void deactivate()
