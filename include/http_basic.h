@@ -2833,10 +2833,12 @@ public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
 		, thread_count_(configuration.get<int>("thread_count", 5))
+		, http_enabled_(configuration.get<bool>("http_enabled", true))
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", (std::getenv("PORT_NUMBER") ? std::atoi(getenv("PORT_NUMBER")) : 3000)))
 		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
 		, http_listen_port_(0)
 		, endpoint_http_(http_listen_port_begin_)
+		, https_enabled_(configuration.get<bool>("https_enabled", true))
 		, https_listen_port_begin_(configuration.get<int>("https_listen_port_begin", (std::getenv("PORT_NUMBER") ? std::atoi(getenv("PORT_NUMBER")) : 2000)))
 		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
 		, https_listen_port_(0)
@@ -2893,7 +2895,7 @@ public:
 
 	void http_connection_queue_handler()
 	{
-		while (active_ == true)
+		while (active_ == true && http_enabled_ == true)
 		{
 			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 
@@ -2951,7 +2953,7 @@ public:
 
 	void https_connection_queue_handler()
 	{
-		while (active_ == true)
+		while (active_ == true && https_enabled_)
 		{
 			std::unique_lock<std::mutex> m(https_connection_queue_mutex_);
 
@@ -3007,159 +3009,164 @@ public:
 
 	void https_listener_handler()
 	{
-
-		try
+		if (https_enabled_ == true)
 		{
-			// network::tcp::v6 endpoint_https(https_listen_port_begin_);
-
-			network::tcp::acceptor acceptor_https{};
-
-			acceptor_https.open(endpoint_https_.protocol());
-
-			network::ipv6only(endpoint_https_.socket(), 0);
-
-			network::use_portsharding(endpoint_https_.socket(), 1);
-
-			// network::no_linger(endpoint_http.socket(), 1);
-
-			network::error_code ec = network::error::success;
-
-			for (https_listen_port_ = https_listen_port_begin_; https_listen_port_ <= https_listen_port_end_;)
+			try
 			{
-				acceptor_https.bind(endpoint_https_, ec);
-				if (ec == network::error::success)
+				// network::tcp::v6 endpoint_https(https_listen_port_begin_);
+
+				network::tcp::acceptor acceptor_https{};
+
+				acceptor_https.open(endpoint_https_.protocol());
+
+				network::ipv6only(endpoint_https_.socket(), 0);
+
+				network::use_portsharding(endpoint_https_.socket(), 1);
+
+				// network::no_linger(endpoint_http.socket(), 1);
+
+				network::error_code ec = network::error::success;
+
+				for (https_listen_port_ = https_listen_port_begin_; https_listen_port_ <= https_listen_port_end_;)
 				{
-					if (!https_listen_port_)
+					acceptor_https.bind(endpoint_https_, ec);
+					if (ec == network::error::success)
 					{
-						network::tcp::v6 endpoint_https_tmp{ 0 };
-						acceptor_https.get_local_endpoint(endpoint_https_tmp, ec);
+						if (!https_listen_port_)
+						{
+							network::tcp::v6 endpoint_https_tmp{ 0 };
+							acceptor_https.get_local_endpoint(endpoint_https_tmp, ec);
 
-						https_listen_port_ = endpoint_https_tmp.port();
+							https_listen_port_ = endpoint_https_tmp.port();
+						}
+						this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
+
+						break;
 					}
-					this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
-
-					break;
+					else if (ec == network::error::address_in_use)
+					{
+						https_listen_port_++;
+						endpoint_https_.port(https_listen_port_.load());
+					}
 				}
-				else if (ec == network::error::address_in_use)
+
+				if (ec)
 				{
-					https_listen_port_++;
-					endpoint_https_.port(https_listen_port_.load());
+					throw std::runtime_error(
+						std::string("cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":" + std::to_string(https_listen_port_end_) + " ]"));
 				}
-			}
 
-			if (ec)
-			{
-				throw std::runtime_error(
-					std::string("cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":" + std::to_string(https_listen_port_end_) + " ]"));
-			}
+				network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
-			network::ssl::context ssl_context(network::ssl::context::tlsv12);
+				ssl_context.use_certificate_chain_file(configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
+				ssl_context.use_private_key_file(configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
 
-			ssl_context.use_certificate_chain_file(configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
-			ssl_context.use_private_key_file(configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
+				acceptor_https.listen();
 
-			acceptor_https.listen();
-
-			while (active_ == true)
-			{
-				network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
-				ec = network::error::success;
-				acceptor_https.accept(https_socket.lowest_layer(), ec, 5);
-
-				if (ec == network::error::interrupted) break;
-				if (ec == network::error::operation_would_block) continue;
-
-				network::timeout(https_socket.lowest_layer(), connection_timeout_);
-				https_socket.handshake(network::ssl::stream_base::server);
-
-				if (https_socket.lowest_layer().lowest_layer() > 0)
+				while (active_ == true)
 				{
-					std::unique_lock<std::mutex> m(https_connection_queue_mutex_);
-					https_connection_queue_.push(std::move(https_socket));
-					https_connection_queue_has_connection_.notify_one();
+					network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
+					ec = network::error::success;
+					acceptor_https.accept(https_socket.lowest_layer(), ec, 5);
+
+					if (ec == network::error::interrupted) break;
+					if (ec == network::error::operation_would_block) continue;
+
+					network::timeout(https_socket.lowest_layer(), connection_timeout_);
+					https_socket.handshake(network::ssl::stream_base::server);
+
+					if (https_socket.lowest_layer().lowest_layer() > 0)
+					{
+						std::unique_lock<std::mutex> m(https_connection_queue_mutex_);
+						https_connection_queue_.push(std::move(https_socket));
+						https_connection_queue_has_connection_.notify_one();
+					}
 				}
 			}
-		}
-		catch (std::runtime_error& e)
-		{
-			std::cout << e.what();
+			catch (std::runtime_error& e)
+			{
+				std::cout << e.what();
+			}
 		}
 	}
 
 	void http_listener_handler()
 	{
-		try
+		if (http_enabled_ == true)
 		{
-			network::tcp::acceptor acceptor_http{};
-
-			acceptor_http.open(endpoint_http_.protocol());
-
-			if (http_listen_port_begin_ == http_listen_port_end_)
-				network::reuse_address(endpoint_http_.socket(), 1);
-			else
-				network::reuse_address(endpoint_http_.socket(), 0);
-
-			network::ipv6only(endpoint_http_.socket(), 0);
-
-			network::use_portsharding(endpoint_http_.socket(), 1);
-
-			network::error_code ec = network::error::success;
-
-			for (http_listen_port_ = http_listen_port_begin_; http_listen_port_ <= http_listen_port_end_;)
+			try
 			{
-				acceptor_http.bind(endpoint_http_, ec);
+				network::tcp::acceptor acceptor_http{};
 
-				if (ec == network::error::success)
+				acceptor_http.open(endpoint_http_.protocol());
+
+				if (http_listen_port_begin_ == http_listen_port_end_)
+					network::reuse_address(endpoint_http_.socket(), 1);
+				else
+					network::reuse_address(endpoint_http_.socket(), 0);
+
+				network::ipv6only(endpoint_http_.socket(), 0);
+
+				network::use_portsharding(endpoint_http_.socket(), 1);
+
+				network::error_code ec = network::error::success;
+
+				for (http_listen_port_ = http_listen_port_begin_; http_listen_port_ <= http_listen_port_end_;)
 				{
-					if (!http_listen_port_)
+					acceptor_http.bind(endpoint_http_, ec);
+
+					if (ec == network::error::success)
 					{
-						network::tcp::v6 endpoint_http_tmp{ 0 };
-						acceptor_http.get_local_endpoint(endpoint_http_tmp, ec);
+						if (!http_listen_port_)
+						{
+							network::tcp::v6 endpoint_http_tmp{ 0 };
+							acceptor_http.get_local_endpoint(endpoint_http_tmp, ec);
 
-						http_listen_port_ = endpoint_http_tmp.port();
+							http_listen_port_ = endpoint_http_tmp.port();
+						}
+
+						configuration_.set("http_listen_port", std::to_string(http_listen_port_));
+
+						break;
 					}
-
-					configuration_.set("http_listen_port", std::to_string(http_listen_port_));
-
-					break;
+					else if (ec == network::error::address_in_use)
+					{
+						http_listen_port_++;
+						endpoint_http_.port(http_listen_port_);
+					}
 				}
-				else if (ec == network::error::address_in_use)
+
+				if (ec)
 				{
-					http_listen_port_++;
-					endpoint_http_.port(http_listen_port_);
+					throw std::runtime_error(
+						std::string("cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":" + std::to_string(http_listen_port_end_) + " ]"));
 				}
-			}
 
-			if (ec)
-			{
-				throw std::runtime_error(
-					std::string("cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":" + std::to_string(http_listen_port_end_) + " ]"));
-			}
+				acceptor_http.listen();
 
-			acceptor_http.listen();
-
-			while (active_ == true)
-			{
-				network::tcp::socket http_socket{ 0 };
-				ec = network::error::success;
-
-				acceptor_http.accept(http_socket, ec, 5);
-
-				if (ec == network::error::interrupted) break;
-				if (ec == network::error::operation_would_block) continue;
-
-				if (http_socket.lowest_layer() > 0)
+				while (active_ == true)
 				{
-					std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
-					http_connection_queue_.push(std::move(http_socket));
-					http_connection_queue_has_connection_.notify_one();
+					network::tcp::socket http_socket{ 0 };
+					ec = network::error::success;
+
+					acceptor_http.accept(http_socket, ec, 5);
+
+					if (ec == network::error::interrupted) break;
+					if (ec == network::error::operation_would_block) continue;
+
+					if (http_socket.lowest_layer() > 0)
+					{
+						std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
+						http_connection_queue_.push(std::move(http_socket));
+						http_connection_queue_has_connection_.notify_one();
+					}
 				}
+				// std::cout << "https_listener_handler_::end2\n";
 			}
-			// std::cout << "https_listener_handler_::end2\n";
-		}
-		catch (...)
-		{
-			// TODO
+			catch (...)
+			{
+				// TODO
+			}
 		}
 	}
 
@@ -3360,12 +3367,15 @@ public:
 
 private:
 	int thread_count_;
+
+	bool http_enabled_;
 	std::int32_t http_listen_port_begin_;
 	std::int32_t http_listen_port_end_;
 	std::atomic<std::int32_t> http_listen_port_;
 
 	network::tcp::v6 endpoint_http_;
 
+	bool https_enabled_;
 	std::int32_t https_listen_port_begin_;
 	std::int32_t https_listen_port_end_;
 	std::atomic<std::int32_t> https_listen_port_;

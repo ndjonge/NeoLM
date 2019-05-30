@@ -30,6 +30,7 @@ int main()
 																			  { "http_listen_port_end", "0" },
 																			  { "https_listen_port_begin", "0" },
 																			  { "https_listen_port_end", "0" },
+																			  { "https_enable", "false" },
 																			  { "keepalive_count", "1048576" },
 																			  { "keepalive_timeout", "30" },
 																			  { "thread_count", "8" },
