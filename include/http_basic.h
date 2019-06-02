@@ -2276,11 +2276,18 @@ private:
 }; // < class Params
 
 using session_handler_type = http::session_handler;
-using route_function_t = std::function<void(session_handler_type& session, const http::api::params& params)>;
 
-template <typename M = http::method::method_t, typename T = std::string, typename R = route_function_t> class router
+template <
+	typename M = http::method::method_t,
+	typename T = std::string,
+	typename R = std::function<void(session_handler_type& session, const http::api::params& params)>,
+	typename W = std::function<bool(session_handler_type& session, const http::api::params& params)>>
+class router
 {
 public:
+	using route_endpoint_type = R;
+	using route_middleware_type = W;
+
 	struct metrics
 	{
 		friend class route_result;
@@ -2354,6 +2361,22 @@ public:
 		metrics metrics_;
 	};
 
+	class middleware
+	{
+		friend class route_part;
+
+	public:
+		middleware(const W& middleware)
+			: endpoint_(endpoint)
+		{
+		}
+
+		const W& middleware_function() { return middleware_; };
+
+	private:
+		const W middleware_;
+	};
+
 	class route_part
 	{
 		friend class router;
@@ -2361,6 +2384,7 @@ public:
 	private:
 		std::vector<std::pair<T, std::unique_ptr<route_part>>> link_;
 		std::unique_ptr<std::vector<std::pair<M, std::unique_ptr<route>>>> endpoints_;
+		std::unique_ptr<std::vector<std::pair<M, std::unique_ptr<middleware>>>> middlewares_;
 
 	public:
 		route_part() = default;
@@ -2408,9 +2432,10 @@ public:
 	class match_result
 	{
 	public:
-		match_result(http::api::router_match::match_result_type result, router<M, T, R>::route* route)
+		match_result(http::api::router_match::match_result_type result, const std::vector<router<M, T, R, W>::route_middleware_type*>& middlewares, router<M, T, R, W>::route* route)
 			: result_(result)
 			, route_(route)
+			, middlewares_(middlewares)
 		{
 		}
 
@@ -2419,7 +2444,8 @@ public:
 
 	private:
 		http::api::router_match::match_result_type result_;
-		router<M, T, R>::route* route_;
+		router<M, T, R, W>::route* route_;
+		const std::vector<router<M, T, R, W>::route_middleware_type*>& middlewares_;
 	};
 
 public:
@@ -2450,10 +2476,10 @@ public:
 		: doc_root(doc_root)
 		, root_(new router::route_part{})
 	{
-		std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
-		std::cout << "sizeof(router::route_part)" << std::to_string(sizeof(router::route_part)) << "\n";
-		std::cout << "sizeof(router::route)" << std::to_string(sizeof(router::route)) << "\n";
-		std::cout << "sizeof(router::metrics)" << std::to_string(sizeof(router::metrics)) << "\n";
+		// std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
+		// std::cout << "sizeof(router::route_part)" << std::to_string(sizeof(router::route_part)) << "\n";
+		// std::cout << "sizeof(router::route)" << std::to_string(sizeof(router::route)) << "\n";
+		// std::cout << "sizeof(router::metrics)" << std::to_string(sizeof(router::metrics)) << "\n";
 	}
 
 	void use(const std::string& path, R&& middleware_function)
@@ -2520,6 +2546,7 @@ public:
 	{
 		auto it = root_.get();
 		auto parts = http::util::split(url, "/");
+		std::vector<router<M, T, R, W>::route_middleware_type*> middleware_stack;
 
 		for (const auto& part : parts)
 		{
@@ -2531,15 +2558,30 @@ public:
 			if (l == std::end(it->link_))
 			{
 				if (!it->match_param(part, params))
-					return match_result(http::api::router_match::no_route, nullptr);
+					return match_result(http::api::router_match::no_route, middleware_stack, nullptr);
 				else
 					l = it->link_.begin();
 			}
 
-			it = l->second.get();
+			if (it->middlewares_)
+			{
+				const auto middlewares_machted
+					= std::find_if(it->middlewares_->cbegin(), it->middlewares_->cend(), [&method](const std::pair<M, std::unique_ptr<router<M, T, R, W>::route_middleware_type>>& e) {
+					if (e.first == method) return true;
+					return false;
+				});
+
+				int x = 0;
+				if (middlewares_machted != it->middlewares_->cend())
+				{
+					router<M, T, R, W>::route_middleware_type* xx = (*(middlewares_machted->second.get()));
+					//middleware_stack.push_back(route_middleware_type*
+					//middleware_stack.emplace(middlewares_machted->second);
+				}
+			}
 		}
 
-		if (!it->endpoints_) return match_result(http::api::router_match::no_route, nullptr);
+		if (!it->endpoints_) return match_result(http::api::router_match::no_route, middleware_stack, nullptr);
 
 		// const auto& endpoint = it->endpoints_->find(method);
 
@@ -2551,10 +2593,10 @@ public:
 
 		if (endpoint != it->endpoints_->end())
 		{
-			return match_result(http::api::router_match::match_found, &(*(endpoint->second)));
+			return match_result(http::api::router_match::match_found, middleware_stack, &(*(endpoint->second)));
 		}
 
-		return match_result(http::api::router_match::match_found, nullptr);
+		return match_result(http::api::router_match::match_found, middleware_stack, nullptr);
 	}
 
 	std::string to_string()
@@ -2626,8 +2668,6 @@ public:
 
 		size_t connections_current_{ 0 };
 		size_t connections_highest_{ 0 };
-
-		size_t health_checks_received_consecutive_{ 0 };
 
 		bool is_idle_{ false };
 		bool is_busy_{ false };
@@ -2796,7 +2836,6 @@ public:
 			s << "connections_highest: " << connections_highest_ << "\n";
 			s << "connections_current: " << connections_current_ << "\n";
 			s << "requests_handled: " << requests_handled_ << "\n";
-			s << "health_checks_received_consecutive: " << health_checks_received_consecutive_ << "\n";
 			s << "busy: " << is_busy_ << "\n";
 			s << "idle: " << is_idle_ << "\n";
 			s << "requests_per_second: " << requests_per_second_ / 100.0 << "\n";
@@ -2875,14 +2914,20 @@ public:
 		auto waiting = 0;
 		auto timeout = 2;
 
-		while (!http_listen_port_ && !https_listen_port_ && waiting < timeout)
+		while (http_enabled_ && !http_listen_port_ && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
 		}
 
-		if (!http_listen_port_) throw std::runtime_error("failed to start http listener");
-		if (!https_listen_port_) throw std::runtime_error("failed to start https listener");
+		while (https_enabled_ && !https_listen_port_ && waiting < timeout)
+		{
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+			waiting++;
+		}
+
+		if (http_enabled_ && !http_listen_port_) throw std::runtime_error("failed to start http listener");
+		if (https_enabled_ && !https_listen_port_) throw std::runtime_error("failed to start https listener");
 
 		http::basic::server::start_server();
 	}

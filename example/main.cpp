@@ -26,11 +26,12 @@ int main()
 
 	neolm::license_manager<http::basic::threaded::server> license_server{ http::configuration{
 																			  { "http_server_identification", "neolm/8.0.01" },
-																			  { "http_listen_port_begin", "0" },
-																			  { "http_listen_port_end", "0" },
+																			  { "http_listen_port_begin", "3000" },
+																			  { "http_listen_port_end", "3001" },
 																			  { "https_listen_port_begin", "0" },
 																			  { "https_listen_port_end", "0" },
-																			  { "https_enable", "false" },
+																			  { "http_enabled", "true" },
+																			  { "https_enabled", "false" },
 																			  { "keepalive_count", "1048576" },
 																			  { "keepalive_timeout", "30" },
 																			  { "thread_count", "8" },
