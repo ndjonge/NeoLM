@@ -266,6 +266,11 @@ private:
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 				session.response().type("text");
 			});
+
+			S::router_.use("/status", [this](http::session_handler& session, const http::api::params&) {
+				session.response().set("name", "value");
+				return true;
+			});			
 		}
 
 	private:

@@ -2366,8 +2366,9 @@ public:
 		friend class route_part;
 
 	public:
+		middleware() = default;
 		middleware(const W& middleware)
-			: endpoint_(endpoint)
+			: middleware_(middleware)
 		{
 		}
 
@@ -2384,7 +2385,7 @@ public:
 	private:
 		std::vector<std::pair<T, std::unique_ptr<route_part>>> link_;
 		std::unique_ptr<std::vector<std::pair<M, std::unique_ptr<route>>>> endpoints_;
-		std::unique_ptr<std::vector<std::pair<M, std::unique_ptr<middleware>>>> middlewares_;
+		std::unique_ptr<middleware> middleware_;
 
 	public:
 		route_part() = default;
@@ -2432,7 +2433,7 @@ public:
 	class match_result
 	{
 	public:
-		match_result(http::api::router_match::match_result_type result, const std::vector<router<M, T, R, W>::route_middleware_type*>& middlewares, router<M, T, R, W>::route* route)
+		match_result(http::api::router_match::match_result_type result, const std::vector<router<M, T, R, W>::route_middleware_type>&& middlewares, router<M, T, R, W>::route* route)
 			: result_(result)
 			, route_(route)
 			, middlewares_(middlewares)
@@ -2445,7 +2446,7 @@ public:
 	private:
 		http::api::router_match::match_result_type result_;
 		router<M, T, R, W>::route* route_;
-		const std::vector<router<M, T, R, W>::route_middleware_type*>& middlewares_;
+		const std::vector<router<M, T, R, W>::route_middleware_type> middlewares_;
 	};
 
 public:
@@ -2482,9 +2483,9 @@ public:
 		// std::cout << "sizeof(router::metrics)" << std::to_string(sizeof(router::metrics)) << "\n";
 	}
 
-	void use(const std::string& path, R&& middleware_function)
-	{
-		// static_content_routes.emplace_back(path);
+	void use(const std::string& path, W&& middleware_function)
+	{ 
+		on_middleware(path, std::move(middleware_function));
 	}
 
 	// void use(std::string&& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
@@ -2507,7 +2508,31 @@ public:
 
 	void on_options(std::string&& route, R&& api_method) { on_http_method(method::options, route, std::move(api_method)); }
 
-	// void on_http_method(std::string&& http_method, T&& route, R& api_method) { on_http_method(method::to_method(http_method), route, api_method); }
+	void on_middleware(const T& route, W&& middleware_method)
+	{
+		auto it = root_.get();
+
+		auto parts = http::util::split(route, "/");
+
+		for (const auto& part : parts)
+		{
+			// auto& l = it->link_[part];
+
+			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
+				if (l.first == part) return true;
+				return false;
+			});
+
+			if (l == it->link_.end())
+			{
+				l = it->link_.insert(it->link_.end(), std::pair<T, std::unique_ptr<route_part>>{ part, new router::route_part });
+			}
+
+			it = l->second.get();
+		}
+
+		it->middleware_.reset(new router::middleware{ middleware_method });
+	}
 
 	void on_http_method(const M method, const T& route, R&& end_point)
 	{
@@ -2546,7 +2571,7 @@ public:
 	{
 		auto it = root_.get();
 		auto parts = http::util::split(url, "/");
-		std::vector<router<M, T, R, W>::route_middleware_type*> middleware_stack;
+		std::vector<router<M, T, R, W>::route_middleware_type> middleware_stack;
 
 		for (const auto& part : parts)
 		{
@@ -2558,30 +2583,19 @@ public:
 			if (l == std::end(it->link_))
 			{
 				if (!it->match_param(part, params))
-					return match_result(http::api::router_match::no_route, middleware_stack, nullptr);
+					return match_result(http::api::router_match::no_route, std::move(middleware_stack), nullptr);
 				else
 					l = it->link_.begin();
 			}
 
-			if (it->middlewares_)
+			if (it->middleware_)
 			{
-				const auto middlewares_machted
-					= std::find_if(it->middlewares_->cbegin(), it->middlewares_->cend(), [&method](const std::pair<M, std::unique_ptr<router<M, T, R, W>::route_middleware_type>>& e) {
-					if (e.first == method) return true;
-					return false;
-				});
-
-				int x = 0;
-				if (middlewares_machted != it->middlewares_->cend())
-				{
-					router<M, T, R, W>::route_middleware_type* xx = (*(middlewares_machted->second.get()));
-					//middleware_stack.push_back(route_middleware_type*
-					//middleware_stack.emplace(middlewares_machted->second);
-				}
+				auto x = it->middleware_->middleware_function();
+				//middleware_stack.emplace();			
 			}
 		}
 
-		if (!it->endpoints_) return match_result(http::api::router_match::no_route, middleware_stack, nullptr);
+		if (!it->endpoints_) return match_result(http::api::router_match::no_route, std::move(middleware_stack), nullptr);
 
 		// const auto& endpoint = it->endpoints_->find(method);
 
@@ -2593,10 +2607,16 @@ public:
 
 		if (endpoint != it->endpoints_->end())
 		{
-			return match_result(http::api::router_match::match_found, middleware_stack, &(*(endpoint->second)));
+			if (it->middleware_)
+			{
+				auto x = it->middleware_->middleware_function();
+				// middleware_stack.emplace();
+			}
+
+			return match_result(http::api::router_match::match_found, std::move(middleware_stack), &(*(endpoint->second)));
 		}
 
-		return match_result(http::api::router_match::match_found, middleware_stack, nullptr);
+		return match_result(http::api::router_match::match_found, std::move(middleware_stack), nullptr);
 	}
 
 	std::string to_string()
@@ -3400,7 +3420,8 @@ public:
 				std::vector<char> data_response_;
 
 				std::vector<char>& request_data() { return data_request_; }
-				std::vector<char>& response_data() { return data_response_; }*/
+				std::vector<char>& response_data() { return data_response_; }	*/
+
 
 		void reset_session()
 		{
