@@ -2367,15 +2367,20 @@ public:
 
 	public:
 		middleware() = default;
-		middleware(const W& middleware)
-			: middleware_(middleware)
+		middleware(const middleware&) = default;
+
+		middleware(const std::string& middleware_attribute, const W& middleware_lambda_)
+			: middleware_lambda_(middleware_lambda_)
+			, middleware_attribute_(middleware_attribute)
 		{
 		}
 
-		const W& middleware_function() { return middleware_; };
+		const W& middleware_labda() { return middleware_lambda_; };
+		const std::string& middleware_attribute() { return middleware_attribute_; };
 
 	private:
-		const W middleware_;
+		const W middleware_lambda_;
+		std::string middleware_attribute_;
 	};
 
 	class route_part
@@ -2385,7 +2390,8 @@ public:
 	private:
 		std::vector<std::pair<T, std::unique_ptr<route_part>>> link_;
 		std::unique_ptr<std::vector<std::pair<M, std::unique_ptr<route>>>> endpoints_;
-		std::unique_ptr<middleware> middleware_;
+		std::unique_ptr<middleware> pre_middleware_;
+		std::unique_ptr<middleware> post_middleware_;
 
 	public:
 		route_part() = default;
@@ -2435,11 +2441,13 @@ public:
 	public:
 		match_result(
 			http::api::router_match::match_result_type result,
-			const std::vector<router<M, T, R, W>::route_middleware_type>&& middlewares,
+			const std::vector<router<M, T, R, W>::middleware*>& pre_middlewares,
+			const std::vector<router<M, T, R, W>::middleware*>& post_middlewares,
 			router<M, T, R, W>::route* route)
 			: result_(result)
 			, route_(route)
-			, middlewares_(middlewares)
+			, pre_middlewares_(pre_middlewares)
+			, post_middlewares_(post_middlewares)
 		{
 		}
 
@@ -2449,7 +2457,8 @@ public:
 	private:
 		http::api::router_match::match_result_type result_;
 		router<M, T, R, W>::route* route_;
-		const std::vector<router<M, T, R, W>::route_middleware_type> middlewares_;
+		const std::vector<router<M, T, R, W>::middleware*> pre_middlewares_;
+		const std::vector<router<M, T, R, W>::middleware*> post_middlewares_;
 	};
 
 public:
@@ -2486,9 +2495,17 @@ public:
 		// std::cout << "sizeof(router::metrics)" << std::to_string(sizeof(router::metrics)) << "\n";
 	}
 
-	void use(const std::string& path, W&& middleware_function) { on_middleware(path, std::move(middleware_function)); }
+	enum class middleware_type
+	{
+		pre,
+		post,
+		both
+	};
 
-	// void use(std::string&& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
+	void use_middleware(middleware_type type, const std::string& path, const std::string& middleware_attribute, W&& middleware_function = W)
+	{
+		on_middleware(type, path, middleware_attribute, std::move(middleware_function));
+	}
 
 	void on_busy(std::function<bool()> on_busy_callback) { on_busy_ = on_busy_callback; }
 
@@ -2508,7 +2525,7 @@ public:
 
 	void on_options(std::string&& route, R&& api_method) { on_http_method(method::options, route, std::move(api_method)); }
 
-	void on_middleware(const T& route, W&& middleware_method)
+	void on_middleware(middleware_type type, const T& route, const std::string& middleware_attribute, W&& middleware_method)
 	{
 		auto it = root_.get();
 
@@ -2531,7 +2548,19 @@ public:
 			it = l->second.get();
 		}
 
-		it->middleware_.reset(new router::middleware{ middleware_method });
+		switch (type)
+		{
+		case middleware_type::post:
+			it->post_middleware_.reset(new router::middleware{ middleware_attribute, middleware_method });
+			break;
+		case middleware_type::pre:
+			it->pre_middleware_.reset(new router::middleware{ middleware_attribute, middleware_method });
+			break;
+		case middleware_type::both:
+			it->pre_middleware_.reset(new router::middleware{ middleware_attribute, middleware_method });
+			it->post_middleware_.reset(new router::middleware{ middleware_attribute, middleware_method });
+			break;
+		}
 	}
 
 	void on_http_method(const M method, const T& route, R&& end_point)
@@ -2571,7 +2600,8 @@ public:
 	{
 		auto it = root_.get();
 		auto parts = http::util::split(url, "/");
-		std::vector<router<M, T, R, W>::route_middleware_type> middleware_stack;
+		std::vector<router<M, T, R, W>::middleware*> pre_middleware_stack;
+		std::vector<router<M, T, R, W>::middleware*> post_middleware_stack;
 
 		for (const auto& part : parts)
 		{
@@ -2583,20 +2613,25 @@ public:
 			if (l == std::end(it->link_))
 			{
 				if (!it->match_param(part, params))
-					return match_result(http::api::router_match::no_route, std::move(middleware_stack), nullptr);
+					return match_result(http::api::router_match::no_route, std::move(pre_middleware_stack), std::move(post_middleware_stack), nullptr);
 				else
 					l = it->link_.begin();
 			}
 
-			if (l->second->middleware_)
+			if (l->second->pre_middleware_)
 			{
-				middleware_stack.emplace_back(it->middleware_->middleware_function());
+				pre_middleware_stack.push_back(l->second->pre_middleware_.get());
+			}
+
+			if (l->second->post_middleware_)
+			{
+				post_middleware_stack.emplace_back(l->second->post_middleware_.get());
 			}
 
 			it = l->second.get();
 		}
 
-		if (!it->endpoints_) return match_result(http::api::router_match::no_route, std::move(middleware_stack), nullptr);
+		if (!it->endpoints_) return match_result(http::api::router_match::no_route, std::move(pre_middleware_stack), std::move(post_middleware_stack), nullptr);
 
 		auto endpoint = std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<route>>& e) {
 			if (e.first == method) return true;
@@ -2606,10 +2641,12 @@ public:
 
 		if (endpoint != it->endpoints_->end())
 		{
-			return match_result(http::api::router_match::match_found, std::move(middleware_stack), &(*(endpoint->second)));
+			return match_result(http::api::router_match::match_found, std::move(pre_middleware_stack), std::move(post_middleware_stack), &(*(endpoint->second)));
 		}
-
-		return match_result(http::api::router_match::match_found, std::move(middleware_stack), nullptr);
+		else
+		{
+			return match_result(http::api::router_match::no_method, std::move(pre_middleware_stack), std::move(post_middleware_stack), nullptr);
+		}
 	}
 
 	std::string to_string()

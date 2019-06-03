@@ -267,7 +267,7 @@ private:
 				session.response().type("text");
 			});
 
-			S::router_.use("/status", [this](http::session_handler& session, const http::api::params&) {
+			S::router_.use_middleware(http::api::router<>::middleware_type::post, "/status", "varken::knor", [this](http::session_handler& session, const http::api::params&) {
 				session.response().set("name", "value");
 				return true;
 			});
