@@ -270,7 +270,7 @@ private:
 			S::router_.use("/status", [this](http::session_handler& session, const http::api::params&) {
 				session.response().set("name", "value");
 				return true;
-			});			
+			});
 		}
 
 	private:
@@ -298,7 +298,7 @@ public:
 
 	void run()
 	{
-		struct test
+		/*struct test
 		{
 			test(neolm::license_manager<S>::api_server& api_server_, std::function<void(http::session_handler&, const http::api::params&)>& test_function)
 			{
@@ -336,7 +336,7 @@ public:
 		};
 
 		test t(this->api_server_, the_test);
-
+		*/
 		do
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));

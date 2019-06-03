@@ -2433,7 +2433,10 @@ public:
 	class match_result
 	{
 	public:
-		match_result(http::api::router_match::match_result_type result, const std::vector<router<M, T, R, W>::route_middleware_type>&& middlewares, router<M, T, R, W>::route* route)
+		match_result(
+			http::api::router_match::match_result_type result,
+			const std::vector<router<M, T, R, W>::route_middleware_type>&& middlewares,
+			router<M, T, R, W>::route* route)
 			: result_(result)
 			, route_(route)
 			, middlewares_(middlewares)
@@ -2483,10 +2486,7 @@ public:
 		// std::cout << "sizeof(router::metrics)" << std::to_string(sizeof(router::metrics)) << "\n";
 	}
 
-	void use(const std::string& path, W&& middleware_function)
-	{ 
-		on_middleware(path, std::move(middleware_function));
-	}
+	void use(const std::string& path, W&& middleware_function) { on_middleware(path, std::move(middleware_function)); }
 
 	// void use(std::string&& route, middleware_function_t middleware_function) { api_middleware_table.emplace_back(route, middleware_function); };
 
@@ -2576,8 +2576,8 @@ public:
 		for (const auto& part : parts)
 		{
 			auto l = std::find_if(it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
-				if (l.first == part) return true;
-				return false;
+				if (l.first != part) return false;
+				return true;
 			});
 
 			if (l == std::end(it->link_))
@@ -2588,16 +2588,15 @@ public:
 					l = it->link_.begin();
 			}
 
-			if (it->middleware_)
+			if (l->second->middleware_)
 			{
-				auto x = it->middleware_->middleware_function();
-				//middleware_stack.emplace();			
+				middleware_stack.emplace_back(it->middleware_->middleware_function());
 			}
+
+			it = l->second.get();
 		}
 
 		if (!it->endpoints_) return match_result(http::api::router_match::no_route, std::move(middleware_stack), nullptr);
-
-		// const auto& endpoint = it->endpoints_->find(method);
 
 		auto endpoint = std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<route>>& e) {
 			if (e.first == method) return true;
@@ -2607,12 +2606,6 @@ public:
 
 		if (endpoint != it->endpoints_->end())
 		{
-			if (it->middleware_)
-			{
-				auto x = it->middleware_->middleware_function();
-				// middleware_stack.emplace();
-			}
-
 			return match_result(http::api::router_match::match_found, std::move(middleware_stack), &(*(endpoint->second)));
 		}
 
@@ -3421,7 +3414,6 @@ public:
 
 				std::vector<char>& request_data() { return data_request_; }
 				std::vector<char>& response_data() { return data_response_; }	*/
-
 
 		void reset_session()
 		{
