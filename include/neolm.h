@@ -166,7 +166,8 @@ private:
 			});
 
 			// Get secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_get(
+				"/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing& routering, http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -192,7 +193,8 @@ private:
 			});
 
 			// Remove secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_delete("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_delete(
+				"/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing& routering, http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -233,7 +235,7 @@ private:
 			});
 
 			// New node, tenant must exist.
-			S::router_.on_put("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session, const http::api::params& params) {
+			S::router_.on_put("/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing& routering, http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -256,7 +258,7 @@ private:
 				}
 			});
 
-			S::router_.on_get("/status", [this](http::session_handler& session, const http::api::params&) {
+			S::router_.on_get("/status", [this](const http::api::routing& routering, http::session_handler& session, const http::api::params&) {
 				S::manager().server_information(S::configuration_.to_string());
 				S::manager().router_information(S::router_.to_string());
 
@@ -267,10 +269,20 @@ private:
 				session.response().type("text");
 			});
 
-			S::router_.use_middleware(http::api::router<>::middleware_type::post, "/status", "varken::knor", [this](http::session_handler& session, const http::api::params&) {
+			S::router_.use_middleware(
+				http::api::router<>::middleware_type::post, "/status", "varken::knor",
+				[this](const http::api::routing& routering, http::session_handler& session, const http::api::params&) {
 				session.response().set("name", "value");
 				return true;
 			});
+
+			S::router_.use_middleware(
+				http::api::router<>::middleware_type::post, "/status", "varken::knor2",
+				[this](const http::api::routing& routering, http::session_handler& session, const http::api::params&) {
+					session.response().set("name", "value2");
+					return true;
+			});
+
 		}
 
 	private:
