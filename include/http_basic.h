@@ -1953,7 +1953,7 @@ namespace api
 {
 namespace router_match
 {
-enum match_result_type
+enum route_context_type
 {
 	no_route,
 	no_method,
@@ -2277,16 +2277,13 @@ private:
 
 using session_handler_type = http::session_handler;
 
-template <
-	typename M = http::method::method_t,
-	typename T = std::string,
-	typename R = std::function<void(session_handler_type& session, const http::api::params& params)>,
-	typename W = std::function<bool(session_handler_type& session, const http::api::params& params)>>
-class router
+class routing
 {
 public:
-	using route_endpoint_type = R;
-	using route_middleware_type = W;
+	using endpoint_lambda = std::function<void(const routing& route_context, session_handler_type& session, const http::api::params& params)>;
+	using middleware_lambda = std::function<bool(const routing& route_context, session_handler_type& session, const http::api::params& params)>;
+
+	using result = http::api::router_match::route_context_type;
 
 	struct metrics
 	{
@@ -2305,6 +2302,8 @@ public:
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
+
+			return *this;
 		}
 
 		metrics(metrics&& r) noexcept
@@ -2335,17 +2334,44 @@ public:
 		};
 	};
 
+	class middleware
+	{
+		friend class route_part;
+
+	public:
+		middleware() = default;
+		middleware(const middleware&) = default;
+
+		middleware(const std::string& middleware_attribute, const middleware_lambda& middleware_lambda_)
+			: middleware_lambda_(middleware_lambda_)
+			, middleware_attribute_(middleware_attribute)
+		{
+		}
+
+		const middleware_lambda& middleware_labda() { return middleware_lambda_; };
+		const std::string& middleware_attribute() { return middleware_attribute_; };
+
+	private:
+		const middleware_lambda middleware_lambda_;
+		std::string middleware_attribute_;
+	};
+
 	class route
 	{
 		friend class route_part;
 
 	public:
-		route(const R& endpoint)
+		route() = default;
+
+		route(const route& rhs) = default;
+		route& operator=(const route&) = default;
+
+		route(const endpoint_lambda endpoint)
 			: endpoint_(endpoint)
 		{
 		}
 
-		const R& endpoint() { return endpoint_; };
+		const endpoint_lambda& endpoint() { return endpoint_; };
 
 		void update_metrics(std::chrono::high_resolution_clock::duration request_duration, std::chrono::high_resolution_clock::duration new_processing_duration_)
 		{
@@ -2357,31 +2383,41 @@ public:
 		metrics& route_metrics() { return metrics_; };
 
 	private:
-		const R endpoint_;
+		endpoint_lambda endpoint_;
 		metrics metrics_;
 	};
 
-	class middleware
+	using middlewares = std::vector<middleware>;
+
+	routing(result r = http::api::router_match::no_route)
+		: result_(r)
+		, route_(route{})
 	{
-		friend class route_part;
+	}
 
-	public:
-		middleware() = default;
-		middleware(const middleware&) = default;
+	result& match_result() { return result_; };
+	result match_result() const { result_; };
+	route& the_route() { return route_; }
+	void set_route(const route* r) { route_ = *r; }
+	const route& the_route() const { return route_; }
 
-		middleware(const std::string& middleware_attribute, const W& middleware_lambda_)
-			: middleware_lambda_(middleware_lambda_)
-			, middleware_attribute_(middleware_attribute)
-		{
-		}
+	middlewares& pre_middlewares() { return pre_middlewares_; };
+	middlewares& post_middlewares() { return post_middlewares_; };
 
-		const W& middleware_labda() { return middleware_lambda_; };
-		const std::string& middleware_attribute() { return middleware_attribute_; };
+private:
+	result result_;
+	route route_;
+	middlewares pre_middlewares_;
+	middlewares post_middlewares_;
+};
 
-	private:
-		const W middleware_lambda_;
-		std::string middleware_attribute_;
-	};
+template <typename M = http::method::method_t, typename T = std::string, typename R = routing::endpoint_lambda, typename W = routing::middleware_lambda> class router
+{
+public:
+	using route_http_method_type = M;
+	using route_url_type = T;
+	using route_endpoint_type = R;
+	using route_middleware_type = W;
 
 	class route_part
 	{
@@ -2389,9 +2425,9 @@ public:
 
 	private:
 		std::vector<std::pair<T, std::unique_ptr<route_part>>> link_;
-		std::unique_ptr<std::vector<std::pair<M, std::unique_ptr<route>>>> endpoints_;
-		std::unique_ptr<middleware> pre_middleware_;
-		std::unique_ptr<middleware> post_middleware_;
+		std::unique_ptr<std::vector<std::pair<M, std::unique_ptr<routing::route>>>> endpoints_;
+		std::unique_ptr<routing::middlewares> pre_middlewares_;
+		std::unique_ptr<routing::middlewares> post_middlewares_;
 
 	public:
 		route_part() = default;
@@ -2434,31 +2470,6 @@ public:
 				path.pop_back();
 			}
 		}
-	};
-
-	class match_result
-	{
-	public:
-		match_result(
-			http::api::router_match::match_result_type result,
-			const std::vector<router<M, T, R, W>::middleware*>& pre_middlewares,
-			const std::vector<router<M, T, R, W>::middleware*>& post_middlewares,
-			router<M, T, R, W>::route* route)
-			: result_(result)
-			, route_(route)
-			, pre_middlewares_(pre_middlewares)
-			, post_middlewares_(post_middlewares)
-		{
-		}
-
-		route& matched_route() { return *route_; };
-		const http::api::router_match::match_result_type result() { return result_; };
-
-	private:
-		http::api::router_match::match_result_type result_;
-		router<M, T, R, W>::route* route_;
-		const std::vector<router<M, T, R, W>::middleware*> pre_middlewares_;
-		const std::vector<router<M, T, R, W>::middleware*> post_middlewares_;
 	};
 
 public:
@@ -2558,14 +2569,18 @@ public:
 		switch (type)
 		{
 		case middleware_type::post:
-			it->post_middleware_.reset(new router::middleware{ middleware_attribute, middleware_method });
+			if (!it->post_middlewares_) it->post_middlewares_.reset(new routing::middlewares{});
+			it->post_middlewares_->emplace_back(middleware_attribute, middleware_method);
 			break;
 		case middleware_type::pre:
-			it->pre_middleware_.reset(new router::middleware{ middleware_attribute, middleware_method });
+			if (!it->pre_middlewares_) it->pre_middlewares_.reset(new routing::middlewares{});
+			it->pre_middlewares_->emplace_back(middleware_attribute, middleware_method);
 			break;
 		case middleware_type::both:
-			it->pre_middleware_.reset(new router::middleware{ middleware_attribute, middleware_method });
-			it->post_middleware_.reset(new router::middleware{ middleware_attribute, middleware_method });
+			if (!it->post_middlewares_) it->post_middlewares_.reset(new routing::middlewares{});
+			it->post_middlewares_->emplace_back(middleware_attribute, middleware_method);
+			if (!it->pre_middlewares_) it->pre_middlewares_.reset(new routing::middlewares{});
+			it->pre_middlewares_->emplace_back(middleware_attribute, middleware_method);
 			break;
 		}
 	}
@@ -2595,20 +2610,19 @@ public:
 
 		//		if (!it->endpoints_) it->endpoints_->reset(new std::map<M, std::unique_ptr<router::route>>);
 
-		if (!it->endpoints_) it->endpoints_.reset(new std::vector<std::pair<M, std::unique_ptr<router::route>>>);
+		if (!it->endpoints_) it->endpoints_.reset(new std::vector<std::pair<M, std::unique_ptr<routing::route>>>);
 
-		it->endpoints_->insert(it->endpoints_->end(), std::pair<M, std::unique_ptr<router::route>>(method, new router::route{ end_point }));
+		it->endpoints_->insert(it->endpoints_->end(), std::pair<M, std::unique_ptr<routing::route>>(method, new routing::route{ end_point }));
 
 		/*		(*it->endpoints_)[method]
 					.reset(new router::route{ end_point });*/
 	}
 
-	match_result match_route(const http::method::method_t& method, const std::string& url, params& params) const noexcept
+	routing match_route(const http::method::method_t& method, const std::string& url, params& params) const noexcept
 	{
+		routing result{};
 		auto it = root_.get();
 		auto parts = http::util::split(url, "/");
-		std::vector<router<M, T, R, W>::middleware*> pre_middleware_stack;
-		std::vector<router<M, T, R, W>::middleware*> post_middleware_stack;
 
 		for (const auto& part : parts)
 		{
@@ -2620,27 +2634,33 @@ public:
 			if (l == std::end(it->link_))
 			{
 				if (!it->match_param(part, params))
-					return match_result(http::api::router_match::no_route, std::move(pre_middleware_stack), std::move(post_middleware_stack), nullptr);
+					return routing(http::api::router_match::no_route);
 				else
 					l = it->link_.begin();
 			}
 
-			if (l->second->pre_middleware_)
+			if (l->second->pre_middlewares_)
 			{
-				pre_middleware_stack.push_back(l->second->pre_middleware_.get());
+				for (auto& m : *l->second->pre_middlewares_)
+				{
+					result.pre_middlewares().emplace_back(m);
+				}
 			}
 
-			if (l->second->post_middleware_)
+			if (l->second->post_middlewares_)
 			{
-				post_middleware_stack.emplace_back(l->second->post_middleware_.get());
+				for (auto& m : *l->second->post_middlewares_)
+				{
+					result.post_middlewares().emplace_back(m);
+				}
 			}
 
 			it = l->second.get();
 		}
 
-		if (!it->endpoints_) return match_result(http::api::router_match::no_route, std::move(pre_middleware_stack), std::move(post_middleware_stack), nullptr);
+		if (!it->endpoints_) return result;
 
-		auto endpoint = std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<route>>& e) {
+		auto endpoint = std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<routing::route>>& e) {
 			if (e.first == method) return true;
 
 			return false;
@@ -2648,11 +2668,14 @@ public:
 
 		if (endpoint != it->endpoints_->end())
 		{
-			return match_result(http::api::router_match::match_found, std::move(pre_middleware_stack), std::move(post_middleware_stack), &(*(endpoint->second)));
+			result.match_result() = http::api::router_match::match_found;
+			result.set_route(endpoint->second.get());
+			return result;
 		}
 		else
 		{
-			return match_result(http::api::router_match::no_method, std::move(pre_middleware_stack), std::move(post_middleware_stack), nullptr);
+			result.match_result() = http::api::router_match::no_method;
+			return result;
 		}
 	}
 
@@ -2667,21 +2690,22 @@ public:
 		return result.str();
 	}
 
-	http::api::router_match::match_result_type call_route(session_handler_type& session)
+	http::api::router_match::route_context_type call_route(session_handler_type& session)
 	{
 		auto url = session.request().url_requested().substr(0, session.request().url_requested().find_first_of('?'));
 
-		params params_;
+		params route_params;
 
-		auto result = match_route(session.request().method(), url, params_);
-		if (result.result() == http::api::router_match::match_found)
+		auto route_context = match_route(session.request().method(), url, route_params);
+
+		if (route_context.match_result() == http::api::router_match::match_found)
 		{
 			auto t0 = std::chrono::steady_clock::now();
-			result.matched_route().endpoint()(session, params_);
+			route_context.the_route().endpoint()(route_context, session, route_params);
 			auto t1 = std::chrono::steady_clock::now();
-			result.matched_route().update_metrics(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
+			route_context.the_route().update_metrics(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 		}
-		return result.result();
+		return route_context.match_result();
 	}
 };
 
