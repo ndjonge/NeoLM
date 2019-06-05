@@ -267,10 +267,14 @@ private:
 				session.response().type("text");
 			});
 
-			S::router_.use_middleware(http::api::router<>::middleware_type::post, "/status", "varken::knor", [this](http::session_handler& session, const http::api::params&) {
-				session.response().set("name", "value");
-				return true;
-			});
+			S::router_.use_middleware(
+				http::middleware::post, "/status", "varken::knor",
+				[this](http::session_handler& session, const http::api::params&, const http::api::router<>::match_result result) {
+					session.response().set("name", "value");
+					return true;
+				});
+
+			S::router_.use_middleware(http::middleware::both, "/status", "varken::knor2");
 		}
 
 	private:

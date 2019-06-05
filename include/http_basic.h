@@ -2502,7 +2502,14 @@ public:
 		both
 	};
 
-	void use_middleware(middleware_type type, const std::string& path, const std::string& middleware_attribute, W&& middleware_function = W)
+	void use_middleware(middleware_type type, const std::string& path, const std::string& middleware_attribute)
+	{
+		W empty;
+
+		on_middleware(type, path, middleware_attribute, std::move(empty));
+	}
+
+	void use_middleware(middleware_type type, const std::string& path, const std::string& middleware_attribute, W&& middleware_function)
 	{
 		on_middleware(type, path, middleware_attribute, std::move(middleware_function));
 	}
@@ -3500,5 +3507,7 @@ private:
 } // namespace threaded
 
 } // namespace basic
+
+using middleware = http::api::router<>::middleware_type;
 
 } // namespace http
