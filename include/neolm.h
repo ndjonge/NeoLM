@@ -258,7 +258,7 @@ private:
 				}
 			});
 
-			S::router_.on_get("/status", [this](const http::api::routing& routering, http::session_handler& session, const http::api::params&) {
+			S::router_.on_get("/status", [this](const http::api::routing& routing, http::session_handler& session, const http::api::params&) {
 				S::manager().server_information(S::configuration_.to_string());
 				S::manager().router_information(S::router_.to_string());
 

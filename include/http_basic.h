@@ -828,7 +828,7 @@ private:
 	unsigned int status_nr_ = 400;
 	unsigned int version_nr_ = 11;
 
-	friend class http::response_parser;
+	friend class response_parser;
 
 public:
 	header() = default;
@@ -2387,7 +2387,7 @@ public:
 		metrics metrics_;
 	};
 
-	using middlewares = std::vector<middleware>;
+	using middlewares = std::vector<std::pair<middleware, middleware>>;
 
 	routing(result r = http::api::router_match::no_route)
 		: result_(r)
@@ -2400,15 +2400,12 @@ public:
 	route& the_route() { return route_; }
 	void set_route(const route* r) { route_ = *r; }
 	const route& the_route() const { return route_; }
-
-	middlewares& pre_middlewares() { return pre_middlewares_; };
-	middlewares& post_middlewares() { return post_middlewares_; };
+	middlewares& middlewares_vector() { return middlewares_; };
 
 private:
 	result result_;
 	route route_;
-	middlewares pre_middlewares_;
-	middlewares post_middlewares_;
+	middlewares middlewares_;
 };
 
 template <typename M = http::method::method_t, typename T = std::string, typename R = routing::endpoint_lambda, typename W = routing::middleware_lambda> class router
@@ -2426,8 +2423,7 @@ public:
 	private:
 		std::vector<std::pair<T, std::unique_ptr<route_part>>> link_;
 		std::unique_ptr<std::vector<std::pair<M, std::unique_ptr<routing::route>>>> endpoints_;
-		std::unique_ptr<routing::middlewares> pre_middlewares_;
-		std::unique_ptr<routing::middlewares> post_middlewares_;
+		std::unique_ptr<routing::middlewares> middlewares_;
 
 	public:
 		route_part() = default;
@@ -2568,19 +2564,22 @@ public:
 
 		switch (type)
 		{
-		case middleware_type::post:
-			if (!it->post_middlewares_) it->post_middlewares_.reset(new routing::middlewares{});
-			it->post_middlewares_->emplace_back(middleware_attribute, middleware_method);
-			break;
 		case middleware_type::pre:
-			if (!it->pre_middlewares_) it->pre_middlewares_.reset(new routing::middlewares{});
-			it->pre_middlewares_->emplace_back(middleware_attribute, middleware_method);
+		{
+			if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
+
+			it->middlewares_->emplace_back(std::make_pair<routing::middleware, routing::middleware>({ middleware_attribute, middleware_method }, {}));
+
+			break;
+		}
+		case middleware_type::post:
+			if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
+			it->middlewares_->emplace_back(std::make_pair<routing::middleware, routing::middleware>({}, { middleware_attribute, middleware_method }));
 			break;
 		case middleware_type::both:
-			if (!it->post_middlewares_) it->post_middlewares_.reset(new routing::middlewares{});
-			it->post_middlewares_->emplace_back(middleware_attribute, middleware_method);
-			if (!it->pre_middlewares_) it->pre_middlewares_.reset(new routing::middlewares{});
-			it->pre_middlewares_->emplace_back(middleware_attribute, middleware_method);
+			if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
+			it->middlewares_->emplace_back(
+				std::make_pair<routing::middleware, routing::middleware>({ middleware_attribute, middleware_method }, { middleware_attribute, middleware_method }));
 			break;
 		}
 	}
@@ -2639,19 +2638,11 @@ public:
 					l = it->link_.begin();
 			}
 
-			if (l->second->pre_middlewares_)
+			if (l->second->middlewares_)
 			{
-				for (auto& m : *l->second->pre_middlewares_)
+				for (auto& m : *l->second->middlewares_)
 				{
-					result.pre_middlewares().emplace_back(m);
-				}
-			}
-
-			if (l->second->post_middlewares_)
-			{
-				for (auto& m : *l->second->post_middlewares_)
-				{
-					result.post_middlewares().emplace_back(m);
+					result.middlewares_vector().emplace_back(m);
 				}
 			}
 
@@ -2707,7 +2698,7 @@ public:
 		}
 		return route_context.match_result();
 	}
-};
+}; // namespace api
 
 } // namespace api
 
