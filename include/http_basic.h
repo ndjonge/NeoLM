@@ -1020,7 +1020,7 @@ using response_message = http::message<response_specialization>;
 class request_parser
 {
 public:
-	request_parser() noexcept = default;
+	request_parser() = default;
 
 	void reset() { state_ = method_start; };
 
@@ -2318,6 +2318,7 @@ public:
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
+			return *this;
 		}
 
 		std::atomic<std::uint64_t> request_latency_{ 0 };
@@ -2396,7 +2397,7 @@ public:
 	}
 
 	result& match_result() { return result_; };
-	result match_result() const { result_; };
+	result match_result() const { return result_; };
 	route& the_route() { return route_; }
 	void set_route(const route* r) { route_ = *r; }
 	const route& the_route() const { return route_; }
@@ -2621,6 +2622,15 @@ public:
 	{
 		routing result{};
 		auto it = root_.get();
+
+		if (it->middlewares_)
+		{
+			for (auto& m : *it->middlewares_)
+			{
+				result.middlewares_vector().emplace_back(m);
+			}
+		}
+
 		auto parts = http::util::split(url, "/");
 
 		for (const auto& part : parts)
