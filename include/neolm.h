@@ -166,8 +166,7 @@ private:
 			});
 
 			// Get secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_get(
-				"/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing& routering, http::session_handler& session, const http::api::params& params) {
+			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing& routering, http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -195,44 +194,44 @@ private:
 			// Remove secific node info, or get list of nodes per tenant-cluster.
 			S::router_.on_delete(
 				"/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing& routering, http::session_handler& session, const http::api::params& params) {
-				const auto& tenant = params.get("tenant");
-				const auto& node = params.get("node");
+					const auto& tenant = params.get("tenant");
+					const auto& node = params.get("node");
 
-				if (tenant.empty() && node.empty())
-				{
-					license_manager_.group_members_.clear();
-					session.response().result(http::status::ok);
-				}
-				else if (node.empty())
-				{
-					bool found = false;
-					for (auto& member : license_manager_.group_members_)
+					if (tenant.empty() && node.empty())
 					{
-						if (member.second.tenant() == tenant)
+						license_manager_.group_members_.clear();
+						session.response().result(http::status::ok);
+					}
+					else if (node.empty())
+					{
+						bool found = false;
+						for (auto& member : license_manager_.group_members_)
 						{
-							license_manager_.group_members_.erase(member.first);
-							found = true;
+							if (member.second.tenant() == tenant)
+							{
+								license_manager_.group_members_.erase(member.first);
+								found = true;
+							}
 						}
+
+						if (found)
+							session.response().result(http::status::ok);
+						else
+							session.response().result(http::status::not_found);
 					}
-
-					if (found)
-						session.response().result(http::status::ok);
 					else
-						session.response().result(http::status::not_found);
-				}
-				else
-				{
-					const auto& member = license_manager_.group_members_.find(tenant + node);
-
-					if (member != license_manager_.group_members_.end())
 					{
-						license_manager_.group_members_.erase(member);
-						session.response().result(http::status::ok);
+						const auto& member = license_manager_.group_members_.find(tenant + node);
+
+						if (member != license_manager_.group_members_.end())
+						{
+							license_manager_.group_members_.erase(member);
+							session.response().result(http::status::ok);
+						}
+						else
+							session.response().result(http::status::not_found);
 					}
-					else
-						session.response().result(http::status::not_found);
-				}
-			});
+				});
 
 			// New node, tenant must exist.
 			S::router_.on_put("/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing& routering, http::session_handler& session, const http::api::params& params) {
@@ -258,6 +257,22 @@ private:
 				}
 			});
 
+			S::router_.on_get("/api/rest/fx/...", [this](const http::api::routing& routing, http::session_handler& session, const http::api::params& param) {
+				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
+
+				session.response().body() += "\nParam: '" + param.get("...");
+
+				session.response().type("text");
+			});
+
+			S::router_.on_get("/api/rest/fx/test/niek", [this](const http::api::routing& routing, http::session_handler& session, const http::api::params& param) {
+				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
+
+				session.response().body() += "\nSpecial Case:\n" + param.get("...");
+
+				session.response().type("text");
+			});
+
 			S::router_.on_get("/status", [this](const http::api::routing& routing, http::session_handler& session, const http::api::params&) {
 				S::manager().server_information(S::configuration_.to_string());
 				S::manager().router_information(S::router_.to_string());
@@ -269,20 +284,18 @@ private:
 				session.response().type("text");
 			});
 
-			S::router_.use_middleware(
-				http::api::router<>::middleware_type::post, "/status", "varken::knor",
-				[this](const http::api::routing& routering, http::session_handler& session, const http::api::params&) {
-				session.response().set("name", "value");
-				return true;
-			});
+			S::router_.use_middleware("/status", "varken::knor_pre", "varken::knor_post");
 
 			S::router_.use_middleware(
-				http::api::router<>::middleware_type::post, "/status", "varken::knor2",
+				"/status",
 				[this](const http::api::routing& routering, http::session_handler& session, const http::api::params&) {
 					session.response().set("name", "value2");
 					return true;
-			});
-
+				},
+				[this](const http::api::routing& routering, http::session_handler& session, const http::api::params&) {
+					session.response().set("name", "value2");
+					return true;
+				});
 		}
 
 	private:
@@ -363,6 +376,6 @@ private:
 	std::string home_dir_;
 
 	pm::group::group_members group_members_;
-};
+}; // namespace neolm
 
 } // namespace neolm

@@ -2442,17 +2442,22 @@ public:
 		{
 			for (const auto& i : link_)
 			{
-				if (*(i.first.begin()) == '{' && *(i.first.rbegin()) == '}')
+				if (i.first == "...")
+				{
+					return true;
+				}
+				else if (*(i.first.begin()) == '{' && *(i.first.rbegin()) == '}')
 				{
 					params.insert(i.first.substr(1, i.first.size() - 2), url_part);
 					return true;
 				}
-				else if (*(i.first.begin()) == ':')
-				{
-					params.insert(i.first.substr(1, i.first.size() - 1), url_part);
-					return true;
-				}
+				// else if (*(i.first.begin()) == ':')
+				//{
+				//	params.insert(i.first.substr(1, i.first.size() - 1), url_part);
+				//	return true;
+				//}
 			}
+
 			return false;
 		}
 
@@ -2524,6 +2529,13 @@ public:
 		W empty;
 
 		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ pre_middleware_attribute, empty }, { post_middleware_attribute, empty });
+
+		on_middleware(path, middleware_pair);
+	}
+
+	void use_middleware(const std::string& path, W&& middleware_pre_function, W&& middleware_post_function)
+	{
+		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ "", middleware_pre_function }, { "", middleware_post_function });
 
 		on_middleware(path, middleware_pair);
 	}
@@ -2620,7 +2632,7 @@ public:
 		}
 
 		auto parts = http::util::split(url, "/");
-
+		auto part_index = 0;
 		for (const auto& part : parts)
 		{
 			auto l = std::find_if(it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
@@ -2630,7 +2642,27 @@ public:
 				if (!it->match_param(part, params))
 					return routing(http::api::router_match::no_route);
 				else
+				{
 					l = it->link_.begin();
+
+					if (l->first == "...")
+					{
+						std::string url_remainder{};
+
+						for (auto i = part_index; i < parts.size(); i++)
+						{
+							url_remainder += parts[i];
+
+							if (i < (parts.size() - 1))
+							{
+								url_remainder += "/";
+							}
+						}
+						params.insert("...", url_remainder);
+						it = l->second.get(); // make sure endpoint can be found and we can continue;
+						break;
+					}
+				}
 			}
 
 			if (l->second->middlewares_)
@@ -2641,6 +2673,7 @@ public:
 				}
 			}
 
+			part_index++;
 			it = l->second.get();
 		}
 
