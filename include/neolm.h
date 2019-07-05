@@ -260,7 +260,7 @@ private:
 			S::router_.on_get("/api/rest/fx/...", [this](const http::api::routing& routing, http::session_handler& session, const http::api::params& param) {
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
-				session.response().body() += "\nParam: '" + param.get("...");
+				session.response().body() += "\nParam: '" + param.get("...") + "'";
 
 				session.response().type("text");
 			});
@@ -268,7 +268,7 @@ private:
 			S::router_.on_get("/api/rest/fx/test/niek", [this](const http::api::routing& routing, http::session_handler& session, const http::api::params& param) {
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
-				session.response().body() += "\nSpecial Case:\n" + param.get("...");
+				session.response().body() += "\nSpecial Case: '\n" + param.get("...") + "'";
 
 				session.response().type("text");
 			});
