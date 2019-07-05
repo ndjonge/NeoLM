@@ -655,8 +655,8 @@ public:
 
 	tcp::protocol protocol() { return endpoint::protocol_; }
 
-	void port(std::int32_t value) { endpoint::data_.v6.sin6_port = ::htons(static_cast<std::uint16_t>(value)); }
-	const std::int32_t port() const { return ::ntohs(endpoint::data_.v6.sin6_port); }
+	void port(std::int32_t value) { endpoint::data_.v6.sin6_port = htons(static_cast<std::uint16_t>(value)); }
+	std::int32_t port() const { return ntohs(endpoint::data_.v6.sin6_port); }
 };
 
 class resolver
@@ -730,7 +730,7 @@ public:
 
 	void get_local_endpoint(endpoint& endpoint, error_code& ec)
 	{
-		int size = endpoint.addr_size();
+		socklen_t size = endpoint.addr_size();
 		auto ret = ::getsockname(endpoint_->socket().lowest_layer(), endpoint.addr(), &size);
 
 		if (ret == 0)
