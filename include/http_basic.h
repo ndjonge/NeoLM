@@ -13,7 +13,6 @@
 #include <functional>
 #include <future>
 #include <map>
-#include <memory>
 #include <mutex>
 #include <queue>
 #include <ratio>
@@ -415,49 +414,6 @@ inline const char* to_string(status_t s)
 		return "";
 	}
 }
-
-inline std::int32_t to_int(status_t s)
-{
-	switch (s)
-	{
-	case http::status::ok:
-		return 200;
-	case http::status::created:
-		return 201;
-	case http::status::accepted:
-		return 202;
-	case http::status::no_content:
-		return 204;
-	case http::status::multiple_choices:
-		return 300;
-	case http::status::moved_permanently:
-		return 301;
-	case http::status::moved_temporarily:
-		return 302;
-	case http::status::not_modified:
-		return 304;
-	case http::status::bad_request:
-		return 400;
-	case http::status::unauthorized:
-		return 401;
-	case http::status::forbidden:
-		return 403;
-	case http::status::not_found:
-		return 404;
-	case http::status::method_not_allowed:
-		return 405;
-	case http::status::internal_server_error:
-		return 500;
-	case http::status::not_implemented:
-		return 501;
-	case http::status::bad_gateway:
-		return 502;
-	case http::status::service_unavailable:
-		return 503;
-	default:
-		return 0;
-	}
-}
 } // namespace status
 
 namespace misc_strings
@@ -542,7 +498,12 @@ public:
 	{
 		T returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
 
@@ -553,7 +514,12 @@ public:
 	{
 		T returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
 
 		if (i != std::end(fields_)) returnvalue = i->value;
 
@@ -566,7 +532,12 @@ public:
 	{
 		static const std::string not_found = "";
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
 
 		if (i == std::end(fields_))
 		{
@@ -574,13 +545,6 @@ public:
 		}
 		else
 			return i->value;
-	}
-
-	inline bool has(const char* name) const
-	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
-
-		return i != std::end(fields_);
 	}
 
 	inline void set(const std::string& name, const std::string& value)
@@ -664,7 +628,12 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
 
 		if (i != std::end(fields_)) returnvalue = i->value == "true";
 
@@ -676,7 +645,12 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
 
@@ -688,7 +662,12 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
 
 		if (i != std::end(fields_)) returnvalue = i->value;
 
@@ -700,7 +679,12 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		static const std::string not_found = "";
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			if (http::util::case_insensitive_equal(f.name, name))
+				return true;
+			else
+				return false;
+		});
 
 		if (i == std::end(fields_))
 		{
@@ -979,7 +963,15 @@ public:
 
 	void type(const std::string& content_type) { http::fields::set("Content-Type", mime_types::extension_to_type(content_type)); }
 
-	void result(http::status::status_t status) { http::header<specialization>::status(status); }
+	void result(http::status::status_t status)
+	{
+		http::header<specialization>::status(status);
+
+		if (http::header<specialization>::status() != http::status::ok)
+		{
+			body_ += "status: " + std::to_string(http::header<specialization>::status());
+		}
+	}
 
 	void content_length(uint64_t const& length) { http::fields::set("Content-Length", std::to_string(length)); }
 
@@ -2358,7 +2350,7 @@ public:
 		}
 
 		const middleware_lambda& middleware_labda() { return middleware_lambda_; };
-		const std::string& middleware_attribute() const { return middleware_attribute_; };
+		const std::string& middleware_attribute() { return middleware_attribute_; };
 
 	private:
 		const middleware_lambda middleware_lambda_;
@@ -2410,7 +2402,6 @@ public:
 	void set_route(const route* r) { route_ = *r; }
 	const route& the_route() const { return route_; }
 	middlewares& middlewares_vector() { return middlewares_; };
-	const middlewares& middlewares_vector() const { return middlewares_; };
 
 private:
 	result result_;
@@ -2442,22 +2433,17 @@ public:
 		{
 			for (const auto& i : link_)
 			{
-				if (i.first == "...")
-				{
-					return true;
-				}
-				else if (*(i.first.begin()) == '{' && *(i.first.rbegin()) == '}')
+				if (*(i.first.begin()) == '{' && *(i.first.rbegin()) == '}')
 				{
 					params.insert(i.first.substr(1, i.first.size() - 2), url_part);
 					return true;
 				}
-				// else if (*(i.first.begin()) == ':')
-				//{
-				//	params.insert(i.first.substr(1, i.first.size() - 1), url_part);
-				//	return true;
-				//}
+				else if (*(i.first.begin()) == ':')
+				{
+					params.insert(i.first.substr(1, i.first.size() - 1), url_part);
+					return true;
+				}
 			}
-
 			return false;
 		}
 
@@ -2524,20 +2510,16 @@ public:
 		both
 	};
 
-	void use_middleware(const std::string& path, const std::string& pre_middleware_attribute, const std::string& post_middleware_attribute)
+	void use_middleware(middleware_type type, const std::string& path, const std::string& middleware_attribute)
 	{
 		W empty;
 
-		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ pre_middleware_attribute, empty }, { post_middleware_attribute, empty });
-
-		on_middleware(path, middleware_pair);
+		on_middleware(type, path, middleware_attribute, std::move(empty));
 	}
 
-	void use_middleware(const std::string& path, W&& middleware_pre_function, W&& middleware_post_function)
+	void use_middleware(middleware_type type, const std::string& path, const std::string& middleware_attribute, W&& middleware_function)
 	{
-		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ "", middleware_pre_function }, { "", middleware_post_function });
-
-		on_middleware(path, middleware_pair);
+		on_middleware(type, path, middleware_attribute, std::move(middleware_function));
 	}
 
 	void on_busy(std::function<bool()> on_busy_callback) { on_busy_ = on_busy_callback; }
@@ -2558,7 +2540,7 @@ public:
 
 	void on_options(std::string&& route, R&& api_method) { on_http_method(method::options, route, std::move(api_method)); }
 
-	void on_middleware(const T& route, const std::pair<routing::middleware, routing::middleware>& middleware_pair)
+	void on_middleware(middleware_type type, const T& route, const std::string& middleware_attribute, W&& middleware_method)
 	{
 		auto it = root_.get();
 
@@ -2568,20 +2550,39 @@ public:
 		{
 			// auto& l = it->link_[part];
 
-			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
+				if (l.first == part) return true;
+				return false;
+			});
 
 			if (l == it->link_.end())
 			{
-				l = it->link_.insert(
-					it->link_.end(), std::pair<T, std::unique_ptr<router::route_part>>{ T{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
+				l = it->link_.insert(it->link_.end(), std::pair<T, std::unique_ptr<route_part>>{ part, new router::route_part });
 			}
 
 			it = l->second.get();
 		}
 
-		if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
+		switch (type)
+		{
+		case middleware_type::pre:
+		{
+			if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
 
-		it->middlewares_->emplace_back(middleware_pair);
+			it->middlewares_->emplace_back(std::make_pair<routing::middleware, routing::middleware>({ middleware_attribute, middleware_method }, {}));
+
+			break;
+		}
+		case middleware_type::post:
+			if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
+			it->middlewares_->emplace_back(std::make_pair<routing::middleware, routing::middleware>({}, { middleware_attribute, middleware_method }));
+			break;
+		case middleware_type::both:
+			if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
+			it->middlewares_->emplace_back(
+				std::make_pair<routing::middleware, routing::middleware>({ middleware_attribute, middleware_method }, { middleware_attribute, middleware_method }));
+			break;
+		}
 	}
 
 	void on_http_method(const M method, const T& route, R&& end_point)
@@ -2590,18 +2591,18 @@ public:
 
 		auto parts = http::util::split(route, "/");
 
-		for (auto part : parts)
+		for (const auto& part : parts)
 		{
 			// auto& l = it->link_[part];
 
-			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
+				if (l.first == part) return true;
+				return false;
+			});
 
 			if (l == it->link_.end())
 			{
-				std::pair<std::string, std::unique_ptr<router::route_part>> yy{ std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } };
-
-				l = it->link_.insert(
-					it->link_.end(), std::pair<T, std::unique_ptr<router::route_part>>{ std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
+				l = it->link_.insert(it->link_.end(), std::pair<T, std::unique_ptr<route_part>>{ part, new router::route_part });
 			}
 
 			it = l->second.get();
@@ -2611,8 +2612,7 @@ public:
 
 		if (!it->endpoints_) it->endpoints_.reset(new std::vector<std::pair<M, std::unique_ptr<routing::route>>>);
 
-		it->endpoints_->insert(
-			it->endpoints_->end(), std::pair<M, std::unique_ptr<routing::route>>{ M{ method }, std::unique_ptr<routing::route>{ new routing::route{ end_point } } });
+		it->endpoints_->insert(it->endpoints_->end(), std::pair<M, std::unique_ptr<routing::route>>(method, new routing::route{ end_point }));
 
 		/*		(*it->endpoints_)[method]
 					.reset(new router::route{ end_point });*/
@@ -2632,37 +2632,20 @@ public:
 		}
 
 		auto parts = http::util::split(url, "/");
-		auto part_index = 0;
+
 		for (const auto& part : parts)
 		{
-			auto l = std::find_if(it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l = std::find_if(it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
+				if (l.first != part) return false;
+				return true;
+			});
 
 			if (l == std::end(it->link_))
 			{
 				if (!it->match_param(part, params))
 					return routing(http::api::router_match::no_route);
 				else
-				{
 					l = it->link_.begin();
-
-					if (l->first == "...")
-					{
-						std::string url_remainder{};
-
-						for (auto i = part_index; i < parts.size(); i++)
-						{
-							url_remainder += parts[i];
-
-							if (i < (parts.size() - 1))
-							{
-								url_remainder += "/";
-							}
-						}
-						params.insert("...", url_remainder);
-						it = l->second.get(); // make sure endpoint can be found and we can continue;
-						break;
-					}
-				}
 			}
 
 			if (l->second->middlewares_)
@@ -2673,14 +2656,16 @@ public:
 				}
 			}
 
-			part_index++;
 			it = l->second.get();
 		}
 
 		if (!it->endpoints_) return result;
 
-		auto endpoint
-			= std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<routing::route>>& e) { return (e.first == method); });
+		auto endpoint = std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<routing::route>>& e) {
+			if (e.first == method) return true;
+
+			return false;
+		});
 
 		if (endpoint != it->endpoints_->end())
 		{
