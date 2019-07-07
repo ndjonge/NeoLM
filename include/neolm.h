@@ -166,7 +166,7 @@ private:
 			});
 
 			// Get secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing& routering, http::session_handler& session, const http::api::params& params) {
+			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing&, http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -193,7 +193,7 @@ private:
 
 			// Remove secific node info, or get list of nodes per tenant-cluster.
 			S::router_.on_delete(
-				"/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing& routering, http::session_handler& session, const http::api::params& params) {
+				"/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing&, http::session_handler& session, const http::api::params& params) {
 					const auto& tenant = params.get("tenant");
 					const auto& node = params.get("node");
 
@@ -234,7 +234,7 @@ private:
 				});
 
 			// New node, tenant must exist.
-			S::router_.on_put("/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing& routering, http::session_handler& session, const http::api::params& params) {
+			S::router_.on_put("/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing&, http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
 				const auto& node = params.get("node");
 
@@ -257,7 +257,7 @@ private:
 				}
 			});
 
-			S::router_.on_get("/api/rest/fx/...", [this](const http::api::routing& routing, http::session_handler& session, const http::api::params& param) {
+			S::router_.on_get("/api/rest/fx/...", [this](const http::api::routing&, http::session_handler& session, const http::api::params& param) {
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
 				session.response().body() += "\nParam: '" + param.get("...") + "'";
@@ -265,15 +265,15 @@ private:
 				session.response().type("text");
 			});
 
-			S::router_.on_get("/api/rest/fx/test/niek", [this](const http::api::routing& routing, http::session_handler& session, const http::api::params& param) {
+			S::router_.on_get("/api/rest/fx/test/niek", [this](const http::api::routing&, http::session_handler& session, const http::api::params& param) {
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
-				session.response().body() += "\nSpecial Case: '\n" + param.get("...") + "'";
+				session.response().body() += "\nSpecial Case: '" + param.get("...") + "'";
 
 				session.response().type("text");
 			});
 
-			S::router_.on_get("/status", [this](const http::api::routing& routing, http::session_handler& session, const http::api::params&) {
+			S::router_.on_get("/status", [this](const http::api::routing&, http::session_handler& session, const http::api::params&) {
 				S::manager().server_information(S::configuration_.to_string());
 				S::manager().router_information(S::router_.to_string());
 
@@ -288,11 +288,11 @@ private:
 
 			S::router_.use_middleware(
 				"/status",
-				[this](const http::api::routing& routering, http::session_handler& session, const http::api::params&) {
+				[this](const http::api::routing&, http::session_handler& session, const http::api::params&) {
 					session.response().set("name", "value2");
 					return true;
 				},
-				[this](const http::api::routing& routering, http::session_handler& session, const http::api::params&) {
+				[this](const http::api::routing&, http::session_handler& session, const http::api::params&) {
 					session.response().set("name", "value2");
 					return true;
 				});
