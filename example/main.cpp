@@ -8,7 +8,6 @@
 #include <unordered_map>
 
 #include "http_basic.h"
-#include "http_upstream_node.h"
 
 //#include "http_asio.h"
 #include "neolm.h"

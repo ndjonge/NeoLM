@@ -197,7 +197,8 @@ enum empties_t
 };
 };
 
-template <typename T> T& split_(T& result, const typename T::value_type& s, const typename T::value_type& delimiters, split_opt::empties_t empties = split_opt::empties_ok)
+template <typename T>
+T& split_(T& result, const typename T::value_type& s, const typename T::value_type& delimiters, split_opt::empties_t empties = split_opt::empties_ok)
 {
 	result.clear();
 	typename T::size_type next = T::value_type::npos;
@@ -538,11 +539,13 @@ public:
 		return static_cast<T>(returnvalue);
 	}
 
-	template <typename T> typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
+	template <typename T>
+	typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
 	{
 		T returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i
+			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
 
@@ -553,7 +556,8 @@ public:
 	{
 		T returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i
+			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_)) returnvalue = i->value;
 
@@ -566,7 +570,8 @@ public:
 	{
 		static const std::string not_found = "";
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i
+			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i == std::end(fields_))
 		{
@@ -578,14 +583,16 @@ public:
 
 	inline bool has(const char* name) const
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i
+			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		return i != std::end(fields_);
 	}
 
 	inline void set(const std::string& name, const std::string& value)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i
+			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_))
 		{
@@ -664,19 +671,22 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i
+			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_)) returnvalue = i->value == "true";
 
 		return static_cast<T>(returnvalue);
 	}
 
-	template <typename T> typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
+	template <typename T>
+	typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
 	{
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i
+			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
 
@@ -688,7 +698,8 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i
+			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i != std::end(fields_)) returnvalue = i->value;
 
@@ -700,7 +711,8 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		static const std::string not_found = "";
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i
+			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i == std::end(fields_))
 		{
@@ -714,7 +726,8 @@ public:
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i
+			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_))
 		{
@@ -1020,7 +1033,10 @@ public:
 	}
 };
 
-template <message_specializations specialization> std::string to_string(const http::message<specialization>& message) { return http::message<specialization>::to_string(message); }
+template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
+{
+	return http::message<specialization>::to_string(message);
+}
 
 using request_message = http::message<request_specialization>;
 using response_message = http::message<response_specialization>;
@@ -1997,7 +2013,8 @@ public:
 		return request_parser_.parse(request_, begin, end);
 	}
 
-	//	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator> parse_response(InputIterator begin, InputIterator end) { return
+	//	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator>
+	// parse_response(InputIterator begin, InputIterator end) { return
 	// response_parser_.parse(response_, begin, end); }
 
 	class url
@@ -2205,7 +2222,8 @@ public:
 		{
 			keepalive_count_decr();
 			response_.set("Connection", "Keep-Alive");
-			// response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" +std::to_string(keepalive_count()));
+			// response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max="
+			// +std::to_string(keepalive_count()));
 		}
 		else
 		{
@@ -2382,7 +2400,8 @@ public:
 
 		const endpoint_lambda& endpoint() { return endpoint_; };
 
-		void update_metrics(std::chrono::high_resolution_clock::duration request_duration, std::chrono::high_resolution_clock::duration new_processing_duration_)
+		void
+		update_metrics(std::chrono::high_resolution_clock::duration request_duration, std::chrono::high_resolution_clock::duration new_processing_duration_)
 		{
 			metrics_.request_latency_.store(request_duration.count());
 			metrics_.processing_duration_.store(new_processing_duration_.count());
@@ -2418,7 +2437,8 @@ private:
 	middlewares middlewares_;
 };
 
-template <typename M = http::method::method_t, typename T = std::string, typename R = routing::endpoint_lambda, typename W = routing::middleware_lambda> class router
+template <typename M = http::method::method_t, typename T = std::string, typename R = routing::endpoint_lambda, typename W = routing::middleware_lambda>
+class router
 {
 public:
 	using route_http_method_type = M;
@@ -2451,11 +2471,11 @@ public:
 					params.insert(i.first.substr(1, i.first.size() - 2), url_part);
 					return true;
 				}
-				// else if (*(i.first.begin()) == ':')
-				//{
-				//	params.insert(i.first.substr(1, i.first.size() - 1), url_part);
-				//	return true;
-				//}
+				else if (*(i.first.begin()) == ':')
+				{
+					params.insert(i.first.substr(1, i.first.size() - 1), url_part);
+					return true;
+				}
 			}
 
 			return false;
@@ -2528,7 +2548,8 @@ public:
 	{
 		W empty;
 
-		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ pre_middleware_attribute, empty }, { post_middleware_attribute, empty });
+		auto middleware_pair
+			= std::make_pair<routing::middleware, routing::middleware>({ pre_middleware_attribute, empty }, { post_middleware_attribute, empty });
 
 		on_middleware(path, middleware_pair);
 	}
@@ -2568,12 +2589,14 @@ public:
 		{
 			// auto& l = it->link_[part];
 
-			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l
+				= std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
 
 			if (l == it->link_.end())
 			{
 				l = it->link_.insert(
-					it->link_.end(), std::pair<T, std::unique_ptr<router::route_part>>{ T{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
+					it->link_.end(),
+					std::pair<T, std::unique_ptr<router::route_part>>{ T{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
 			}
 
 			it = l->second.get();
@@ -2594,14 +2617,17 @@ public:
 		{
 			// auto& l = it->link_[part];
 
-			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l
+				= std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
 
 			if (l == it->link_.end())
 			{
-				std::pair<std::string, std::unique_ptr<router::route_part>> yy{ std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } };
+				std::pair<std::string, std::unique_ptr<router::route_part>> yy{ std::string{ part },
+																				std::unique_ptr<router::route_part>{ new router::route_part } };
 
 				l = it->link_.insert(
-					it->link_.end(), std::pair<T, std::unique_ptr<router::route_part>>{ std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
+					it->link_.end(),
+					std::pair<T, std::unique_ptr<router::route_part>>{ std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
 			}
 
 			it = l->second.get();
@@ -2612,7 +2638,8 @@ public:
 		if (!it->endpoints_) it->endpoints_.reset(new std::vector<std::pair<M, std::unique_ptr<routing::route>>>);
 
 		it->endpoints_->insert(
-			it->endpoints_->end(), std::pair<M, std::unique_ptr<routing::route>>{ M{ method }, std::unique_ptr<routing::route>{ new routing::route{ end_point } } });
+			it->endpoints_->end(),
+			std::pair<M, std::unique_ptr<routing::route>>{ M{ method }, std::unique_ptr<routing::route>{ new routing::route{ end_point } } });
 
 		/*		(*it->endpoints_)[method]
 					.reset(new router::route{ end_point });*/
@@ -2635,7 +2662,8 @@ public:
 		auto part_index = 0;
 		for (const auto& part : parts)
 		{
-			auto l = std::find_if(it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l
+				= std::find_if(it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
 
 			if (l == std::end(it->link_))
 			{
@@ -2679,8 +2707,9 @@ public:
 
 		if (!it->endpoints_) return result;
 
-		auto endpoint
-			= std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<routing::route>>& e) { return (e.first == method); });
+		auto endpoint = std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<routing::route>>& e) {
+			return (e.first == method);
+		});
 
 		if (endpoint != it->endpoints_->end())
 		{
@@ -2719,7 +2748,8 @@ public:
 			auto t0 = std::chrono::steady_clock::now();
 			route_context.the_route().endpoint()(route_context, session, route_params);
 			auto t1 = std::chrono::steady_clock::now();
-			route_context.the_route().update_metrics(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
+			route_context.the_route().update_metrics(
+				std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 		}
 		return route_context.match_result();
 	}
@@ -2900,8 +2930,8 @@ public:
 
 			s << R"(")" << session.request().get("Remote_Addr") << R"(")"
 			  << R"( - ")" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << R"(")"
-			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << R"( - ")"
-			  << session.request().get("User-Agent") << "\"\n";
+			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length()
+			  << R"( - ")" << session.request().get("User-Agent") << "\"\n";
 
 			access_log_.emplace_back(s.str());
 
@@ -3077,8 +3107,8 @@ public:
 
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
-					auto new_connection_handler
-						= std::make_shared<connection_handler<network::tcp::socket>>(*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_);
+					auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
+						*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_);
 
 					std::thread connection_thread([new_connection_handler]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
@@ -3194,8 +3224,9 @@ public:
 
 				if (ec)
 				{
-					throw std::runtime_error(
-						std::string("cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":" + std::to_string(https_listen_port_end_) + " ]"));
+					throw std::runtime_error(std::string(
+						"cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":" + std::to_string(https_listen_port_end_)
+						+ " ]"));
 				}
 
 				network::ssl::context ssl_context(network::ssl::context::tlsv12);
@@ -3280,8 +3311,9 @@ public:
 
 				if (ec)
 				{
-					throw std::runtime_error(
-						std::string("cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":" + std::to_string(http_listen_port_end_) + " ]"));
+					throw std::runtime_error(std::string(
+						"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":" + std::to_string(http_listen_port_end_)
+						+ " ]"));
 				}
 
 				acceptor_http.listen();
@@ -3369,9 +3401,9 @@ public:
 				{
 					auto x = c - std::begin(buffer);
 
-					request.body().assign(buffer.data() + x, (ret - x));
+					request.body().assign(buffer.data() + x, (bytes_received_ - x));
 
-					if (request.content_length() > std::uint64_t(ret - x))
+					if (request.content_length() > std::uint64_t(bytes_received_ - x))
 					{
 						while (true)
 						{
@@ -3412,7 +3444,8 @@ public:
 				{
 					if (parse_result == http::request_parser::result_type::good)
 					{
-						session_handler_.request().set("Remote_Addr", session_handler_.request().get("X-Forwarded-For", network::get_client_info(client_socket_)));
+						session_handler_.request().set(
+							"Remote_Addr", session_handler_.request().get("X-Forwarded-For", network::get_client_info(client_socket_)));
 
 						session_handler_.handle_request(server_.router_);
 
@@ -3455,7 +3488,8 @@ public:
 					}
 					else
 					{
-						if ((gzip_min_length_ < response.body().size()) && (session_handler_.request().get("Accept-Encoding").find("gzip") != std::string::npos))
+						if ((gzip_min_length_ < response.body().size())
+							&& (session_handler_.request().get("Accept-Encoding").find("gzip") != std::string::npos))
 						{
 							response.body() = gzip::compress(response.body().c_str(), response.body().size());
 							response.set("Content-Encoding", "gzip");
@@ -3549,5 +3583,183 @@ private:
 } // namespace basic
 
 using middleware = http::api::router<>::middleware_type;
+
+namespace upstream
+{
+enum result
+{
+	failed,
+	sucess
+};
+
+enum servertype_specialisations
+{
+	for_nginx,
+	for_haproxy
+};
+
+template <servertype_specialisations> class enable_server_as_upstream
+{
+public:
+	enable_server_as_upstream(http::configuration& configuration, http::basic::server& server)
+		: configuration_(configuration)
+		, server_(server){};
+
+private:
+	http::configuration& configuration_;
+	http::basic::server& server_;
+};
+
+// CRTP
+template <class T> class upstream_controller
+{
+public:
+	upstream_controller(http::configuration& configuration, http::basic::server& server)
+		: configuration_(configuration)
+		, server_(server)
+	{
+	}
+
+	const result add(const std::string& myurl) const noexcept { return static_cast<T*>(this)->add_impl(myurl); }
+
+	const result remove(const std::string& myurl) const noexcept { return static_cast<T*>(this)->remove_impl(myurl); }
+
+	const result enable(const std::string& myurl) const noexcept { return static_cast<T*>(this)->enable_impl(myurl); }
+
+	const result disable(const std::string& myurl) const noexcept { return static_cast<T*>(this)->enable_impl(myurl); }
+
+	const std::string list() const noexcept { return static_cast<T*>(this)->enable_impl(); }
+
+protected:
+	http::configuration& configuration_;
+	http::basic::server& server_;
+};
+
+namespace implementations
+{
+
+class nginx : public upstream_controller<nginx>
+{
+public:
+	nginx(http::configuration& configuration, http::basic::server& server)
+		: upstream_controller(configuration, server)
+	{
+		endpoint_base_url_ = configuration_.get("nginx-downstream-endpoint") + "?upstream=" + configuration_.get("nginx-upstream-zone");
+	};
+
+	const result add(const std::string& server) const noexcept
+	{
+		http::configuration c{};
+		http::session_handler session{ c };
+
+		auto result = session.get(endpoint_base_url_ + "&add=&server=" + server, {});
+
+		if (result.status() == http::status::ok)
+			return http::upstream::sucess;
+		else
+			return http::upstream::failed;
+	}
+
+	const result remove(const std::string& server) const noexcept
+	{
+		http::configuration c{};
+		http::session_handler session{ c };
+
+		auto result = session.get(endpoint_base_url_ + "&remove=&server=" + server, {});
+
+		if (result.status() == http::status::ok)
+			return http::upstream::sucess;
+		else
+			return http::upstream::failed;
+	}
+
+	const result enable(const std::string& server) const noexcept
+	{
+		http::configuration c{};
+		http::session_handler session{ c };
+
+		auto result = session.get(endpoint_base_url_ + "&server=" + server + "&up", {});
+
+		if (result.status() == http::status::ok)
+			return http::upstream::sucess;
+		else
+			return http::upstream::failed;
+	}
+
+	const result disable(const std::string& server) const noexcept
+	{
+		http::configuration c{};
+		http::session_handler session{ c };
+
+		auto result = session.get(endpoint_base_url_ + "&server=" + server + "&down", {});
+
+		if (result.status() == http::status::ok)
+			return http::upstream::sucess;
+		else
+			return http::upstream::failed;
+	}
+
+	const std::string list() const noexcept
+	{
+		http::configuration c{};
+		http::session_handler session{ c };
+
+		auto result = session.get(endpoint_base_url_, {});
+
+		if (result.status() == http::status::ok)
+			return result.body();
+		else
+			return "";
+	}
+
+private:
+	std::string endpoint_base_url_;
+};
+
+class haproxy : public upstream_controller<haproxy>
+{
+public:
+	haproxy(http::configuration& configuration, http::basic::server& server)
+		: upstream_controller(configuration, server){};
+
+	const result add(std::string&) const noexcept { return http::upstream::sucess; }
+
+	const result remove(std::string&) const noexcept { return http::upstream::sucess; }
+
+	const result enable(std::string&) const noexcept { return http::upstream::sucess; }
+
+	const result disable(std::string&) const noexcept { return http::upstream::sucess; }
+
+	const std::string list(std::string&) const noexcept { return ""; }
+
+private:
+	//	network::tcp::endpoint& nginx_endpoint_;
+};
+
+} // namespace implementations
+
+template <> class enable_server_as_upstream<for_nginx>
+{
+public:
+	enable_server_as_upstream(http::configuration& configuration, http::basic::server& server)
+		: upstream_controller_(configuration, server){};
+
+protected:
+	implementations::nginx& upstream_controller() { return upstream_controller_; };
+
+private:
+	implementations::nginx upstream_controller_;
+};
+
+template <> class enable_server_as_upstream<for_haproxy>
+{
+public:
+	enable_server_as_upstream(http::configuration& configuration, http::basic::server& server)
+		: upstream_controller_(configuration, server){};
+
+private:
+	implementations::haproxy upstream_controller_;
+};
+} // namespace upstream
 
 } // namespace http
