@@ -187,7 +187,7 @@ private:
 					if (member != license_manager_.group_members_.end())
 						session.response().body() += member->second.to_string();
 					else
-						session.response().result(http::status::not_found);
+						session.response().status(http::status::not_found);
 				}
 			});
 
@@ -200,7 +200,7 @@ private:
 					if (tenant.empty() && node.empty())
 					{
 						license_manager_.group_members_.clear();
-						session.response().result(http::status::ok);
+						session.response().status(http::status::ok);
 					}
 					else if (node.empty())
 					{
@@ -215,9 +215,9 @@ private:
 						}
 
 						if (found)
-							session.response().result(http::status::ok);
+							session.response().status(http::status::ok);
 						else
-							session.response().result(http::status::not_found);
+							session.response().status(http::status::not_found);
 					}
 					else
 					{
@@ -226,10 +226,10 @@ private:
 						if (member != license_manager_.group_members_.end())
 						{
 							license_manager_.group_members_.erase(member);
-							session.response().result(http::status::ok);
+							session.response().status(http::status::ok);
 						}
 						else
-							session.response().result(http::status::not_found);
+							session.response().status(http::status::not_found);
 					}
 				});
 
@@ -240,37 +240,37 @@ private:
 
 				if (tenant.empty() || node.empty())
 				{
-					session.response().result(http::status::bad_request);
+					session.response().status(http::status::bad_request);
 				}
 				else
 				{
 					if (license_manager_.group_members_.find(tenant + node) != license_manager_.group_members_.end())
 					{
-						session.response().result(http::status::conflict);
+						session.response().status(http::status::conflict);
 					}
 					else
 					{
 						license_manager_.group_members_.emplace(tenant + node, pm::group::member{ tenant, node });
 
-						session.response().result(http::status::created);
+						session.response().status(http::status::created);
 					}
 				}
 			});
 
-			S::router_.on_get("/api/rest/fx/...", [this](const http::api::routing&, http::session_handler& session, const http::api::params& param) {
+			S::router_.on_get("/api/rest/fx/*", [this](const http::api::routing&, http::session_handler& session, const http::api::params& param) {
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
-				session.response().body() += "\nParam: '" + param.get("...") + "'";
+				session.response().body() += "\nWild Card Param: '" + param.get("*") + "'";
 
-				session.response().type("text");
+				session.response().status(http::status::ok);
 			});
 
-			S::router_.on_get("/api/rest/fx/test/niek", [this](const http::api::routing&, http::session_handler& session, const http::api::params& param) {
+			S::router_.on_get("/api/rest/fx/test/niek/*", [this](const http::api::routing&, http::session_handler& session, const http::api::params& param) {
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
-				session.response().body() += "\nSpecial Case: '" + param.get("...") + "'";
+				session.response().body() += "\nWild Card Special Case Param: '" + param.get("*") + "'";
 
-				session.response().type("text");
+				session.response().status(http::status::ok);
 			});
 
 			S::router_.on_get("/status", [this](const http::api::routing&, http::session_handler& session, const http::api::params&) {
@@ -281,7 +281,12 @@ private:
 				session.response().body() = S::manager().to_string();
 
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
-				session.response().type("text");
+				session.response().status(http::status::ok);
+			});
+
+			S::router_.on_get("/no_content", [this](const http::api::routing&, http::session_handler& session, const http::api::params&) {
+				session.response().body() = "body text!";
+				session.response().status(http::status::no_content);
 			});
 
 			S::router_.use_middleware("/status", "varken::knor_pre", "varken::knor_post");
@@ -351,12 +356,12 @@ public:
 
 			if (test.empty())
 			{
-				session.response().result(http::status::bad_request);
+				session.response().status(http::status::bad_request);
 			}
 			else
 			{
 				session.response().body() = "test:" + test;
-				session.response().result(http::status::ok);
+				session.response().status(http::status::ok);
 			}
 		};
 

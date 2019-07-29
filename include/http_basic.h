@@ -12,6 +12,7 @@
 #include <fstream>
 #include <functional>
 #include <future>
+#include <iomanip> // put_time
 #include <map>
 #include <memory>
 #include <mutex>
@@ -188,6 +189,19 @@ inline bool case_insensitive_equal(const std::string& str1, const std::string& s
 	return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) { return tolower(a) == tolower(b); });
 }
 
+std::string return_current_time_and_date()
+{
+	auto now = std::chrono::system_clock::now();
+	auto in_time_t = std::chrono::system_clock::to_time_t(now);
+
+	std::stringstream ss;
+	std::tm buf;
+
+	gmtime_s(&buf, &in_time_t);
+	ss << std::put_time(&buf, "%a, %d %b %Y %H:%M:%S GMT");
+	return ss.str();
+}
+
 namespace split_opt
 {
 enum empties_t
@@ -197,8 +211,7 @@ enum empties_t
 };
 };
 
-template <typename T>
-T& split_(T& result, const typename T::value_type& s, const typename T::value_type& delimiters, split_opt::empties_t empties = split_opt::empties_ok)
+template <typename T> T& split_(T& result, const typename T::value_type& s, const typename T::value_type& delimiters, split_opt::empties_t empties = split_opt::empties_ok)
 {
 	result.clear();
 	typename T::size_type next = T::value_type::npos;
@@ -539,13 +552,11 @@ public:
 		return static_cast<T>(returnvalue);
 	}
 
-	template <typename T>
-	typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
+	template <typename T> typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
 	{
 		T returnvalue = value;
 
-		auto i
-			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
 
@@ -556,8 +567,7 @@ public:
 	{
 		T returnvalue = value;
 
-		auto i
-			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_)) returnvalue = i->value;
 
@@ -570,8 +580,7 @@ public:
 	{
 		static const std::string not_found = "";
 
-		auto i
-			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i == std::end(fields_))
 		{
@@ -583,16 +592,14 @@ public:
 
 	inline bool has(const char* name) const
 	{
-		auto i
-			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		return i != std::end(fields_);
 	}
 
 	inline void set(const std::string& name, const std::string& value)
 	{
-		auto i
-			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_))
 		{
@@ -602,6 +609,16 @@ public:
 		{
 			http::field field_(name, value);
 			fields_.emplace_back(std::move(field_));
+		}
+	}
+
+	inline void reset(const std::string& name)
+	{
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+
+		if (i != std::end(fields_))
+		{
+			fields_.erase(i);
 		}
 	}
 
@@ -671,22 +688,19 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i
-			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_)) returnvalue = i->value == "true";
 
 		return static_cast<T>(returnvalue);
 	}
 
-	template <typename T>
-	typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
+	template <typename T> typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
 	{
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i
-			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
 
@@ -698,8 +712,7 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i
-			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i != std::end(fields_)) returnvalue = i->value;
 
@@ -711,8 +724,7 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		static const std::string not_found = "";
 
-		auto i
-			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i == std::end(fields_))
 		{
@@ -726,8 +738,7 @@ public:
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i
-			= std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_))
 		{
@@ -780,9 +791,9 @@ public:
 	const unsigned int& version_nr() const { return version_nr_; }
 	const std::string version() const
 	{
-		std::string ret = "HTTP 1.1";
+		std::string ret = "HTTP/1.1";
 
-		if (version_nr_ == 10) ret = "HTTP 1.0";
+		if (version_nr_ == 10) ret = "HTTP/1.0";
 
 		return ret;
 	}
@@ -825,8 +836,7 @@ public:
 
 	inline void merge_new_header()
 	{
-		auto special_merge_case = http::util::case_insensitive_equal(last_new_field()->name, "Set-Cookie")
-								  || http::util::case_insensitive_equal(last_new_field()->name, "WWW-Authenticate")
+		auto special_merge_case = http::util::case_insensitive_equal(last_new_field()->name, "Set-Cookie") || http::util::case_insensitive_equal(last_new_field()->name, "WWW-Authenticate")
 								  || http::util::case_insensitive_equal(last_new_field()->name, "Proxy-Authenticate");
 
 		auto merged_last_new_header = false;
@@ -868,9 +878,9 @@ public:
 
 	const std::string version() const
 	{
-		std::string ret = "HTTP 1.1";
+		std::string ret = "HTTP/1.1";
 
-		if (version_nr_ == 10) ret = "HTTP 1.0";
+		if (version_nr_ == 10) ret = "HTTP/1.0";
 
 		return ret;
 	}
@@ -968,6 +978,11 @@ public:
 		this->body_.clear();
 	}
 
+	void reset(const std::string& name)
+	{
+		header<specialization>::reset(name);
+	}
+
 	std::string& body() { return body_; }
 
 	const std::string& body() const { return body_; }
@@ -992,7 +1007,8 @@ public:
 
 	void type(const std::string& content_type) { http::fields::set("Content-Type", mime_types::extension_to_type(content_type)); }
 
-	void result(http::status::status_t status) { http::header<specialization>::status(status); }
+	void status(http::status::status_t status) { http::header<specialization>::status(status); }
+	const http::status::status_t status() const { return http::header<specialization>::status(); }
 
 	void content_length(uint64_t const& length) { http::fields::set("Content-Length", std::to_string(length)); }
 
@@ -1033,10 +1049,7 @@ public:
 	}
 };
 
-template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
-{
-	return http::message<specialization>::to_string(message);
-}
+template <message_specializations specialization> std::string to_string(const http::message<specialization>& message) { return http::message<specialization>::to_string(message); }
 
 using request_message = http::message<request_specialization>;
 using response_message = http::message<response_specialization>;
@@ -2013,8 +2026,7 @@ public:
 		return request_parser_.parse(request_, begin, end);
 	}
 
-	//	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator>
-	// parse_response(InputIterator begin, InputIterator end) { return
+	//	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator> parse_response(InputIterator begin, InputIterator end) { return
 	// response_parser_.parse(response_, begin, end); }
 
 	class url
@@ -2137,20 +2149,21 @@ public:
 	{
 		std::string request_path;
 
+		response_.status(http::status::bad_request);
 		response_.type("text");
-		response_.result(http::status::ok);
+
 		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
-		response_.set("Host", configuration_.get<std::string>("host", "localhost:" + configuration_.get<std::string>("http_listen_port", "3000")));
+		response_.set("Date", util::return_current_time_and_date());
 
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
-			response_.result(http::status::bad_request);
+			response_.status(http::status::bad_request);
 			return;
 		}
 
 		if (request_path.empty() || request_path[0] != '/' || request_path.find("..") != std::string::npos)
 		{
-			response_.result(http::status::bad_request);
+			response_.status(http::status::bad_request);
 			return;
 		}
 
@@ -2186,9 +2199,7 @@ public:
 			request_.body() = gzip::decompress(request_.body().c_str(), request_.content_length());
 		}
 
-		// std::string url_1 = url_requested.substr(0, request_.find_first_of('?'));
-
-		request_.url_requested_ = request_.target_; //.substr(0, request_.target_.find_first_of('?'));
+		request_.url_requested_ = request_.target_;
 		request_.target_ = request_path;
 
 		t0_ = std::chrono::steady_clock::now();
@@ -2200,20 +2211,16 @@ public:
 		{
 			// Route has a valid handler, response body is set.
 			// Check bodys size and set headers.
-			response_.content_length(response_.body().length());
-
 			break;
 		}
 		case http::api::router_match::no_method:
 		{
-			response_.result(http::status::method_not_allowed);
-			response_.content_length(response_.body().length());
+			response_.status(http::status::method_not_allowed);
 			break;
 		}
 		case http::api::router_match::no_route:
 		{
-			response_.result(http::status::not_found);
-			response_.content_length(response_.body().length());
+			response_.status(http::status::not_found);
 			break;
 		}
 		}
@@ -2222,12 +2229,22 @@ public:
 		{
 			keepalive_count_decr();
 			response_.set("Connection", "Keep-Alive");
-			// response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max="
-			// +std::to_string(keepalive_count()));
+			// response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" +std::to_string(keepalive_count()));
 		}
 		else
 		{
 			response_.set("Connection", "close");
+		}
+
+		if (response_.status() == http::status::no_content)
+		{
+			response_.body() = "";
+			response_.reset("Content-Type");
+			response_.reset("Content-Length");
+		}
+		else
+		{
+			response_.content_length(response_.body().length());
 		}
 	}
 
@@ -2400,8 +2417,7 @@ public:
 
 		const endpoint_lambda& endpoint() { return endpoint_; };
 
-		void
-		update_metrics(std::chrono::high_resolution_clock::duration request_duration, std::chrono::high_resolution_clock::duration new_processing_duration_)
+		void update_metrics(std::chrono::high_resolution_clock::duration request_duration, std::chrono::high_resolution_clock::duration new_processing_duration_)
 		{
 			metrics_.request_latency_.store(request_duration.count());
 			metrics_.processing_duration_.store(new_processing_duration_.count());
@@ -2437,8 +2453,7 @@ private:
 	middlewares middlewares_;
 };
 
-template <typename M = http::method::method_t, typename T = std::string, typename R = routing::endpoint_lambda, typename W = routing::middleware_lambda>
-class router
+template <typename M = http::method::method_t, typename T = std::string, typename R = routing::endpoint_lambda, typename W = routing::middleware_lambda> class router
 {
 public:
 	using route_http_method_type = M;
@@ -2462,7 +2477,7 @@ public:
 		{
 			for (const auto& i : link_)
 			{
-				if (i.first == "...")
+				if (i.first == "*")
 				{
 					return true;
 				}
@@ -2548,8 +2563,7 @@ public:
 	{
 		W empty;
 
-		auto middleware_pair
-			= std::make_pair<routing::middleware, routing::middleware>({ pre_middleware_attribute, empty }, { post_middleware_attribute, empty });
+		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ pre_middleware_attribute, empty }, { post_middleware_attribute, empty });
 
 		on_middleware(path, middleware_pair);
 	}
@@ -2589,14 +2603,11 @@ public:
 		{
 			// auto& l = it->link_[part];
 
-			auto l
-				= std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
 
 			if (l == it->link_.end())
 			{
-				l = it->link_.insert(
-					it->link_.end(),
-					std::pair<T, std::unique_ptr<router::route_part>>{ T{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
+				l = it->link_.insert(it->link_.end(), std::pair<T, std::unique_ptr<router::route_part>>{ T{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
 			}
 
 			it = l->second.get();
@@ -2617,17 +2628,13 @@ public:
 		{
 			// auto& l = it->link_[part];
 
-			auto l
-				= std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
 
 			if (l == it->link_.end())
 			{
-				std::pair<std::string, std::unique_ptr<router::route_part>> yy{ std::string{ part },
-																				std::unique_ptr<router::route_part>{ new router::route_part } };
+				std::pair<std::string, std::unique_ptr<router::route_part>> yy{ std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } };
 
-				l = it->link_.insert(
-					it->link_.end(),
-					std::pair<T, std::unique_ptr<router::route_part>>{ std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
+				l = it->link_.insert(it->link_.end(), std::pair<T, std::unique_ptr<router::route_part>>{ std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
 			}
 
 			it = l->second.get();
@@ -2637,9 +2644,7 @@ public:
 
 		if (!it->endpoints_) it->endpoints_.reset(new std::vector<std::pair<M, std::unique_ptr<routing::route>>>);
 
-		it->endpoints_->insert(
-			it->endpoints_->end(),
-			std::pair<M, std::unique_ptr<routing::route>>{ M{ method }, std::unique_ptr<routing::route>{ new routing::route{ end_point } } });
+		it->endpoints_->insert(it->endpoints_->end(), std::pair<M, std::unique_ptr<routing::route>>{ M{ method }, std::unique_ptr<routing::route>{ new routing::route{ end_point } } });
 
 		/*		(*it->endpoints_)[method]
 					.reset(new router::route{ end_point });*/
@@ -2662,8 +2667,7 @@ public:
 		auto part_index = 0;
 		for (const auto& part : parts)
 		{
-			auto l
-				= std::find_if(it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l = std::find_if(it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
 
 			if (l == std::end(it->link_))
 			{
@@ -2673,7 +2677,7 @@ public:
 				{
 					l = it->link_.begin();
 
-					if (l->first == "...")
+					if (l->first == "*")
 					{
 						std::string url_remainder{};
 
@@ -2686,7 +2690,7 @@ public:
 								url_remainder += "/";
 							}
 						}
-						params.insert("...", url_remainder);
+						params.insert("*", url_remainder);
 						it = l->second.get(); // make sure endpoint can be found and we can continue;
 						break;
 					}
@@ -2707,9 +2711,7 @@ public:
 
 		if (!it->endpoints_) return result;
 
-		auto endpoint = std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<routing::route>>& e) {
-			return (e.first == method);
-		});
+		auto endpoint = std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<routing::route>>& e) { return (e.first == method); });
 
 		if (endpoint != it->endpoints_->end())
 		{
@@ -2748,8 +2750,7 @@ public:
 			auto t0 = std::chrono::steady_clock::now();
 			route_context.the_route().endpoint()(route_context, session, route_params);
 			auto t1 = std::chrono::steady_clock::now();
-			route_context.the_route().update_metrics(
-				std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
+			route_context.the_route().update_metrics(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 		}
 		return route_context.match_result();
 	}
@@ -2930,8 +2931,8 @@ public:
 
 			s << R"(")" << session.request().get("Remote_Addr") << R"(")"
 			  << R"( - ")" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << R"(")"
-			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length()
-			  << R"( - ")" << session.request().get("User-Agent") << "\"\n";
+			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << R"( - ")" << session.request().get("User-Agent")
+			  << "\"\n";
 
 			access_log_.emplace_back(s.str());
 
@@ -3000,12 +3001,12 @@ public:
 		: http::basic::server{ configuration }
 		, thread_count_(configuration.get<int>("thread_count", 5))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
-		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", (std::getenv("PORT_NUMBER") ? std::atoi(getenv("PORT_NUMBER")) : 3000)))
+		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
 		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
 		, http_listen_port_(0)
 		, endpoint_http_(http_listen_port_begin_)
-		, https_enabled_(configuration.get<bool>("https_enabled", true))
-		, https_listen_port_begin_(configuration.get<int>("https_listen_port_begin", (std::getenv("PORT_NUMBER") ? std::atoi(getenv("PORT_NUMBER")) : 2000)))
+		, https_enabled_(configuration.get<bool>("https_enabled", false))
+		, https_listen_port_begin_(configuration.get<int>("https_listen_port_begin", configuration.get<int>("http_listen_port_begin") + 2000))
 		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
 		, https_listen_port_(0)
 		, endpoint_https_(https_listen_port_begin_)
@@ -3107,8 +3108,7 @@ public:
 
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
-					auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
-						*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_);
+					auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_);
 
 					std::thread connection_thread([new_connection_handler]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
@@ -3164,8 +3164,8 @@ public:
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
 
-					auto new_connection_handler = std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
-						*this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_);
+					auto new_connection_handler
+						= std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_);
 
 					std::thread connection_thread([new_connection_handler]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
@@ -3224,9 +3224,7 @@ public:
 
 				if (ec)
 				{
-					throw std::runtime_error(std::string(
-						"cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":" + std::to_string(https_listen_port_end_)
-						+ " ]"));
+					throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":" + std::to_string(https_listen_port_end_) + " ]"));
 				}
 
 				network::ssl::context ssl_context(network::ssl::context::tlsv12);
@@ -3280,7 +3278,7 @@ public:
 
 				network::ipv6only(endpoint_http_.socket(), 0);
 
-				network::use_portsharding(endpoint_http_.socket(), 1);
+				network::use_portsharding(endpoint_http_.socket(), 1); // TODO disable port sharding?
 
 				network::error_code ec = network::error::success;
 
@@ -3311,9 +3309,7 @@ public:
 
 				if (ec)
 				{
-					throw std::runtime_error(std::string(
-						"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":" + std::to_string(http_listen_port_end_)
-						+ " ]"));
+					throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":" + std::to_string(http_listen_port_end_) + " ]"));
 				}
 
 				acceptor_http.listen();
@@ -3401,9 +3397,9 @@ public:
 				{
 					auto x = c - std::begin(buffer);
 
-					request.body().assign(buffer.data() + x, (bytes_received_ - x));
+					request.body().assign(buffer.data() + x, (ret - x));
 
-					if (request.content_length() > std::uint64_t(bytes_received_ - x))
+					if (request.content_length() > std::uint64_t(ret - x))
 					{
 						while (true)
 						{
@@ -3444,8 +3440,7 @@ public:
 				{
 					if (parse_result == http::request_parser::result_type::good)
 					{
-						session_handler_.request().set(
-							"Remote_Addr", session_handler_.request().get("X-Forwarded-For", network::get_client_info(client_socket_)));
+						session_handler_.request().set("Remote_Addr", session_handler_.request().get("X-Forwarded-For", network::get_client_info(client_socket_)));
 
 						session_handler_.handle_request(server_.router_);
 
@@ -3459,7 +3454,7 @@ public:
 					}
 					else
 					{
-						session_handler_.response().result(http::status::bad_request);
+						session_handler_.response().status(http::status::bad_request);
 					}
 
 					if (response.body().empty())
@@ -3488,8 +3483,7 @@ public:
 					}
 					else
 					{
-						if ((gzip_min_length_ < response.body().size())
-							&& (session_handler_.request().get("Accept-Encoding").find("gzip") != std::string::npos))
+						if ((gzip_min_length_ < response.body().size()) && (session_handler_.request().get("Accept-Encoding").find("gzip") != std::string::npos))
 						{
 							response.body() = gzip::compress(response.body().c_str(), response.body().size());
 							response.set("Content-Encoding", "gzip");
@@ -3582,6 +3576,7 @@ private:
 
 } // namespace basic
 
+using middleware = http::api::router<>::middleware_type;
 using middleware = http::api::router<>::middleware_type;
 
 namespace upstream
@@ -3760,6 +3755,6 @@ public:
 private:
 	implementations::haproxy upstream_controller_;
 };
-} // namespace upstream
 
+} // namespace upstream
 } // namespace http
