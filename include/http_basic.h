@@ -189,7 +189,7 @@ inline bool case_insensitive_equal(const std::string& str1, const std::string& s
 	return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) { return tolower(a) == tolower(b); });
 }
 
-std::string return_current_time_and_date()
+inline std::string return_current_time_and_date()
 {
 	auto now = std::chrono::system_clock::now();
 	auto in_time_t = std::chrono::system_clock::to_time_t(now);
@@ -197,7 +197,11 @@ std::string return_current_time_and_date()
 	std::stringstream ss;
 	std::tm buf;
 
+#ifdef WIN32
 	gmtime_s(&buf, &in_time_t);
+#else
+	gmtime_r(&in_time_t, &buf);
+#endif
 	ss << std::put_time(&buf, "%a, %d %b %Y %H:%M:%S GMT");
 	return ss.str();
 }
@@ -378,11 +382,41 @@ enum status_t
 	forbidden = 403,
 	not_found = 404,
 	method_not_allowed = 405,
+	not_acceptable = 406,
+	proxy_authentication_required = 407,
+	request_timeout = 408,
 	conflict = 409,
+	gone = 410,
+	length_required = 411,
+	precondition_failed = 412,
+	payload_too_large = 413,
+	uri_too_long = 414,
+	unsupported_media_type = 415,
+	range_not_satisfiable = 416,
+	expectation_failed = 417,
+	misdirected_request = 421,
+	unprocessable_entity = 422,
+	locked = 423,
+	failed_dependency = 424,
+	upgrade_required = 426,
+	precondition_required = 428,
+	too_many_requests = 429,
+	request_header_fields_too_large = 431,
+	connection_closed_without_response = 444,
+	unavailable_for_legal_reasons = 451,
+	client_closed_request = 499,
 	internal_server_error = 500,
 	not_implemented = 501,
 	bad_gateway = 502,
-	service_unavailable = 503
+	service_unavailable = 503,
+	gateway_timeout = 504,
+	http_version_not_supported = 505,
+	variant_also_negotiates = 506,
+	insufficient_storage = 507,
+	loop_detected = 508,
+	not_extended = 510,
+	network_authentication_required = 511,
+	network_connect_timeout_error = 599
 };
 
 inline status_t to_status(std::uint32_t status_nr) { return static_cast<status_t>(status_nr); }
@@ -417,6 +451,52 @@ inline const char* to_string(status_t s)
 		return "HTTP/1.1 404 Not Found\r\n";
 	case http::status::method_not_allowed:
 		return "HTTP/1.1 405 Method Not Allowed\r\n";
+	case http::status::not_acceptable:
+		return "HTTP/1.1 406 Method Not Acceptable\r\n";
+	case http::status::proxy_authentication_required:
+		return "HTTP/1.1 407 Proxy Authentication Required\r\n";
+	case http::status::request_timeout:
+		return "HTTP/1.1 408 Request Timeout\r\n";
+	case http::status::conflict:
+		return "HTTP/1.1 409 Conflict \r\n";
+	case http::status::gone:
+		return "HTTP/1.1 410 Gone \r\n";
+	case http::status::length_required:
+		return "HTTP/1.1 411 Length Required\r\n";
+	case http::status::precondition_failed:
+		return "HTTP/1.1 412 Precondition Failed\r\n";
+	case http::status::payload_too_large:
+		return "HTTP/1.1 413 Payload Too Large\r\n";
+	case http::status::uri_too_long:
+		return "HTTP/1.1 414 URI Too Long\r\n";
+	case http::status::unsupported_media_type:
+		return "HTTP/1.1 415 Unsupported Media Type\r\n";
+	case http::status::range_not_satisfiable:
+		return "HTTP/1.1 416 Range Not Satisfiable\r\n";
+	case http::status::expectation_failed:
+		return "HTTP/1.1 417 Expectation Failed\r\n";
+	case http::status::misdirected_request:
+		return "HTTP/1.1 418 I'm a teapot\r\n";
+	case http::status::unprocessable_entity:
+		return "HTTP/1.1 422 Unprocessable Entity\r\n";
+	case http::status::locked:
+		return "HTTP/1.1 423 Locked\r\n";
+	case http::status::failed_dependency:
+		return "HTTP/1.1 424 Failed Dependency\r\n";
+	case http::status::upgrade_required:
+		return "HTTP/1.1 426 Upgrade Required\r\n";
+	case http::status::precondition_required:
+		return "HTTP/1.1 428 Precondition Required\r\n";
+	case http::status::too_many_requests:
+		return "HTTP/1.1 429 Too Many Requests\r\n";
+	case http::status::request_header_fields_too_large:
+		return "HTTP/1.1 431 Request Header Fields Too Large\r\n";
+	case http::status::connection_closed_without_response:
+		return "HTTP/1.1 444 Connection Closed Without Response\r\n";
+	case http::status::unavailable_for_legal_reasons:
+		return "HTTP/1.1 451 Unavailable For Legal Reasons\r\n";
+	case http::status::client_closed_request:
+		return "HTTP/1.1 499 Client Closed Request\r\n";
 	case http::status::internal_server_error:
 		return "HTTP/1.1 500 Internal Server Error\r\n";
 	case http::status::not_implemented:
@@ -425,8 +505,24 @@ inline const char* to_string(status_t s)
 		return "HTTP/1.1 502 Bad Gateway\r\n";
 	case http::status::service_unavailable:
 		return "HTTP/1.1 503 Service Unavailable\r\n";
+	case http::status::gateway_timeout:
+		return "HTTP/1.1 504 Gateway Timeout\r\n";
+	case http::status::http_version_not_supported:
+		return "HTTP/1.1 505 HTTP Version Not Supported\r\n";
+	case http::status::variant_also_negotiates:
+		return "HTTP/1.1 506 Variant Also Negotiates\r\n";
+	case http::status::insufficient_storage:
+		return "HTTP/1.1 507 Insufficient Storage\r\n";
+	case http::status::loop_detected:
+		return "HTTP/1.1 508 Loop Detected\r\n";
+	case http::status::not_extended:
+		return "HTTP/1.1 510 Not Extended\r\n";
+	case http::status::network_authentication_required:
+		return "HTTP/1.1 511 Network Authentication Required\r\n";
+	case http::status::network_connect_timeout_error:
+		return "HTTP/1.1 599 Network Authentication Required\r\n";
 	default:
-		return "";
+		return "HTTP/1.1 500 Internal Server Error\r\n";
 	}
 }
 
@@ -460,6 +556,48 @@ inline std::int32_t to_int(status_t s)
 		return 404;
 	case http::status::method_not_allowed:
 		return 405;
+	case http::status::proxy_authentication_required:
+		return 407;
+	case http::status::request_timeout:
+		return 408;
+	case http::status::conflict:
+		return 409;
+	case http::status::gone:
+		return 410;
+	case http::status::length_required:
+		return 411;
+	case http::status::precondition_failed:
+		return 412;
+	case http::status::payload_too_large:
+		return 413;
+	case http::status::uri_too_long:
+		return 414;
+	case http::status::unsupported_media_type:
+		return 415;
+	case http::status::range_not_satisfiable:
+		return 416;
+	case http::status::expectation_failed:
+		return 417;
+	case http::status::unprocessable_entity:
+		return 422;
+	case http::status::locked:
+		return 423;
+	case http::status::failed_dependency:
+		return 424;
+	case http::status::upgrade_required:
+		return 426;
+	case http::status::precondition_required:
+		return 428;
+	case http::status::too_many_requests:
+		return 429;
+	case http::status::request_header_fields_too_large:
+		return 431;
+	case http::status::connection_closed_without_response:
+		return 444;
+	case http::status::unavailable_for_legal_reasons:
+		return 451;
+	case http::status::client_closed_request:
+		return 499;
 	case http::status::internal_server_error:
 		return 500;
 	case http::status::not_implemented:
@@ -468,8 +606,24 @@ inline std::int32_t to_int(status_t s)
 		return 502;
 	case http::status::service_unavailable:
 		return 503;
+	case http::status::gateway_timeout:
+		return 504;
+	case http::status::http_version_not_supported:
+		return 505;
+	case http::status::variant_also_negotiates:
+		return 506;
+	case http::status::insufficient_storage:
+		return 507;
+	case http::status::loop_detected:
+		return 503;
+	case http::status::not_extended:
+		return 510;
+	case http::status::network_authentication_required:
+		return 511;
+	case http::status::network_connect_timeout_error:
+		return 599;
 	default:
-		return 0;
+		return 500;
 	}
 }
 } // namespace status
@@ -978,10 +1132,7 @@ public:
 		this->body_.clear();
 	}
 
-	void reset(const std::string& name)
-	{
-		header<specialization>::reset(name);
-	}
+	void reset(const std::string& name) { header<specialization>::reset(name); }
 
 	std::string& body() { return body_; }
 
@@ -1008,7 +1159,7 @@ public:
 	void type(const std::string& content_type) { http::fields::set("Content-Type", mime_types::extension_to_type(content_type)); }
 
 	void status(http::status::status_t status) { http::header<specialization>::status(status); }
-	const http::status::status_t status() const { return http::header<specialization>::status(); }
+	http::status::status_t status() const { return http::header<specialization>::status(); }
 
 	void content_length(uint64_t const& length) { http::fields::set("Content-Length", std::to_string(length)); }
 
@@ -2435,21 +2586,21 @@ public:
 
 	routing(result r = http::api::router_match::no_route)
 		: result_(r)
-		, route_(route{})
+		, route_(nullptr)
 	{
 	}
 
 	result& match_result() { return result_; };
 	result match_result() const { return result_; };
-	route& the_route() { return route_; }
-	void set_route(const route* r) { route_ = *r; }
-	const route& the_route() const { return route_; }
+	route& the_route() { return *route_; }
+	void set_route(route* r) { route_ = r; }
+	const route& the_route() const { return *route_; }
 	middlewares& middlewares_vector() { return middlewares_; };
 	const middlewares& middlewares_vector() const { return middlewares_; };
 
 private:
 	result result_;
-	route route_;
+	route* route_;
 	middlewares middlewares_;
 };
 
@@ -3615,15 +3766,15 @@ public:
 	{
 	}
 
-	const result add(const std::string& myurl) const noexcept { return static_cast<T*>(this)->add_impl(myurl); }
+	result add(const std::string& myurl) const noexcept { return static_cast<T*>(this)->add_impl(myurl); }
 
-	const result remove(const std::string& myurl) const noexcept { return static_cast<T*>(this)->remove_impl(myurl); }
+	result remove(const std::string& myurl) const noexcept { return static_cast<T*>(this)->remove_impl(myurl); }
 
-	const result enable(const std::string& myurl) const noexcept { return static_cast<T*>(this)->enable_impl(myurl); }
+	result enable(const std::string& myurl) const noexcept { return static_cast<T*>(this)->enable_impl(myurl); }
 
-	const result disable(const std::string& myurl) const noexcept { return static_cast<T*>(this)->enable_impl(myurl); }
+	result disable(const std::string& myurl) const noexcept { return static_cast<T*>(this)->enable_impl(myurl); }
 
-	const std::string list() const noexcept { return static_cast<T*>(this)->enable_impl(); }
+	std::string list() const noexcept { return static_cast<T*>(this)->enable_impl(); }
 
 protected:
 	http::configuration& configuration_;
@@ -3642,7 +3793,7 @@ public:
 		endpoint_base_url_ = configuration_.get("nginx-downstream-endpoint") + "?upstream=" + configuration_.get("nginx-upstream-zone");
 	};
 
-	const result add(const std::string& server) const noexcept
+	result add(const std::string& server) const noexcept
 	{
 		http::configuration c{};
 		http::session_handler session{ c };
@@ -3655,7 +3806,7 @@ public:
 			return http::upstream::failed;
 	}
 
-	const result remove(const std::string& server) const noexcept
+	result remove(const std::string& server) const noexcept
 	{
 		http::configuration c{};
 		http::session_handler session{ c };
@@ -3668,7 +3819,7 @@ public:
 			return http::upstream::failed;
 	}
 
-	const result enable(const std::string& server) const noexcept
+	result enable(const std::string& server) const noexcept
 	{
 		http::configuration c{};
 		http::session_handler session{ c };
@@ -3681,7 +3832,7 @@ public:
 			return http::upstream::failed;
 	}
 
-	const result disable(const std::string& server) const noexcept
+	result disable(const std::string& server) const noexcept
 	{
 		http::configuration c{};
 		http::session_handler session{ c };
@@ -3694,7 +3845,7 @@ public:
 			return http::upstream::failed;
 	}
 
-	const std::string list() const noexcept
+	std::string list() const noexcept
 	{
 		http::configuration c{};
 		http::session_handler session{ c };
@@ -3717,15 +3868,15 @@ public:
 	haproxy(http::configuration& configuration, http::basic::server& server)
 		: upstream_controller(configuration, server){};
 
-	const result add(std::string&) const noexcept { return http::upstream::sucess; }
+	result add(std::string&) const noexcept { return http::upstream::sucess; }
 
-	const result remove(std::string&) const noexcept { return http::upstream::sucess; }
+	result remove(std::string&) const noexcept { return http::upstream::sucess; }
 
-	const result enable(std::string&) const noexcept { return http::upstream::sucess; }
+	result enable(std::string&) const noexcept { return http::upstream::sucess; }
 
-	const result disable(std::string&) const noexcept { return http::upstream::sucess; }
+	result disable(std::string&) const noexcept { return http::upstream::sucess; }
 
-	const std::string list(std::string&) const noexcept { return ""; }
+	std::string list(std::string&) const noexcept { return ""; }
 
 private:
 	//	network::tcp::endpoint& nginx_endpoint_;
