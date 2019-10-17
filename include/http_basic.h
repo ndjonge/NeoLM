@@ -25,6 +25,14 @@
 #include <vector>
 #include <zlib.h>
 
+#if !defined(ASSERT)
+#include <assert.h>
+#define ASSERT(X) assert(X)
+#endif
+
+#define CURL_STATICLIB
+#include <curl/curl.h>
+
 #if defined(_USE_CPP17_STD_FILESYSTEM)
 #include <experimental/filesystem>
 #endif
@@ -197,11 +205,8 @@ inline std::string return_current_time_and_date()
 	std::stringstream ss;
 	std::tm buf;
 
-#ifdef WIN32
-	gmtime_s(&buf, &in_time_t);
-#else
-	gmtime_r(&in_time_t, &buf);
-#endif
+	(void)gmtime_r(&in_time_t, &buf);
+
 	ss << std::put_time(&buf, "%a, %d %b %Y %H:%M:%S GMT");
 	return ss.str();
 }
@@ -236,11 +241,17 @@ template <typename T> T& split_(T& result, const typename T::value_type& s, cons
 	return result;
 }
 
-inline std::vector<std::string> split(const std::string& str, const std::string& delimiters)
+enum split_options
+{
+	all_tokens,
+	stop_on_first_delimiter_found
+};
+
+inline std::vector<std::string> split(const std::string& str, const std::string& delimiters, split_options options = split_options::all_tokens)
 {
 	std::vector<std::string> output;
 
-	output.reserve(str.size() / 2);
+	//output.reserve(str.size() / 2);
 
 	auto first = str.cbegin();
 
@@ -249,6 +260,12 @@ inline std::vector<std::string> split(const std::string& str, const std::string&
 		const auto second = std::find_first_of(first, str.cend(), delimiters.cbegin(), delimiters.cend());
 
 		if (first != second) output.emplace_back(first, second);
+
+		if(options == stop_on_first_delimiter_found)
+		{
+			output.emplace_back(second+1, str.cend());
+			break;
+		}
 
 		if (second == str.cend()) break;
 
@@ -386,7 +403,7 @@ enum status_t
 	proxy_authentication_required = 407,
 	request_timeout = 408,
 	conflict = 409,
-	gone = 410,
+	gone=410,
 	length_required = 411,
 	precondition_failed = 412,
 	payload_too_large = 413,
@@ -419,7 +436,13 @@ enum status_t
 	network_connect_timeout_error = 599
 };
 
-inline status_t to_status(std::uint32_t status_nr) { return static_cast<status_t>(status_nr); }
+inline status_t to_status(std::uint32_t status_nr) 
+{ 
+	if (status_nr >= 100 && status_nr <= 599)
+		return static_cast<status_t>(status_nr); 
+	else
+		return http::status::internal_server_error; 
+}
 
 inline const char* to_string(status_t s)
 {
@@ -570,7 +593,7 @@ inline std::int32_t to_int(status_t s)
 		return 412;
 	case http::status::payload_too_large:
 		return 413;
-	case http::status::uri_too_long:
+	case http::status::	uri_too_long:
 		return 414;
 	case http::status::unsupported_media_type:
 		return 415;
@@ -623,7 +646,7 @@ inline std::int32_t to_int(status_t s)
 	case http::status::network_connect_timeout_error:
 		return 599;
 	default:
-		return 500;
+		return static_cast<int32_t>(s);
 	}
 }
 } // namespace status
@@ -719,12 +742,24 @@ public:
 
 	template <typename T> typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type get(const std::string& name, const T& value = T())
 	{
+		bool ignore_existance;
+		return get( name, ignore_existance, value );
+	}
+
+	template <typename T> typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type get(const std::string& name, bool& exists, const T& value = T() )
+	{
 		T returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
 
-		if (i != std::end(fields_)) returnvalue = i->value;
-
+		if (i != std::end(fields_)) {
+			exists = true;
+			returnvalue = i->value;
+		} else {
+			exists = false;
+		}
 		return returnvalue;
 	}
 
@@ -793,8 +828,18 @@ public:
 public:
 	configuration() = default;
 
-	configuration(std::initializer_list<configuration::value_type> init_list)
-		: fields_(init_list){};
+	configuration(std::initializer_list<configuration::value_type> init_list, const std::string& string_options = "")
+		: fields_(init_list)
+	{
+		const auto& split_string_options = http::util::split(string_options, ",");
+
+		for (const auto& string_option : split_string_options)	
+		{
+			const auto& split_string_option{http::util::split(string_option, ":", http::util::split_options::stop_on_first_delimiter_found)};
+			if (split_string_option.size() == 2)
+				set(split_string_option[0], split_string_option[1]);
+		}
+	};
 
 	configuration(const http::configuration& c)
 	{
@@ -1081,7 +1126,7 @@ static std::string extension_to_type(const std::string& extension)
 		return extension;
 	else
 	{
-		for (const auto& m : mappings) // NOLINT: trust me i now what i am doing...
+		for (const auto& m : mappings) // NOLINT: trust me i know what i am doing...
 		{
 			if (m.extension == extension)
 			{
@@ -1132,7 +1177,10 @@ public:
 		this->body_.clear();
 	}
 
-	void reset(const std::string& name) { header<specialization>::reset(name); }
+	void reset(const std::string& name)
+	{
+		header<specialization>::reset(name);
+	}
 
 	std::string& body() { return body_; }
 
@@ -1148,7 +1196,7 @@ public:
 			http::fields::set("Transfer-Encoding", "none");
 	}
 
-	bool has_content_lenght() const
+	bool has_content_length() const
 	{
 		if (http::fields::get("Content-Length").empty())
 			return false;
@@ -1210,7 +1258,7 @@ class request_parser
 public:
 	request_parser() = default;
 
-	void reset() { state_ = method_start; };
+	void reset() { state_ = method_start; error_reason_ = ""; };
 
 	enum result_type
 	{
@@ -1218,6 +1266,8 @@ public:
 		bad,
 		indeterminate
 	};
+
+	const std::string& error_reason() const { return error_reason_; }
 
 	template <typename InputIterator> std::tuple<result_type, InputIterator> parse(http::request_message& req, InputIterator begin, InputIterator end)
 	{
@@ -1402,15 +1452,17 @@ private:
 				return bad;
 			}
 		case header_line_start:
-			if (input == '\r')
+			if (input == '\r') // end of headers, expecting \r\n
 			{
 				state_ = expecting_newline_3;
 				return indeterminate;
 			}
-			else if (!req.fields_empty() && (input == ' ' || input == '\t'))
+			else if (!req.fields_empty() && (input == ' ' || input == '\t')) // optional line folding
 			{
-				state_ = header_lws;
-				return indeterminate;
+				// RFC 7230: Either reject with 400, or replace obs-fold with one or more spaces.
+				// We opt for reject.
+				error_reason_ = "obsolete line folding is unacceptable";
+				return bad;
 			}
 			else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
 			{
@@ -1423,30 +1475,10 @@ private:
 				state_ = header_name;
 				return indeterminate;
 			}
-		case header_lws:
-			if (input == '\r')
-			{
-				state_ = expecting_newline_2;
-				return indeterminate;
-			}
-			else if (input == ' ' || input == '\t')
-			{
-				return indeterminate;
-			}
-			else if (is_ctl(input))
-			{
-				return bad;
-			}
-			else
-			{
-				state_ = header_value;
-				req.last_new_field()->value.push_back(input);
-				return indeterminate;
-			}
 		case header_name:
 			if (input == ':')
 			{
-				state_ = space_before_header_value;
+				state_ = opt_ws_before_header_value;
 				return indeterminate;
 			}
 			else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
@@ -1458,21 +1490,26 @@ private:
 				req.last_new_field()->name.push_back(input);
 				return indeterminate;
 			}
-		case space_before_header_value:
-			if (input == ' ')
+		case opt_ws_before_header_value: // Skip leading white space, see RFC 7230 (https://tools.ietf.org/html/rfc7230#section-3.2).
+			if (input == ' ' || input == '\t')
 			{
-				state_ = header_value;
 				return indeterminate;
 			}
 			else
 			{
-				return bad;
+				state_ = header_value;
+				// intentional fallthrough to case header_value
 			}
-		case header_value:
-			if (input == '\r')
+			// fallthrough
+		case header_value: // warning: fallthrough from state opt_ws_before_header_value
+			if (input == '\r')  // optional line folding
 			{
-				state_ = expecting_newline_2;
-				req.merge_new_header();
+				state_ = opt_ws_after_header_value;
+				// intentional fallthrough to case opt_ws_after_header_value
+			}
+			else if (input == '\t') // RFC 7230: field-content  = field-vchar [ 1*( SP / HTAB ) field-vchar ]
+			{
+				req.last_new_field()->value.push_back(input);
 				return indeterminate;
 			}
 			else if (is_ctl(input))
@@ -1483,6 +1520,40 @@ private:
 			{
 				req.last_new_field()->value.push_back(input);
 				return indeterminate;
+			}
+			// fallthrough
+		case opt_ws_after_header_value: // warning: fallthrough from case header_value
+			if (input == '\r')  // optional line folding is handled by successive states expecting_newline_2, header_line_start, header_lws, header_value
+			{
+				state_ = expecting_newline_2;
+
+				// Trailing whitespace is not part of the value, see RFC 7230 (https://tools.ietf.org/html/rfc7230#section-3.2).
+				// To allow whitespace within the value, we accepted the trailing whitespace in state header_value. Strip here. 
+
+				auto& last_new_field_value = req.last_new_field()->value;
+
+				auto last_non_whitespace = last_new_field_value.find_last_not_of( " \t" );
+				if (last_non_whitespace != std::string::npos)
+				{
+					if ( last_non_whitespace != last_new_field_value.size() )
+					{
+						last_new_field_value = last_new_field_value.substr( 0, last_non_whitespace+1 );
+					}
+				}
+				else
+				{
+					last_new_field_value = "";
+				}
+				req.merge_new_header();
+				return indeterminate;
+			}
+			else if (input == ' ' || input == '\t')
+			{
+				return indeterminate;
+			}
+			else
+			{
+				return bad;
 			}
 		case expecting_newline_2:
 			if (input == '\n')
@@ -1496,7 +1567,7 @@ private:
 			}
 		case expecting_newline_3:
 			if (input == '\n') return (input == '\n') ? good : bad;
-			// fall through
+			// fallthrough	
 		default:
 			return bad;
 		}
@@ -1560,6 +1631,8 @@ private:
 		header_lws,
 		header_name,
 		space_before_header_value,
+		opt_ws_before_header_value,
+		opt_ws_after_header_value,
 		header_value,
 		expecting_newline_2,
 		expecting_newline_3,
@@ -1569,6 +1642,7 @@ private:
 		= { method_start };
 
 	std::string storage;
+	std::string error_reason_; // can be used when parse fails.
 
 public:
 	static std::string url_decode(const std::string& in)
@@ -1864,7 +1938,7 @@ private:
 				state_ = expecting_newline_1;
 				return indeterminate;
 			}
-			else if (is_ctl(input) || is_tspecial(input))
+			else if (is_ctl(input) || (is_tspecial(input) && !(input == ' ')))
 			{
 				return bad;
 			}
@@ -1885,12 +1959,12 @@ private:
 				return bad;
 			}
 		case header_line_start:
-			if (input == '\r')
+			if (input == '\r') // end of headers, expecting \r\n
 			{
 				state_ = expecting_newline_3;
 				return indeterminate;
 			}
-			else if (!res.fields_empty() && (input == ' ' || input == '\t'))
+			else if (!res.fields_empty() && (input == ' ' || input == '\t')) // line folding (continuation of previous header-value)
 			{
 				state_ = header_lws;
 				return indeterminate;
@@ -1922,7 +1996,7 @@ private:
 			}
 			else
 			{
-				state_ = header_value;
+				state_ = header_value; // line folding
 				res.last_new_field()->value.push_back(input);
 				return indeterminate;
 			}
@@ -1941,7 +2015,7 @@ private:
 				res.last_new_field()->name.push_back(input);
 				return indeterminate;
 			}
-		case space_before_header_value:
+		case space_before_header_value: // TODO response parsing has not been modified to handle optional leading/trailing whitespace
 			if (input == ' ')
 			{
 				state_ = header_value;
@@ -1977,7 +2051,7 @@ private:
 				return bad;
 			}
 		case expecting_newline_3:
-			if (input == '\n') return (input == '\n') ? good : bad;
+			return (input == '\n') ? good : bad;
 		default:
 			return bad;
 		}
@@ -2177,124 +2251,7 @@ public:
 		return request_parser_.parse(request_, begin, end);
 	}
 
-	//	template <typename InputIterator> std::tuple<response_parser::result_type, InputIterator> parse_response(InputIterator begin, InputIterator end) { return
-	// response_parser_.parse(response_, begin, end); }
-
-	class url
-	{
-	public:
-		url(std::string protocol, std::string hostname, std::string port, std::string target)
-			: protocol_(std::move(protocol))
-			, hostname_(std::move(hostname))
-			, port_(std::move(port))
-			, target_(std::move(target))
-		{
-		}
-
-		url(const std::string& url)
-		{
-			// protocol://host:port/target
-			// http://[FEDC:BA98:7654:3210:FEDC:BA98:7654:3210]:80/index.html
-
-			auto p1 = url.find_first_of(':');
-
-			protocol_ = url.substr(0, p1);
-
-			auto p2 = url.find_first_of('/', p1 + 3);
-
-			hostname_ = url.substr(p1 + 3, p2 - (p1 + 3));
-
-			auto p3 = hostname_.find_last_of(':');
-
-			if (p3 != std::string::npos)
-			{
-				port_ = hostname_.substr(p3 + 1);
-				hostname_ = hostname_.substr(0, p3);
-			}
-			else
-			{
-				port_ = "80";
-			}
-
-			target_ = url.substr(p2);
-		}
-
-		const std::string& protocol() const noexcept { return protocol_; };
-		const std::string& hostname() const noexcept { return hostname_; };
-		const std::string& port() const noexcept { return port_; };
-		const std::string& target() const noexcept { return target_; };
-
-	private:
-		std::string protocol_;
-		std::string hostname_;
-		std::string port_;
-		std::string target_;
-	};
-
-	http::response_message get(const std::string& url_string, const http::response_header&)
-	{
-		http::response_message message;
-
-		http::session_handler::url u{ url_string };
-
-		http::request_message request{ "GET", u.target() };
-
-		// request.headers_set(headers);
-
-		request.set("Host", u.hostname() + ":" + u.port());
-
-		network::tcp::resolver resolver;
-		auto& results = resolver.resolve(u.hostname(), u.port());
-
-		network::tcp::socket s;
-
-		auto ec = network::connect(s, results);
-
-		if (ec == network::error::success)
-		{
-			using data_store_buffer_t = std::array<char, 64>;
-			data_store_buffer_t buffer{};
-			auto c = std::begin(buffer);
-
-			auto request_result_size = network::write(s, http::to_string(request));
-			http::response_parser p;
-			http::response_parser::result_type parse_result = http::response_parser::result_type::bad;
-
-			if (request_result_size != -1)
-			{
-				do
-				{
-					auto response_result_size = network::read(s, network::buffer(buffer.data(), buffer.size()));
-
-					if (response_result_size != -1)
-					{
-						std::tie(parse_result, c) = p.parse(message, buffer.begin(), buffer.begin() + response_result_size);
-
-						if (parse_result == http::response_parser::result_type::good && message.content_length() > message.body().size())
-						{
-							message.body().reserve(message.content_length());
-
-							do
-							{
-								auto response_result_size_body = network::read(s, network::buffer(buffer.data(), buffer.size()));
-								if (response_result_size_body != -1)
-								{
-									message.body().append(buffer.begin(), buffer.end());
-								}
-								else
-								{
-									message = http::response_message();
-									return message;
-								}
-
-							} while (response_result_size != -1 && message.body().size() < message.content_length());
-						}
-					}
-				} while (parse_result == http::response_parser::result_type::indeterminate);
-			}
-		}
-		return message;
-	}
+	const std::string& parse_error_reason() const { return request_parser_.error_reason(); }
 
 	template <typename router_t> void handle_request(router_t& router_)
 	{
@@ -2375,7 +2332,7 @@ public:
 			break;
 		}
 		}
-		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false)
+		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false && response_.connection_close() == false )
 			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && request_.connection_close() == false))
 		{
 			keepalive_count_decr();
@@ -2471,11 +2428,39 @@ private:
 
 using session_handler_type = http::session_handler;
 
+class middleware_lambda_context { // Context passed to every C++ middleware handler
+public:
+	virtual ~middleware_lambda_context() {}
+};
+
+enum class outcome_status { // http::api::outcome_status
+	success,
+	bad_function, // dll or function not found, wrong signature
+	internal_error, // function failed
+	process_terminated // (3gl) process terminated unexpectedly (crashed) during execution of handler
+};
+
+template< typename T >
+class outcome {  // http::api::outcome
+public:
+	outcome() : value_( T() ) {}
+	explicit outcome( T x ) : value_( x ) {}  // explicit, or else a conversion from bool to outcome may happen if T is integral.
+	outcome( outcome_status status, const std::string& error ) : status_{ status }, error_( error ) {}
+	outcome_status status() const { return status_; }
+	bool success() const { return status_ == outcome_status::success; }
+	const std::string& error() const { ASSERT( status_ != outcome_status::success ); return error_; }
+	const T& value() const { ASSERT( status_ == outcome_status::success ); return value_; }
+private:
+	outcome_status status_ { outcome_status::success };
+	std::string error_;
+	T value_;
+};
+
 class routing
 {
 public:
 	using endpoint_lambda = std::function<void(const routing& route_context, session_handler_type& session, const http::api::params& params)>;
-	using middleware_lambda = std::function<bool(const routing& route_context, session_handler_type& session, const http::api::params& params)>;
+	using middleware_lambda = std::function<outcome<std::int64_t>(middleware_lambda_context *context, const routing& route_context, session_handler_type& session, const http::api::params& params)>;
 
 	using result = http::api::router_match::route_context_type;
 
@@ -2537,16 +2522,19 @@ public:
 		middleware() = default;
 		middleware(const middleware&) = default;
 
-		middleware(const std::string& middleware_attribute, const middleware_lambda& middleware_lambda_)
-			: middleware_lambda_(middleware_lambda_)
+		middleware(const std::string& type, const std::string& middleware_attribute, const middleware_lambda& middleware_lambda_)
+			: type_(type)
+			, middleware_lambda_(middleware_lambda_)
 			, middleware_attribute_(middleware_attribute)
 		{
 		}
 
-		const middleware_lambda& middleware_labda() { return middleware_lambda_; };
+		const std::string& type() const { return type_; }
+		const middleware_lambda& middleware_labda() const { return middleware_lambda_; };
 		const std::string& middleware_attribute() const { return middleware_attribute_; };
 
 	private:
+		std::string type_; // "3gl" or "C++"
 		const middleware_lambda middleware_lambda_;
 		std::string middleware_attribute_;
 	};
@@ -2710,18 +2698,22 @@ public:
 		both
 	};
 
-	void use_middleware(const std::string& path, const std::string& pre_middleware_attribute, const std::string& post_middleware_attribute)
+	void use_middleware(const std::string& path, const std::string& type, const std::string& pre_middleware_attribute, const std::string& post_middleware_attribute)
 	{
 		W empty;
 
-		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ pre_middleware_attribute, empty }, { post_middleware_attribute, empty });
+		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty });
 
 		on_middleware(path, middleware_pair);
 	}
 
-	void use_middleware(const std::string& path, W&& middleware_pre_function, W&& middleware_post_function)
+	void use_middleware(const std::string& path,
+			const std::string& pre_middleware_attribute, W&& middleware_pre_function,
+			const std::string& post_middleware_attribute, W&& middleware_post_function)
 	{
-		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ "", middleware_pre_function }, { "", middleware_post_function });
+		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>(
+			{ "C++", pre_middleware_attribute, middleware_pre_function }, 
+			{ "C++", post_middleware_attribute, middleware_post_function } );
 
 		on_middleware(path, middleware_pair);
 	}
@@ -2815,7 +2807,7 @@ public:
 		}
 
 		auto parts = http::util::split(url, "/");
-		auto part_index = 0;
+		auto part_index = size_t(0);
 		for (const auto& part : parts)
 		{
 			auto l = std::find_if(it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
@@ -2828,6 +2820,7 @@ public:
 				{
 					l = it->link_.begin();
 
+					// /url/* matching is work in progress. If no other route exists with the same prefix it seems to work.
 					if (l->first == "*")
 					{
 						std::string url_remainder{};
@@ -2912,6 +2905,127 @@ public:
 namespace basic
 {
 
+namespace client
+{
+
+const http::response_message get(const std::string& url, std::initializer_list< std::string > hdrs, const std::string& body);
+
+class curl
+{
+	CURL *hnd_;
+	std::stringstream buffer_;
+	char error_buf_[CURL_ERROR_SIZE];
+	curl_slist *headers_;
+	std::string data_str_;  // must remain alive during cURL transfer
+	http::response_message response_message_;
+	http::response_parser response_message_parser_;
+	http::response_parser::result_type response_message_parser_result_;
+
+
+	// needed by cURL to read the data from the http(s) connection
+	static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp){
+		std::stringstream *str = static_cast<std::stringstream*>(userp);
+		char *buf = static_cast<char *>(contents);
+		str->write( buf, size*nmemb);
+			
+		return size*nmemb;
+			
+	}
+
+	static size_t recv_header_callback(char *buffer, size_t size, size_t nmemb, void *userp)
+	{	
+		std::string headerline(buffer);
+		char* c = nullptr;
+		auto this_curl = static_cast<curl*>(userp);		
+
+		std::tie(this_curl->response_message_parser_result_, c) = this_curl->response_message_parser_.parse(this_curl->response_message_, buffer, buffer + (size*nmemb));
+
+		return size*nmemb;
+	}
+
+	static int debug_callback( CURL *handle, curl_infotype type, char *data, size_t size, void *userptr)
+	{
+		return 0;
+	}
+
+public:
+	curl(const std::string verb, const std::string& url, std::initializer_list< std::string > hdrs, const std::string& body, bool verbose=false) 
+		: hnd_( curl_easy_init() )
+		, buffer_()
+		, error_buf_( "" )
+		, headers_( nullptr )
+		{
+			if (verbose) {
+				curl_easy_setopt(hnd_, CURLOPT_VERBOSE, 1);
+				curl_easy_setopt(hnd_, CURLOPT_DEBUGFUNCTION, debug_callback);
+			}
+
+			curl_easy_setopt(hnd_, CURLOPT_WRITEFUNCTION, write_callback);
+			curl_easy_setopt(hnd_, CURLOPT_WRITEDATA, (void *)&buffer_);
+			curl_easy_setopt(hnd_, CURLOPT_HTTPHEADER, headers_);
+			curl_easy_setopt(hnd_, CURLOPT_ERRORBUFFER, error_buf_);
+			curl_easy_setopt(hnd_, CURLOPT_NOSIGNAL, 1);		
+			curl_easy_setopt(hnd_, CURLOPT_HEADERFUNCTION, recv_header_callback);
+			curl_easy_setopt(hnd_, CURLOPT_HEADERDATA, (void *)this);
+
+			setup(verb, url, hdrs, body);
+		}
+		
+		~curl() {
+			curl_slist_free_all(headers_);
+			curl_easy_cleanup(hnd_);
+		}
+
+		void setup( const std::string& verb, const std::string& url, std::initializer_list< std::string > hdrs, const std::string& data) 
+		{	
+			for (const auto& a : hdrs) {
+				headers_ = curl_slist_append(headers_, a.c_str());
+			}
+
+			curl_easy_setopt( hnd_, CURLOPT_CUSTOMREQUEST, verb.c_str());
+			curl_easy_setopt( hnd_, CURLOPT_URL, url.c_str() );
+
+ 			data_str_ = data.c_str();
+			curl_easy_setopt( hnd_, CURLOPT_POSTFIELDS, data_str_.c_str() );
+		}
+
+		const http::response_message& call(std::string& error )	noexcept
+		{
+			CURLcode ret = curl_easy_perform( hnd_ );
+
+			if ( ret != CURLE_OK ) {
+				error = curl_easy_strerror(ret);
+				return response_message_;
+			} else {
+				response_message_.body() = buffer_.str();
+				return response_message_;
+			}
+		}
+
+		const http::response_message& call()	
+		{
+			CURLcode ret = curl_easy_perform( hnd_ );
+
+			if ( ret != CURLE_OK ) {
+				throw std::runtime_error{ curl_easy_strerror(ret) };
+			} else {
+				response_message_.body() = buffer_.str();
+				return response_message_;
+			}
+		}
+	};
+
+	const http::response_message get(const std::string& url, std::initializer_list< std::string > hdrs, const std::string& body)
+	{
+		http::basic::client::curl curl{"GET", url, hdrs ,	body};
+
+		std::string ec;
+		return curl.call(ec);
+	}
+
+
+} // namspace client
+
 class server
 {
 public:
@@ -2927,7 +3041,7 @@ public:
 
 	~server() = default;
 
-	// std::atomic<bool>& active() { return active_; }
+	std::atomic<bool>& active() { return active_; }
 
 	virtual void start_server() { active_ = true; }
 
@@ -2944,6 +3058,8 @@ public:
 		size_t connections_accepted_{ 0 };
 		size_t connections_accepted_prev_{ 0 };
 		size_t connections_accepted_per_second_{ 0 };
+
+		std::atomic<size_t> requests_current_{ 0 };
 
 		size_t connections_current_{ 0 };
 		size_t connections_highest_{ 0 };
@@ -3075,6 +3191,21 @@ public:
 			return connections_highest_;
 		}
 
+		void requests_current_increase()
+		{
+			requests_current_++;
+		}
+
+		void requests_current_decrease()
+		{
+			requests_current_--;
+		}
+
+		size_t requests_current() const
+		{
+			return requests_current_.load();
+		}
+
 		void log_access(http::session_handler& session)
 		{
 			std::stringstream s;
@@ -3176,6 +3307,11 @@ public:
 		https_connection_thread_.join();
 		http_connection_queue_thread_.join();
 		https_connection_queue_thread_.join();
+
+		// Wait for all connections to close:
+		while ( manager_.connections_current() > 0 ) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		}
 	}
 
 	server() = delete;
@@ -3475,6 +3611,8 @@ public:
 					if (ec == network::error::interrupted) break;
 					if (ec == network::error::operation_would_block) continue;
 
+					network::timeout(http_socket, connection_timeout_);
+
 					if (http_socket.lowest_layer() > 0)
 					{
 						std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
@@ -3544,7 +3682,7 @@ public:
 
 				std::tie(parse_result, c) = session_handler_.parse_request(c, c + ret);
 
-				if ((parse_result == http::request_parser::result_type::good) && (request.has_content_lenght()))
+				if ((parse_result == http::request_parser::result_type::good) && (request.has_content_length()))
 				{
 					auto x = c - std::begin(buffer);
 
@@ -3591,21 +3729,42 @@ public:
 				{
 					if (parse_result == http::request_parser::result_type::good)
 					{
-						session_handler_.request().set("Remote_Addr", session_handler_.request().get("X-Forwarded-For", network::get_client_info(client_socket_)));
-
-						session_handler_.handle_request(server_.router_);
-
-						// bool health_check_ok = (session_handler_.request().get("X-Health-Check") == "ok");
-
-						// if (!health_check_ok)
+						if (server_.active().load() == true)
 						{
-							server_.manager().requests_handled(server_.manager().requests_handled() + 1);
-							server_.manager().log_access(session_handler_);
+							session_handler_.request().set("Remote_Addr", session_handler_.request().get("X-Forwarded-For", network::get_client_info(client_socket_)));
+
+							server_.manager().requests_current_increase();
+							session_handler_.handle_request(server_.router_);
+							server_.manager().requests_current_decrease();
+
+							// bool health_check_ok = (session_handler_.request().get("X-Health-Check") == "ok");
+
+							// if (!health_check_ok)
+							{
+								server_.manager().requests_handled(server_.manager().requests_handled() + 1);
+								server_.manager().log_access(session_handler_);
+							}
+						}
+						else
+						{
+							// The server is not active; do not accept further requests.
+							response.status(http::status::service_unavailable);
+							response.body() = "HTTP server has been stopped";
+							response.type("text");
+							response.set("Connection","close");
+							response.content_length(response.body().size());
 						}
 					}
 					else
 					{
-						session_handler_.response().status(http::status::bad_request);
+						// Parse error
+						response.status(http::status::bad_request);
+						auto error_reason = session_handler_.parse_error_reason();
+						if ( error_reason.size() > 0 ) {
+							response.body() = error_reason;
+							response.type("text");
+							response.content_length(error_reason.size());
+						}
 					}
 
 					if (response.body().empty())
@@ -3634,6 +3793,10 @@ public:
 					}
 					else
 					{
+						// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the word "gzip".
+						// TODO: "Accept-Encoding: gzip;q=0" means *no* gzip
+						// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip is good
+
 						if ((gzip_min_length_ < response.body().size()) && (session_handler_.request().get("Accept-Encoding").find("gzip") != std::string::npos))
 						{
 							response.body() = gzip::compress(response.body().c_str(), response.body().size());
@@ -3730,182 +3893,5 @@ private:
 using middleware = http::api::router<>::middleware_type;
 using middleware = http::api::router<>::middleware_type;
 
-namespace upstream
-{
-enum result
-{
-	failed,
-	sucess
-};
 
-enum servertype_specialisations
-{
-	for_nginx,
-	for_haproxy
-};
-
-template <servertype_specialisations> class enable_server_as_upstream
-{
-public:
-	enable_server_as_upstream(http::configuration& configuration, http::basic::server& server)
-		: configuration_(configuration)
-		, server_(server){};
-
-private:
-	http::configuration& configuration_;
-	http::basic::server& server_;
-};
-
-// CRTP
-template <class T> class upstream_controller
-{
-public:
-	upstream_controller(http::configuration& configuration, http::basic::server& server)
-		: configuration_(configuration)
-		, server_(server)
-	{
-	}
-
-	result add(const std::string& myurl) const noexcept { return static_cast<T*>(this)->add_impl(myurl); }
-
-	result remove(const std::string& myurl) const noexcept { return static_cast<T*>(this)->remove_impl(myurl); }
-
-	result enable(const std::string& myurl) const noexcept { return static_cast<T*>(this)->enable_impl(myurl); }
-
-	result disable(const std::string& myurl) const noexcept { return static_cast<T*>(this)->enable_impl(myurl); }
-
-	std::string list() const noexcept { return static_cast<T*>(this)->enable_impl(); }
-
-protected:
-	http::configuration& configuration_;
-	http::basic::server& server_;
-};
-
-namespace implementations
-{
-
-class nginx : public upstream_controller<nginx>
-{
-public:
-	nginx(http::configuration& configuration, http::basic::server& server)
-		: upstream_controller(configuration, server)
-	{
-		endpoint_base_url_ = configuration_.get("nginx-downstream-endpoint") + "?upstream=" + configuration_.get("nginx-upstream-zone");
-	};
-
-	result add(const std::string& server) const noexcept
-	{
-		http::configuration c{};
-		http::session_handler session{ c };
-
-		auto result = session.get(endpoint_base_url_ + "&add=&server=" + server, {});
-
-		if (result.status() == http::status::ok)
-			return http::upstream::sucess;
-		else
-			return http::upstream::failed;
-	}
-
-	result remove(const std::string& server) const noexcept
-	{
-		http::configuration c{};
-		http::session_handler session{ c };
-
-		auto result = session.get(endpoint_base_url_ + "&remove=&server=" + server, {});
-
-		if (result.status() == http::status::ok)
-			return http::upstream::sucess;
-		else
-			return http::upstream::failed;
-	}
-
-	result enable(const std::string& server) const noexcept
-	{
-		http::configuration c{};
-		http::session_handler session{ c };
-
-		auto result = session.get(endpoint_base_url_ + "&server=" + server + "&up", {});
-
-		if (result.status() == http::status::ok)
-			return http::upstream::sucess;
-		else
-			return http::upstream::failed;
-	}
-
-	result disable(const std::string& server) const noexcept
-	{
-		http::configuration c{};
-		http::session_handler session{ c };
-
-		auto result = session.get(endpoint_base_url_ + "&server=" + server + "&down", {});
-
-		if (result.status() == http::status::ok)
-			return http::upstream::sucess;
-		else
-			return http::upstream::failed;
-	}
-
-	std::string list() const noexcept
-	{
-		http::configuration c{};
-		http::session_handler session{ c };
-
-		auto result = session.get(endpoint_base_url_, {});
-
-		if (result.status() == http::status::ok)
-			return result.body();
-		else
-			return "";
-	}
-
-private:
-	std::string endpoint_base_url_;
-};
-
-class haproxy : public upstream_controller<haproxy>
-{
-public:
-	haproxy(http::configuration& configuration, http::basic::server& server)
-		: upstream_controller(configuration, server){};
-
-	result add(std::string&) const noexcept { return http::upstream::sucess; }
-
-	result remove(std::string&) const noexcept { return http::upstream::sucess; }
-
-	result enable(std::string&) const noexcept { return http::upstream::sucess; }
-
-	result disable(std::string&) const noexcept { return http::upstream::sucess; }
-
-	std::string list(std::string&) const noexcept { return ""; }
-
-private:
-	//	network::tcp::endpoint& nginx_endpoint_;
-};
-
-} // namespace implementations
-
-template <> class enable_server_as_upstream<for_nginx>
-{
-public:
-	enable_server_as_upstream(http::configuration& configuration, http::basic::server& server)
-		: upstream_controller_(configuration, server){};
-
-protected:
-	implementations::nginx& upstream_controller() { return upstream_controller_; };
-
-private:
-	implementations::nginx upstream_controller_;
-};
-
-template <> class enable_server_as_upstream<for_haproxy>
-{
-public:
-	enable_server_as_upstream(http::configuration& configuration, http::basic::server& server)
-		: upstream_controller_(configuration, server){};
-
-private:
-	implementations::haproxy upstream_controller_;
-};
-
-} // namespace upstream
 } // namespace http
