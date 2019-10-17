@@ -28,6 +28,7 @@ if(MSVC)
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 endif()
 
+find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 
@@ -49,13 +50,13 @@ find_package(nlohmann_json CONFIG REQUIRED)
 message("Json: ${NLOHMANN_JSON_INCLUDE_DIR}")	
 
 include_directories(${ASIO_INCLUDE_DIR})
-include_directories(${NLOHMANN_JSON_INCLUDE_DIR} nlohmann/json.hpp HINTS)
 include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
+include_directories(${CURL_INCLUDE_DIR})
 
 target_link_libraries( ${PROJECT_NAME} OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries( ${PROJECT_NAME} ZLIB::ZLIB)
-target_link_libraries( ${PROJECT_NAME} nlohmann_json nlohmann_json::nlohmann_json)
+target_link_libraries( ${PROJECT_NAME} ${CURL_LIBRARIES})
 
 if(WIN32)
   target_link_libraries( ${PROJECT_NAME} wsock32 ws2_32)

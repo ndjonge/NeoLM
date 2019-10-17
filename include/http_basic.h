@@ -37,6 +37,10 @@
 #include <experimental/filesystem>
 #endif
 
+#if defined(_WIN32) && !defined(gmtime_r)
+#define gmtime_r(X, Y) gmtime_s(Y, X)
+#endif
+
 #include "http_network.h"
 
 namespace filesystem
@@ -251,7 +255,7 @@ inline std::vector<std::string> split(const std::string& str, const std::string&
 {
 	std::vector<std::string> output;
 
-	//output.reserve(str.size() / 2);
+	// output.reserve(str.size() / 2);
 
 	auto first = str.cbegin();
 
@@ -261,9 +265,9 @@ inline std::vector<std::string> split(const std::string& str, const std::string&
 
 		if (first != second) output.emplace_back(first, second);
 
-		if(options == stop_on_first_delimiter_found)
+		if (options == stop_on_first_delimiter_found)
 		{
-			output.emplace_back(second+1, str.cend());
+			output.emplace_back(second + 1, str.cend());
 			break;
 		}
 
@@ -403,7 +407,7 @@ enum status_t
 	proxy_authentication_required = 407,
 	request_timeout = 408,
 	conflict = 409,
-	gone=410,
+	gone = 410,
 	length_required = 411,
 	precondition_failed = 412,
 	payload_too_large = 413,
@@ -436,12 +440,12 @@ enum status_t
 	network_connect_timeout_error = 599
 };
 
-inline status_t to_status(std::uint32_t status_nr) 
-{ 
+inline status_t to_status(std::uint32_t status_nr)
+{
 	if (status_nr >= 100 && status_nr <= 599)
-		return static_cast<status_t>(status_nr); 
+		return static_cast<status_t>(status_nr);
 	else
-		return http::status::internal_server_error; 
+		return http::status::internal_server_error;
 }
 
 inline const char* to_string(status_t s)
@@ -593,7 +597,7 @@ inline std::int32_t to_int(status_t s)
 		return 412;
 	case http::status::payload_too_large:
 		return 413;
-	case http::status::	uri_too_long:
+	case http::status::uri_too_long:
 		return 414;
 	case http::status::unsupported_media_type:
 		return 415;
@@ -743,21 +747,22 @@ public:
 	template <typename T> typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type get(const std::string& name, const T& value = T())
 	{
 		bool ignore_existance;
-		return get( name, ignore_existance, value );
+		return get(name, ignore_existance, value);
 	}
 
-	template <typename T> typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type get(const std::string& name, bool& exists, const T& value = T() )
+	template <typename T> typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type get(const std::string& name, bool& exists, const T& value = T())
 	{
 		T returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
-			return http::util::case_insensitive_equal(f.name, name);
-		});
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
 
-		if (i != std::end(fields_)) {
+		if (i != std::end(fields_))
+		{
 			exists = true;
 			returnvalue = i->value;
-		} else {
+		}
+		else
+		{
 			exists = false;
 		}
 		return returnvalue;
@@ -833,11 +838,10 @@ public:
 	{
 		const auto& split_string_options = http::util::split(string_options, ",");
 
-		for (const auto& string_option : split_string_options)	
+		for (const auto& string_option : split_string_options)
 		{
-			const auto& split_string_option{http::util::split(string_option, ":", http::util::split_options::stop_on_first_delimiter_found)};
-			if (split_string_option.size() == 2)
-				set(split_string_option[0], split_string_option[1]);
+			const auto& split_string_option{ http::util::split(string_option, ":", http::util::split_options::stop_on_first_delimiter_found) };
+			if (split_string_option.size() == 2) set(split_string_option[0], split_string_option[1]);
 		}
 	};
 
@@ -1177,10 +1181,7 @@ public:
 		this->body_.clear();
 	}
 
-	void reset(const std::string& name)
-	{
-		header<specialization>::reset(name);
-	}
+	void reset(const std::string& name) { header<specialization>::reset(name); }
 
 	std::string& body() { return body_; }
 
@@ -1258,7 +1259,11 @@ class request_parser
 public:
 	request_parser() = default;
 
-	void reset() { state_ = method_start; error_reason_ = ""; };
+	void reset()
+	{
+		state_ = method_start;
+		error_reason_ = "";
+	};
 
 	enum result_type
 	{
@@ -1502,7 +1507,7 @@ private:
 			}
 			// fallthrough
 		case header_value: // warning: fallthrough from state opt_ws_before_header_value
-			if (input == '\r')  // optional line folding
+			if (input == '\r') // optional line folding
 			{
 				state_ = opt_ws_after_header_value;
 				// intentional fallthrough to case opt_ws_after_header_value
@@ -1523,21 +1528,21 @@ private:
 			}
 			// fallthrough
 		case opt_ws_after_header_value: // warning: fallthrough from case header_value
-			if (input == '\r')  // optional line folding is handled by successive states expecting_newline_2, header_line_start, header_lws, header_value
+			if (input == '\r') // optional line folding is handled by successive states expecting_newline_2, header_line_start, header_lws, header_value
 			{
 				state_ = expecting_newline_2;
 
 				// Trailing whitespace is not part of the value, see RFC 7230 (https://tools.ietf.org/html/rfc7230#section-3.2).
-				// To allow whitespace within the value, we accepted the trailing whitespace in state header_value. Strip here. 
+				// To allow whitespace within the value, we accepted the trailing whitespace in state header_value. Strip here.
 
 				auto& last_new_field_value = req.last_new_field()->value;
 
-				auto last_non_whitespace = last_new_field_value.find_last_not_of( " \t" );
+				auto last_non_whitespace = last_new_field_value.find_last_not_of(" \t");
 				if (last_non_whitespace != std::string::npos)
 				{
-					if ( last_non_whitespace != last_new_field_value.size() )
+					if (last_non_whitespace != last_new_field_value.size())
 					{
-						last_new_field_value = last_new_field_value.substr( 0, last_non_whitespace+1 );
+						last_new_field_value = last_new_field_value.substr(0, last_non_whitespace + 1);
 					}
 				}
 				else
@@ -1567,7 +1572,7 @@ private:
 			}
 		case expecting_newline_3:
 			if (input == '\n') return (input == '\n') ? good : bad;
-			// fallthrough	
+			// fallthrough
 		default:
 			return bad;
 		}
@@ -2332,7 +2337,7 @@ public:
 			break;
 		}
 		}
-		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false && response_.connection_close() == false )
+		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false && response_.connection_close() == false)
 			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && request_.connection_close() == false))
 		{
 			keepalive_count_decr();
@@ -2428,39 +2433,60 @@ private:
 
 using session_handler_type = http::session_handler;
 
-class middleware_lambda_context { // Context passed to every C++ middleware handler
+class middleware_lambda_context
+{ // Context passed to every C++ middleware handler
 public:
 	virtual ~middleware_lambda_context() {}
-};
-
-enum class outcome_status { // http::api::outcome_status
-	success,
-	bad_function, // dll or function not found, wrong signature
-	internal_error, // function failed
-	process_terminated // (3gl) process terminated unexpectedly (crashed) during execution of handler
-};
-
-template< typename T >
-class outcome {  // http::api::outcome
-public:
-	outcome() : value_( T() ) {}
-	explicit outcome( T x ) : value_( x ) {}  // explicit, or else a conversion from bool to outcome may happen if T is integral.
-	outcome( outcome_status status, const std::string& error ) : status_{ status }, error_( error ) {}
-	outcome_status status() const { return status_; }
-	bool success() const { return status_ == outcome_status::success; }
-	const std::string& error() const { ASSERT( status_ != outcome_status::success ); return error_; }
-	const T& value() const { ASSERT( status_ == outcome_status::success ); return value_; }
-private:
-	outcome_status status_ { outcome_status::success };
-	std::string error_;
-	T value_;
 };
 
 class routing
 {
 public:
+	enum class outcome_status
+	{ // http::api::outcome_status
+		success,
+		bad_function, // dll or function not found, wrong signature
+		internal_error, // function failed
+		process_terminated // (3gl) process terminated unexpectedly (crashed) during execution of handler
+	};
+
+	template <typename T> class outcome
+	{ // http::api::outcome
+	public:
+		outcome()
+			: value_(T())
+		{
+		}
+		explicit outcome(T x)
+			: value_(x)
+		{
+		} // explicit, or else a conversion from bool to outcome may happen if T is integral.
+		outcome(outcome_status status, const std::string& error)
+			: status_{ status }
+			, error_(error)
+		{
+		}
+		outcome_status status() const { return status_; }
+		bool success() const { return status_ == outcome_status::success; }
+		const std::string& error() const
+		{
+			ASSERT(status_ != outcome_status::success);
+			return error_;
+		}
+		const T& value() const
+		{
+			ASSERT(status_ == outcome_status::success);
+			return value_;
+		}
+
+	private:
+		outcome_status status_{ outcome_status::success };
+		std::string error_;
+		T value_;
+	};
+
 	using endpoint_lambda = std::function<void(const routing& route_context, session_handler_type& session, const http::api::params& params)>;
-	using middleware_lambda = std::function<outcome<std::int64_t>(middleware_lambda_context *context, const routing& route_context, session_handler_type& session, const http::api::params& params)>;
+	using middleware_lambda = std::function<outcome<std::int64_t>(middleware_lambda_context& context, const routing& route_context, session_handler_type& session, const http::api::params& params)>;
 
 	using result = http::api::router_match::route_context_type;
 
@@ -2522,19 +2548,19 @@ public:
 		middleware() = default;
 		middleware(const middleware&) = default;
 
-		middleware(const std::string& type, const std::string& middleware_attribute, const middleware_lambda& middleware_lambda_)
-			: type_(type)
+		middleware(const std::string& middleware_type, const std::string& middleware_attribute, const middleware_lambda& middleware_lambda_)
+			: middleware_type(middleware_type)
 			, middleware_lambda_(middleware_lambda_)
 			, middleware_attribute_(middleware_attribute)
 		{
 		}
 
-		const std::string& type() const { return type_; }
+		const std::string& type() const { return middleware_type; };
 		const middleware_lambda& middleware_labda() const { return middleware_lambda_; };
 		const std::string& middleware_attribute() const { return middleware_attribute_; };
 
 	private:
-		std::string type_; // "3gl" or "C++"
+		std::string middleware_type;
 		const middleware_lambda middleware_lambda_;
 		std::string middleware_attribute_;
 	};
@@ -2707,13 +2733,17 @@ public:
 		on_middleware(path, middleware_pair);
 	}
 
-	void use_middleware(const std::string& path,
-			const std::string& pre_middleware_attribute, W&& middleware_pre_function,
-			const std::string& post_middleware_attribute, W&& middleware_post_function)
+	void use_middleware(const std::string& path, const std::string& pre_middleware_attribute, W&& middleware_pre_function, const std::string& post_middleware_attribute, W&& middleware_post_function)
 	{
-		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>(
-			{ "C++", pre_middleware_attribute, middleware_pre_function }, 
-			{ "C++", post_middleware_attribute, middleware_post_function } );
+		auto middleware_pair
+			= std::make_pair<routing::middleware, routing::middleware>({ "C++", pre_middleware_attribute, middleware_pre_function }, { "C++", post_middleware_attribute, middleware_post_function });
+
+		on_middleware(path, middleware_pair);
+	}
+
+	void use_middleware(const std::string& path, W&& middleware_pre_function, W&& middleware_post_function)
+	{
+		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ "C++", {}, middleware_pre_function }, { "C++", {}, middleware_post_function });
 
 		on_middleware(path, middleware_pair);
 	}
@@ -2908,123 +2938,127 @@ namespace basic
 namespace client
 {
 
-const http::response_message get(const std::string& url, std::initializer_list< std::string > hdrs, const std::string& body);
+const http::response_message get(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body);
 
 class curl
 {
-	CURL *hnd_;
+	CURL* hnd_;
 	std::stringstream buffer_;
 	char error_buf_[CURL_ERROR_SIZE];
-	curl_slist *headers_;
-	std::string data_str_;  // must remain alive during cURL transfer
+	curl_slist* headers_;
+	std::string data_str_; // must remain alive during cURL transfer
 	http::response_message response_message_;
 	http::response_parser response_message_parser_;
 	http::response_parser::result_type response_message_parser_result_;
 
-
 	// needed by cURL to read the data from the http(s) connection
-	static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp){
-		std::stringstream *str = static_cast<std::stringstream*>(userp);
-		char *buf = static_cast<char *>(contents);
-		str->write( buf, size*nmemb);
-			
-		return size*nmemb;
-			
+	static size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp)
+	{
+		std::stringstream* str = static_cast<std::stringstream*>(userp);
+		char* buf = static_cast<char*>(contents);
+		str->write(buf, size * nmemb);
+
+		return size * nmemb;
 	}
 
-	static size_t recv_header_callback(char *buffer, size_t size, size_t nmemb, void *userp)
-	{	
+	static size_t recv_header_callback(char* buffer, size_t size, size_t nmemb, void* userp)
+	{
 		std::string headerline(buffer);
 		char* c = nullptr;
-		auto this_curl = static_cast<curl*>(userp);		
+		auto this_curl = static_cast<curl*>(userp);
 
-		std::tie(this_curl->response_message_parser_result_, c) = this_curl->response_message_parser_.parse(this_curl->response_message_, buffer, buffer + (size*nmemb));
+		std::tie(this_curl->response_message_parser_result_, c) = this_curl->response_message_parser_.parse(this_curl->response_message_, buffer, buffer + (size * nmemb));
 
-		return size*nmemb;
+		return size * nmemb;
 	}
 
-	static int debug_callback( CURL *handle, curl_infotype type, char *data, size_t size, void *userptr)
-	{
-		return 0;
-	}
+	static int debug_callback(CURL*, curl_infotype, char*, size_t, void*) { return 0; }
 
 public:
-	curl(const std::string verb, const std::string& url, std::initializer_list< std::string > hdrs, const std::string& body, bool verbose=false) 
-		: hnd_( curl_easy_init() )
+	curl(const std::string verb, const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body, bool verbose = false)
+		: hnd_(curl_easy_init())
 		, buffer_()
-		, error_buf_( "" )
-		, headers_( nullptr )
-		{
-			if (verbose) {
-				curl_easy_setopt(hnd_, CURLOPT_VERBOSE, 1);
-				curl_easy_setopt(hnd_, CURLOPT_DEBUGFUNCTION, debug_callback);
-			}
-
-			curl_easy_setopt(hnd_, CURLOPT_WRITEFUNCTION, write_callback);
-			curl_easy_setopt(hnd_, CURLOPT_WRITEDATA, (void *)&buffer_);
-			curl_easy_setopt(hnd_, CURLOPT_HTTPHEADER, headers_);
-			curl_easy_setopt(hnd_, CURLOPT_ERRORBUFFER, error_buf_);
-			curl_easy_setopt(hnd_, CURLOPT_NOSIGNAL, 1);		
-			curl_easy_setopt(hnd_, CURLOPT_HEADERFUNCTION, recv_header_callback);
-			curl_easy_setopt(hnd_, CURLOPT_HEADERDATA, (void *)this);
-
-			setup(verb, url, hdrs, body);
-		}
-		
-		~curl() {
-			curl_slist_free_all(headers_);
-			curl_easy_cleanup(hnd_);
-		}
-
-		void setup( const std::string& verb, const std::string& url, std::initializer_list< std::string > hdrs, const std::string& data) 
-		{	
-			for (const auto& a : hdrs) {
-				headers_ = curl_slist_append(headers_, a.c_str());
-			}
-
-			curl_easy_setopt( hnd_, CURLOPT_CUSTOMREQUEST, verb.c_str());
-			curl_easy_setopt( hnd_, CURLOPT_URL, url.c_str() );
-
- 			data_str_ = data.c_str();
-			curl_easy_setopt( hnd_, CURLOPT_POSTFIELDS, data_str_.c_str() );
-		}
-
-		const http::response_message& call(std::string& error )	noexcept
-		{
-			CURLcode ret = curl_easy_perform( hnd_ );
-
-			if ( ret != CURLE_OK ) {
-				error = curl_easy_strerror(ret);
-				return response_message_;
-			} else {
-				response_message_.body() = buffer_.str();
-				return response_message_;
-			}
-		}
-
-		const http::response_message& call()	
-		{
-			CURLcode ret = curl_easy_perform( hnd_ );
-
-			if ( ret != CURLE_OK ) {
-				throw std::runtime_error{ curl_easy_strerror(ret) };
-			} else {
-				response_message_.body() = buffer_.str();
-				return response_message_;
-			}
-		}
-	};
-
-	const http::response_message get(const std::string& url, std::initializer_list< std::string > hdrs, const std::string& body)
+		, error_buf_("")
+		, headers_(nullptr)
 	{
-		http::basic::client::curl curl{"GET", url, hdrs ,	body};
+		if (verbose)
+		{
+			curl_easy_setopt(hnd_, CURLOPT_VERBOSE, 1);
+			curl_easy_setopt(hnd_, CURLOPT_DEBUGFUNCTION, debug_callback);
+		}
 
-		std::string ec;
-		return curl.call(ec);
+		curl_easy_setopt(hnd_, CURLOPT_WRITEFUNCTION, write_callback);
+		curl_easy_setopt(hnd_, CURLOPT_WRITEDATA, (void*)&buffer_);
+		curl_easy_setopt(hnd_, CURLOPT_HTTPHEADER, headers_);
+		curl_easy_setopt(hnd_, CURLOPT_ERRORBUFFER, error_buf_);
+		curl_easy_setopt(hnd_, CURLOPT_NOSIGNAL, 1);
+		curl_easy_setopt(hnd_, CURLOPT_HEADERFUNCTION, recv_header_callback);
+		curl_easy_setopt(hnd_, CURLOPT_HEADERDATA, (void*)this);
+
+		setup(verb, url, hdrs, body);
 	}
 
+	~curl()
+	{
+		curl_slist_free_all(headers_);
+		curl_easy_cleanup(hnd_);
+	}
 
-} // namspace client
+	void setup(const std::string& verb, const std::string& url, std::initializer_list<std::string> hdrs, const std::string& data)
+	{
+		for (const auto& a : hdrs)
+		{
+			headers_ = curl_slist_append(headers_, a.c_str());
+		}
+
+		curl_easy_setopt(hnd_, CURLOPT_CUSTOMREQUEST, verb.c_str());
+		curl_easy_setopt(hnd_, CURLOPT_URL, url.c_str());
+
+		data_str_ = data.c_str();
+		curl_easy_setopt(hnd_, CURLOPT_POSTFIELDS, data_str_.c_str());
+	}
+
+	const http::response_message& call(std::string& error) noexcept
+	{
+		CURLcode ret = curl_easy_perform(hnd_);
+
+		if (ret != CURLE_OK)
+		{
+			error = curl_easy_strerror(ret);
+			return response_message_;
+		}
+		else
+		{
+			response_message_.body() = buffer_.str();
+			return response_message_;
+		}
+	}
+
+	const http::response_message& call()
+	{
+		CURLcode ret = curl_easy_perform(hnd_);
+
+		if (ret != CURLE_OK)
+		{
+			throw std::runtime_error{ curl_easy_strerror(ret) };
+		}
+		else
+		{
+			response_message_.body() = buffer_.str();
+			return response_message_;
+		}
+	}
+};
+
+const http::response_message get(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
+{
+	http::basic::client::curl curl{ "GET", url, hdrs, body };
+
+	std::string ec;
+	return curl.call(ec);
+}
+
+} // namespace client
 
 class server
 {
@@ -3191,20 +3225,11 @@ public:
 			return connections_highest_;
 		}
 
-		void requests_current_increase()
-		{
-			requests_current_++;
-		}
+		void requests_current_increase() { requests_current_++; }
 
-		void requests_current_decrease()
-		{
-			requests_current_--;
-		}
+		void requests_current_decrease() { requests_current_--; }
 
-		size_t requests_current() const
-		{
-			return requests_current_.load();
-		}
+		size_t requests_current() const { return requests_current_.load(); }
 
 		void log_access(http::session_handler& session)
 		{
@@ -3309,7 +3334,8 @@ public:
 		https_connection_queue_thread_.join();
 
 		// Wait for all connections to close:
-		while ( manager_.connections_current() > 0 ) {
+		while (manager_.connections_current() > 0)
+		{
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
 	}
@@ -3751,7 +3777,7 @@ public:
 							response.status(http::status::service_unavailable);
 							response.body() = "HTTP server has been stopped";
 							response.type("text");
-							response.set("Connection","close");
+							response.set("Connection", "close");
 							response.content_length(response.body().size());
 						}
 					}
@@ -3760,7 +3786,8 @@ public:
 						// Parse error
 						response.status(http::status::bad_request);
 						auto error_reason = session_handler_.parse_error_reason();
-						if ( error_reason.size() > 0 ) {
+						if (error_reason.size() > 0)
+						{
 							response.body() = error_reason;
 							response.type("text");
 							response.content_length(error_reason.size());
@@ -3892,6 +3919,5 @@ private:
 
 using middleware = http::api::router<>::middleware_type;
 using middleware = http::api::router<>::middleware_type;
-
 
 } // namespace http
