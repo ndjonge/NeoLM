@@ -886,6 +886,21 @@ public:
 		return ss.str();
 	}
 
+	inline std::string to_json_string() const noexcept
+	{
+		std::stringstream ss;
+		std::lock_guard<std::mutex> g(configuration_mutex_);
+
+		for (auto field = fields_.cbegin(); field != fields_.cend(); ++field)
+		{
+			ss << "\"" << field->name << "\":\"" << field->value << "\"";
+
+			if (field + 1 != fields_.cend()) ss << ",";
+		}
+
+		return ss.str();
+	}
+
 	template <typename T> typename std::enable_if<std::is_same<T, bool>::value, bool>::type get(const std::string& name, const T value = T())
 	{
 		T returnvalue = value;
@@ -2538,6 +2553,15 @@ public:
 
 			return s.str();
 		};
+
+		std::string to_json_string()
+		{
+			std::stringstream s;
+
+			s << "{\"request_latency\" :" << request_latency_.load() / 1000000.0 << ",\"processing_duration\":" << processing_duration_.load() / 1000000.0 << ",\"hit_count\":" << hit_count_ << "}";
+
+			return s.str();
+		};
 	};
 
 	class middleware
@@ -2659,6 +2683,33 @@ public:
 			}
 
 			return false;
+		}
+
+		void to_string_stream_json(std::stringstream& s, std::vector<std::string>& path)
+		{
+			if (endpoints_)
+			{
+				for (auto endpoint = endpoints_.get()->cbegin(); endpoint != endpoints_.get()->cend(); ++endpoint)
+				{
+					s << "\"";
+					for (auto& element : path)
+						s << "/" << element;
+
+					s << "|" << http::method::to_string(endpoint->first) << "\":" << endpoint->second->route_metrics().to_json_string();
+
+					if (endpoint + 1 != endpoints_.get()->cend()) s << ",";
+				}
+			}
+
+			for (auto link = link_.cbegin(); link != link_.cend(); ++link)
+			{
+				path.push_back(link->first);
+				link->second->to_string_stream_json(s, path);
+
+				if (link + 1 != link_.cend()) s << ",";
+
+				path.pop_back();
+			}
 		}
 
 		void to_string_stream(std::stringstream& s, std::vector<std::string>& path)
@@ -2900,6 +2951,17 @@ public:
 		}
 	}
 
+	std::string to_json_string()
+	{
+		std::stringstream result;
+
+		std::vector<std::string> path_stack;
+
+		root_->to_string_stream_json(result, path_stack);
+
+		return result.str();
+	}
+
 	std::string to_string()
 	{
 		std::stringstream result;
@@ -3087,11 +3149,7 @@ public:
 
 		size_t requests_handled_{ 0 };
 		size_t requests_handled_prev_{ 0 };
-		size_t requests_per_second_{ 0 };
-
 		size_t connections_accepted_{ 0 };
-		size_t connections_accepted_prev_{ 0 };
-		size_t connections_accepted_per_second_{ 0 };
 
 		std::atomic<size_t> requests_current_{ 0 };
 
@@ -3116,21 +3174,6 @@ public:
 		{
 			access_log_.reserve(32);
 		};
-
-		void update_stats()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			std::chrono::steady_clock::time_point t1_ = std::chrono::steady_clock::now();
-			std::chrono::duration<std::int64_t, std::nano> duration(t1_ - t0_);
-
-			requests_per_second_ = ((requests_handled_ - requests_handled_prev_) * 100000000000) / duration.count();
-			connections_accepted_per_second_ = ((connections_accepted_ - connections_accepted_prev_) * 100000000000) / duration.count();
-
-			t0_ = std::chrono::steady_clock::now();
-
-			requests_handled_prev_ = requests_handled_;
-			connections_accepted_prev_ = connections_accepted_;
-		}
 
 		void idle(bool value)
 		{
@@ -3236,10 +3279,10 @@ public:
 			std::stringstream s;
 			std::lock_guard<std::mutex> g(mutex_);
 
-			s << R"(")" << session.request().get("Remote_Addr") << R"(")"
-			  << R"( - ")" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << R"(")"
-			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << R"( - ")" << session.request().get("User-Agent")
-			  << "\"\n";
+			s << R"(')" << session.request().get("Remote_Addr") << R"(')"
+			  << R"( - ')" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << R"(')"
+			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << R"( - ')" << session.request().get("User-Agent")
+			  << "\'";
 
 			access_log_.emplace_back(s.str());
 
@@ -3258,11 +3301,80 @@ public:
 			router_information_ = std::move(info);
 		}
 
+		enum class json_status_options
+		{
+			full,
+			config,
+			server_stats,
+			router,
+			accesslog
+		};
+
+		std::string to_json_string(json_status_options options, bool main_object = true)
+		{
+			std::stringstream s;
+
+			if (main_object) s << "{";
+
+			switch (options)
+			{
+			case json_status_options::full:
+			{
+				s << to_json_string(json_status_options::config, false) << ", " << to_json_string(json_status_options::server_stats, false) << ", "
+				  << to_json_string(json_status_options::router, false) << "," << to_json_string(json_status_options::accesslog, false);
+				break;
+			}
+			case json_status_options::config:
+			{
+				s << "\"configuration\": "
+				  << "{" << server_information_ << "}";
+				break;
+			}
+			case json_status_options::server_stats:
+			{
+				std::lock_guard<std::mutex> g(mutex_);
+				s << "\"stats\": "
+				  << "{\"connections_current\":" << connections_current_ << ","
+				  << "\"connections_accepted\":" << connections_accepted_ << ","
+				  << "\"connections_highest\":" << connections_accepted_ << ","
+				  << "\"requests_handled\" : " << requests_handled_ << "}";
+				break;
+			}
+			case json_status_options::router:
+			{
+				std::lock_guard<std::mutex> g(mutex_);
+				s << "\"router\": {" << router_information_ << "}";
+				break;
+			}
+			case json_status_options::accesslog:
+			{
+				std::lock_guard<std::mutex> g(mutex_);
+
+				s << "\"access_log\": [";
+				for (auto access_log_entry = access_log_.cbegin(); access_log_entry != access_log_.cend(); ++access_log_entry)
+				{
+					s << "\"";
+					s << *access_log_entry;
+
+					if (access_log_entry + 1 != access_log_.cend())
+						s << "\",\n";
+					else
+						s << "\"\n";
+				}
+				s << "]";
+				break;
+			}
+			}
+
+			if (main_object) s << "}";
+
+			return s.str();
+		}
+
 		std::string to_string()
 		{
-			std::lock_guard<std::mutex> g(mutex_);
-
 			std::stringstream s;
+			std::lock_guard<std::mutex> g(mutex_);
 
 			s << "Server Configuration:\n" << server_information_ << "\n";
 
@@ -3273,8 +3385,6 @@ public:
 			s << "requests_handled: " << requests_handled_ << "\n";
 			s << "busy: " << is_busy_ << "\n";
 			s << "idle: " << is_idle_ << "\n";
-			s << "requests_per_second: " << requests_per_second_ / 100.0 << "\n";
-			s << "connections_accepted_per_second: " << connections_accepted_per_second_ / 100.0 << "\n";
 
 			s << "\nEndPoints:\n" << router_information_ << "\n";
 
@@ -3349,9 +3459,6 @@ public:
 
 	void start_server() override
 	{
-		manager_.server_information(http::basic::server::configuration_.to_string());
-		manager_.router_information(http::basic::server::router_.to_string());
-
 		auto waiting = 0;
 		auto timeout = 2;
 
@@ -3392,8 +3499,6 @@ public:
 			if (http_connection_queue_.empty())
 			{
 				std::this_thread::yield();
-
-				manager_.update_stats();
 
 				if (manager_.connections_current() == 0)
 				{
@@ -3448,8 +3553,6 @@ public:
 			if (https_connection_queue_.empty())
 			{
 				std::this_thread::yield();
-
-				manager_.update_stats();
 
 				/*	if (manager_.connections_current() == 0)
 					{

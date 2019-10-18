@@ -272,6 +272,15 @@ private:
 				session.response().status(http::status::ok);
 			});
 
+			S::router_.on_get("/status_js", [this](const http::api::routing&, http::session_handler& session, const http::api::params&) {
+				std::stringstream str;
+				S::manager().server_information(S::configuration_.to_json_string());
+				S::manager().router_information(S::router_.to_json_string());
+				session.response().body() = manager().to_json_string(http::basic::server::server_manager::json_status_options::full);
+				session.response().type("application/json");
+				session.response().status(http::status::ok);
+			});
+
 			S::router_.on_get("/status", [this](const http::api::routing&, http::session_handler& session, const http::api::params&) {
 				S::manager().server_information(S::configuration_.to_string());
 				S::manager().router_information(S::router_.to_string());
