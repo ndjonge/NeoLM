@@ -3147,131 +3147,53 @@ public:
 		std::string server_information_;
 		std::string router_information_;
 
-		size_t requests_handled_{ 0 };
-		size_t requests_handled_prev_{ 0 };
-		size_t connections_accepted_{ 0 };
-
+		std::atomic<size_t> requests_handled_{ 0 };
+		std::atomic<size_t> requests_handled_prev_{ 0 };
+		std::atomic<size_t> connections_accepted_{ 0 };
 		std::atomic<size_t> requests_current_{ 0 };
+		std::atomic<size_t> connections_current_{ 0 };
+		std::atomic<size_t> connections_highest_{ 0 };
 
-		size_t connections_current_{ 0 };
-		size_t connections_highest_{ 0 };
-
-		bool is_idle_{ false };
-		bool is_busy_{ false };
-
-		std::chrono::steady_clock::time_point t0_;
-		std::chrono::steady_clock::time_point idle_t0_;
+		std::atomic<bool> is_idle_{ false };
+		std::atomic<bool> is_busy_{ false };
 
 		std::vector<std::string> access_log_;
-		std::mutex mutex_;
+		mutable std::mutex mutex_;
 
 	public:
 		server_manager() noexcept
 			: server_information_("")
 			, router_information_("")
-			, t0_(std::chrono::steady_clock::now())
-			, idle_t0_()
 		{
 			access_log_.reserve(32);
 		};
 
 		void idle(bool value)
 		{
-			std::lock_guard<std::mutex> g(mutex_);
-
-			if (!is_idle_ && value == true)
-				idle_t0_ = std::chrono::steady_clock::now();
-			else if (is_idle_ && value == false)
-				idle_t0_ = {};
-
 			is_idle_ = value;
 			is_busy_ = false;
 		}
 
-		std::int64_t idle_duration()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			return is_idle_ ? std::chrono::nanoseconds(std::chrono::steady_clock::now() - idle_t0_).count() / 1000000000 : 0;
-		}
-
-		bool is_idle()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			return is_idle_;
-		}
+		bool is_idle() { return is_idle_; }
 
 		void busy(bool value)
 		{
-			std::lock_guard<std::mutex> g(mutex_);
 			is_busy_ = value;
 			is_idle_ = false;
 		}
 
-		bool is_busy()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			return is_busy_;
-		}
+		bool is_busy() { return is_busy_; }
 
-		size_t requests_handled()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			return requests_handled_;
-		}
+		std::atomic<size_t>& requests_handled() { return requests_handled_; }
+		size_t requests_handled() const { return requests_handled_; }
 
-		void requests_handled(size_t nr)
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			requests_handled_ = nr;
-		}
+		std::atomic<size_t>& connections_accepted() { return connections_accepted_; }
+		size_t connections_accepted() const { return connections_accepted_; }
 
-		size_t connections_accepted()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			return connections_accepted_;
-		}
+		std::atomic<size_t>& connections_current() { return connections_current_; }
+		size_t connections_highest() const { return connections_highest_; }
 
-		void connections_accepted_increase()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			connections_accepted_++;
-		}
-
-		void connections_accepted_decrease()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			connections_accepted_--;
-		}
-
-		size_t connections_current()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			return connections_current_;
-		}
-
-		void connections_current_increase()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			connections_current_++;
-			if (connections_current_ > connections_highest_) connections_highest_ = connections_current_;
-		}
-
-		void connections_current_decrease()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			connections_current_--;
-		}
-
-		size_t connections_highest()
-		{
-			std::lock_guard<std::mutex> g(mutex_);
-			return connections_highest_;
-		}
-
-		void requests_current_increase() { requests_current_++; }
-
-		void requests_current_decrease() { requests_current_--; }
-
+		std::atomic<size_t>& requests_current() { return requests_current_; }
 		size_t requests_current() const { return requests_current_.load(); }
 
 		void log_access(http::session_handler& session)
@@ -3310,7 +3232,7 @@ public:
 			accesslog
 		};
 
-		std::string to_json_string(json_status_options options, bool main_object = true)
+		std::string to_json_string(json_status_options options, bool main_object = true) const
 		{
 			std::stringstream s;
 
@@ -3371,7 +3293,7 @@ public:
 			return s.str();
 		}
 
-		std::string to_string()
+		std::string to_string() const
 		{
 			std::stringstream s;
 			std::lock_guard<std::mutex> g(mutex_);
@@ -3391,7 +3313,7 @@ public:
 			s << "\nAccess Log:\n";
 
 			for (auto& access_log_entry : access_log_)
-				s << access_log_entry;
+				s << access_log_entry << "\n";
 
 			return s.str();
 		}
@@ -3533,8 +3455,8 @@ public:
 
 					http_connection_queue_.pop();
 
-					manager_.connections_accepted_increase();
-					manager_.connections_current_increase();
+					++manager_.connections_accepted();
+					++manager_.connections_current();
 				}
 			}
 		}
@@ -3587,8 +3509,8 @@ public:
 					connection_thread.detach();
 					https_connection_queue_.pop();
 
-					manager_.connections_accepted_increase();
-					manager_.connections_current_increase();
+					++manager_.connections_accepted();
+					++manager_.connections_current();
 				}
 			}
 		}
@@ -3777,7 +3699,7 @@ public:
 		{
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
-			server_.manager().connections_current_decrease();
+			--server_.manager().connections_current();
 		}
 
 		connection_handler(const connection_handler&) = delete;
@@ -3862,17 +3784,12 @@ public:
 						{
 							session_handler_.request().set("Remote_Addr", session_handler_.request().get("X-Forwarded-For", network::get_client_info(client_socket_)));
 
-							server_.manager().requests_current_increase();
+							++server_.manager().requests_current();
 							session_handler_.handle_request(server_.router_);
-							server_.manager().requests_current_decrease();
+							--server_.manager().requests_current();
 
-							// bool health_check_ok = (session_handler_.request().get("X-Health-Check") == "ok");
-
-							// if (!health_check_ok)
-							{
-								server_.manager().requests_handled(server_.manager().requests_handled() + 1);
-								server_.manager().log_access(session_handler_);
-							}
+							++server_.manager().requests_handled();
+							server_.manager().log_access(session_handler_);
 						}
 						else
 						{
@@ -4020,7 +3937,6 @@ private:
 
 } // namespace basic
 
-using middleware = http::api::router<>::middleware_type;
 using middleware = http::api::router<>::middleware_type;
 
 } // namespace http

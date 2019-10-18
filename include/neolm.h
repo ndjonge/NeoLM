@@ -147,21 +147,12 @@ private:
 
 			S::router_.on_busy([&]() {
 				bool result = true;
-
 				std::cout << "busy...\n";
-
-				//				upstream_controller().fork();
-
 				return result;
 			});
 
 			S::router_.on_idle([&]() {
 				bool result = true;
-
-				if (S::manager().idle_duration() >= 3600)
-				{
-					S::deactivate();
-				}
 				return result;
 			});
 
