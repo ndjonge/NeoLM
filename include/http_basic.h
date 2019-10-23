@@ -661,25 +661,25 @@ const char name_value_separator[] = { ':', ' ' };
 const char crlf[] = { '\r', '\n' };
 } // namespace misc_strings
 
-class field
+template <typename T> class field
 {
 public:
 	field() = default;
 
-	field(std::string name, std::string value = "")
+	field(std::string name, T value = T{})
 		: name(std::move(name))
 		, value(std::move(value)){};
 
 	std::string name;
-	std::string value;
+	T value;
 };
 
-class fields
+template <typename T> class fields
 {
 
 public:
-	using iterator = std::vector<http::field>::iterator;
-	using value_type = http::field;
+	using iterator = typename std::vector<http::field<T>>::iterator;
+	using value_type = http::field<T>;
 
 protected:
 	std::vector<fields::value_type> fields_;
@@ -690,11 +690,11 @@ public:
 	fields(std::initializer_list<fields::value_type> init_list)
 		: fields_(init_list){};
 
-	fields(const http::fields& f) = default;
-	fields(http::fields&& f) = default;
+	fields(const http::fields<T>& f) = default;
+	fields(http::fields<T>&& f) = default;
 
-	fields& operator=(const http::fields&) = default;
-	fields& operator=(http::fields&&) = default;
+	fields<T>& operator=(const http::fields<T>&) = default;
+	fields<T>& operator=(http::fields<T>&&) = default;
 
 	~fields() = default;
 
@@ -711,9 +711,9 @@ public:
 
 	inline bool fields_empty() const { return this->fields_.empty(); };
 
-	inline std::vector<fields::value_type>::reverse_iterator new_field()
+	inline typename std::vector<fields::value_type>::reverse_iterator new_field()
 	{
-		fields_.emplace_back(field());
+		fields_.emplace_back(field<T>{});
 		return fields_.rbegin();
 	}
 
@@ -754,7 +754,7 @@ public:
 	{
 		T returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_))
 		{
@@ -768,13 +768,13 @@ public:
 		return returnvalue;
 	}
 
-	inline std::vector<fields::value_type>::reverse_iterator last_new_field() { return fields_.rbegin(); }
+	inline typename std::vector<fields::value_type>::reverse_iterator last_new_field() { return fields_.rbegin(); }
 
 	inline const std::string& get(const char* name) const
 	{
 		static const std::string not_found = "";
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i == std::end(fields_))
 		{
@@ -793,7 +793,7 @@ public:
 
 	inline void set(const std::string& name, const std::string& value)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_))
 		{
@@ -801,14 +801,14 @@ public:
 		}
 		else
 		{
-			http::field field_(name, value);
+			http::field<T> field_(name, value);
 			fields_.emplace_back(std::move(field_));
 		}
 	}
 
 	inline void reset(const std::string& name)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_))
 		{
@@ -821,14 +821,14 @@ public:
 	const std::vector<fields::value_type> as_vector() const { return fields_; }
 	std::vector<fields::value_type> as_vector() { return fields_; }
 
-	const http::field& operator[](size_t index) const noexcept { return fields_[index]; }
+	const value_type& operator[](size_t index) const noexcept { return fields_[index]; }
 };
 
 class configuration
 {
 public:
-	using iterator = std::vector<http::field>::iterator;
-	using value_type = http::field;
+	using iterator = std::vector<http::field<std::string>>::iterator;
+	using value_type = http::field<std::string>;
 
 public:
 	configuration() = default;
@@ -906,7 +906,7 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_)) returnvalue = i->value == "true";
 
@@ -918,7 +918,7 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
 
@@ -930,7 +930,7 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i != std::end(fields_)) returnvalue = i->value;
 
@@ -942,7 +942,7 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		static const std::string not_found = "";
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		if (i == std::end(fields_))
 		{
@@ -956,7 +956,7 @@ public:
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_))
 		{
@@ -964,7 +964,7 @@ public:
 		}
 		else
 		{
-			http::field field_(name, value);
+			value_type field_(name, value);
 			fields_.emplace_back(std::move(field_));
 		}
 	}
@@ -976,7 +976,7 @@ public:
 	}
 
 private:
-	std::vector<http::field> fields_;
+	std::vector<http::field<std::string>> fields_;
 	mutable std::mutex configuration_mutex_;
 };
 
@@ -988,9 +988,9 @@ enum message_specializations
 
 template <message_specializations> class header;
 
-template <> class header<request_specialization> : public fields
+template <> class header<request_specialization> : public fields<std::string>
 {
-	using query_params = http::fields;
+	using query_params = http::fields<std::string>;
 	friend class session_handler;
 	friend class request_parser;
 
@@ -1077,7 +1077,7 @@ public:
 	}
 };
 
-template <> class header<response_specialization> : public fields
+template <> class header<response_specialization> : public fields<std::string>
 {
 private:
 	std::string reason_;
@@ -1161,6 +1161,9 @@ template <message_specializations specialization> class message : public header<
 {
 	// friend response_parser;
 	// friend request_parser;
+public:
+	using attributes = http::fields<void*>;
+	attributes attributes_;
 
 private:
 	std::string body_;
@@ -1183,12 +1186,14 @@ public:
 		header<specialization>::target_ = target;
 	}
 
+	message::attributes& attrib() const { return attributes_; };
+
 	std::string target() const { return header<specialization>::target_; }
 
 	void target(const std::string& target) { header<specialization>::target_ = target; }
 
-	const std::vector<http::field>& headers() const { return header<specialization>::fields_; }
-	std::vector<http::field>& headers() { return header<specialization>::fields_; }
+	const std::vector<http::field<std::string>>& headers() const { return header<specialization>::fields_; }
+	std::vector<http::field<std::string>>& headers() { return header<specialization>::fields_; }
 
 	void reset()
 	{
@@ -1214,22 +1219,22 @@ public:
 
 	bool has_content_length() const
 	{
-		if (http::fields::get("Content-Length").empty())
+		if (http::fields<std::string>::get("Content-Length").empty())
 			return false;
 		else
 			return true;
 	}
 
-	void type(const std::string& content_type) { http::fields::set("Content-Type", mime_types::extension_to_type(content_type)); }
+	void type(const std::string& content_type) { http::fields<std::string>::set("Content-Type", mime_types::extension_to_type(content_type)); }
 
 	void status(http::status::status_t status) { http::header<specialization>::status(status); }
 	http::status::status_t status() const { return http::header<specialization>::status(); }
 
-	void content_length(uint64_t const& length) { http::fields::set("Content-Length", std::to_string(length)); }
+	void content_length(uint64_t const& length) { http::fields<std::string>::set("Content-Length", std::to_string(length)); }
 
 	uint64_t content_length() const
 	{
-		auto content_length_ = http::fields::get("Content-Length");
+		auto content_length_ = http::fields<std::string>::get("Content-Length");
 
 		if (content_length_.empty())
 			return 0;
@@ -1241,7 +1246,7 @@ public:
 
 	bool connection_close() const
 	{
-		if (http::util::case_insensitive_equal(http::fields::get("Connection"), "close"))
+		if (http::util::case_insensitive_equal(http::fields<std::string>::get("Connection"), "close"))
 			return true;
 		else
 			return false;
@@ -1249,7 +1254,7 @@ public:
 
 	bool connection_keep_alive() const
 	{
-		if (http::util::case_insensitive_equal(http::fields::get("Connection"), "Keep-Alive"))
+		if (http::util::case_insensitive_equal(http::fields<std::string>::get("Connection"), "Keep-Alive"))
 			return true;
 		else
 			return false;
