@@ -719,11 +719,11 @@ public:
 		return fields_.rbegin();
 	}
 
-	template <typename T> typename std::enable_if<std::is_same<T, bool>::value, bool>::type get(const std::string& name, const T value = T())
+	template <typename P> typename std::enable_if<std::is_same<P, bool>::value, bool>::type get(const std::string& name, const P value = P())
 	{
-		T returnvalue = value;
+		P returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
 			if (http::util::case_insensitive_equal(f.name, name))
 				return true;
 			else
@@ -732,29 +732,29 @@ public:
 
 		if (i != std::end(fields_)) returnvalue = i->value == "true";
 
-		return static_cast<T>(returnvalue);
+		return static_cast<P>(returnvalue);
 	}
 
-	template <typename T> typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
+	template <typename P> typename std::enable_if<std::is_integral<T>::value && !std::is_same<P, bool>::value, P>::type get(const std::string& name, const P value = P())
 	{
-		T returnvalue = value;
+		P returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) { return http::util::case_insensitive_equal(f.name, name); });
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
 
-		return static_cast<T>(returnvalue);
+		return static_cast<P>(returnvalue);
 	}
 
-	template <typename T> typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type get(const std::string& name, const T& value = T())
+	template <typename P> typename std::enable_if<std::is_same<P, std::string>::value, std::string>::type get(const std::string& name, const P& value = P())
 	{
 		bool ignore_existance;
 		return get(name, ignore_existance, value);
 	}
 
-	template <typename T> typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type get(const std::string& name, bool& exists, const T& value = T())
+	template <typename P> typename std::enable_if<std::is_same<P, std::string>::value, std::string>::type get(const std::string& name, bool& exists, const P& value = P())
 	{
-		T returnvalue = value;
+		P returnvalue = value;
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) { return http::util::case_insensitive_equal(f.name, name); });
 
@@ -788,7 +788,7 @@ public:
 
 	inline bool has(const char* name) const
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
 		return i != std::end(fields_);
 	}
@@ -1213,14 +1213,14 @@ public:
 
 	const std::string& body() const { return body_; }
 
-	bool chunked() const { return (http::fields::get("Transfer-Encoding") == "chunked"); }
+	bool chunked() const { return (http::fields<std::string>::get("Transfer-Encoding") == "chunked"); }
 
 	void chunked(bool value)
 	{
 		if (value)
-			http::fields::set("Transfer-Encoding", "chunked");
+			http::fields<std::string>::set("Transfer-Encoding", "chunked");
 		else
-			http::fields::set("Transfer-Encoding", "none");
+			http::fields<std::string>::set("Transfer-Encoding", "none");
 	}
 
 	bool has_content_length() const
