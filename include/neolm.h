@@ -267,7 +267,7 @@ private:
 				std::stringstream str;
 				S::manager().server_information(S::configuration_.to_json_string());
 				S::manager().router_information(S::router_.to_json_string());
-				session.response().body() = manager().to_json_string(http::basic::server::server_manager::json_status_options::full);
+				session.response().body() = S::manager().to_json_string(http::basic::server::server_manager::json_status_options::full);
 				session.response().type("application/json");
 				session.response().status(http::status::ok);
 			});
