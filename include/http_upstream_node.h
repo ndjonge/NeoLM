@@ -8,9 +8,6 @@
 namespace http
 {
 
-
-
-
 namespace upstream
 {
 enum result
@@ -28,7 +25,7 @@ public:
 	{
 	}
 
-	virtual ~upstream_controller_base() {};
+	virtual ~upstream_controller_base(){};
 
 	virtual result add() const noexcept = 0;
 
@@ -48,33 +45,44 @@ public:
 	upstream_controller_nginx(http::configuration& configuration, http::basic::server& server)
 		: upstream_controller_base(configuration, server)
 	{
-		endpoint_base_url_ = configuration_.get("upstream-node-nginx-endpoint") + "/" + configuration_.get("upstream-node-nginx-group") + "?upstream=" + configuration_.get("upstream-node-nginx-group") + "-zone";
-		my_endpoint_ = configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":" + configuration_.get("http_listen_port");
+		endpoint_base_url_
+			= configuration_.get("upstream-node-nginx-endpoint") + "/" + configuration_.get("upstream-node-nginx-group") + "?upstream=" + configuration_.get("upstream-node-nginx-group") + "-zone";
 	};
 
 	result add() const noexcept
 	{
-		do 
+		do
 		{
-			auto result = http::basic::client::get(endpoint_base_url_ + "&add=&server=" + my_endpoint_, {}, {});
+			auto up_result = http::basic::client::get(
+				endpoint_base_url_ + "&up=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":" + configuration_.get("http_listen_port"), {}, {});
 
-			if (result.status() == http::status::ok)
+			if (up_result.status() == http::status::ok)
 			{
 				return http::upstream::sucess;
 			}
+			else
+			{
+				auto add_result = http::basic::client::get(
+					endpoint_base_url_ + "&add=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":" + configuration_.get("http_listen_port"), {}, {});
 
-
+				return http::upstream::sucess;
+			}
 		} while (remove() == http::upstream::sucess); // remove ourself and try again....
 
-		return http::upstream::failed;				
+		return http::upstream::failed;
 	}
 
 	result remove() const noexcept
 	{
-		auto result = http::basic::client::get(endpoint_base_url_ + "&remove=&server=" + my_endpoint_, {}, {});
+		auto down_result = http::basic::client::get(
+			endpoint_base_url_ + "&down=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":" + configuration_.get("http_listen_port"), {}, {});
 
-		if (result.status() == http::status::ok)
+		if (down_result.status() == http::status::ok)
+		{
+			auto remove_result = http::basic::client::get(
+				endpoint_base_url_ + "&remove=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":" + configuration_.get("http_listen_port"), {}, {});
 			return http::upstream::sucess;
+		}
 		else
 			return http::upstream::failed;
 	}
@@ -88,7 +96,9 @@ class upstream_controller_haproxy : public upstream_controller_base
 {
 public:
 	upstream_controller_haproxy(http::configuration& configuration, http::basic::server& server)
-		: upstream_controller_base(configuration, server) {}
+		: upstream_controller_base(configuration, server)
+	{
+	}
 
 	result add() const noexcept { return http::upstream::sucess; }
 
@@ -117,7 +127,6 @@ private:
 protected:
 	std::unique_ptr<upstream_controller_base> upstream_controller_;
 };
-
 
 std::unique_ptr<upstream_controller_base> make_upstream_controler_from_configuration(http::configuration& configuration, http::basic::server& server)
 {

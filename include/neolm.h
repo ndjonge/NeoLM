@@ -251,7 +251,6 @@ private:
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
 				session.response().body() += "\nWild Card Param: '" + param.get("*") + "'";
-
 				session.response().status(http::status::ok);
 			});
 
@@ -269,7 +268,15 @@ private:
 				S::manager().router_information(S::router_.to_json_string());
 				session.response().body() = manager().to_json_string(http::basic::server::server_manager::json_status_options::full);
 				session.response().type("application/json");
-				session.response().status(http::status::ok);
+
+				session.response().set_attribute<const char*>("name", "niek");
+
+				auto x1 = session.response().get_attribute<const char*>("name");
+
+				if (strcmp("niek", x1))
+					session.response().status(http::status::ok);
+				else
+					session.response().status(http::status::not_acceptable);
 			});
 
 			S::router_.on_get("/status", [this](const http::api::routing&, http::session_handler& session, const http::api::params&) {

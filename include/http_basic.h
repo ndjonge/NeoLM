@@ -664,6 +664,8 @@ const char crlf[] = { '\r', '\n' };
 template <typename T> class field
 {
 public:
+	using value_type = T;
+
 	field() = default;
 
 	field(std::string name, T value = T{})
@@ -770,9 +772,9 @@ public:
 
 	inline typename std::vector<fields::value_type>::reverse_iterator last_new_field() { return fields_.rbegin(); }
 
-	inline const std::string& get(const char* name) const
+	inline const T& get(const char* name) const
 	{
-		static const std::string not_found = "";
+		static const T not_found{};
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) { return (http::util::case_insensitive_equal(f.name, name)); });
 
@@ -791,7 +793,7 @@ public:
 		return i != std::end(fields_);
 	}
 
-	inline void set(const std::string& name, const std::string& value)
+	inline void set(const std::string& name, const T& value)
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) { return http::util::case_insensitive_equal(f.name, name); });
 
@@ -1159,10 +1161,9 @@ static std::string extension_to_type(const std::string& extension)
 
 template <message_specializations specialization> class message : public header<specialization>
 {
-	// friend response_parser;
-	// friend request_parser;
 public:
-	using attributes = http::fields<void*>;
+	using attributes = http::fields<std::uintptr_t>;
+
 	attributes attributes_;
 
 private:
@@ -1186,7 +1187,12 @@ public:
 		header<specialization>::target_ = target;
 	}
 
-	message::attributes& attrib() const { return attributes_; };
+	template <typename T> T get_attribute(const std::string& attribute_name) { return reinterpret_cast<T>(attributes_.get(attribute_name.c_str())); };
+
+	template <typename T> void set_attribute(const std::string& attribute_name, const T attribute_value)
+	{
+		attributes_.set(attribute_name, reinterpret_cast<attributes::value_type::value_type>(const_cast<T>(attribute_value)));
+	};
 
 	std::string target() const { return header<specialization>::target_; }
 
