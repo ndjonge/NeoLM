@@ -22,11 +22,12 @@
 #include <stack>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 #include <zlib.h>
 
 #if !defined(ASSERT)
-#include <assert.h>
+#include <cassert>
 #define ASSERT(X) assert(X)
 #endif
 
@@ -2462,7 +2463,7 @@ using session_handler_type = http::session_handler;
 class middleware_lambda_context
 { // Context passed to every C++ middleware handler
 public:
-	virtual ~middleware_lambda_context() {}
+	virtual ~middleware_lambda_context() = default;
 };
 
 class routing
@@ -2487,9 +2488,9 @@ public:
 			: value_(x)
 		{
 		} // explicit, or else a conversion from bool to outcome may happen if T is integral.
-		outcome(outcome_status status, const std::string& error)
+		outcome(outcome_status status, std::string  error)
 			: status_{ status }
-			, error_(error)
+			, error_(std::move(error))
 		{
 		}
 		outcome_status status() const { return status_; }
@@ -2583,10 +2584,10 @@ public:
 		middleware() = default;
 		middleware(const middleware&) = default;
 
-		middleware(const std::string& middleware_type, const std::string& middleware_attribute, const middleware_lambda& middleware_lambda_)
-			: middleware_type(middleware_type)
-			, middleware_lambda_(middleware_lambda_)
-			, middleware_attribute_(middleware_attribute)
+		middleware(std::string  middleware_type, std::string  middleware_attribute, middleware_lambda  middleware_lambda_)
+			: middleware_type(std::move(middleware_type))
+			, middleware_lambda_(std::move(middleware_lambda_))
+			, middleware_attribute_(std::move(middleware_attribute))
 		{
 		}
 
@@ -2635,7 +2636,7 @@ public:
 
 	routing(result r = http::api::router_match::no_route)
 		: result_(r)
-		, route_(nullptr)
+		 
 	{
 	}
 
@@ -2649,7 +2650,7 @@ public:
 
 private:
 	result result_;
-	route* route_;
+	route* route_{nullptr};
 	middlewares middlewares_;
 };
 
@@ -2769,8 +2770,8 @@ public:
 	std::unique_ptr<route_part> root_;
 
 public:
-	router(const std::string& doc_root)
-		: doc_root(doc_root)
+	router(std::string  doc_root)
+		: doc_root(std::move(doc_root))
 		, root_(new router::route_part{})
 	{
 		// std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
@@ -3027,7 +3028,7 @@ class curl
 	// needed by cURL to read the data from the http(s) connection
 	static size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp)
 	{
-		std::stringstream* str = static_cast<std::stringstream*>(userp);
+		auto* str = static_cast<std::stringstream*>(userp);
 		char* buf = static_cast<char*>(contents);
 		str->write(buf, size * nmemb);
 
