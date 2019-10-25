@@ -644,7 +644,7 @@ public:
 		inet_pton(AF_INET6, ip.c_str(), &(endpoint::data_.v6.sin6_addr));
 	}
 
-	v6(const network::ip::address address)
+	v6(const network::ip::address& address)
 		: endpoint{ 0, tcp::socket::family::v6 }
 	{
 		inet_pton(AF_INET6, address.first.c_str(), &(endpoint::data_.v6.sin6_addr));

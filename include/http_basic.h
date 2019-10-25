@@ -2611,7 +2611,7 @@ public:
 		route(const route& rhs) = default;
 		route& operator=(const route&) = default;
 
-		route(const endpoint_lambda endpoint)
+		route(const endpoint_lambda& endpoint)
 			: endpoint_(endpoint)
 		{
 		}
@@ -2811,9 +2811,9 @@ public:
 		on_middleware(path, middleware_pair);
 	}
 
-	void on_busy(std::function<bool()> on_busy_callback) { on_busy_ = on_busy_callback; }
+	void on_busy(const std::function<bool()>& on_busy_callback) { on_busy_ = on_busy_callback; }
 
-	void on_idle(std::function<bool()> on_idle_callback) { on_idle_ = on_idle_callback; }
+	void on_idle(const std::function<bool()>& on_idle_callback) { on_idle_ = on_idle_callback; }
 
 	void on_get(std::string&& route, R&& api_method) { on_http_method(method::get, route, std::move(api_method)); }
 
@@ -3049,7 +3049,7 @@ class curl
 	static int debug_callback(CURL*, curl_infotype, char*, size_t, void*) { return 0; }
 
 public:
-	curl(const std::string verb, const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body, bool verbose = false)
+	curl(const std::string& verb, const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body, bool verbose = false)
 		: hnd_(curl_easy_init())
 		, buffer_()
 		, error_buf_("")
