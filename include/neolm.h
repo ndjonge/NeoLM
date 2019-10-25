@@ -1,14 +1,15 @@
 #include <array>
 #include <chrono>
+#include <csignal>
 #include <ctime>
 #include <future>
 #include <iostream>
 #include <mutex>
-#include <signal.h>
 #include <string>
 #include <unordered_map>
 
 #include <nlohmann/json.hpp>
+#include <utility>
 using json = nlohmann::json;
 
 namespace neolm
@@ -26,9 +27,9 @@ using group_members = std::unordered_map<std::string, pm::group::member>;
 class member
 {
 public:
-	member(const std::string& tenant_id, const std::string& url)
-		: tenant_id_(tenant_id)
-		, url_(url)
+	member(std::string  tenant_id, std::string  url)
+		: tenant_id_(std::move(tenant_id))
+		, url_(std::move(url))
 	{
 	}
 
@@ -60,9 +61,9 @@ private:
 template <class M> class product
 {
 public:
-	product(const std::string& id, const std::string& description, M&& m)
-		: id_(id)
-		, description_(description)
+	product(std::string  id, std::string  description, M&& m)
+		: id_(std::move(id))
+		, description_(std::move(description))
 		, model_(m){};
 
 private:
@@ -75,8 +76,8 @@ private:
 class user
 {
 public:
-	user(const std::string& name)
-		: name_(name){};
+	user(std::string  name)
+		: name_(std::move(name)){};
 
 	std::string name_;
 };
@@ -84,9 +85,9 @@ public:
 class server
 {
 public:
-	server(const std::string& id, const std::string& hostname)
-		: id_(id)
-		, hostname_(hostname){};
+	server(std::string  id, std::string  hostname)
+		: id_(std::move(id))
+		, hostname_(std::move(hostname)){};
 
 	std::string id_;
 	std::string hostname_;
@@ -315,10 +316,10 @@ private:
 	};
 
 public:
-	license_manager(const http::configuration& configuration, const std::string& home_dir)
-		: configuration_{ configuration }
+	license_manager(http::configuration  configuration, std::string  home_dir)
+		: configuration_{std::move( configuration )}
 		, api_server_(*this, configuration_)
-		, home_dir_(home_dir)
+		, home_dir_(std::move(home_dir))
 	{
 	}
 
