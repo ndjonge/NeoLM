@@ -694,10 +694,10 @@ public:
 		: fields_(init_list){};
 
 	fields(const http::fields<T>& f) = default;
-	fields(http::fields<T>&& f) = default;
+	fields(http::fields<T>&& f) noexcept = default;
 
 	fields<T>& operator=(const http::fields<T>&) = default;
-	fields<T>& operator=(http::fields<T>&&) = default;
+	fields<T>& operator=(http::fields<T>&&) noexcept = default;
 
 	~fields() = default;
 
@@ -854,7 +854,7 @@ public:
 		fields_ = c.fields_;
 	};
 
-	configuration(http::configuration&& c)
+	configuration(http::configuration&& c) noexcept
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		fields_ = c.fields_;
@@ -867,7 +867,7 @@ public:
 		return *this;
 	};
 
-	configuration& operator=(http::configuration&& c)
+	configuration& operator=(http::configuration&& c) noexcept
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		fields_ = c.fields_;
@@ -1175,10 +1175,10 @@ public:
 	~message() = default;
 
 	message(const message&) = default;
-	message(message&&) = default;
+	message(message&&) noexcept = default;
 
 	message& operator=(const message&) = default;
-	message& operator=(message&&) = default;
+	message& operator=(message&&) noexcept = default;
 
 	// TODO use enableif....
 	message(const std::string& method, const std::string& target, const int version_nr = 11)
