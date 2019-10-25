@@ -2747,25 +2747,6 @@ public:
 	};
 
 public:
-	bool call_on_busy()
-	{
-		if (on_busy_)
-			return on_busy_();
-		else
-			return false;
-	}
-
-	bool call_on_idle()
-	{
-		if (on_idle_)
-			return on_idle_();
-		else
-			return true;
-	}
-
-	std::function<bool()> on_busy_;
-	std::function<bool()> on_idle_;
-
 	std::string doc_root;
 	std::unique_ptr<route_part> root_;
 
@@ -2810,10 +2791,6 @@ public:
 
 		on_middleware(path, middleware_pair);
 	}
-
-	void on_busy(const std::function<bool()>& on_busy_callback) { on_busy_ = on_busy_callback; }
-
-	void on_idle(const std::function<bool()>& on_idle_callback) { on_idle_ = on_idle_callback; }
 
 	void on_get(std::string&& route, R&& api_method) { on_http_method(method::get, route, std::move(api_method)); }
 
@@ -3433,28 +3410,9 @@ public:
 			if (http_connection_queue_.empty())
 			{
 				std::this_thread::yield();
-
-				if (manager_.connections_current() == 0)
-				{
-					if (router_.call_on_idle())
-					{
-						manager_.idle(true);
-					}
-				}
 			}
 			else
 			{
-				manager_.idle(false);
-
-				if (manager_.connections_current() >= 4)
-				{
-					manager_.busy(router_.call_on_busy());
-				}
-				else
-				{
-					manager_.busy(false);
-				}
-
 				while (!http_connection_queue_.empty())
 				{
 
@@ -3498,17 +3456,6 @@ public:
 			}
 			else
 			{
-				manager_.idle(false);
-
-				if (manager_.connections_current() >= 4)
-				{
-					manager_.busy(router_.call_on_busy());
-				}
-				else
-				{
-					manager_.busy(false);
-				}
-
 				while (!https_connection_queue_.empty())
 				{
 					// network::timeout(http_socket, connection_timeout_);

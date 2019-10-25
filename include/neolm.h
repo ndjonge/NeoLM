@@ -146,17 +146,6 @@ private:
 						S::router_.use("/");
 						S::router_.use("/files/");*/
 
-			S::router_.on_busy([&]() {
-				bool result = true;
-				std::cout << "busy...\n";
-				return result;
-			});
-
-			S::router_.on_idle([&]() {
-				bool result = true;
-				return result;
-			});
-
 			// Get secific node info, or get list of nodes per tenant-cluster.
 			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing&, http::session_handler& session, const http::api::params& params) {
 				const auto& tenant = params.get("tenant");
