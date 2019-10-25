@@ -3143,9 +3143,6 @@ public:
 		std::atomic<size_t> connections_current_{ 0 };
 		std::atomic<size_t> connections_highest_{ 0 };
 
-		std::atomic<bool> is_idle_{ false };
-		std::atomic<bool> is_busy_{ false };
-
 		std::vector<std::string> access_log_;
 		mutable std::mutex mutex_;
 
@@ -3156,22 +3153,6 @@ public:
 		{
 			access_log_.reserve(32);
 		};
-
-		void idle(bool value)
-		{
-			is_idle_ = value;
-			is_busy_ = false;
-		}
-
-		bool is_idle() { return is_idle_; }
-
-		void busy(bool value)
-		{
-			is_busy_ = value;
-			is_idle_ = false;
-		}
-
-		bool is_busy() { return is_busy_; }
 
 		std::atomic<size_t>& requests_handled() { return requests_handled_; }
 		size_t requests_handled() const { return requests_handled_; }
@@ -3294,8 +3275,6 @@ public:
 			s << "connections_highest: " << connections_highest_ << "\n";
 			s << "connections_current: " << connections_current_ << "\n";
 			s << "requests_handled: " << requests_handled_ << "\n";
-			s << "busy: " << is_busy_ << "\n";
-			s << "idle: " << is_idle_ << "\n";
 
 			s << "\nEndPoints:\n" << router_information_ << "\n";
 

@@ -19,6 +19,7 @@
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <fcntl.h>
 #endif
 
 #include "openssl/err.h"
@@ -644,7 +645,7 @@ public:
 		inet_pton(AF_INET6, ip.c_str(), &(endpoint::data_.v6.sin6_addr));
 	}
 
-	v6(const network::ip::address& address)
+	v6(const network::ip::address address)
 		: endpoint{ 0, tcp::socket::family::v6 }
 	{
 		inet_pton(AF_INET6, address.first.c_str(), &(endpoint::data_.v6.sin6_addr));
@@ -704,6 +705,23 @@ private:
 	resolver_results resolver_results_;
 };
 
+inline int close_on_exec(network::tcp::socket& s) // TODO move to socket class
+{
+#ifdef _WIN32
+	// TODO!!
+	//
+#else
+	int flags = fcntl(s.lowest_layer(), F_GETFD);
+	if (flags < 0) {
+	// error in retrieval value, ignore this error
+	flags = 0;
+	}
+	/* add FD_CLOEXEC bit */ 
+	(void) fcntl(s.lowest_layer(), F_SETFD, flags|FD_CLOEXEC);
+#endif
+	return 0;
+}
+
 class acceptor
 {
 public:
@@ -717,6 +735,8 @@ public:
 		endpoint_ = &endpoint;
 
 		endpoint_->open(protocol_);
+
+		close_on_exec(endpoint_->socket());
 
 		ret = ::bind(endpoint_->socket().lowest_layer(), endpoint_->addr(), endpoint_->addr_size());
 
@@ -751,6 +771,10 @@ public:
 		if (client_socket == -1)
 		{
 			ec = network::error::interrupted;
+		}
+		else
+		{
+			close_on_exec(s);
 		}
 	}
 
@@ -812,6 +836,12 @@ inline error_code connect(tcp::socket& s, tcp::resolver::resolver_results& resul
 
 	return ret;
 }
+
+inline std::int32_t read(const socket_t& s, const buffer& b) noexcept { return ::recv(s, b.data(), static_cast<int>(b.size()), 0); }
+
+inline std::int32_t write(const socket_t& s, const buffer& b) noexcept { return ::send(s, b.data(), static_cast<int>(b.size()), 0); }
+
+inline std::int32_t write(const socket_t& s, const std::string& str) noexcept { return ::send(s, str.data(), static_cast<int>(str.size()), 0); }
 
 inline std::int32_t read(const network::tcp::socket& s, const buffer& b) noexcept { return ::recv(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0); }
 
@@ -914,6 +944,8 @@ inline int timeout(network::tcp::socket& s, int value)
 
 	return ret;
 }
+
+inline void closesocket(const socket_t& client_socket) { ::closesocket(client_socket); }
 
 inline void closesocket(network::tcp::socket& client_socket) { ::closesocket(client_socket.lowest_layer()); }
 
