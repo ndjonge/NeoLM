@@ -27,7 +27,7 @@ using group_members = std::unordered_map<std::string, pm::group::member>;
 class member
 {
 public:
-	member(std::string  tenant_id, std::string  url)
+	member(std::string tenant_id, std::string url)
 		: tenant_id_(std::move(tenant_id))
 		, url_(std::move(url))
 	{
@@ -61,7 +61,7 @@ private:
 template <class M> class product
 {
 public:
-	product(std::string  id, std::string  description, M&& m)
+	product(std::string id, std::string description, M&& m)
 		: id_(std::move(id))
 		, description_(std::move(description))
 		, model_(m){};
@@ -76,7 +76,7 @@ private:
 class user
 {
 public:
-	user(std::string  name)
+	user(std::string name)
 		: name_(std::move(name)){};
 
 	std::string name_;
@@ -85,7 +85,7 @@ public:
 class server
 {
 public:
-	server(std::string  id, std::string  hostname)
+	server(std::string id, std::string hostname)
 		: id_(std::move(id))
 		, hostname_(std::move(hostname)){};
 
@@ -147,9 +147,9 @@ private:
 						S::router_.use("/files/");*/
 
 			// Get secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing&, http::session_handler& session, const http::api::params& params) {
-				const auto& tenant = params.get("tenant");
-				const auto& node = params.get("node");
+			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
+				const auto& tenant = session.params().get("tenant");
+				const auto& node = session.params().get("node");
 
 				if (tenant.empty() && node.empty())
 				{
@@ -173,9 +173,9 @@ private:
 			});
 
 			// Remove secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_delete("/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing&, http::session_handler& session, const http::api::params& params) {
-				const auto& tenant = params.get("tenant");
-				const auto& node = params.get("node");
+			S::router_.on_delete("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
+				const auto& tenant = session.params().get("tenant");
+				const auto& node = session.params().get("node");
 
 				if (tenant.empty() && node.empty())
 				{
@@ -214,9 +214,9 @@ private:
 			});
 
 			// New node, tenant must exist.
-			S::router_.on_put("/pm/tenants/{tenant}/upstreams/{node}", [&](const http::api::routing&, http::session_handler& session, const http::api::params& params) {
-				const auto& tenant = params.get("tenant");
-				const auto& node = params.get("node");
+			S::router_.on_put("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
+				const auto& tenant = session.params().get("tenant");
+				const auto& node = session.params().get("node");
 
 				if (tenant.empty() || node.empty())
 				{
@@ -237,22 +237,22 @@ private:
 				}
 			});
 
-			S::router_.on_get("/api/rest/fx/*", [this](const http::api::routing&, http::session_handler& session, const http::api::params& param) {
+			S::router_.on_get("/api/rest/fx/*", [this](http::session_handler& session) {
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
-				session.response().body() += "\nWild Card Param: '" + param.get("*") + "'";
+				session.response().body() += "\nWild Card Param: '" + session.params().get("*") + "'";
 				session.response().status(http::status::ok);
 			});
 
-			S::router_.on_get("/api/rest/fx/test/niek/*", [this](const http::api::routing&, http::session_handler& session, const http::api::params& param) {
+			S::router_.on_get("/api/rest/fx/test/niek/*", [this](http::session_handler& session) {
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
-				session.response().body() += "\nWild Card Special Case Param: '" + param.get("*") + "'";
+				session.response().body() += "\nWild Card Special Case Param: '" + session.params().get("*") + "'";
 
 				session.response().status(http::status::ok);
 			});
 
-			S::router_.on_get("/status_js", [this](const http::api::routing&, http::session_handler& session, const http::api::params&) {
+			S::router_.on_get("/status_js", [this](http::session_handler& session) {
 				std::stringstream str;
 				S::manager().server_information(S::configuration_.to_json_string());
 				S::manager().router_information(S::router_.to_json_string());
@@ -269,7 +269,7 @@ private:
 					session.response().status(http::status::not_acceptable);
 			});
 
-			S::router_.on_get("/status", [this](const http::api::routing&, http::session_handler& session, const http::api::params&) {
+			S::router_.on_get("/status", [this](http::session_handler& session) {
 				S::manager().server_information(S::configuration_.to_string());
 				S::manager().router_information(S::router_.to_string());
 
@@ -280,7 +280,7 @@ private:
 				session.response().status(http::status::ok);
 			});
 
-			S::router_.on_get("/no_content", [this](const http::api::routing&, http::session_handler& session, const http::api::params&) {
+			S::router_.on_get("/no_content", [this](http::session_handler& session) {
 				session.response().body() = "body text!";
 				session.response().status(http::status::no_content);
 			});
@@ -289,11 +289,11 @@ private:
 
 			S::router_.use_middleware(
 				"/status",
-				[this](http::api::middleware_lambda_context&, const http::api::routing&, http::session_handler& session, const http::api::params&) {
+				[this](http::api::middleware_lambda_context&, http::session_handler& session) {
 					session.response().set("name", "value2");
 					return http::api::routing::outcome<std::int64_t>{ 0 };
 				},
-				[this](http::api::middleware_lambda_context&, const http::api::routing&, http::session_handler& session, const http::api::params&) {
+				[this](http::api::middleware_lambda_context&, http::session_handler& session) {
 					session.response().set("name", "value2");
 					return http::api::routing::outcome<std::int64_t>{ 0 };
 				});
@@ -305,8 +305,8 @@ private:
 	};
 
 public:
-	license_manager(http::configuration  configuration, std::string  home_dir)
-		: configuration_{std::move( configuration )}
+	license_manager(http::configuration configuration, std::string home_dir)
+		: configuration_{ std::move(configuration) }
 		, api_server_(*this, configuration_)
 		, home_dir_(std::move(home_dir))
 	{
@@ -347,8 +347,8 @@ public:
 			}
 		};
 
-		std::function<void(http::session_handler&, const http::api::params&)> the_test = [](http::session_handler& session, const http::api::params& params) {
-			const auto& test = params.get("test");
+		std::function<void(http::session_handler&, const http::api::params&)> the_test = [](http::session_handler& session) {
+			const auto& test = session.params().get("test");
 
 			if (test.empty())
 			{

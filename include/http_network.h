@@ -14,12 +14,12 @@
 #define SOCKET int
 #define closesocket close
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <fcntl.h>
 #endif
 
 #include "openssl/err.h"
@@ -705,22 +705,27 @@ private:
 	resolver_results resolver_results_;
 };
 
-inline int close_on_exec(network::tcp::socket& s) // TODO move to socket class
-{
 #ifdef _WIN32
+inline int close_on_exec(network::tcp::socket&) // TODO move to socket class
+{
 	// TODO!!
 	//
-#else
-	int flags = fcntl(s.lowest_layer(), F_GETFD);
-	if (flags < 0) {
-	// error in retrieval value, ignore this error
-	flags = 0;
-	}
-	/* add FD_CLOEXEC bit */ 
-	(void) fcntl(s.lowest_layer(), F_SETFD, flags|FD_CLOEXEC);
-#endif
 	return 0;
 }
+#else
+inline int close_on_exec(network::tcp::socket& s) // TODO move to socket class
+{
+	int flags = fcntl(s.lowest_layer(), F_GETFD);
+	if (flags < 0)
+	{
+		// error in retrieval value, ignore this error
+		flags = 0;
+	}
+	/* add FD_CLOEXEC bit */
+	(void)fcntl(s.lowest_layer(), F_SETFD, flags | FD_CLOEXEC);
+	return 0;
+}
+#endif
 
 class acceptor
 {
@@ -853,10 +858,7 @@ inline std::int32_t read(ssl::stream<tcp::socket>& s, const buffer& b) noexcept 
 
 inline std::int32_t write(ssl::stream<tcp::socket>& s, const buffer& b) noexcept { return SSL_write(s.native(), b.data(), static_cast<int>(b.size())); }
 
-inline std::int32_t write(ssl::stream<tcp::socket>& s, const std::string& str) noexcept
-{
-	return SSL_write(s.native(), const_cast<char*>(str.data()), static_cast<int>(str.size()));
-} // NOLINT
+inline std::int32_t write(ssl::stream<tcp::socket>& s, const std::string& str) noexcept { return SSL_write(s.native(), const_cast<char*>(str.data()), static_cast<int>(str.size())); } // NOLINT
 
 inline std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_socket)
 {
@@ -964,9 +966,6 @@ enum shutdown_type
 	shutdown_both
 };
 
-inline void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, shutdown_type how)
-{
-	::shutdown(client_socket.lowest_layer().lowest_layer(), static_cast<int>(how));
-}
+inline void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, shutdown_type how) { ::shutdown(client_socket.lowest_layer().lowest_layer(), static_cast<int>(how)); }
 
 } // namespace network

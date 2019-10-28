@@ -195,6 +195,12 @@ class request_parser;
 class response_parser;
 class session_handler;
 
+namespace api
+{
+class routing;
+class params;
+} // namespace api
+
 namespace util
 {
 inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
@@ -1164,7 +1170,6 @@ template <message_specializations specialization> class message : public header<
 {
 public:
 	using attributes = http::fields<std::uintptr_t>;
-
 	attributes attributes_;
 
 private:
@@ -2364,6 +2369,10 @@ public:
 			break;
 		}
 		}
+
+		this->params_ = nullptr;
+		this->routing_ = nullptr;
+
 		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false && response_.connection_close() == false)
 			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && request_.connection_close() == false))
 		{
@@ -2397,6 +2406,8 @@ public:
 	http::request_parser& request_parser() { return request_parser_; };
 	http::response_message& response() { return response_; };
 	http::request_message& request() { return request_; };
+	http::api::params& params() { return *params_; };
+	http::api::routing& routing() { return *routing_; };
 
 	void reset()
 	{
@@ -2410,11 +2421,17 @@ public:
 	std::chrono::steady_clock::time_point t0() const noexcept { return t0_; };
 	std::chrono::steady_clock::time_point t1() const noexcept { return t1_; };
 
+public:
+	void routing(http::api::routing& r) { routing_ = &r; }
+	void params(http::api::params& p) { params_ = &p; }
+
 private:
 	http::request_message request_;
 	http::response_message response_;
 	http::request_parser request_parser_;
 	http::configuration& configuration_;
+	http::api::routing* routing_{ nullptr };
+	http::api::params* params_{ nullptr };
 
 	int keepalive_count_;
 	int keepalive_max_;
@@ -2435,15 +2452,25 @@ public:
 		return ret.second;
 	}
 
-	inline const std::string& get(const std::string& name) const
+	inline const std::string& get(const std::string& name, const std::string& default_value = {}) const
+	{
+		auto it = parameters.find(name);
+
+		if (it != parameters.end()) // if found
+			return it->second;
+
+		return default_value;
+	}
+
+	inline const std::string& try_get(const std::string& name) const noexcept(false)
 	{
 		auto it = parameters.find(name);
 		static std::string no_ret = "";
 
 		if (it != parameters.end()) // if found
 			return it->second;
-
-		return no_ret;
+		else
+			throw std::runtime_error("route param: {" + name + "} does not exists");
 	}
 
 	inline bool empty() const noexcept { return parameters.empty(); };
@@ -2488,7 +2515,7 @@ public:
 			: value_(x)
 		{
 		} // explicit, or else a conversion from bool to outcome may happen if T is integral.
-		outcome(outcome_status status, std::string  error)
+		outcome(outcome_status status, std::string error)
 			: status_{ status }
 			, error_(std::move(error))
 		{
@@ -2512,8 +2539,8 @@ public:
 		T value_;
 	};
 
-	using endpoint_lambda = std::function<void(const routing& route_context, session_handler_type& session, const http::api::params& params)>;
-	using middleware_lambda = std::function<outcome<std::int64_t>(middleware_lambda_context& context, const routing& route_context, session_handler_type& session, const http::api::params& params)>;
+	using endpoint_lambda = std::function<void(session_handler_type& session)>;
+	using middleware_lambda = std::function<outcome<std::int64_t>(middleware_lambda_context& context, session_handler_type& session)>;
 
 	using result = http::api::router_match::route_context_type;
 
@@ -2584,7 +2611,7 @@ public:
 		middleware() = default;
 		middleware(const middleware&) = default;
 
-		middleware(std::string  middleware_type, std::string  middleware_attribute, middleware_lambda  middleware_lambda_)
+		middleware(std::string middleware_type, std::string middleware_attribute, middleware_lambda middleware_lambda_)
 			: middleware_type(std::move(middleware_type))
 			, middleware_lambda_(std::move(middleware_lambda_))
 			, middleware_attribute_(std::move(middleware_attribute))
@@ -2636,7 +2663,7 @@ public:
 
 	routing(result r = http::api::router_match::no_route)
 		: result_(r)
-		 
+
 	{
 	}
 
@@ -2650,7 +2677,7 @@ public:
 
 private:
 	result result_;
-	route* route_{nullptr};
+	route* route_{ nullptr };
 	middlewares middlewares_;
 };
 
@@ -2751,7 +2778,7 @@ public:
 	std::unique_ptr<route_part> root_;
 
 public:
-	router(std::string  doc_root)
+	router(std::string doc_root)
 		: doc_root(std::move(doc_root))
 		, root_(new router::route_part{})
 	{
@@ -2970,10 +2997,13 @@ public:
 
 		auto route_context = match_route(session.request().method(), url, route_params);
 
+		session.routing(route_context);
+		session.params(route_params);
+
 		if (route_context.match_result() == http::api::router_match::match_found)
 		{
 			auto t0 = std::chrono::steady_clock::now();
-			route_context.the_route().endpoint()(route_context, session, route_params);
+			route_context.the_route().endpoint()(session);
 			auto t1 = std::chrono::steady_clock::now();
 			route_context.the_route().update_metrics(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 		}
