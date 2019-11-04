@@ -3213,8 +3213,10 @@ public:
 		std::initializer_list<std::string> hdrs,
 		const std::string& body,
 		bool verbose = false)
-		: hnd_(curl_easy_init()), buffer_(), error_buf_(""), headers_(nullptr)
+		: hnd_(curl_easy_init()), buffer_(), headers_(nullptr)
 	{
+		strcpy(error_buf_, ""); // TODO refactor the usage of CURL in C++!
+
 		if (verbose)
 		{
 			curl_easy_setopt(hnd_, CURLOPT_VERBOSE, 1);
