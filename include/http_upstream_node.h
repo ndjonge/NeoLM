@@ -20,8 +20,7 @@ class upstream_controller_base
 {
 public:
 	upstream_controller_base(http::configuration& configuration, http::basic::server& server)
-		: configuration_(configuration)
-		, server_(server)
+		: configuration_(configuration), server_(server)
 	{
 	}
 
@@ -45,8 +44,9 @@ public:
 	upstream_controller_nginx(http::configuration& configuration, http::basic::server& server)
 		: upstream_controller_base(configuration, server)
 	{
-		endpoint_base_url_
-			= configuration_.get("upstream-node-nginx-endpoint") + "/" + configuration_.get("upstream-node-nginx-group") + "?upstream=" + configuration_.get("upstream-node-nginx-group") + "-zone";
+		endpoint_base_url_ = configuration_.get("upstream-node-nginx-endpoint") + "/"
+							 + configuration_.get("upstream-node-nginx-group")
+							 + "?upstream=" + configuration_.get("upstream-node-nginx-group") + "-zone";
 	};
 
 	result add() const noexcept
@@ -54,7 +54,11 @@ public:
 		do
 		{
 			auto up_result = http::basic::client::get(
-				endpoint_base_url_ + "&up=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":" + configuration_.get("http_listen_port"), {}, {});
+				endpoint_base_url_
+					+ "&up=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1")
+					+ ":" + configuration_.get("http_listen_port"),
+				{},
+				{});
 
 			if (up_result.status() == http::status::ok)
 			{
@@ -63,7 +67,11 @@ public:
 			else
 			{
 				auto add_result = http::basic::client::get(
-					endpoint_base_url_ + "&add=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":" + configuration_.get("http_listen_port"), {}, {});
+					endpoint_base_url_ + "&add=&server="
+						+ configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":"
+						+ configuration_.get("http_listen_port"),
+					{},
+					{});
 
 				return http::upstream::sucess;
 			}
@@ -75,12 +83,20 @@ public:
 	result remove() const noexcept
 	{
 		auto down_result = http::basic::client::get(
-			endpoint_base_url_ + "&down=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":" + configuration_.get("http_listen_port"), {}, {});
+			endpoint_base_url_
+				+ "&down=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1")
+				+ ":" + configuration_.get("http_listen_port"),
+			{},
+			{});
 
 		if (down_result.status() == http::status::ok)
 		{
 			auto remove_result = http::basic::client::get(
-				endpoint_base_url_ + "&remove=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":" + configuration_.get("http_listen_port"), {}, {});
+				endpoint_base_url_ + "&remove=&server="
+					+ configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":"
+					+ configuration_.get("http_listen_port"),
+				{},
+				{});
 			return http::upstream::sucess;
 		}
 		else
@@ -110,7 +126,8 @@ private:
 
 } // namespace implementations
 
-std::unique_ptr<class upstream_controller_base> make_upstream_controler_from_configuration(http::configuration& configuration, http::basic::server& server);
+std::unique_ptr<class upstream_controller_base>
+make_upstream_controler_from_configuration(http::configuration& configuration, http::basic::server& server);
 
 class enable_server_as_upstream
 {
@@ -128,15 +145,18 @@ protected:
 	std::unique_ptr<upstream_controller_base> upstream_controller_;
 };
 
-std::unique_ptr<upstream_controller_base> make_upstream_controler_from_configuration(http::configuration& configuration, http::basic::server& server)
+std::unique_ptr<upstream_controller_base>
+make_upstream_controler_from_configuration(http::configuration& configuration, http::basic::server& server)
 {
 	if (configuration.get("upstream-node-type") == "nginx")
 	{
-		return std::unique_ptr<upstream_controller_base>(new http::upstream::implementations::upstream_controller_nginx(configuration, server));
+		return std::unique_ptr<upstream_controller_base>(
+			new http::upstream::implementations::upstream_controller_nginx(configuration, server));
 	}
 	else if (configuration.get("upstream-node-type") == "haproxy")
 	{
-		return std::unique_ptr<upstream_controller_base>(new http::upstream::implementations::upstream_controller_haproxy(configuration, server));
+		return std::unique_ptr<upstream_controller_base>(
+			new http::upstream::implementations::upstream_controller_haproxy(configuration, server));
 	}
 
 	return {};

@@ -76,10 +76,7 @@ class compressor
 	int level_;
 
 public:
-	compressor(int level = Z_DEFAULT_COMPRESSION) noexcept
-		: level_(level)
-	{
-	}
+	compressor(int level = Z_DEFAULT_COMPRESSION) noexcept : level_(level) {}
 
 	template <typename InputType> void compress(InputType& output, const char* data, std::size_t size) const
 	{
@@ -203,9 +200,54 @@ class params;
 
 namespace util
 {
+
+inline std::string escape_json(const std::string& s)
+{
+	std::ostringstream o;
+	for (const auto& c : s)
+	{
+		switch (c)
+		{
+			case '"':
+				o << "\\\"";
+				break;
+			case '\\':
+				o << "\\\\";
+				break;
+			case '\b':
+				o << "\\b";
+				break;
+			case '\f':
+				o << "\\f";
+				break;
+			case '\n':
+				o << "\\n";
+				break;
+			case '\r':
+				o << "\\r";
+				break;
+			case '\t':
+				o << "\\t";
+				break;
+			default:
+				if (static_cast<signed char>(c) >= 0x00 && static_cast<signed char>(c) <= 0x1f)
+				{
+					o << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)c;
+				}
+				else
+				{
+					o << c;
+				}
+		}
+	}
+	return o.str();
+}
+
 inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
 {
-	return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) { return tolower(a) == tolower(b); });
+	return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) {
+			   return tolower(a) == tolower(b);
+		   });
 }
 
 inline std::string return_current_time_and_date()
@@ -231,7 +273,12 @@ enum empties_t
 };
 };
 
-template <typename T> T& split_(T& result, const typename T::value_type& s, const typename T::value_type& delimiters, split_opt::empties_t empties = split_opt::empties_ok)
+template <typename T>
+T& split_(
+	T& result,
+	const typename T::value_type& s,
+	const typename T::value_type& delimiters,
+	split_opt::empties_t empties = split_opt::empties_ok)
 {
 	result.clear();
 	typename T::size_type next = T::value_type::npos;
@@ -258,7 +305,8 @@ enum split_options
 	stop_on_first_delimiter_found
 };
 
-inline std::vector<std::string> split(const std::string& str, const std::string& delimiters, split_options options = split_options::all_tokens)
+inline std::vector<std::string>
+split(const std::string& str, const std::string& delimiters, split_options options = split_options::all_tokens)
 {
 	std::vector<std::string> output;
 
@@ -286,7 +334,8 @@ inline std::vector<std::string> split(const std::string& str, const std::string&
 	return output;
 }
 
-inline bool read_from_disk(const std::string& file_path, const std::function<bool(std::array<char, 4096>&, size_t)>& read)
+inline bool
+read_from_disk(const std::string& file_path, const std::function<bool(std::array<char, 4096>&, size_t)>& read)
 {
 	std::array<char, 4096> buffer{};
 	std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
@@ -335,27 +384,27 @@ inline method_t to_method(const std::string& v) noexcept
 
 	switch (v[0])
 	{
-	case 'C':
-		if (v == "CONNECT") return http::method::connect;
-		break;
-	case 'D':
-		if (v == "DELETE") return http::method::delete_;
-		break;
-	case 'G':
-		if (v == "GET") return http::method::get;
-		break;
-	case 'H':
-		if (v == "HEAD") return http::method::get;
-		break;
-	case 'O':
-		if (v == "OPTIONS") return http::method::options;
-		break;
-	case 'P':
-		if (v == "PUT") return http::method::put;
-		if (v == "POST") return http::method::post;
-		if (v == "PATCH") return http::method::patch;
-		if (v == "PURGE") return http::method::purge;
-		return method::unknown;
+		case 'C':
+			if (v == "CONNECT") return http::method::connect;
+			break;
+		case 'D':
+			if (v == "DELETE") return http::method::delete_;
+			break;
+		case 'G':
+			if (v == "GET") return http::method::get;
+			break;
+		case 'H':
+			if (v == "HEAD") return http::method::get;
+			break;
+		case 'O':
+			if (v == "OPTIONS") return http::method::options;
+			break;
+		case 'P':
+			if (v == "PUT") return http::method::put;
+			if (v == "POST") return http::method::post;
+			if (v == "PATCH") return http::method::patch;
+			if (v == "PURGE") return http::method::purge;
+			return method::unknown;
 	}
 
 	return method::unknown;
@@ -365,28 +414,28 @@ inline std::string to_string(method_t method) noexcept
 {
 	switch (method)
 	{
-	case method::delete_:
-		return "DELETE";
-	case method::get:
-		return "GET";
-	case method::head:
-		return "HEAD";
-	case method::post:
-		return "POST";
-	case method::put:
-		return "PUT";
-	case method::connect:
-		return "CONNECT";
-	case method::options:
-		return "OPTIONS";
-	case method::trace:
-		return "TRACE";
-	case method::patch:
-		return "PATCH";
-	case method::purge:
-		return "PURGE";
-	default:
-		return "<unknown>";
+		case method::delete_:
+			return "DELETE";
+		case method::get:
+			return "GET";
+		case method::head:
+			return "HEAD";
+		case method::post:
+			return "POST";
+		case method::put:
+			return "PUT";
+		case method::connect:
+			return "CONNECT";
+		case method::options:
+			return "OPTIONS";
+		case method::trace:
+			return "TRACE";
+		case method::patch:
+			return "PATCH";
+		case method::purge:
+			return "PURGE";
+		default:
+			return "<unknown>";
 	}
 }
 
@@ -459,104 +508,104 @@ inline const char* to_string(status_t s)
 {
 	switch (s)
 	{
-	case http::status::ok:
-		return "HTTP/1.1 200 OK\r\n";
-	case http::status::created:
-		return "HTTP/1.1 201 Created\r\n";
-	case http::status::accepted:
-		return "HTTP/1.1 202 Accepted\r\n";
-	case http::status::no_content:
-		return "HTTP/1.1 204 No Content\r\n";
-	case http::status::multiple_choices:
-		return "HTTP/1.1 300 Multiple Choices\r\n";
-	case http::status::moved_permanently:
-		return "HTTP/1.1 301 Moved Permanently\r\n";
-	case http::status::moved_temporarily:
-		return "HTTP/1.1 302 Moved Temporarily\r\n";
-	case http::status::not_modified:
-		return "HTTP/1.1 304 Not Modified\r\n";
-	case http::status::bad_request:
-		return "HTTP/1.1 400 Bad Request\r\n";
-	case http::status::unauthorized:
-		return "HTTP/1.1 401 Unauthorized\r\n";
-	case http::status::forbidden:
-		return "HTTP/1.1 403 Forbidden\r\n";
-	case http::status::not_found:
-		return "HTTP/1.1 404 Not Found\r\n";
-	case http::status::method_not_allowed:
-		return "HTTP/1.1 405 Method Not Allowed\r\n";
-	case http::status::not_acceptable:
-		return "HTTP/1.1 406 Method Not Acceptable\r\n";
-	case http::status::proxy_authentication_required:
-		return "HTTP/1.1 407 Proxy Authentication Required\r\n";
-	case http::status::request_timeout:
-		return "HTTP/1.1 408 Request Timeout\r\n";
-	case http::status::conflict:
-		return "HTTP/1.1 409 Conflict \r\n";
-	case http::status::gone:
-		return "HTTP/1.1 410 Gone \r\n";
-	case http::status::length_required:
-		return "HTTP/1.1 411 Length Required\r\n";
-	case http::status::precondition_failed:
-		return "HTTP/1.1 412 Precondition Failed\r\n";
-	case http::status::payload_too_large:
-		return "HTTP/1.1 413 Payload Too Large\r\n";
-	case http::status::uri_too_long:
-		return "HTTP/1.1 414 URI Too Long\r\n";
-	case http::status::unsupported_media_type:
-		return "HTTP/1.1 415 Unsupported Media Type\r\n";
-	case http::status::range_not_satisfiable:
-		return "HTTP/1.1 416 Range Not Satisfiable\r\n";
-	case http::status::expectation_failed:
-		return "HTTP/1.1 417 Expectation Failed\r\n";
-	case http::status::misdirected_request:
-		return "HTTP/1.1 418 I'm a teapot\r\n";
-	case http::status::unprocessable_entity:
-		return "HTTP/1.1 422 Unprocessable Entity\r\n";
-	case http::status::locked:
-		return "HTTP/1.1 423 Locked\r\n";
-	case http::status::failed_dependency:
-		return "HTTP/1.1 424 Failed Dependency\r\n";
-	case http::status::upgrade_required:
-		return "HTTP/1.1 426 Upgrade Required\r\n";
-	case http::status::precondition_required:
-		return "HTTP/1.1 428 Precondition Required\r\n";
-	case http::status::too_many_requests:
-		return "HTTP/1.1 429 Too Many Requests\r\n";
-	case http::status::request_header_fields_too_large:
-		return "HTTP/1.1 431 Request Header Fields Too Large\r\n";
-	case http::status::connection_closed_without_response:
-		return "HTTP/1.1 444 Connection Closed Without Response\r\n";
-	case http::status::unavailable_for_legal_reasons:
-		return "HTTP/1.1 451 Unavailable For Legal Reasons\r\n";
-	case http::status::client_closed_request:
-		return "HTTP/1.1 499 Client Closed Request\r\n";
-	case http::status::internal_server_error:
-		return "HTTP/1.1 500 Internal Server Error\r\n";
-	case http::status::not_implemented:
-		return "HTTP/1.1 501 Not Implemented\r\n";
-	case http::status::bad_gateway:
-		return "HTTP/1.1 502 Bad Gateway\r\n";
-	case http::status::service_unavailable:
-		return "HTTP/1.1 503 Service Unavailable\r\n";
-	case http::status::gateway_timeout:
-		return "HTTP/1.1 504 Gateway Timeout\r\n";
-	case http::status::http_version_not_supported:
-		return "HTTP/1.1 505 HTTP Version Not Supported\r\n";
-	case http::status::variant_also_negotiates:
-		return "HTTP/1.1 506 Variant Also Negotiates\r\n";
-	case http::status::insufficient_storage:
-		return "HTTP/1.1 507 Insufficient Storage\r\n";
-	case http::status::loop_detected:
-		return "HTTP/1.1 508 Loop Detected\r\n";
-	case http::status::not_extended:
-		return "HTTP/1.1 510 Not Extended\r\n";
-	case http::status::network_authentication_required:
-		return "HTTP/1.1 511 Network Authentication Required\r\n";
-	case http::status::network_connect_timeout_error:
-		return "HTTP/1.1 599 Network Authentication Required\r\n";
-	default:
-		return "HTTP/1.1 500 Internal Server Error\r\n";
+		case http::status::ok:
+			return "HTTP/1.1 200 OK\r\n";
+		case http::status::created:
+			return "HTTP/1.1 201 Created\r\n";
+		case http::status::accepted:
+			return "HTTP/1.1 202 Accepted\r\n";
+		case http::status::no_content:
+			return "HTTP/1.1 204 No Content\r\n";
+		case http::status::multiple_choices:
+			return "HTTP/1.1 300 Multiple Choices\r\n";
+		case http::status::moved_permanently:
+			return "HTTP/1.1 301 Moved Permanently\r\n";
+		case http::status::moved_temporarily:
+			return "HTTP/1.1 302 Moved Temporarily\r\n";
+		case http::status::not_modified:
+			return "HTTP/1.1 304 Not Modified\r\n";
+		case http::status::bad_request:
+			return "HTTP/1.1 400 Bad Request\r\n";
+		case http::status::unauthorized:
+			return "HTTP/1.1 401 Unauthorized\r\n";
+		case http::status::forbidden:
+			return "HTTP/1.1 403 Forbidden\r\n";
+		case http::status::not_found:
+			return "HTTP/1.1 404 Not Found\r\n";
+		case http::status::method_not_allowed:
+			return "HTTP/1.1 405 Method Not Allowed\r\n";
+		case http::status::not_acceptable:
+			return "HTTP/1.1 406 Method Not Acceptable\r\n";
+		case http::status::proxy_authentication_required:
+			return "HTTP/1.1 407 Proxy Authentication Required\r\n";
+		case http::status::request_timeout:
+			return "HTTP/1.1 408 Request Timeout\r\n";
+		case http::status::conflict:
+			return "HTTP/1.1 409 Conflict \r\n";
+		case http::status::gone:
+			return "HTTP/1.1 410 Gone \r\n";
+		case http::status::length_required:
+			return "HTTP/1.1 411 Length Required\r\n";
+		case http::status::precondition_failed:
+			return "HTTP/1.1 412 Precondition Failed\r\n";
+		case http::status::payload_too_large:
+			return "HTTP/1.1 413 Payload Too Large\r\n";
+		case http::status::uri_too_long:
+			return "HTTP/1.1 414 URI Too Long\r\n";
+		case http::status::unsupported_media_type:
+			return "HTTP/1.1 415 Unsupported Media Type\r\n";
+		case http::status::range_not_satisfiable:
+			return "HTTP/1.1 416 Range Not Satisfiable\r\n";
+		case http::status::expectation_failed:
+			return "HTTP/1.1 417 Expectation Failed\r\n";
+		case http::status::misdirected_request:
+			return "HTTP/1.1 418 I'm a teapot\r\n";
+		case http::status::unprocessable_entity:
+			return "HTTP/1.1 422 Unprocessable Entity\r\n";
+		case http::status::locked:
+			return "HTTP/1.1 423 Locked\r\n";
+		case http::status::failed_dependency:
+			return "HTTP/1.1 424 Failed Dependency\r\n";
+		case http::status::upgrade_required:
+			return "HTTP/1.1 426 Upgrade Required\r\n";
+		case http::status::precondition_required:
+			return "HTTP/1.1 428 Precondition Required\r\n";
+		case http::status::too_many_requests:
+			return "HTTP/1.1 429 Too Many Requests\r\n";
+		case http::status::request_header_fields_too_large:
+			return "HTTP/1.1 431 Request Header Fields Too Large\r\n";
+		case http::status::connection_closed_without_response:
+			return "HTTP/1.1 444 Connection Closed Without Response\r\n";
+		case http::status::unavailable_for_legal_reasons:
+			return "HTTP/1.1 451 Unavailable For Legal Reasons\r\n";
+		case http::status::client_closed_request:
+			return "HTTP/1.1 499 Client Closed Request\r\n";
+		case http::status::internal_server_error:
+			return "HTTP/1.1 500 Internal Server Error\r\n";
+		case http::status::not_implemented:
+			return "HTTP/1.1 501 Not Implemented\r\n";
+		case http::status::bad_gateway:
+			return "HTTP/1.1 502 Bad Gateway\r\n";
+		case http::status::service_unavailable:
+			return "HTTP/1.1 503 Service Unavailable\r\n";
+		case http::status::gateway_timeout:
+			return "HTTP/1.1 504 Gateway Timeout\r\n";
+		case http::status::http_version_not_supported:
+			return "HTTP/1.1 505 HTTP Version Not Supported\r\n";
+		case http::status::variant_also_negotiates:
+			return "HTTP/1.1 506 Variant Also Negotiates\r\n";
+		case http::status::insufficient_storage:
+			return "HTTP/1.1 507 Insufficient Storage\r\n";
+		case http::status::loop_detected:
+			return "HTTP/1.1 508 Loop Detected\r\n";
+		case http::status::not_extended:
+			return "HTTP/1.1 510 Not Extended\r\n";
+		case http::status::network_authentication_required:
+			return "HTTP/1.1 511 Network Authentication Required\r\n";
+		case http::status::network_connect_timeout_error:
+			return "HTTP/1.1 599 Network Authentication Required\r\n";
+		default:
+			return "HTTP/1.1 500 Internal Server Error\r\n";
 	}
 }
 
@@ -564,100 +613,100 @@ inline std::int32_t to_int(status_t s)
 {
 	switch (s)
 	{
-	case http::status::ok:
-		return 200;
-	case http::status::created:
-		return 201;
-	case http::status::accepted:
-		return 202;
-	case http::status::no_content:
-		return 204;
-	case http::status::multiple_choices:
-		return 300;
-	case http::status::moved_permanently:
-		return 301;
-	case http::status::moved_temporarily:
-		return 302;
-	case http::status::not_modified:
-		return 304;
-	case http::status::bad_request:
-		return 400;
-	case http::status::unauthorized:
-		return 401;
-	case http::status::forbidden:
-		return 403;
-	case http::status::not_found:
-		return 404;
-	case http::status::method_not_allowed:
-		return 405;
-	case http::status::proxy_authentication_required:
-		return 407;
-	case http::status::request_timeout:
-		return 408;
-	case http::status::conflict:
-		return 409;
-	case http::status::gone:
-		return 410;
-	case http::status::length_required:
-		return 411;
-	case http::status::precondition_failed:
-		return 412;
-	case http::status::payload_too_large:
-		return 413;
-	case http::status::uri_too_long:
-		return 414;
-	case http::status::unsupported_media_type:
-		return 415;
-	case http::status::range_not_satisfiable:
-		return 416;
-	case http::status::expectation_failed:
-		return 417;
-	case http::status::unprocessable_entity:
-		return 422;
-	case http::status::locked:
-		return 423;
-	case http::status::failed_dependency:
-		return 424;
-	case http::status::upgrade_required:
-		return 426;
-	case http::status::precondition_required:
-		return 428;
-	case http::status::too_many_requests:
-		return 429;
-	case http::status::request_header_fields_too_large:
-		return 431;
-	case http::status::connection_closed_without_response:
-		return 444;
-	case http::status::unavailable_for_legal_reasons:
-		return 451;
-	case http::status::client_closed_request:
-		return 499;
-	case http::status::internal_server_error:
-		return 500;
-	case http::status::not_implemented:
-		return 501;
-	case http::status::bad_gateway:
-		return 502;
-	case http::status::service_unavailable:
-		return 503;
-	case http::status::gateway_timeout:
-		return 504;
-	case http::status::http_version_not_supported:
-		return 505;
-	case http::status::variant_also_negotiates:
-		return 506;
-	case http::status::insufficient_storage:
-		return 507;
-	case http::status::loop_detected:
-		return 503;
-	case http::status::not_extended:
-		return 510;
-	case http::status::network_authentication_required:
-		return 511;
-	case http::status::network_connect_timeout_error:
-		return 599;
-	default:
-		return static_cast<int32_t>(s);
+		case http::status::ok:
+			return 200;
+		case http::status::created:
+			return 201;
+		case http::status::accepted:
+			return 202;
+		case http::status::no_content:
+			return 204;
+		case http::status::multiple_choices:
+			return 300;
+		case http::status::moved_permanently:
+			return 301;
+		case http::status::moved_temporarily:
+			return 302;
+		case http::status::not_modified:
+			return 304;
+		case http::status::bad_request:
+			return 400;
+		case http::status::unauthorized:
+			return 401;
+		case http::status::forbidden:
+			return 403;
+		case http::status::not_found:
+			return 404;
+		case http::status::method_not_allowed:
+			return 405;
+		case http::status::proxy_authentication_required:
+			return 407;
+		case http::status::request_timeout:
+			return 408;
+		case http::status::conflict:
+			return 409;
+		case http::status::gone:
+			return 410;
+		case http::status::length_required:
+			return 411;
+		case http::status::precondition_failed:
+			return 412;
+		case http::status::payload_too_large:
+			return 413;
+		case http::status::uri_too_long:
+			return 414;
+		case http::status::unsupported_media_type:
+			return 415;
+		case http::status::range_not_satisfiable:
+			return 416;
+		case http::status::expectation_failed:
+			return 417;
+		case http::status::unprocessable_entity:
+			return 422;
+		case http::status::locked:
+			return 423;
+		case http::status::failed_dependency:
+			return 424;
+		case http::status::upgrade_required:
+			return 426;
+		case http::status::precondition_required:
+			return 428;
+		case http::status::too_many_requests:
+			return 429;
+		case http::status::request_header_fields_too_large:
+			return 431;
+		case http::status::connection_closed_without_response:
+			return 444;
+		case http::status::unavailable_for_legal_reasons:
+			return 451;
+		case http::status::client_closed_request:
+			return 499;
+		case http::status::internal_server_error:
+			return 500;
+		case http::status::not_implemented:
+			return 501;
+		case http::status::bad_gateway:
+			return 502;
+		case http::status::service_unavailable:
+			return 503;
+		case http::status::gateway_timeout:
+			return 504;
+		case http::status::http_version_not_supported:
+			return 505;
+		case http::status::variant_also_negotiates:
+			return 506;
+		case http::status::insufficient_storage:
+			return 507;
+		case http::status::loop_detected:
+			return 503;
+		case http::status::not_extended:
+			return 510;
+		case http::status::network_authentication_required:
+			return 511;
+		case http::status::network_connect_timeout_error:
+			return 599;
+		default:
+			return static_cast<int32_t>(s);
 	}
 }
 } // namespace status
@@ -675,9 +724,7 @@ public:
 
 	field() = default;
 
-	field(std::string name, T value = T{})
-		: name(std::move(name))
-		, value(std::move(value)){};
+	field(std::string name, T value = T{}) : name(std::move(name)), value(std::move(value)){};
 
 	std::string name;
 	T value;
@@ -696,8 +743,7 @@ protected:
 public:
 	fields() = default;
 
-	fields(std::initializer_list<fields::value_type> init_list)
-		: fields_(init_list){};
+	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list){};
 
 	fields(const http::fields<T>& f) = default;
 	fields(http::fields<T>&& f) noexcept = default;
@@ -726,7 +772,8 @@ public:
 		return fields_.rbegin();
 	}
 
-	template <typename P> typename std::enable_if<std::is_same<P, bool>::value, bool>::type get(const std::string& name, const P value = P())
+	template <typename P>
+	typename std::enable_if<std::is_same<P, bool>::value, bool>::type get(const std::string& name, const P value = P())
 	{
 		P returnvalue = value;
 
@@ -742,28 +789,38 @@ public:
 		return static_cast<P>(returnvalue);
 	}
 
-	template <typename P> typename std::enable_if<std::is_integral<T>::value && !std::is_same<P, bool>::value, P>::type get(const std::string& name, const P value = P())
+	template <typename P>
+	typename std::enable_if<std::is_integral<T>::value && !std::is_same<P, bool>::value, P>::type
+	get(const std::string& name, const P value = P())
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
 
 		return static_cast<P>(returnvalue);
 	}
 
-	template <typename P> typename std::enable_if<std::is_same<P, std::string>::value, std::string>::type get(const std::string& name, const P& value = P())
+	template <typename P>
+	typename std::enable_if<std::is_same<P, std::string>::value, std::string>::type
+	get(const std::string& name, const P& value = P())
 	{
 		bool ignore_existance;
 		return get(name, ignore_existance, value);
 	}
 
-	template <typename P> typename std::enable_if<std::is_same<P, std::string>::value, std::string>::type get(const std::string& name, bool& exists, const P& value = P())
+	template <typename P>
+	typename std::enable_if<std::is_same<P, std::string>::value, std::string>::type
+	get(const std::string& name, bool& exists, const P& value = P())
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
 
 		if (i != std::end(fields_))
 		{
@@ -783,7 +840,9 @@ public:
 	{
 		static const T not_found{};
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+			return (http::util::case_insensitive_equal(f.name, name));
+		});
 
 		if (i == std::end(fields_))
 		{
@@ -795,14 +854,18 @@ public:
 
 	inline bool has(const char* name) const
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+			return (http::util::case_insensitive_equal(f.name, name));
+		});
 
 		return i != std::end(fields_);
 	}
 
 	inline void set(const std::string& name, const T& value)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
 
 		if (i != std::end(fields_))
 		{
@@ -817,13 +880,17 @@ public:
 
 	inline void reset(const std::string& name)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
 
 		if (i != std::end(fields_))
 		{
 			fields_.erase(i);
 		}
 	}
+
+	inline void clear() { fields_.clear(); }
 
 	inline size_t size() const noexcept { return fields_.size(); }
 
@@ -849,7 +916,8 @@ public:
 
 		for (const auto& string_option : split_string_options)
 		{
-			const auto& split_string_option{ http::util::split(string_option, ":", http::util::split_options::stop_on_first_delimiter_found) };
+			const auto& split_string_option{ http::util::split(
+				string_option, ":", http::util::split_options::stop_on_first_delimiter_found) };
 			if (split_string_option.size() == 2) set(split_string_option[0], split_string_option[1]);
 		}
 	};
@@ -902,7 +970,7 @@ public:
 
 		for (auto field = fields_.cbegin(); field != fields_.cend(); ++field)
 		{
-			ss << "\"" << field->name << "\":\"" << field->value << "\"";
+			ss << "\"" << field->name << "\":\"" << util::escape_json(field->value) << "\"";
 
 			if (field + 1 != fields_.cend()) ss << ",";
 		}
@@ -910,36 +978,47 @@ public:
 		return ss.str();
 	}
 
-	template <typename T> typename std::enable_if<std::is_same<T, bool>::value, bool>::type get(const std::string& name, const T value = T())
+	template <typename T>
+	typename std::enable_if<std::is_same<T, bool>::value, bool>::type get(const std::string& name, const T value = T())
 	{
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
 
 		if (i != std::end(fields_)) returnvalue = i->value == "true";
 
 		return static_cast<T>(returnvalue);
 	}
 
-	template <typename T> typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type get(const std::string& name, const T value = T())
+	template <typename T>
+	typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type
+	get(const std::string& name, const T value = T())
 	{
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+			return (http::util::case_insensitive_equal(f.name, name));
+		});
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
 
 		return static_cast<T>(returnvalue);
 	}
 
-	template <typename T> typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type get(const std::string& name, const T& value = T())
+	template <typename T>
+	typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type
+	get(const std::string& name, const T& value = T())
 	{
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+			return (http::util::case_insensitive_equal(f.name, name));
+		});
 
 		if (i != std::end(fields_)) returnvalue = i->value;
 
@@ -951,7 +1030,9 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		static const std::string not_found = "";
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) { return (http::util::case_insensitive_equal(f.name, name)); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) {
+			return (http::util::case_insensitive_equal(f.name, name));
+		});
 
 		if (i == std::end(fields_))
 		{
@@ -965,7 +1046,9 @@ public:
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) { return http::util::case_insensitive_equal(f.name, name); });
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
 
 		if (i != std::end(fields_))
 		{
@@ -1029,7 +1112,7 @@ public:
 	query_params& query() { return params_; };
 	const query_params& query() const { return params_; };
 
-	void headers_reset()
+	void clear()
 	{
 		this->version_nr_ = 0;
 		this->method_ = http::method::unknown;
@@ -1063,7 +1146,8 @@ public:
 
 	inline void merge_new_header()
 	{
-		auto special_merge_case = http::util::case_insensitive_equal(last_new_field()->name, "Set-Cookie") || http::util::case_insensitive_equal(last_new_field()->name, "WWW-Authenticate")
+		auto special_merge_case = http::util::case_insensitive_equal(last_new_field()->name, "Set-Cookie")
+								  || http::util::case_insensitive_equal(last_new_field()->name, "WWW-Authenticate")
 								  || http::util::case_insensitive_equal(last_new_field()->name, "Proxy-Authenticate");
 
 		auto merged_last_new_header = false;
@@ -1112,7 +1196,7 @@ public:
 		return ret;
 	}
 
-	void headers_reset()
+	void clear()
 	{
 		this->fields_.clear();
 		version_nr_ = 0;
@@ -1145,8 +1229,10 @@ struct mapping
 {
 	const char* extension;
 	const char* mime_type;
-} const mappings[] = { { "json", "application/json" }, { "text", "text/plain" }, { "ico", "image/x-icon" }, { "gif", "image/gif" }, { "htm", "text/html" },
-					   { "html", "text/html" },		   { "jpg", "image/jpeg" },  { "jpeg", "image/jpeg" },  { "png", "image/png" }, { nullptr, nullptr } };
+} const mappings[]
+	= { { "json", "application/json" }, { "text", "text/plain" }, { "ico", "image/x-icon" }, { "gif", "image/gif" },
+		{ "htm", "text/html" },			{ "html", "text/html" },  { "jpg", "image/jpeg" },	 { "jpeg", "image/jpeg" },
+		{ "png", "image/png" },			{ nullptr, nullptr } };
 
 static std::string extension_to_type(const std::string& extension)
 {
@@ -1193,11 +1279,15 @@ public:
 		header<specialization>::target_ = target;
 	}
 
-	template <typename T> T get_attribute(const std::string& attribute_name) { return reinterpret_cast<T>(attributes_.get(attribute_name.c_str())); };
+	template <typename T> T get_attribute(const std::string& attribute_name)
+	{
+		return reinterpret_cast<T>(attributes_.get(attribute_name.c_str()));
+	};
 
 	template <typename T> void set_attribute(const std::string& attribute_name, const T attribute_value)
 	{
-		attributes_.set(attribute_name, reinterpret_cast<attributes::value_type::value_type>(const_cast<T>(attribute_value)));
+		attributes_.set(
+			attribute_name, reinterpret_cast<attributes::value_type::value_type>(const_cast<T>(attribute_value)));
 	};
 
 	std::string target() const { return header<specialization>::target_; }
@@ -1209,8 +1299,9 @@ public:
 
 	void reset()
 	{
-		header<specialization>::headers_reset();
-		this->body_.clear();
+		header<specialization>::clear();
+		attributes_.clear();
+		body_.clear();
 	}
 
 	void reset(const std::string& name) { header<specialization>::reset(name); }
@@ -1237,12 +1328,18 @@ public:
 			return true;
 	}
 
-	void type(const std::string& content_type) { http::fields<std::string>::set("Content-Type", mime_types::extension_to_type(content_type)); }
+	void type(const std::string& content_type)
+	{
+		http::fields<std::string>::set("Content-Type", mime_types::extension_to_type(content_type));
+	}
 
 	void status(http::status::status_t status) { http::header<specialization>::status(status); }
 	http::status::status_t status() const { return http::header<specialization>::status(); }
 
-	void content_length(uint64_t const& length) { http::fields<std::string>::set("Content-Length", std::to_string(length)); }
+	void content_length(uint64_t const& length)
+	{
+		http::fields<std::string>::set("Content-Length", std::to_string(length));
+	}
 
 	uint64_t content_length() const
 	{
@@ -1281,7 +1378,10 @@ public:
 	}
 };
 
-template <message_specializations specialization> std::string to_string(const http::message<specialization>& message) { return http::message<specialization>::to_string(message); }
+template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
+{
+	return http::message<specialization>::to_string(message);
+}
 
 using request_message = http::message<request_specialization>;
 using response_message = http::message<response_specialization>;
@@ -1306,7 +1406,8 @@ public:
 
 	const std::string& error_reason() const { return error_reason_; }
 
-	template <typename InputIterator> std::tuple<result_type, InputIterator> parse(http::request_message& req, InputIterator begin, InputIterator end)
+	template <typename InputIterator>
+	std::tuple<result_type, InputIterator> parse(http::request_message& req, InputIterator begin, InputIterator end)
 	{
 		while (begin != end)
 		{
@@ -1332,281 +1433,284 @@ private:
 	{
 		switch (state_)
 		{
-		case method_start:
-			if (!is_char(input) || is_ctl(input) || is_tspecial(input))
-			{
-				return bad;
-			}
-			else
-			{
-				state_ = method;
-				storage.clear();
-				storage.push_back(input);
-				return indeterminate;
-			}
-		case method:
-			if (input == ' ')
-			{
-				state_ = target;
-				req.method_ = http::method::to_method(storage);
-				return indeterminate;
-			}
-			else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
-			{
-				return bad;
-			}
-			else
-			{
-				storage.push_back(input);
-				return indeterminate;
-			}
-		case target:
-			if (input == ' ')
-			{
-				state_ = http_version_h;
-				return indeterminate;
-			}
-			else if (is_ctl(input))
-			{
-				return bad;
-			}
-			else
-			{
-				req.target_.push_back(input);
-				return indeterminate;
-			}
-		case http_version_h:
-			if (input == 'H')
-			{
-				state_ = http_version_t_1;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_t_1:
-			if (input == 'T')
-			{
-				state_ = http_version_t_2;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_t_2:
-			if (input == 'T')
-			{
-				state_ = http_version_p;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_p:
-			if (input == 'P')
-			{
-				state_ = http_version_slash;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_slash:
-			if (input == '/')
-			{
-				req.version_nr_ = 0;
-				state_ = http_version_major_start;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_major_start:
-			if (is_digit(input))
-			{
-				req.version_nr_ = (10 * (input - '0'));
-				state_ = http_version_major;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_major:
-			if (input == '.')
-			{
-				state_ = http_version_minor_start;
-				return indeterminate;
-			}
-			else if (is_digit(input))
-			{
-				req.version_nr_ = (10 * (input - '0'));
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_minor_start:
-			if (is_digit(input))
-			{
-				req.version_nr_ = req.version_nr_ + (input - '0');
-				state_ = http_version_minor;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_minor:
-			if (input == '\r')
-			{
-				state_ = expecting_newline_1;
-				return indeterminate;
-			}
-			else if (is_digit(input))
-			{
-				req.version_nr_ = req.version_nr_ + (input - '0');
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case expecting_newline_1:
-			if (input == '\n')
-			{
-				state_ = header_line_start;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case header_line_start:
-			if (input == '\r') // end of headers, expecting \r\n
-			{
-				state_ = expecting_newline_3;
-				return indeterminate;
-			}
-			else if (!req.fields_empty() && (input == ' ' || input == '\t')) // optional line folding
-			{
-				// RFC 7230: Either reject with 400, or replace obs-fold with one or more spaces.
-				// We opt for reject.
-				error_reason_ = "obsolete line folding is unacceptable";
-				return bad;
-			}
-			else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
-			{
-				return bad;
-			}
-			else
-			{
-				auto i = req.new_field();
-				i->name.push_back(input);
-				state_ = header_name;
-				return indeterminate;
-			}
-		case header_name:
-			if (input == ':')
-			{
-				state_ = opt_ws_before_header_value;
-				return indeterminate;
-			}
-			else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
-			{
-				return bad;
-			}
-			else
-			{
-				req.last_new_field()->name.push_back(input);
-				return indeterminate;
-			}
-		case opt_ws_before_header_value: // Skip leading white space, see RFC 7230 (https://tools.ietf.org/html/rfc7230#section-3.2).
-			if (input == ' ' || input == '\t')
-			{
-				return indeterminate;
-			}
-			else
-			{
-				state_ = header_value;
-				// intentional fallthrough to case header_value
-			}
-			// fallthrough
-		case header_value: // warning: fallthrough from state opt_ws_before_header_value
-			if (input == '\r') // optional line folding
-			{
-				state_ = opt_ws_after_header_value;
-				// intentional fallthrough to case opt_ws_after_header_value
-			}
-			else if (input == '\t') // RFC 7230: field-content  = field-vchar [ 1*( SP / HTAB ) field-vchar ]
-			{
-				req.last_new_field()->value.push_back(input);
-				return indeterminate;
-			}
-			else if (is_ctl(input))
-			{
-				return bad;
-			}
-			else
-			{
-				req.last_new_field()->value.push_back(input);
-				return indeterminate;
-			}
-			// fallthrough
-		case opt_ws_after_header_value: // warning: fallthrough from case header_value
-			if (input == '\r') // optional line folding is handled by successive states expecting_newline_2, header_line_start, header_lws, header_value
-			{
-				state_ = expecting_newline_2;
-
-				// Trailing whitespace is not part of the value, see RFC 7230 (https://tools.ietf.org/html/rfc7230#section-3.2).
-				// To allow whitespace within the value, we accepted the trailing whitespace in state header_value. Strip here.
-
-				auto& last_new_field_value = req.last_new_field()->value;
-
-				auto last_non_whitespace = last_new_field_value.find_last_not_of(" \t");
-				if (last_non_whitespace != std::string::npos)
+			case method_start:
+				if (!is_char(input) || is_ctl(input) || is_tspecial(input))
 				{
-					if (last_non_whitespace != last_new_field_value.size())
-					{
-						last_new_field_value = last_new_field_value.substr(0, last_non_whitespace + 1);
-					}
+					return bad;
 				}
 				else
 				{
-					last_new_field_value = "";
+					state_ = method;
+					storage.clear();
+					storage.push_back(input);
+					return indeterminate;
 				}
-				req.merge_new_header();
-				return indeterminate;
-			}
-			else if (input == ' ' || input == '\t')
-			{
-				return indeterminate;
-			}
-			else
-			{
+			case method:
+				if (input == ' ')
+				{
+					state_ = target;
+					req.method_ = http::method::to_method(storage);
+					return indeterminate;
+				}
+				else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
+				{
+					return bad;
+				}
+				else
+				{
+					storage.push_back(input);
+					return indeterminate;
+				}
+			case target:
+				if (input == ' ')
+				{
+					state_ = http_version_h;
+					return indeterminate;
+				}
+				else if (is_ctl(input))
+				{
+					return bad;
+				}
+				else
+				{
+					req.target_.push_back(input);
+					return indeterminate;
+				}
+			case http_version_h:
+				if (input == 'H')
+				{
+					state_ = http_version_t_1;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_t_1:
+				if (input == 'T')
+				{
+					state_ = http_version_t_2;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_t_2:
+				if (input == 'T')
+				{
+					state_ = http_version_p;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_p:
+				if (input == 'P')
+				{
+					state_ = http_version_slash;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_slash:
+				if (input == '/')
+				{
+					req.version_nr_ = 0;
+					state_ = http_version_major_start;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_major_start:
+				if (is_digit(input))
+				{
+					req.version_nr_ = (10 * (input - '0'));
+					state_ = http_version_major;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_major:
+				if (input == '.')
+				{
+					state_ = http_version_minor_start;
+					return indeterminate;
+				}
+				else if (is_digit(input))
+				{
+					req.version_nr_ = (10 * (input - '0'));
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_minor_start:
+				if (is_digit(input))
+				{
+					req.version_nr_ = req.version_nr_ + (input - '0');
+					state_ = http_version_minor;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_minor:
+				if (input == '\r')
+				{
+					state_ = expecting_newline_1;
+					return indeterminate;
+				}
+				else if (is_digit(input))
+				{
+					req.version_nr_ = req.version_nr_ + (input - '0');
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case expecting_newline_1:
+				if (input == '\n')
+				{
+					state_ = header_line_start;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case header_line_start:
+				if (input == '\r') // end of headers, expecting \r\n
+				{
+					state_ = expecting_newline_3;
+					return indeterminate;
+				}
+				else if (!req.fields_empty() && (input == ' ' || input == '\t')) // optional line folding
+				{
+					// RFC 7230: Either reject with 400, or replace obs-fold with one or more spaces.
+					// We opt for reject.
+					error_reason_ = "obsolete line folding is unacceptable";
+					return bad;
+				}
+				else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
+				{
+					return bad;
+				}
+				else
+				{
+					auto i = req.new_field();
+					i->name.push_back(input);
+					state_ = header_name;
+					return indeterminate;
+				}
+			case header_name:
+				if (input == ':')
+				{
+					state_ = opt_ws_before_header_value;
+					return indeterminate;
+				}
+				else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
+				{
+					return bad;
+				}
+				else
+				{
+					req.last_new_field()->name.push_back(input);
+					return indeterminate;
+				}
+			case opt_ws_before_header_value: // Skip leading white space, see RFC 7230
+											 // (https://tools.ietf.org/html/rfc7230#section-3.2).
+				if (input == ' ' || input == '\t')
+				{
+					return indeterminate;
+				}
+				else
+				{
+					state_ = header_value;
+					// intentional fallthrough to case header_value
+				}
+				// fallthrough
+			case header_value: // warning: fallthrough from state opt_ws_before_header_value
+				if (input == '\r') // optional line folding
+				{
+					state_ = opt_ws_after_header_value;
+					// intentional fallthrough to case opt_ws_after_header_value
+				}
+				else if (input == '\t') // RFC 7230: field-content  = field-vchar [ 1*( SP / HTAB ) field-vchar ]
+				{
+					req.last_new_field()->value.push_back(input);
+					return indeterminate;
+				}
+				else if (is_ctl(input))
+				{
+					return bad;
+				}
+				else
+				{
+					req.last_new_field()->value.push_back(input);
+					return indeterminate;
+				}
+				// fallthrough
+			case opt_ws_after_header_value: // warning: fallthrough from case header_value
+				if (input == '\r') // optional line folding is handled by successive states expecting_newline_2,
+								   // header_line_start, header_lws, header_value
+				{
+					state_ = expecting_newline_2;
+
+					// Trailing whitespace is not part of the value, see RFC 7230
+					// (https://tools.ietf.org/html/rfc7230#section-3.2). To allow whitespace within the value, we
+					// accepted the trailing whitespace in state header_value. Strip here.
+
+					auto& last_new_field_value = req.last_new_field()->value;
+
+					auto last_non_whitespace = last_new_field_value.find_last_not_of(" \t");
+					if (last_non_whitespace != std::string::npos)
+					{
+						if (last_non_whitespace != last_new_field_value.size())
+						{
+							last_new_field_value = last_new_field_value.substr(0, last_non_whitespace + 1);
+						}
+					}
+					else
+					{
+						last_new_field_value = "";
+					}
+					req.merge_new_header();
+					return indeterminate;
+				}
+				else if (input == ' ' || input == '\t')
+				{
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case expecting_newline_2:
+				if (input == '\n')
+				{
+					state_ = header_line_start;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case expecting_newline_3:
+				if (input == '\n') return (input == '\n') ? good : bad;
+				// fallthrough
+			default:
 				return bad;
-			}
-		case expecting_newline_2:
-			if (input == '\n')
-			{
-				state_ = header_line_start;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case expecting_newline_3:
-			if (input == '\n') return (input == '\n') ? good : bad;
-			// fallthrough
-		default:
-			return bad;
 		}
 	}
 
@@ -1620,28 +1724,28 @@ private:
 	{
 		switch (c)
 		{
-		case '(':
-		case ')':
-		case '<':
-		case '>':
-		case '@':
-		case ',':
-		case ';':
-		case ':':
-		case '\\':
-		case '"':
-		case '/':
-		case '[':
-		case ']':
-		case '?':
-		case '=':
-		case '{':
-		case '}':
-		case ' ':
-		case '\t':
-			return true;
-		default:
-			return false;
+			case '(':
+			case ')':
+			case '<':
+			case '>':
+			case '@':
+			case ',':
+			case ';':
+			case ':':
+			case '\\':
+			case '"':
+			case '/':
+			case '[':
+			case ']':
+			case '?':
+			case '=':
+			case '{':
+			case '}':
+			case ' ':
+			case '\t':
+				return true;
+			default:
+				return false;
 		}
 	}
 
@@ -1767,8 +1871,7 @@ public:
 class response_parser
 {
 public:
-	response_parser() noexcept
-		: state_(http_version_h){};
+	response_parser() noexcept : state_(http_version_h){};
 
 	void reset() { state_ = http_version_h; };
 
@@ -1779,7 +1882,8 @@ public:
 		indeterminate
 	};
 
-	template <typename InputIterator> std::tuple<result_type, InputIterator> parse(http::response_message& req, InputIterator begin, InputIterator end)
+	template <typename InputIterator>
+	std::tuple<result_type, InputIterator> parse(http::response_message& req, InputIterator begin, InputIterator end)
 	{
 		while (begin != end)
 		{
@@ -1808,289 +1912,291 @@ private:
 	{
 		switch (state_)
 		{
-		case http_version_h:
-			if (input == 'H')
-			{
-				state_ = http_version_t_1;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_t_1:
-			if (input == 'T')
-			{
-				state_ = http_version_t_2;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_t_2:
-			if (input == 'T')
-			{
-				state_ = http_version_p;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_p:
-			if (input == 'P')
-			{
-				state_ = http_version_slash;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_slash:
-			if (input == '/')
-			{
-				res.version_nr_ = 0;
-				state_ = http_version_major_start;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_major_start:
-			if (is_digit(input))
-			{
-				res.version_nr_ = (10 * (input - '0'));
-				state_ = http_version_major;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_major:
-			if (input == '.')
-			{
-				state_ = http_version_minor_start;
-				return indeterminate;
-			}
-			else if (is_digit(input))
-			{
-				res.version_nr_ = (10 * (input - '0'));
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_minor_start:
-			if (is_digit(input))
-			{
-				res.version_nr_ = res.version_nr_ + (input - '0');
-				state_ = http_version_minor;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case http_version_minor:
-			if (input == ' ')
-			{
-				state_ = space_before_status_code;
-				return indeterminate;
-			}
-			else if (is_digit(input))
-			{
-				res.version_nr_ = res.version_nr_ + (input - '0');
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case space_before_status_code:
-			if (is_digit(input))
-			{
-				res.status_nr_ = (100 * (input - '0'));
+			case http_version_h:
+				if (input == 'H')
+				{
+					state_ = http_version_t_1;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_t_1:
+				if (input == 'T')
+				{
+					state_ = http_version_t_2;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_t_2:
+				if (input == 'T')
+				{
+					state_ = http_version_p;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_p:
+				if (input == 'P')
+				{
+					state_ = http_version_slash;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_slash:
+				if (input == '/')
+				{
+					res.version_nr_ = 0;
+					state_ = http_version_major_start;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_major_start:
+				if (is_digit(input))
+				{
+					res.version_nr_ = (10 * (input - '0'));
+					state_ = http_version_major;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_major:
+				if (input == '.')
+				{
+					state_ = http_version_minor_start;
+					return indeterminate;
+				}
+				else if (is_digit(input))
+				{
+					res.version_nr_ = (10 * (input - '0'));
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_minor_start:
+				if (is_digit(input))
+				{
+					res.version_nr_ = res.version_nr_ + (input - '0');
+					state_ = http_version_minor;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case http_version_minor:
+				if (input == ' ')
+				{
+					state_ = space_before_status_code;
+					return indeterminate;
+				}
+				else if (is_digit(input))
+				{
+					res.version_nr_ = res.version_nr_ + (input - '0');
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case space_before_status_code:
+				if (is_digit(input))
+				{
+					res.status_nr_ = (100 * (input - '0'));
 
-				state_ = status_code_1;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case status_code_1:
-			if (is_digit(input))
-			{
-				res.status_nr_ += (10 * (input - '0'));
+					state_ = status_code_1;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case status_code_1:
+				if (is_digit(input))
+				{
+					res.status_nr_ += (10 * (input - '0'));
 
-				state_ = status_code_2;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case status_code_2:
-			if (is_digit(input))
-			{
-				res.status_nr_ += (1 * (input - '0'));
+					state_ = status_code_2;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case status_code_2:
+				if (is_digit(input))
+				{
+					res.status_nr_ += (1 * (input - '0'));
 
-				res.status_ = http::status::to_status(res.status_nr_);
-				state_ = status_code_3;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case status_code_3:
-			if (input == ' ')
-			{
-				state_ = space_after_status_code;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case space_after_status_code:
-			if (is_char(input) && !is_ctl(input) && !is_tspecial(input))
-			{
-				state_ = status_phrase;
-				res.reason_.push_back(input);
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case status_phrase:
-			if (input == '\r')
-			{
-				state_ = expecting_newline_1;
-				return indeterminate;
-			}
-			else if (is_ctl(input) || (is_tspecial(input) && !(input == ' ')))
-			{
-				return bad;
-			}
-			else
-			{
-				res.reason_.push_back(input);
-				return indeterminate;
-			}
+					res.status_ = http::status::to_status(res.status_nr_);
+					state_ = status_code_3;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case status_code_3:
+				if (input == ' ')
+				{
+					state_ = space_after_status_code;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case space_after_status_code:
+				if (is_char(input) && !is_ctl(input) && !is_tspecial(input))
+				{
+					state_ = status_phrase;
+					res.reason_.push_back(input);
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case status_phrase:
+				if (input == '\r')
+				{
+					state_ = expecting_newline_1;
+					return indeterminate;
+				}
+				else if (is_ctl(input) || (is_tspecial(input) && !(input == ' ')))
+				{
+					return bad;
+				}
+				else
+				{
+					res.reason_.push_back(input);
+					return indeterminate;
+				}
 
-		case expecting_newline_1:
-			if (input == '\n')
-			{
-				state_ = header_line_start;
-				return indeterminate;
-			}
-			else
-			{
+			case expecting_newline_1:
+				if (input == '\n')
+				{
+					state_ = header_line_start;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case header_line_start:
+				if (input == '\r') // end of headers, expecting \r\n
+				{
+					state_ = expecting_newline_3;
+					return indeterminate;
+				}
+				else if (!res.fields_empty() && (input == ' ' || input == '\t')) // line folding (continuation of
+																				 // previous header-value)
+				{
+					state_ = header_lws;
+					return indeterminate;
+				}
+				else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
+				{
+					return bad;
+				}
+				else
+				{
+					auto i = res.new_field();
+					i->name.push_back(input);
+					state_ = header_name;
+					return indeterminate;
+				}
+			case header_lws:
+				if (input == '\r')
+				{
+					state_ = expecting_newline_2;
+					return indeterminate;
+				}
+				else if (input == ' ' || input == '\t')
+				{
+					return indeterminate;
+				}
+				else if (is_ctl(input))
+				{
+					return bad;
+				}
+				else
+				{
+					state_ = header_value; // line folding
+					res.last_new_field()->value.push_back(input);
+					return indeterminate;
+				}
+			case header_name:
+				if (input == ':')
+				{
+					state_ = space_before_header_value;
+					return indeterminate;
+				}
+				else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
+				{
+					return bad;
+				}
+				else
+				{
+					res.last_new_field()->name.push_back(input);
+					return indeterminate;
+				}
+			case space_before_header_value: // TODO response parsing has not been modified to handle optional
+											// leading/trailing whitespace
+				if (input == ' ')
+				{
+					state_ = header_value;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case header_value:
+				if (input == '\r')
+				{
+					state_ = expecting_newline_2;
+					return indeterminate;
+				}
+				else if (is_ctl(input))
+				{
+					return bad;
+				}
+				else
+				{
+					res.last_new_field()->value.push_back(input);
+					return indeterminate;
+				}
+			case expecting_newline_2:
+				if (input == '\n')
+				{
+					state_ = header_line_start;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case expecting_newline_3:
+				return (input == '\n') ? good : bad;
+			default:
 				return bad;
-			}
-		case header_line_start:
-			if (input == '\r') // end of headers, expecting \r\n
-			{
-				state_ = expecting_newline_3;
-				return indeterminate;
-			}
-			else if (!res.fields_empty() && (input == ' ' || input == '\t')) // line folding (continuation of previous header-value)
-			{
-				state_ = header_lws;
-				return indeterminate;
-			}
-			else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
-			{
-				return bad;
-			}
-			else
-			{
-				auto i = res.new_field();
-				i->name.push_back(input);
-				state_ = header_name;
-				return indeterminate;
-			}
-		case header_lws:
-			if (input == '\r')
-			{
-				state_ = expecting_newline_2;
-				return indeterminate;
-			}
-			else if (input == ' ' || input == '\t')
-			{
-				return indeterminate;
-			}
-			else if (is_ctl(input))
-			{
-				return bad;
-			}
-			else
-			{
-				state_ = header_value; // line folding
-				res.last_new_field()->value.push_back(input);
-				return indeterminate;
-			}
-		case header_name:
-			if (input == ':')
-			{
-				state_ = space_before_header_value;
-				return indeterminate;
-			}
-			else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
-			{
-				return bad;
-			}
-			else
-			{
-				res.last_new_field()->name.push_back(input);
-				return indeterminate;
-			}
-		case space_before_header_value: // TODO response parsing has not been modified to handle optional leading/trailing whitespace
-			if (input == ' ')
-			{
-				state_ = header_value;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case header_value:
-			if (input == '\r')
-			{
-				state_ = expecting_newline_2;
-				return indeterminate;
-			}
-			else if (is_ctl(input))
-			{
-				return bad;
-			}
-			else
-			{
-				res.last_new_field()->value.push_back(input);
-				return indeterminate;
-			}
-		case expecting_newline_2:
-			if (input == '\n')
-			{
-				state_ = header_line_start;
-				return indeterminate;
-			}
-			else
-			{
-				return bad;
-			}
-		case expecting_newline_3:
-			return (input == '\n') ? good : bad;
-		default:
-			return bad;
 		}
 	}
 
@@ -2104,28 +2210,28 @@ private:
 	{
 		switch (c)
 		{
-		case '(':
-		case ')':
-		case '<':
-		case '>':
-		case '@':
-		case ',':
-		case ';':
-		case ':':
-		case '\\':
-		case '"':
-		case '/':
-		case '[':
-		case ']':
-		case '?':
-		case '=':
-		case '{':
-		case '}':
-		case ' ':
-		case '\t':
-			return true;
-		default:
-			return false;
+			case '(':
+			case ')':
+			case '<':
+			case '>':
+			case '@':
+			case ',':
+			case ';':
+			case ':':
+			case '\\':
+			case '"':
+			case '/':
+			case '[':
+			case ']':
+			case '?':
+			case '=':
+			case '{':
+			case '}':
+			case ' ':
+			case '\t':
+				return true;
+			default:
+				return false;
 		}
 	}
 
@@ -2283,7 +2389,8 @@ public:
 	{
 	}
 
-	template <typename InputIterator> std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end)
+	template <typename InputIterator>
+	std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end)
 	{
 		return request_parser_.parse(request_, begin, end);
 	}
@@ -2333,7 +2440,8 @@ public:
 				std::vector<std::string> name_value = http::util::split(token, "=");
 
 				std::string name_decoded = http::request_parser::url_decode(name_value[0]);
-				std::string value_decoded = (name_value.size() == 2) ? http::request_parser::url_decode(name_value[1]) : "";
+				std::string value_decoded
+					= (name_value.size() == 2) ? http::request_parser::url_decode(name_value[1]) : "";
 
 				request_.query().set(name_decoded, value_decoded);
 			}
@@ -2352,33 +2460,36 @@ public:
 
 		switch (router_.call_route(*this))
 		{
-		case http::api::router_match::match_found:
-		{
-			// Route has a valid handler, response body is set.
-			// Check bodys size and set headers.
-			break;
-		}
-		case http::api::router_match::no_method:
-		{
-			response_.status(http::status::method_not_allowed);
-			break;
-		}
-		case http::api::router_match::no_route:
-		{
-			response_.status(http::status::not_found);
-			break;
-		}
+			case http::api::router_match::match_found:
+			{
+				// Route has a valid handler, response body is set.
+				// Check bodys size and set headers.
+				break;
+			}
+			case http::api::router_match::no_method:
+			{
+				response_.status(http::status::method_not_allowed);
+				break;
+			}
+			case http::api::router_match::no_route:
+			{
+				response_.status(http::status::not_found);
+				break;
+			}
 		}
 
 		this->params_ = nullptr;
 		this->routing_ = nullptr;
 
-		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false && response_.connection_close() == false)
-			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1 && request_.connection_close() == false))
+		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false
+			 && response_.connection_close() == false)
+			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1
+				&& request_.connection_close() == false))
 		{
 			keepalive_count_decr();
 			response_.set("Connection", "Keep-Alive");
-			// response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max=" +std::to_string(keepalive_count()));
+			// response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max="
+			// +std::to_string(keepalive_count()));
 		}
 		else
 		{
@@ -2507,19 +2618,10 @@ public:
 	template <typename T> class outcome
 	{ // http::api::outcome
 	public:
-		outcome()
-			: value_(T())
-		{
-		}
+		outcome() : value_(T()) {}
 		explicit outcome(T x)
-			: value_(x)
-		{
-		} // explicit, or else a conversion from bool to outcome may happen if T is integral.
-		outcome(outcome_status status, std::string error)
-			: status_{ status }
-			, error_(std::move(error))
-		{
-		}
+			: value_(x) {} // explicit, or else a conversion from bool to outcome may happen if T is integral.
+		outcome(outcome_status status, std::string error) : status_{ status }, error_(std::move(error)) {}
 		outcome_status status() const { return status_; }
 		bool success() const { return status_ == outcome_status::success; }
 		const std::string& error() const
@@ -2540,7 +2642,8 @@ public:
 	};
 
 	using endpoint_lambda = std::function<void(session_handler_type& session)>;
-	using middleware_lambda = std::function<outcome<std::int64_t>(middleware_lambda_context& context, session_handler_type& session)>;
+	using middleware_lambda
+		= std::function<outcome<std::int64_t>(middleware_lambda_context& context, session_handler_type& session)>;
 
 	using result = http::api::router_match::route_context_type;
 
@@ -2588,7 +2691,8 @@ public:
 		{
 			std::stringstream s;
 
-			s << request_latency_.load() / 1000000.0 << "ms, " << processing_duration_.load() / 1000000.0 << "ms, " << hit_count_ << "x";
+			s << request_latency_.load() / 1000000.0 << "ms, " << processing_duration_.load() / 1000000.0 << "ms, "
+			  << hit_count_ << "x";
 
 			return s.str();
 		};
@@ -2597,7 +2701,9 @@ public:
 		{
 			std::stringstream s;
 
-			s << "{\"request_latency\" :" << request_latency_.load() / 1000000.0 << ",\"processing_duration\":" << processing_duration_.load() / 1000000.0 << ",\"hit_count\":" << hit_count_ << "}";
+			s << "{\"request_latency\" :" << request_latency_.load() / 1000000.0
+			  << ",\"processing_duration\":" << processing_duration_.load() / 1000000.0
+			  << ",\"hit_count\":" << hit_count_ << "}";
 
 			return s.str();
 		};
@@ -2638,14 +2744,13 @@ public:
 		route(const route& rhs) = default;
 		route& operator=(const route&) = default;
 
-		route(const endpoint_lambda& endpoint)
-			: endpoint_(endpoint)
-		{
-		}
+		route(const endpoint_lambda& endpoint) : endpoint_(endpoint) {}
 
 		const endpoint_lambda& endpoint() { return endpoint_; };
 
-		void update_metrics(std::chrono::high_resolution_clock::duration request_duration, std::chrono::high_resolution_clock::duration new_processing_duration_)
+		void update_metrics(
+			std::chrono::high_resolution_clock::duration request_duration,
+			std::chrono::high_resolution_clock::duration new_processing_duration_)
 		{
 			metrics_.request_latency_.store(request_duration.count());
 			metrics_.processing_duration_.store(new_processing_duration_.count());
@@ -2661,11 +2766,7 @@ public:
 
 	using middlewares = std::vector<std::pair<middleware, middleware>>;
 
-	routing(result r = http::api::router_match::no_route)
-		: result_(r)
-
-	{
-	}
+	routing(result r = http::api::router_match::no_route) : result_(r) {}
 
 	result& match_result() { return result_; };
 	result match_result() const { return result_; };
@@ -2681,7 +2782,12 @@ private:
 	middlewares middlewares_;
 };
 
-template <typename M = http::method::method_t, typename T = std::string, typename R = routing::endpoint_lambda, typename W = routing::middleware_lambda> class router
+template <
+	typename M = http::method::method_t,
+	typename T = std::string,
+	typename R = routing::endpoint_lambda,
+	typename W = routing::middleware_lambda>
+class router
 {
 public:
 	using route_http_method_type = M;
@@ -2711,12 +2817,12 @@ public:
 				}
 				else if (*(i.first.begin()) == '{' && *(i.first.rbegin()) == '}')
 				{
-					params.insert(i.first.substr(1, i.first.size() - 2), url_part);
+					params.insert(i.first.substr(1, i.first.size() - 2), http::request_parser::url_decode(url_part));
 					return true;
 				}
 				else if (*(i.first.begin()) == ':')
 				{
-					params.insert(i.first.substr(1, i.first.size() - 1), url_part);
+					params.insert(i.first.substr(1, i.first.size() - 1), http::request_parser::url_decode(url_part));
 					return true;
 				}
 			}
@@ -2732,9 +2838,10 @@ public:
 				{
 					s << "\"";
 					for (auto& element : path)
-						s << "/" << element;
+						s << "/" << util::escape_json(element);
 
-					s << "|" << http::method::to_string(endpoint->first) << "\":" << endpoint->second->route_metrics().to_json_string();
+					s << "|" << http::method::to_string(endpoint->first)
+					  << "\":" << endpoint->second->route_metrics().to_json_string();
 
 					if (endpoint + 1 != endpoints_.get()->cend()) s << ",";
 				}
@@ -2760,7 +2867,8 @@ public:
 					for (auto& element : path)
 						s << "/" << element;
 
-					s << ", [" << http::method::to_string(endpoint.first) << "], " << endpoint.second->route_metrics().to_string() << "\n";
+					s << ", [" << http::method::to_string(endpoint.first) << "], "
+					  << endpoint.second->route_metrics().to_string() << "\n";
 				}
 			}
 
@@ -2774,13 +2882,10 @@ public:
 	};
 
 public:
-	std::string doc_root;
 	std::unique_ptr<route_part> root_;
 
 public:
-	router(std::string doc_root)
-		: doc_root(std::move(doc_root))
-		, root_(new router::route_part{})
+	router() : root_(new router::route_part{})
 	{
 		// std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
 		// std::cout << "sizeof(router::route_part)" << std::to_string(sizeof(router::route_part)) << "\n";
@@ -2795,26 +2900,38 @@ public:
 		both
 	};
 
-	void use_middleware(const std::string& path, const std::string& type, const std::string& pre_middleware_attribute, const std::string& post_middleware_attribute)
+	void use_middleware(
+		const std::string& path,
+		const std::string& type,
+		const std::string& pre_middleware_attribute,
+		const std::string& post_middleware_attribute)
 	{
 		W empty;
 
-		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty });
+		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>(
+			{ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty });
 
 		on_middleware(path, middleware_pair);
 	}
 
-	void use_middleware(const std::string& path, const std::string& pre_middleware_attribute, W&& middleware_pre_function, const std::string& post_middleware_attribute, W&& middleware_post_function)
+	void use_middleware(
+		const std::string& path,
+		const std::string& pre_middleware_attribute,
+		W&& middleware_pre_function,
+		const std::string& post_middleware_attribute,
+		W&& middleware_post_function)
 	{
-		auto middleware_pair
-			= std::make_pair<routing::middleware, routing::middleware>({ "C++", pre_middleware_attribute, middleware_pre_function }, { "C++", post_middleware_attribute, middleware_post_function });
+		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>(
+			{ "C++", pre_middleware_attribute, middleware_pre_function },
+			{ "C++", post_middleware_attribute, middleware_post_function });
 
 		on_middleware(path, middleware_pair);
 	}
 
 	void use_middleware(const std::string& path, W&& middleware_pre_function, W&& middleware_post_function)
 	{
-		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>({ "C++", {}, middleware_pre_function }, { "C++", {}, middleware_post_function });
+		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>(
+			{ "C++", {}, middleware_pre_function }, { "C++", {}, middleware_post_function });
 
 		on_middleware(path, middleware_pair);
 	}
@@ -2827,11 +2944,17 @@ public:
 
 	void on_put(std::string&& route, R&& api_method) { on_http_method(method::put, route, std::move(api_method)); }
 
-	void on_delete(std::string&& route, R&& api_method) { on_http_method(method::delete_, route, std::move(api_method)); }
+	void on_delete(std::string&& route, R&& api_method)
+	{
+		on_http_method(method::delete_, route, std::move(api_method));
+	}
 
 	void on_patch(std::string&& route, R&& api_method) { on_http_method(method::patch, route, std::move(api_method)); }
 
-	void on_options(std::string&& route, R&& api_method) { on_http_method(method::options, route, std::move(api_method)); }
+	void on_options(std::string&& route, R&& api_method)
+	{
+		on_http_method(method::options, route, std::move(api_method));
+	}
 
 	void on_middleware(const T& route, const std::pair<routing::middleware, routing::middleware>& middleware_pair)
 	{
@@ -2843,11 +2966,17 @@ public:
 		{
 			// auto& l = it->link_[part];
 
-			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l = std::find_if(
+				it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
+					return (l.first == part);
+				});
 
 			if (l == it->link_.end())
 			{
-				l = it->link_.insert(it->link_.end(), std::pair<T, std::unique_ptr<router::route_part>>{ T{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
+				l = it->link_.insert(
+					it->link_.end(),
+					std::pair<T, std::unique_ptr<router::route_part>>{
+						T{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
 			}
 
 			it = l->second.get();
@@ -2868,13 +2997,21 @@ public:
 		{
 			// auto& l = it->link_[part];
 
-			auto l = std::find_if(it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l = std::find_if(
+				it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
+					return (l.first == part);
+				});
 
 			if (l == it->link_.end())
 			{
-				std::pair<std::string, std::unique_ptr<router::route_part>> yy{ std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } };
+				std::pair<std::string, std::unique_ptr<router::route_part>> yy{
+					std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part }
+				};
 
-				l = it->link_.insert(it->link_.end(), std::pair<T, std::unique_ptr<router::route_part>>{ std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
+				l = it->link_.insert(
+					it->link_.end(),
+					std::pair<T, std::unique_ptr<router::route_part>>{
+						std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
 			}
 
 			it = l->second.get();
@@ -2884,7 +3021,10 @@ public:
 
 		if (!it->endpoints_) it->endpoints_.reset(new std::vector<std::pair<M, std::unique_ptr<routing::route>>>);
 
-		it->endpoints_->insert(it->endpoints_->end(), std::pair<M, std::unique_ptr<routing::route>>{ M{ method }, std::unique_ptr<routing::route>{ new routing::route{ end_point } } });
+		it->endpoints_->insert(
+			it->endpoints_->end(),
+			std::pair<M, std::unique_ptr<routing::route>>{
+				M{ method }, std::unique_ptr<routing::route>{ new routing::route{ end_point } } });
 
 		/*		(*it->endpoints_)[method]
 					.reset(new router::route{ end_point });*/
@@ -2907,7 +3047,10 @@ public:
 		auto part_index = size_t(0);
 		for (const auto& part : parts)
 		{
-			auto l = std::find_if(it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) { return (l.first == part); });
+			auto l = std::find_if(
+				it->link_.cbegin(), it->link_.cend(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
+					return (l.first == part);
+				});
 
 			if (l == std::end(it->link_))
 			{
@@ -2917,7 +3060,8 @@ public:
 				{
 					l = it->link_.begin();
 
-					// /url/* matching is work in progress. If no other route exists with the same prefix it seems to work.
+					// /url/* matching is work in progress. If no other route exists with the same prefix it seems to
+					// work.
 					if (l->first == "*")
 					{
 						std::string url_remainder{};
@@ -2931,7 +3075,7 @@ public:
 								url_remainder += "/";
 							}
 						}
-						params.insert("*", url_remainder);
+						params.insert("*", url_remainder); // Unencoded (?)
 						it = l->second.get(); // make sure endpoint can be found and we can continue;
 						break;
 					}
@@ -2952,7 +3096,10 @@ public:
 
 		if (!it->endpoints_) return result;
 
-		auto endpoint = std::find_if(it->endpoints_->cbegin(), it->endpoints_->cend(), [&method](const std::pair<M, std::unique_ptr<routing::route>>& e) { return (e.first == method); });
+		auto endpoint = std::find_if(
+			it->endpoints_->cbegin(),
+			it->endpoints_->cend(),
+			[&method](const std::pair<M, std::unique_ptr<routing::route>>& e) { return (e.first == method); });
 
 		if (endpoint != it->endpoints_->end())
 		{
@@ -3005,7 +3152,9 @@ public:
 			auto t0 = std::chrono::steady_clock::now();
 			route_context.the_route().endpoint()(session);
 			auto t1 = std::chrono::steady_clock::now();
-			route_context.the_route().update_metrics(std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()), std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
+			route_context.the_route().update_metrics(
+				std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
+				std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 		}
 		return route_context.match_result();
 	}
@@ -3019,7 +3168,8 @@ namespace basic
 namespace client
 {
 
-const http::response_message get(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body);
+const http::response_message
+get(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body);
 
 class curl
 {
@@ -3048,7 +3198,8 @@ class curl
 		char* c = nullptr;
 		auto this_curl = static_cast<curl*>(userp);
 
-		std::tie(this_curl->response_message_parser_result_, c) = this_curl->response_message_parser_.parse(this_curl->response_message_, buffer, buffer + (size * nmemb));
+		std::tie(this_curl->response_message_parser_result_, c)
+			= this_curl->response_message_parser_.parse(this_curl->response_message_, buffer, buffer + (size * nmemb));
 
 		return size * nmemb;
 	}
@@ -3056,11 +3207,13 @@ class curl
 	static int debug_callback(CURL*, curl_infotype, char*, size_t, void*) { return 0; }
 
 public:
-	curl(const std::string& verb, const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body, bool verbose = false)
-		: hnd_(curl_easy_init())
-		, buffer_()
-		, error_buf_("")
-		, headers_(nullptr)
+	curl(
+		const std::string& verb,
+		const std::string& url,
+		std::initializer_list<std::string> hdrs,
+		const std::string& body,
+		bool verbose = false)
+		: hnd_(curl_easy_init()), buffer_(), error_buf_(""), headers_(nullptr)
 	{
 		if (verbose)
 		{
@@ -3085,7 +3238,11 @@ public:
 		curl_easy_cleanup(hnd_);
 	}
 
-	void setup(const std::string& verb, const std::string& url, std::initializer_list<std::string> hdrs, const std::string& data)
+	void setup(
+		const std::string& verb,
+		const std::string& url,
+		std::initializer_list<std::string> hdrs,
+		const std::string& data)
 	{
 		for (const auto& a : hdrs)
 		{
@@ -3131,7 +3288,8 @@ public:
 	}
 };
 
-const http::response_message get(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
+const http::response_message
+get(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
 {
 	http::basic::client::curl curl{ "GET", url, hdrs, body };
 
@@ -3144,9 +3302,7 @@ const http::response_message get(const std::string& url, std::initializer_list<s
 class server
 {
 public:
-	server(http::configuration& configuration)
-		: router_(configuration.get<std::string>("doc_root", "/var/www"))
-		, configuration_(configuration){};
+	server(http::configuration& configuration) : router_(), configuration_(configuration){};
 
 	server(const server&) = delete;
 	server(server&&) = delete;
@@ -3177,24 +3333,12 @@ public:
 		mutable std::mutex mutex_;
 
 	public:
-		server_manager() noexcept
-			: server_information_("")
-			, router_information_("")
-		{
-			access_log_.reserve(32);
-		};
+		server_manager() noexcept : server_information_(""), router_information_("") { access_log_.reserve(32); };
 
 		std::atomic<size_t>& requests_handled() { return requests_handled_; }
-		size_t requests_handled() const { return requests_handled_; }
-
 		std::atomic<size_t>& connections_accepted() { return connections_accepted_; }
-		size_t connections_accepted() const { return connections_accepted_; }
-
 		std::atomic<size_t>& connections_current() { return connections_current_; }
-		size_t connections_highest() const { return connections_highest_; }
-
 		std::atomic<size_t>& requests_current() { return requests_current_; }
-		size_t requests_current() const { return requests_current_.load(); }
 
 		void log_access(http::session_handler& session)
 		{
@@ -3202,9 +3346,10 @@ public:
 			std::lock_guard<std::mutex> g(mutex_);
 
 			s << R"(')" << session.request().get("Remote_Addr") << R"(')"
-			  << R"( - ')" << session.request().method() << " " << session.request().url_requested() << " " << session.request().version() << R"(')"
-			  << " - " << session.response().status() << " - " << session.response().content_length() << " - " << session.request().content_length() << R"( - ')" << session.request().get("User-Agent")
-			  << "\'";
+			  << R"( - ')" << session.request().method() << " " << session.request().url_requested() << " "
+			  << session.request().version() << R"(')"
+			  << " - " << session.response().status() << " - " << session.response().content_length() << " - "
+			  << session.request().content_length() << R"( - ')" << session.request().get("User-Agent") << "\'";
 
 			access_log_.emplace_back(s.str());
 
@@ -3240,52 +3385,55 @@ public:
 
 			switch (options)
 			{
-			case json_status_options::full:
-			{
-				s << to_json_string(json_status_options::config, false) << ", " << to_json_string(json_status_options::server_stats, false) << ", "
-				  << to_json_string(json_status_options::router, false) << "," << to_json_string(json_status_options::accesslog, false);
-				break;
-			}
-			case json_status_options::config:
-			{
-				s << "\"configuration\": "
-				  << "{" << server_information_ << "}";
-				break;
-			}
-			case json_status_options::server_stats:
-			{
-				std::lock_guard<std::mutex> g(mutex_);
-				s << "\"stats\": "
-				  << "{\"connections_current\":" << connections_current_ << ","
-				  << "\"connections_accepted\":" << connections_accepted_ << ","
-				  << "\"connections_highest\":" << connections_accepted_ << ","
-				  << "\"requests_handled\" : " << requests_handled_ << "}";
-				break;
-			}
-			case json_status_options::router:
-			{
-				std::lock_guard<std::mutex> g(mutex_);
-				s << "\"router\": {" << router_information_ << "}";
-				break;
-			}
-			case json_status_options::accesslog:
-			{
-				std::lock_guard<std::mutex> g(mutex_);
-
-				s << "\"access_log\": [";
-				for (auto access_log_entry = access_log_.cbegin(); access_log_entry != access_log_.cend(); ++access_log_entry)
+				case json_status_options::full:
 				{
-					s << "\"";
-					s << *access_log_entry;
-
-					if (access_log_entry + 1 != access_log_.cend())
-						s << "\",\n";
-					else
-						s << "\"\n";
+					s << to_json_string(json_status_options::config, false) << ", "
+					  << to_json_string(json_status_options::server_stats, false) << ", "
+					  << to_json_string(json_status_options::router, false) << ","
+					  << to_json_string(json_status_options::accesslog, false);
+					break;
 				}
-				s << "]";
-				break;
-			}
+				case json_status_options::config:
+				{
+					s << "\"configuration\":"
+					  << "{" << server_information_ << "}";
+					break;
+				}
+				case json_status_options::server_stats:
+				{
+					std::lock_guard<std::mutex> g(mutex_);
+					s << "\"stats\": "
+					  << "{\"connections_current\":" << connections_current_ << ","
+					  << "\"connections_accepted\":" << connections_accepted_ << ","
+					  << "\"connections_highest\":" << connections_accepted_ << ","
+					  << "\"requests_handled\" : " << requests_handled_ << "}";
+					break;
+				}
+				case json_status_options::router:
+				{
+					std::lock_guard<std::mutex> g(mutex_);
+					s << "\"router\": {" << router_information_ << "}";
+					break;
+				}
+				case json_status_options::accesslog:
+				{
+					std::lock_guard<std::mutex> g(mutex_);
+
+					s << "\"access_log\": [";
+					for (auto access_log_entry = access_log_.cbegin(); access_log_entry != access_log_.cend();
+						 ++access_log_entry)
+					{
+						s << "\"";
+						s << util::escape_json(*access_log_entry);
+
+						if (access_log_entry + 1 != access_log_.cend())
+							s << "\",";
+						else
+							s << "\"";
+					}
+					s << "]";
+					break;
+				}
 			}
 
 			if (main_object) s << "}";
@@ -3343,7 +3491,8 @@ public:
 		, http_listen_port_(0)
 		, endpoint_http_(http_listen_port_begin_)
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
-		, https_listen_port_begin_(configuration.get<int>("https_listen_port_begin", configuration.get<int>("http_listen_port_begin") + 2000))
+		, https_listen_port_begin_(configuration.get<int>(
+			  "https_listen_port_begin", configuration.get<int>("http_listen_port_begin") + 2000))
 		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
 		, https_listen_port_(0)
 		, endpoint_https_(https_listen_port_begin_)
@@ -3427,7 +3576,8 @@ public:
 
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
-					auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_);
+					auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
+						*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_);
 
 					std::thread connection_thread([new_connection_handler]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
@@ -3471,7 +3621,8 @@ public:
 					// network::tcp_nodelay(http_socket, 1);
 
 					auto new_connection_handler
-						= std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(*this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_);
+						= std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
+							*this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_);
 
 					std::thread connection_thread([new_connection_handler]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
@@ -3530,13 +3681,17 @@ public:
 
 				if (ec)
 				{
-					throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":" + std::to_string(https_listen_port_end_) + " ]"));
+					throw std::runtime_error(std::string(
+						"cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":"
+						+ std::to_string(https_listen_port_end_) + " ]"));
 				}
 
 				network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
-				ssl_context.use_certificate_chain_file(configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
-				ssl_context.use_private_key_file(configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
+				ssl_context.use_certificate_chain_file(
+					configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
+				ssl_context.use_private_key_file(
+					configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
 
 				acceptor_https.listen();
 
@@ -3615,7 +3770,9 @@ public:
 
 				if (ec)
 				{
-					throw std::runtime_error(std::string("cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":" + std::to_string(http_listen_port_end_) + " ]"));
+					throw std::runtime_error(std::string(
+						"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":"
+						+ std::to_string(http_listen_port_end_) + " ]"));
 				}
 
 				acceptor_http.listen();
@@ -3651,7 +3808,8 @@ public:
 	template <class S> class connection_handler
 	{
 	public:
-		connection_handler(http::basic::threaded::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
+		connection_handler(
+			http::basic::threaded::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
 			, client_socket_(std::move(client_socket))
 			, session_handler_(server.configuration_)
@@ -3744,13 +3902,17 @@ public:
 					}
 				}
 
-				if ((parse_result == http::request_parser::result_type::good) || (parse_result == http::request_parser::result_type::bad))
+				if ((parse_result == http::request_parser::result_type::good)
+					|| (parse_result == http::request_parser::result_type::bad))
 				{
 					if (parse_result == http::request_parser::result_type::good)
 					{
 						if (server_.active().load() == true)
 						{
-							session_handler_.request().set("Remote_Addr", session_handler_.request().get("X-Forwarded-For", network::get_client_info(client_socket_)));
+							session_handler_.request().set(
+								"Remote_Addr",
+								session_handler_.request().get(
+									"X-Forwarded-For", network::get_client_info(client_socket_)));
 
 							++server_.manager().requests_current();
 							session_handler_.handle_request(server_.router_);
@@ -3800,7 +3962,8 @@ public:
 
 							while (bytes_in > 0 && ret != -1)
 							{
-								ret = network::write(client_socket_, network::buffer(&file_buffer[0], static_cast<size_t>(bytes_in)));
+								ret = network::write(
+									client_socket_, network::buffer(&file_buffer[0], static_cast<size_t>(bytes_in)));
 
 								bytes_in = is.read(file_buffer.data(), file_buffer.size()).gcount();
 							}
@@ -3808,25 +3971,25 @@ public:
 					}
 					else
 					{
-						// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the word "gzip".
+						// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the word
+						// "gzip".
 						// TODO: "Accept-Encoding: gzip;q=0" means *no* gzip
 						// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip is good
 
-						if ((gzip_min_length_ < response.body().size()) && (session_handler_.request().get("Accept-Encoding").find("gzip") != std::string::npos))
+						if ((gzip_min_length_ < response.body().size())
+							&& (session_handler_.request().get("Accept-Encoding").find("gzip") != std::string::npos))
 						{
 							response.body() = gzip::compress(response.body().c_str(), response.body().size());
 							response.set("Content-Encoding", "gzip");
 							response.set("Content-Length", std::to_string(response.body().size()));
 						}
 
-						// connection_data.store_response_data(http::to_string(response));
 						ret = network::write(client_socket_, http::to_string(response));
 					}
 
 					if (response.connection_keep_alive() == true)
 					{
 						session_handler_.reset();
-						// std::fill(buffer.begin(), buffer.end(),0);
 						c = buffer.begin();
 					}
 					else
@@ -3850,18 +4013,7 @@ public:
 		size_t bytes_received_;
 		size_t bytes_send_;
 
-		/*		std::vector<char> data_request_;
-				std::vector<char> data_response_;
-
-				std::vector<char>& request_data() { return data_request_; }
-				std::vector<char>& response_data() { return data_response_; }	*/
-
-		void reset_session()
-		{
-			session_handler_.reset();
-			// data_request_.clear();
-			// data_response_.clear();
-		}
+		void reset_session() { session_handler_.reset(); }
 	};
 
 private:

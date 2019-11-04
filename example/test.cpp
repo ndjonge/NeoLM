@@ -63,7 +63,13 @@ namespace landscaper
 class configuration_api : public cURL_basic
 {
 public:
-	configuration_api(const std::string& cldls_host, int port, const std::string& path_to_config, const std::string& configuration, int verbose = 0, std::ostream* err = &std::cerr)
+	configuration_api(
+		const std::string& cldls_host,
+		int port,
+		const std::string& path_to_config,
+		const std::string& configuration,
+		int verbose = 0,
+		std::ostream* err = &std::cerr)
 		: cURL_basic(err, verbose)
 	{
 
@@ -75,7 +81,11 @@ public:
 		curl_easy_setopt(hnd, CURLOPT_CUSTOMREQUEST, "GET");
 		curl_easy_setopt(hnd, CURLOPT_URL, url.str().c_str());
 
-		set_headers({ "cache-control: no-cache", "accept-encoding: gzip, deflate", "Cache-Control: no-cache", "Accept: application/json", "User-Agent: Platform Manager/1.0" });
+		set_headers({ "cache-control: no-cache",
+					  "accept-encoding: gzip, deflate",
+					  "Cache-Control: no-cache",
+					  "Accept: application/json",
+					  "User-Agent: Platform Manager/1.0" });
 	}
 
 	// places the config in argument json_config
@@ -84,7 +94,8 @@ public:
 		CURLcode ret = curl_easy_perform(hnd);
 		if (ret != CURLE_OK)
 		{
-			json_config["error"] = { { "error", "some cURL error" }, { "code", ret }, { "curlerror", curl_easy_strerror(ret) } };
+			json_config["error"]
+				= { { "error", "some cURL error" }, { "code", ret }, { "curlerror", curl_easy_strerror(ret) } };
 			return false;
 		}
 		else
@@ -111,9 +122,15 @@ class registry_api : public cURL_basic
 {
 	std::string data_str; // must remain alive during cURL transfer
 public:
-	registry_api(const std::string& cldls_host, int port, const std::string& path_to_register, const std::string& id, const json& data, int verbose = 0, std::ostream* err = &std::cerr)
-		: cURL_basic(err, verbose)
-		, data_str()
+	registry_api(
+		const std::string& cldls_host,
+		int port,
+		const std::string& path_to_register,
+		const std::string& id,
+		const json& data,
+		int verbose = 0,
+		std::ostream* err = &std::cerr)
+		: cURL_basic(err, verbose), data_str()
 	{
 
 		std::stringstream url;
@@ -124,7 +141,12 @@ public:
 		curl_easy_setopt(hnd, CURLOPT_CUSTOMREQUEST, "PUT");
 		curl_easy_setopt(hnd, CURLOPT_URL, url.str().c_str());
 
-		set_headers({ "cache-control: no-cache", "accept-encoding: gzip, deflate", "Cache-Control: no-cache", "Accept: application/json", "User-Agent: Platform Manager/1.0", "Connection: close" });
+		set_headers({ "cache-control: no-cache",
+					  "accept-encoding: gzip, deflate",
+					  "Cache-Control: no-cache",
+					  "Accept: application/json",
+					  "User-Agent: Platform Manager/1.0",
+					  "Connection: close" });
 
 		data_str = data.dump();
 		std::cout << data.dump() << std::endl;
@@ -138,7 +160,8 @@ public:
 		CURLcode ret = curl_easy_perform(hnd);
 		if (ret != CURLE_OK)
 		{
-			json_register["error"] = { { "error", "some cURL error" }, { "code", ret }, { "curlerror", curl_easy_strerror(ret) } };
+			json_register["error"]
+				= { { "error", "some cURL error" }, { "code", ret }, { "curlerror", curl_easy_strerror(ret) } };
 			return false;
 		}
 		else
@@ -182,9 +205,7 @@ private:
 
 public:
 	cURL_implementer(int port, const std::string& _type, const std::string& _method)
-		: cURL_basic(&std::cerr, 1)
-		, type(_type)
-		, method(_method)
+		: cURL_basic(&std::cerr, 1), type(_type), method(_method)
 	{
 		std::stringstream url;
 		url << "http://localhost:" << port << method;
@@ -196,14 +217,20 @@ public:
 		// local calls should be snappy.
 		curl_easy_setopt(hnd, CURLOPT_CONNECTTIMEOUT_MS, 100L);
 		curl_easy_setopt(hnd, CURLOPT_TIMEOUT_MS, 100L);
-		set_headers({ "cache-control: no-cache", "accept-encoding: gzip, deflate", "Cache-Control: no-cache", "Accept: application/json", "User-Agent: Platform Manager/1.0", "Connection: close" });
+		set_headers({ "cache-control: no-cache",
+					  "accept-encoding: gzip, deflate",
+					  "Cache-Control: no-cache",
+					  "Accept: application/json",
+					  "User-Agent: Platform Manager/1.0",
+					  "Connection: close" });
 	}
 	bool exec(json& ret_val)
 	{
 		CURLcode ret = curl_easy_perform(hnd);
 		if (ret != CURLE_OK)
 		{
-			ret_val["error"] = { { "error", "some cURL error" }, { "code", ret }, { "curlerror", curl_easy_strerror(ret) } };
+			ret_val["error"]
+				= { { "error", "some cURL error" }, { "code", ret }, { "curlerror", curl_easy_strerror(ret) } };
 			return false;
 		}
 		else
@@ -229,8 +256,7 @@ public:
 class implementer_send_shutdown : public cURL_basic
 {
 public:
-	implementer_send_shutdown(int port)
-		: cURL_basic(&std::cerr, 1)
+	implementer_send_shutdown(int port) : cURL_basic(&std::cerr, 1)
 	{
 		std::stringstream url;
 		url << "http://localhost:" << port << "/implementer/shutdown";
@@ -241,7 +267,12 @@ public:
 		// local calls should be snappy.
 		curl_easy_setopt(hnd, CURLOPT_CONNECTTIMEOUT_MS, 100L);
 		curl_easy_setopt(hnd, CURLOPT_TIMEOUT_MS, 100L);
-		set_headers({ "cache-control: no-cache", "accept-encoding: gzip, deflate", "Cache-Control: no-cache", "Accept: application/json", "User-Agent: Platform Manager/1.0", "Connection: close" });
+		set_headers({ "cache-control: no-cache",
+					  "accept-encoding: gzip, deflate",
+					  "Cache-Control: no-cache",
+					  "Accept: application/json",
+					  "User-Agent: Platform Manager/1.0",
+					  "Connection: close" });
 	}
 
 	// places the config in argument json_config
@@ -250,7 +281,8 @@ public:
 		CURLcode ret = curl_easy_perform(hnd);
 		if (ret != CURLE_OK)
 		{
-			json_config["error"] = { { "error", "some cURL error" }, { "code", ret }, { "curlerror", curl_easy_strerror(ret) } };
+			json_config["error"]
+				= { { "error", "some cURL error" }, { "code", ret }, { "curlerror", curl_easy_strerror(ret) } };
 			return false;
 		}
 		else
@@ -275,8 +307,7 @@ public:
 class implementer_request_status : public cURL_basic
 {
 public:
-	implementer_request_status(int port)
-		: cURL_basic(&std::cerr, 1)
+	implementer_request_status(int port) : cURL_basic(&std::cerr, 1)
 	{
 		std::stringstream url;
 		url << "http://localhost:" << port << "/implementer/status";
@@ -287,7 +318,12 @@ public:
 		// local calls should be snappy.
 		curl_easy_setopt(hnd, CURLOPT_CONNECTTIMEOUT_MS, 100L);
 		curl_easy_setopt(hnd, CURLOPT_TIMEOUT_MS, 100L);
-		set_headers({ "cache-control: no-cache", "accept-encoding: gzip, deflate", "Cache-Control: no-cache", "Accept: application/json", "User-Agent: Platform Manager/1.0", "Connection: close" });
+		set_headers({ "cache-control: no-cache",
+					  "accept-encoding: gzip, deflate",
+					  "Cache-Control: no-cache",
+					  "Accept: application/json",
+					  "User-Agent: Platform Manager/1.0",
+					  "Connection: close" });
 	}
 
 	// places the config in argument json_config
@@ -296,7 +332,8 @@ public:
 		CURLcode ret = curl_easy_perform(hnd);
 		if (ret != CURLE_OK)
 		{
-			json_config["error"] = { { "error", "some cURL error" }, { "code", ret }, { "curlerror", curl_easy_strerror(ret) } };
+			json_config["error"]
+				= { { "error", "some cURL error" }, { "code", ret }, { "curlerror", curl_easy_strerror(ret) } };
 			return false;
 		}
 		else
@@ -328,12 +365,7 @@ private:
 	json instance_status;
 
 public:
-	implementer_instance()
-		: pid(0)
-		, port(0)
-		, run_status(0)
-		, error_code("")
-		, instance_status(){};
+	implementer_instance() : pid(0), port(0), run_status(0), error_code(""), instance_status(){};
 
 	~implementer_instance()
 	{
@@ -342,11 +374,7 @@ public:
 		std::cerr << str.str();
 	};
 
-	implementer_instance(int _pid, int _port)
-		: pid(_pid)
-		, port(_port)
-		, run_status(1)
-		, error_code("")
+	implementer_instance(int _pid, int _port) : pid(_pid), port(_port), run_status(1), error_code("")
 	{
 		std::stringstream str;
 		std::cerr << "implementer_instance pid " << pid << " at port " << port << std::endl;
@@ -358,16 +386,16 @@ public:
 	{
 		switch (run_status)
 		{
-		case 0:
-			return "initial";
-		case 1:
-			return "running";
-		case 2:
-			return "deleted";
-		case 3:
-			return "error";
-		default:
-			return "not yet";
+			case 0:
+				return "initial";
+			case 1:
+				return "running";
+			case 2:
+				return "deleted";
+			case 3:
+				return "error";
+			default:
+				return "not yet";
 		}
 	}
 	void set_status(int s) { run_status = s; };
@@ -411,13 +439,7 @@ protected:
 
 public:
 	implementer(const std::string& type)
-		: implementerName()
-		, implementerType(type)
-		, count()
-		, current_count()
-		, valid(false)
-		, instances()
-		, errors(){};
+		: implementerName(), implementerType(type), count(), current_count(), valid(false), instances(), errors(){};
 
 	virtual ~implementer(){
 		// TODO: how to clean up?
@@ -646,7 +668,7 @@ private:
 	{
 		trace << " -> '" << s << "'" << std::endl;
 
-		return network::write(fd, s);
+		return network::write(fd, network::const_buffer{ s.data(), s.size() });
 	}
 
 	ssize_t fd_r_string(std::string& s)
@@ -670,7 +692,17 @@ private:
 		char errorStringBuf[BL_MAX_STR_LEN];
 		BLReturnCode returnCode = BL_NOERROR;
 
-		fd = BaanLogin(hostname.c_str(), blogin_port, os_user_name.c_str(), password.c_str(), crypt_method, BL_LOGIN_USER, ipc_boot.c_str(), &returnCode, errorStringBuf, sizeof(errorStringBuf));
+		fd = BaanLogin(
+			hostname.c_str(),
+			blogin_port,
+			os_user_name.c_str(),
+			password.c_str(),
+			crypt_method,
+			BL_LOGIN_USER,
+			ipc_boot.c_str(),
+			&returnCode,
+			errorStringBuf,
+			sizeof(errorStringBuf));
 
 		if (fd == -1)
 		{
@@ -840,7 +872,7 @@ public:
 
 static bshell_implementer_instance* start_eb(bshell_implementer_instance* eb)
 {
-	eb->start();
+	std::cout << eb->start();
 	return eb;
 }
 
@@ -933,7 +965,11 @@ public:
 	}
 
 public:
-	void do_start(int new_count, const std::string& workspace_id, const std::string& implementerType, const std::string& implementerName)
+	void do_start(
+		int new_count,
+		const std::string& workspace_id,
+		const std::string& implementerType,
+		const std::string& implementerName)
 	{
 		std::string cpm_args(workspace_id + "," + implementerType);
 		if (implementerName != "")
@@ -944,7 +980,7 @@ public:
 		// must have arguments
 		std::vector<std::string> args{
 			"-server", "-daemon",			"-cpm_args", cpm_args,
-			"-set",	"HTTP_LISTEN_PORT=0"
+			"-set",	   "HTTP_LISTEN_PORT=0"
 			//				"-cpm_config", configfile
 		};
 
@@ -961,7 +997,8 @@ public:
 
 		for (int i = 0; i < new_count; ++i)
 		{
-			bshell_implementer_instance* eb = new bshell_implementer_instance(bse_user, os_user, os_password, "localhost", BSE, tenant, program, args, debug);
+			bshell_implementer_instance* eb = new bshell_implementer_instance(
+				bse_user, os_user, os_password, "localhost", BSE, tenant, program, args, debug);
 			// create async object and start it parallel
 			fut.emplace_back(std::async(std::launch::async, start_eb, eb));
 			std::cout << " started implementer " << implementerType << " in workspace "
@@ -991,7 +1028,8 @@ public:
 		{
 			bshell_implementer_instance* eb = start_1(args);
 
-			std::cout << " started implementer " << implementerType << " in workspace " << workspace_id << " ret code: " << (*eb)() << std::endl;
+			std::cout << " started implementer " << implementerType << " in workspace " << workspace_id
+					  << " ret code: " << (*eb)() << std::endl;
 			delete eb;
 		}
 
@@ -1006,11 +1044,7 @@ private:
 	std::string rootdir;
 
 public:
-	implementer_python()
-		: implementer("python")
-		, rootdir()
-	{
-	}
+	implementer_python() : implementer("python"), rootdir() {}
 
 	virtual ~implementer_python(){};
 
@@ -1028,7 +1062,13 @@ public:
 		j["details"].emplace("PythonRoot", rootdir);
 	}
 
-	void do_start(int new_count, const std::string& workspace_id, const std::string& implementerType, const std::string& implementerName) {}
+	void do_start(
+		int new_count,
+		const std::string& workspace_id,
+		const std::string& implementerType,
+		const std::string& implementerName)
+	{
+	}
 	virtual void set_tenant(const std::string& t){};
 };
 
@@ -1036,9 +1076,10 @@ namespace implementer_creator
 {
 using implementer_creator_t = implementer* (*)(void);
 
-std::map<std::string, implementer_creator_t> creator = { { "bshell", [] { return (implementer*)(new implementer_bshell()); } },
-														 { "ashell", [] { return (implementer*)(new implementer_bshell()); } },
-														 { "python", [] { return (implementer*)(new implementer_python()); } } };
+std::map<std::string, implementer_creator_t> creator
+	= { { "bshell", [] { return (implementer*)(new implementer_bshell()); } },
+		{ "ashell", [] { return (implementer*)(new implementer_bshell()); } },
+		{ "python", [] { return (implementer*)(new implementer_python()); } } };
 
 implementer* create(const std::string&);
 
@@ -1597,13 +1638,9 @@ private:
 	workspaces_id_t spaces;
 
 public:
-	workspaces(const workspaces& ws)
-		: spaces(ws.spaces)
-	{
-	}
+	workspaces(const workspaces& ws) : spaces(ws.spaces) {}
 
-	workspaces()
-		: spaces(){};
+	workspaces() : spaces(){};
 
 private:
 	workspaces& operator=(const workspaces& ws);
@@ -1825,8 +1862,7 @@ public:
 	applications(const applications&) = delete;
 	applications operator=(const applications&) = delete;
 
-	applications(applications&& as)
-		: apps(as.apps){};
+	applications(applications&& as) : apps(as.apps){};
 
 private:
 	applications& operator=(applications&& as);
@@ -1875,12 +1911,12 @@ public:
 	{
 
 	private:
-		std::string cldls_hostname;
+		std::string landscaper_hostname;
 		std::string configuration;
-		std::string cldls_base; // base path of CldLS for http services
-		std::string url_config; // relative to cldls_base: get configuration from CldLS using this api
-		std::string url_register; // relative to cldls_base: register this CPM to the CldLS
-		std::string url_unregister; // relative to cldls_base: unregister this CPM to the CldLS
+		std::string landscaper_base_path; // base path of CldLS for http services
+		std::string url_config; // relative to landscaper_base_path: get configuration from CldLS using this api
+		std::string url_register; // relative to landscaper_base_path: register this CPM to the CldLS
+		std::string url_unregister; // relative to landscaper_base_path: unregister this CPM to the CldLS
 		std::string shutdown_url; // to which url should the CldLs send the shutdown request
 		int port;
 		bool remote_config;
@@ -1891,7 +1927,7 @@ public:
 
 	public:
 		config(int port_, int _verbose = 0)
-			: cldls_hostname()
+			: landscaper_hostname()
 			, configuration()
 			, url_config()
 			, url_register()
@@ -1908,7 +1944,10 @@ public:
 		~config() {}
 
 		const json& get_httpconfig(void) { return httpconfig; }
-		std::string get_apipaths(const char* key, const char* default_val) { return std::string(apipaths.value(key, default_val)); }
+		std::string get_apipaths(const char* key, const char* default_val)
+		{
+			return std::string(apipaths.value(key, default_val));
+		}
 
 		std::string find_config(const std::string& filename, json& conf)
 		{
@@ -1944,9 +1983,10 @@ public:
 				try
 				{
 					json remote_conf(*remote);
-					remote_conf.at("hostname").get_to(cldls_hostname);
+					remote_conf.at("hostname").get_to(landscaper_hostname);
 					remote_conf.at("port").get_to(port);
-					remote_conf.at("cldls_base").get_to(cldls_base), remote_conf.at("url_config").get_to(url_config);
+					remote_conf.at("landscaper_base_path").get_to(landscaper_base_path),
+						remote_conf.at("url_config").get_to(url_config);
 					remote_conf.at("url_register").get_to(url_register);
 					remote_conf.at("url_unregister").get_to(url_unregister);
 					remote_conf.at("configuration").get_to(configuration);
@@ -1959,7 +1999,8 @@ public:
 				}
 				if (conf_ok)
 				{
-					cloud::platform::landscaper::configuration_api CldLS(cldls_hostname, port, cldls_base + url_config, configuration, verbose);
+					cloud::platform::landscaper::configuration_api CldLS(
+						landscaper_hostname, port, landscaper_base_path + url_config, configuration, verbose);
 
 					if (CldLS.exec(conf) == true)
 					{
@@ -2031,7 +2072,8 @@ public:
 	private:
 		bool execute_CPM_cmd(const std::string& ID, const json& reg_data, int verbose = 0)
 		{
-			cloud::platform::landscaper::registry_api reg(cldls_hostname, port, cldls_base + url_register, ID, reg_data, verbose);
+			cloud::platform::landscaper::registry_api reg(
+				landscaper_hostname, port, landscaper_base_path + url_register, ID, reg_data, verbose);
 
 			json reg_return;
 			if (reg.exec(reg_return))
@@ -2085,11 +2127,12 @@ private:
 	manager::config* cpm_conf;
 
 public:
-	manager(http::configuration& configuration, const std::string& base_path_config, const std::string& base_path_workspaces, manager::config* _conf)
-		: http::basic::threaded::server(configuration)
-		, shutdown_promise()
-		, shutdown_future()
-		, cpm_conf(_conf)
+	manager(
+		http::configuration& configuration,
+		const std::string& base_path_config,
+		const std::string& base_path_workspaces,
+		manager::config* _conf)
+		: http::basic::threaded::server(configuration), shutdown_promise(), shutdown_future(), cpm_conf(_conf)
 	{
 		router_.on_get("/status", [this](http::session_handler& session) {
 			http::basic::threaded::server::manager().server_information(configuration_.to_string());
@@ -2238,7 +2281,8 @@ private:
 				}
 				else
 				{
-					set_error_response(session, http::status::bad_request, "null", "workspace " + workspaceID + " already present");
+					set_error_response(
+						session, http::status::bad_request, "null", "workspace " + workspaceID + " already present");
 				}
 			}
 			catch (json::exception& e)
@@ -2302,7 +2346,8 @@ private:
 				workspace* w = ws.get_workspace(workspaceID);
 				if ((w == nullptr) || (w->marked_for_delete()))
 				{
-					set_error_response(session, http::status::bad_request, "null", "workspace " + workspaceID + " not found");
+					set_error_response(
+						session, http::status::bad_request, "null", "workspace " + workspaceID + " not found");
 				}
 				else
 				{
@@ -2343,7 +2388,8 @@ private:
 				workspace* w;
 				if ((w = ws.get_workspace(workspaceID)) == nullptr)
 				{
-					set_error_response(session, http::status::bad_request, "null", "workspace " + workspaceID + " not found");
+					set_error_response(
+						session, http::status::bad_request, "null", "workspace " + workspaceID + " not found");
 				}
 				else
 				{
@@ -2401,7 +2447,11 @@ private:
 	}
 
 public:
-	virtual void set_error_response(http::session_handler& session, http::status::status_t status, const std::string& code, const std::string& message)
+	virtual void set_error_response(
+		http::session_handler& session,
+		http::status::status_t status,
+		const std::string& code,
+		const std::string& message)
 	{
 
 		session.response().status(status);
@@ -2446,21 +2496,21 @@ static manager* cpm_server;
 } // namespace platform
 } // namespace cloud
 
-class cURL_global
+class curl_global
 {
 public:
-	cURL_global() { curl_global_init(CURL_GLOBAL_ALL); }
+	curl_global() { curl_global_init(CURL_GLOBAL_ALL); }
 
-	~cURL_global() { curl_global_cleanup(); }
+	~curl_global() { curl_global_cleanup(); }
 };
 
 int main(int argc, const char** argv)
 {
-
-	cURL_global g; // initialize cURL global stuff
+	curl_global g; // initialize cURL global stuff
 
 	prog_args::arguments_t cmd_args(
-		argc, argv,
+		argc,
+		argv,
 		{ { "workdir", { prog_args::arg_t::arg_val, " <workdir>: Working directory for Platform Manager ", "." } },
 		  { "configfile", { prog_args::arg_t::arg_val, " <config>: filename for the config file", "pm.json" } },
 		  { "curldebug", { prog_args::arg_t::flag, " enables cURL tracing ", "false" } },
@@ -2495,16 +2545,11 @@ int main(int argc, const char** argv)
 	// start Cloud Manager http rest server
 	//
 
-	static http::configuration* configuration = new http::configuration(std::initializer_list<http::field<std::string>>{
-		{ "server", "Platform Manager" }, { "http_listen_port_begin", cmd_args.get_val("http_port") }, { "http_listen_port_end", cmd_args.get_val("http_port") }, { "https_enabled", "false" },
-		// {"https_listen_port_begin", "4100"},
-		// {"https_listen_port_end", "4100"},
-		// {"keepalive_count", "1024"},
-		// {"keepalive_timeout", "5"},
-		// {"doc_root", "/temp/docroot"},
-		// {"ssl_certificate", "server.crt"},
-		// {"ssl_certificate_key", "server.key"}
-	});
+	static http::configuration* configuration = new http::configuration(
+		std::initializer_list<http::field<std::string>>{ { "server", "Platform Manager" },
+														 { "http_listen_port_begin", cmd_args.get_val("http_port") },
+														 { "http_listen_port_end", cmd_args.get_val("http_port") },
+														 { "https_enabled", "false" } });
 
 	for (auto& c : CPMconf.get_httpconfig().items())
 	{
@@ -2514,8 +2559,11 @@ int main(int argc, const char** argv)
 	std::string err;
 	if ((err = CPMconf.find_config(cpm_config, conf)) == "")
 	{
-		cloud::platform::cpm_server
-			= new cloud::platform::manager(*configuration, CPMconf.get_apipaths("internal", "/es_server/internal"), CPMconf.get_apipaths("public", "/es_server/rest"), &CPMconf);
+		cloud::platform::cpm_server = new cloud::platform::manager(
+			*configuration,
+			CPMconf.get_apipaths("internal", "/es_server/internal"),
+			CPMconf.get_apipaths("public", "/es_server/rest"),
+			&CPMconf);
 
 		cloud::platform::cpm_server->start_server();
 

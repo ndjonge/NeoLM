@@ -4,7 +4,7 @@ ConstructorInitializerIndentWidth: 4
 AlignAfterOpenBracket: AlwaysBreak
 AlignEscapedNewlinesLeft: false
 AlignTrailingComments: false
-AllowAllParametersOfDeclarationOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: true
 AllowShortIfStatementsOnASingleLine: true
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakTemplateDeclarations: false
@@ -12,12 +12,14 @@ AlwaysBreakBeforeMultilineStrings: true
 BreakBeforeBinaryOperators: true
 BreakBeforeTernaryOperators: true
 BreakConstructorInitializersBeforeComma: true
+BinPackArguments: false
 BinPackParameters: false
-ColumnLimit: 200
-ConstructorInitializerAllOnOneLineOrOnePerLine: false
+ColumnLimit: 120
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
 DerivePointerBinding: false
 ExperimentalAutoDetectBinPacking: false
-IndentCaseLabels: false
+IndentCaseLabels: true
 MaxEmptyLinesToKeep: 1
 NamespaceIndentation: Inner
 ObjCSpaceBeforeProtocolList: true

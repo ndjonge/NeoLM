@@ -131,17 +131,26 @@ inline void init()
 class buffer
 {
 public:
-	buffer(char* data, size_t size)
-		: data_(data)
-		, size_(size)
-	{
-	}
+	buffer(char* data, size_t size) : data_(data), size_(size) {}
 
 	char* data() const { return data_; }
 	size_t size() const { return size_; }
 
 private:
 	char* data_;
+	size_t size_;
+};
+
+class const_buffer
+{
+public:
+	const_buffer(const char* data, size_t size) : data_(data), size_(size) {}
+
+	const char* data() const { return data_; }
+	size_t size() const { return size_; }
+
+private:
+	const char* data_;
 	size_t size_;
 };
 
@@ -164,26 +173,23 @@ public:
 		tlsv12
 	};
 
-	context(method m)
-		: context_(nullptr)
-		, ssl_method_(nullptr)
-		, verify_mode_(verify_peer)
+	context(method m) : context_(nullptr), ssl_method_(nullptr), verify_mode_(verify_peer)
 
 	{
 
 		switch (m)
 		{
-		case tlsv12:
+			case tlsv12:
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-			ssl_method_ = TLSv1_2_method();
-			context_ = SSL_CTX_new(ssl_method_);
+				ssl_method_ = TLSv1_2_method();
+				context_ = SSL_CTX_new(ssl_method_);
 #else
-			ssl_method_ = TLS_server_method();
-			context_ = SSL_CTX_new(ssl_method_);
-			SSL_CTX_set_min_proto_version(context_, TLS1_2_VERSION);
-			SSL_CTX_set_max_proto_version(context_, TLS1_2_VERSION);
+				ssl_method_ = TLS_server_method();
+				context_ = SSL_CTX_new(ssl_method_);
+				SSL_CTX_set_min_proto_version(context_, TLS1_2_VERSION);
+				SSL_CTX_set_max_proto_version(context_, TLS1_2_VERSION);
 #endif
-			break;
+				break;
 		}
 	}
 
@@ -233,7 +239,8 @@ public:
 		verify_client_once
 	};
 
-	void set_verify_mode(verify_mode v) // network::ssl::verify_peer | boost::asio::ssl::verify_fail_if_no_peer_cert | boost::asio::ssl::verify_client_once);
+	void set_verify_mode(verify_mode v) // network::ssl::verify_peer | boost::asio::ssl::verify_fail_if_no_peer_cert |
+										// boost::asio::ssl::verify_client_once);
 	{
 		verify_mode_ = v;
 	}
@@ -258,12 +265,7 @@ enum handshake_type
 template <class socket> class stream
 {
 public:
-	stream(context& context)
-		: context_(context)
-		, lowest_layer_(0)
-		, ssl_(nullptr)
-	{
-	}
+	stream(context& context) : context_(context), lowest_layer_(0), ssl_(nullptr) {}
 
 	~stream()
 	{
@@ -279,10 +281,7 @@ public:
 	stream& operator=(const stream&) = delete;
 	stream& operator=(stream&&) = delete;
 
-	stream(stream&& s) noexcept
-		: context_(s.context_)
-		, lowest_layer_(std::move(s.lowest_layer_))
-		, ssl_(s.ssl_)
+	stream(stream&& s) noexcept : context_(s.context_), lowest_layer_(std::move(s.lowest_layer_)), ssl_(s.ssl_)
 	{
 		s.lowest_layer_.assign(static_cast<socket_t>(-1));
 		s.ssl_ = nullptr;
@@ -376,22 +375,28 @@ enum options
 };
 
 inline options operator|(options a, options b) { return options((static_cast<int>(a)) | (static_cast<int>(b))); }
-inline options& operator|=(options& a, options b) { return reinterpret_cast<options&>(((reinterpret_cast<int&>(a)) |= (static_cast<int>(b)))); }
+inline options& operator|=(options& a, options b)
+{
+	return reinterpret_cast<options&>(((reinterpret_cast<int&>(a)) |= (static_cast<int>(b))));
+}
 inline options operator&(options a, options b) { return options((static_cast<int>(a)) & (static_cast<int>(b))); }
-inline options& operator&=(options& a, options b) { return reinterpret_cast<options&>((reinterpret_cast<int&>(a)) &= (static_cast<int>(b))); }
+inline options& operator&=(options& a, options b)
+{
+	return reinterpret_cast<options&>((reinterpret_cast<int&>(a)) &= (static_cast<int>(b)));
+}
 inline options operator~(options a) { return options(~(static_cast<int>(a))); }
 inline options operator^(options a, options b) { return options((static_cast<int>(a)) ^ (static_cast<int>(b))); }
-inline options& operator^=(options& a, options b) { return reinterpret_cast<options&>(((reinterpret_cast<int&>(a)) ^= (static_cast<int>(b)))); }
+inline options& operator^=(options& a, options b)
+{
+	return reinterpret_cast<options&>(((reinterpret_cast<int&>(a)) ^= (static_cast<int>(b))));
+}
 
 class socket
 {
 public:
 	socket() = default;
 
-	socket(socket_t s)
-		: socket_(s)
-	{
-	}
+	socket(socket_t s) : socket_(s) {}
 
 	enum family
 	{
@@ -399,18 +404,9 @@ public:
 		v6 = AF_INET6
 	};
 
-	socket(socket&& s) noexcept
-		: socket_(s.socket_)
-		, options_(s.options_)
-	{
-		s.socket_ = 0;
-	}
+	socket(socket&& s) noexcept : socket_(s.socket_), options_(s.options_) { s.socket_ = 0; }
 
-	socket(const socket& s) noexcept
-		: socket_(s.socket_)
-		, options_(s.options_)
-	{
-	}
+	socket(const socket& s) noexcept : socket_(s.socket_), options_(s.options_) {}
 
 	socket& operator=(const socket& s) = default;
 	socket& operator=(socket&& s) = default;
@@ -439,9 +435,19 @@ public:
 	{
 		socket_ = ::socket(fam, prot, 0);
 
-		::setsockopt(socket_, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&option_values_[options::ipv6only]), sizeof(std::int32_t));
+		::setsockopt(
+			socket_,
+			IPPROTO_IPV6,
+			IPV6_V6ONLY,
+			reinterpret_cast<char*>(&option_values_[options::ipv6only]),
+			sizeof(std::int32_t));
 
-		::setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&option_values_[options::reuseaddr]), sizeof(std::int32_t));
+		::setsockopt(
+			socket_,
+			SOL_SOCKET,
+			SO_REUSEADDR,
+			reinterpret_cast<char*>(&option_values_[options::reuseaddr]),
+			sizeof(std::int32_t));
 
 		return socket_;
 	}
@@ -558,7 +564,10 @@ public:
 			return static_cast<std::int32_t>(sizeof(data_.v4));
 	}
 
-	void open(tcp::protocol protocol) { socket_.open(static_cast<network::tcp::socket::family>(data_.base.sa_family), protocol); }
+	void open(tcp::protocol protocol)
+	{
+		socket_.open(static_cast<network::tcp::socket::family>(data_.base.sa_family), protocol);
+	}
 
 	tcp::socket& socket() { return socket_; };
 
@@ -634,19 +643,14 @@ private:
 class v6 : public endpoint
 {
 public:
-	v6(std::int32_t port)
-		: endpoint{ port, tcp::socket::family::v6 }
-	{
-	}
+	v6(std::int32_t port) : endpoint{ port, tcp::socket::family::v6 } {}
 
-	v6(const std::string& ip, std::int32_t port)
-		: endpoint{ port, tcp::socket::family::v6 }
+	v6(const std::string& ip, std::int32_t port) : endpoint{ port, tcp::socket::family::v6 }
 	{
 		inet_pton(AF_INET6, ip.c_str(), &(endpoint::data_.v6.sin6_addr));
 	}
 
-	v6(const network::ip::address address)
-		: endpoint{ 0, tcp::socket::family::v6 }
+	v6(const network::ip::address address) : endpoint{ 0, tcp::socket::family::v6 }
 	{
 		inet_pton(AF_INET6, address.first.c_str(), &(endpoint::data_.v6.sin6_addr));
 
@@ -842,23 +846,55 @@ inline error_code connect(tcp::socket& s, tcp::resolver::resolver_results& resul
 	return ret;
 }
 
-inline std::int32_t read(const socket_t& s, const buffer& b) noexcept { return ::recv(s, b.data(), static_cast<int>(b.size()), 0); }
+inline std::int32_t read(const socket_t& s, const buffer& b) noexcept
+{
+	return ::recv(s, b.data(), static_cast<int>(b.size()), 0);
+}
 
-inline std::int32_t write(const socket_t& s, const buffer& b) noexcept { return ::send(s, b.data(), static_cast<int>(b.size()), 0); }
+inline std::int32_t write(const socket_t& s, const const_buffer& b) noexcept
+{
+	return ::send(s, b.data(), static_cast<int>(b.size()), 0);
+}
 
-inline std::int32_t write(const socket_t& s, const std::string& str) noexcept { return ::send(s, str.data(), static_cast<int>(str.size()), 0); }
+inline std::int32_t write(const socket_t& s, const buffer& b) noexcept
+{
+	return ::send(s, b.data(), static_cast<int>(b.size()), 0);
+}
 
-inline std::int32_t read(const network::tcp::socket& s, const buffer& b) noexcept { return ::recv(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0); }
+inline std::int32_t write(const socket_t& s, const std::string& str) noexcept
+{
+	return ::send(s, str.data(), static_cast<int>(str.size()), 0);
+}
 
-inline std::int32_t write(const network::tcp::socket& s, const buffer& b) noexcept { return ::send(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0); }
+inline std::int32_t read(const network::tcp::socket& s, const buffer& b) noexcept
+{
+	return ::recv(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0);
+}
 
-inline std::int32_t write(const network::tcp::socket& s, const std::string& str) noexcept { return ::send(s.lowest_layer(), str.data(), static_cast<int>(str.size()), 0); }
+inline std::int32_t write(const network::tcp::socket& s, const buffer& b) noexcept
+{
+	return ::send(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0);
+}
 
-inline std::int32_t read(ssl::stream<tcp::socket>& s, const buffer& b) noexcept { return SSL_read(s.native(), b.data(), static_cast<int>(b.size())); }
+inline std::int32_t write(const network::tcp::socket& s, const std::string& str) noexcept
+{
+	return ::send(s.lowest_layer(), str.data(), static_cast<int>(str.size()), 0);
+}
 
-inline std::int32_t write(ssl::stream<tcp::socket>& s, const buffer& b) noexcept { return SSL_write(s.native(), b.data(), static_cast<int>(b.size())); }
+inline std::int32_t read(ssl::stream<tcp::socket>& s, const buffer& b) noexcept
+{
+	return SSL_read(s.native(), b.data(), static_cast<int>(b.size()));
+}
 
-inline std::int32_t write(ssl::stream<tcp::socket>& s, const std::string& str) noexcept { return SSL_write(s.native(), const_cast<char*>(str.data()), static_cast<int>(str.size())); } // NOLINT
+inline std::int32_t write(ssl::stream<tcp::socket>& s, const buffer& b) noexcept
+{
+	return SSL_write(s.native(), b.data(), static_cast<int>(b.size()));
+}
+
+inline std::int32_t write(ssl::stream<tcp::socket>& s, const std::string& str) noexcept
+{
+	return SSL_write(s.native(), const_cast<char*>(str.data()), static_cast<int>(str.size()));
+} // NOLINT
 
 inline std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_socket)
 {
@@ -889,7 +925,8 @@ inline std::string get_client_info(const network::tcp::socket& client_socket)
 inline int tcp_nodelay(network::tcp::socket& s, int value)
 {
 	int reuseaddr = value;
-	return ::setsockopt(s.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&reuseaddr), sizeof(reuseaddr)); // NOLINT
+	return ::setsockopt(
+		s.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&reuseaddr), sizeof(reuseaddr)); // NOLINT
 }
 
 inline int reuse_address(network::tcp::socket& s, std::int32_t value)
@@ -927,7 +964,8 @@ inline int no_linger(network::tcp::socket& s, int value)
 		linger_.l_linger = 5;
 	}
 
-	int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_LINGER, reinterpret_cast<char*>(&linger_), sizeof(linger)); // NOLINT
+	int ret = ::setsockopt(
+		s.lowest_layer(), SOL_SOCKET, SO_LINGER, reinterpret_cast<char*>(&linger_), sizeof(linger)); // NOLINT
 
 	return ret;
 }
@@ -936,7 +974,12 @@ inline int timeout(network::tcp::socket& s, int value)
 {
 #if defined(_WIN32)
 	DWORD timeout_value = static_cast<DWORD>(value) * 1000;
-	int ret = ::setsockopt(s.lowest_layer(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&timeout_value), sizeof(timeout_value)); // NOLINT
+	int ret = ::setsockopt(
+		s.lowest_layer(),
+		SOL_SOCKET,
+		SO_RCVTIMEO,
+		reinterpret_cast<char*>(&timeout_value),
+		sizeof(timeout_value)); // NOLINT
 #else
 	timeval timeout{};
 	timeout.tv_sec = value;
@@ -966,6 +1009,9 @@ enum shutdown_type
 	shutdown_both
 };
 
-inline void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, shutdown_type how) { ::shutdown(client_socket.lowest_layer().lowest_layer(), static_cast<int>(how)); }
+inline void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, shutdown_type how)
+{
+	::shutdown(client_socket.lowest_layer().lowest_layer(), static_cast<int>(how));
+}
 
 } // namespace network

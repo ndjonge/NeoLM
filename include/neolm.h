@@ -27,11 +27,7 @@ using group_members = std::unordered_map<std::string, pm::group::member>;
 class member
 {
 public:
-	member(std::string tenant_id, std::string url)
-		: tenant_id_(std::move(tenant_id))
-		, url_(std::move(url))
-	{
-	}
+	member(std::string tenant_id, std::string url) : tenant_id_(std::move(tenant_id)), url_(std::move(url)) {}
 
 	const std::string to_string()
 	{
@@ -62,9 +58,7 @@ template <class M> class product
 {
 public:
 	product(std::string id, std::string description, M&& m)
-		: id_(std::move(id))
-		, description_(std::move(description))
-		, model_(m){};
+		: id_(std::move(id)), description_(std::move(description)), model_(m){};
 
 private:
 	std::string id_;
@@ -76,8 +70,7 @@ private:
 class user
 {
 public:
-	user(std::string name)
-		: name_(std::move(name)){};
+	user(std::string name) : name_(std::move(name)){};
 
 	std::string name_;
 };
@@ -85,9 +78,7 @@ public:
 class server
 {
 public:
-	server(std::string id, std::string hostname)
-		: id_(std::move(id))
-		, hostname_(std::move(hostname)){};
+	server(std::string id, std::string hostname) : id_(std::move(id)), hostname_(std::move(hostname)){};
 
 	std::string id_;
 	std::string hostname_;
@@ -96,9 +87,7 @@ public:
 class named_user_license
 {
 public:
-	named_user_license(size_t max_heavy, size_t max_light)
-		: max_heavy_(max_heavy)
-		, max_light_(max_light){};
+	named_user_license(size_t max_heavy, size_t max_light) : max_heavy_(max_heavy), max_light_(max_light){};
 
 private:
 	size_t max_heavy_;
@@ -108,8 +97,7 @@ private:
 class named_server_license
 {
 public:
-	named_server_license(size_t max)
-		: max_(max){};
+	named_server_license(size_t max) : max_(max){};
 
 private:
 	size_t max_;
@@ -118,10 +106,7 @@ private:
 class concurrent_user_license
 {
 public:
-	concurrent_user_license(size_t max)
-		: max_(max)
-	{
-	}
+	concurrent_user_license(size_t max) : max_(max) {}
 
 private:
 	size_t max_;
@@ -244,6 +229,14 @@ private:
 				session.response().status(http::status::ok);
 			});
 
+			S::router_.on_get("/api/rest/fx/test/urlencodedparam/{1}", [this](http::session_handler& session) {
+				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
+
+				session.response().body() += "\nParam 1: '" + session.params().get("1") + "'";
+
+				session.response().status(http::status::ok);
+			});
+
 			S::router_.on_get("/api/rest/fx/test/niek/*", [this](http::session_handler& session) {
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
@@ -256,7 +249,8 @@ private:
 				std::stringstream str;
 				S::manager().server_information(S::configuration_.to_json_string());
 				S::manager().router_information(S::router_.to_json_string());
-				session.response().body() = S::manager().to_json_string(http::basic::server::server_manager::json_status_options::full);
+				session.response().body()
+					= S::manager().to_json_string(http::basic::server::server_manager::json_status_options::full);
 				session.response().type("application/json");
 
 				session.response().set_attribute<const char*>("name", "niek");
@@ -306,9 +300,7 @@ private:
 
 public:
 	license_manager(http::configuration configuration, std::string home_dir)
-		: configuration_{ std::move(configuration) }
-		, api_server_(*this, configuration_)
-		, home_dir_(std::move(home_dir))
+		: configuration_{ std::move(configuration) }, api_server_(*this, configuration_), home_dir_(std::move(home_dir))
 	{
 	}
 
@@ -326,7 +318,8 @@ public:
 	{
 		/*struct test
 		{
-			test(neolm::license_manager<S>::api_server& api_server_, std::function<void(http::session_handler&, const http::api::params&)>& test_function)
+			test(neolm::license_manager<S>::api_server& api_server_, std::function<void(http::session_handler&, const
+		http::api::params&)>& test_function)
 			{
 				int x = 0;
 
@@ -339,7 +332,8 @@ public:
 							{
 								std::stringstream route;
 
-								route << "/v-" << std::to_string(n) << "/service-" << std::to_string(i) << "/subservice-" << std::to_string(k) << "/route/test-"
+								route << "/v-" << std::to_string(n) << "/service-" << std::to_string(i) <<
+		"/subservice-" << std::to_string(k) << "/route/test-"
 									  << std::to_string(x++) << "/{test}/aap";
 
 								api_server_.router_.on_get(std::move(route.str()), std::move(test_function));
@@ -347,8 +341,8 @@ public:
 			}
 		};
 
-		std::function<void(http::session_handler&, const http::api::params&)> the_test = [](http::session_handler& session) {
-			const auto& test = session.params().get("test");
+		std::function<void(http::session_handler&, const http::api::params&)> the_test = [](http::session_handler&
+		session) { const auto& test = session.params().get("test");
 
 			if (test.empty())
 			{
