@@ -233,7 +233,7 @@ private:
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
 				session.response().body() += "\nParam 1: '" + session.params().get("1") + "'";
-
+				session.response().body() += "\nParam 1: '" + session.response().session().params().get("1") + "'";
 				session.response().status(http::status::ok);
 			});
 
@@ -245,32 +245,60 @@ private:
 				session.response().status(http::status::ok);
 			});
 
-			S::router_.on_get("/status_js", [this](http::session_handler& session) {
-				std::stringstream str;
-				S::manager().server_information(S::configuration_.to_json_string());
-				S::manager().router_information(S::router_.to_json_string());
-				session.response().body()
-					= S::manager().to_json_string(http::basic::server::server_manager::json_status_options::full);
-				session.response().type("application/json");
+			router_.on_get("/status", [this](http::session_handler& session) {
+				const auto& format = session.request().query().get<std::string>("format", "text");
 
-				session.response().set_attribute<const char*>("name", "niek");
-
-				auto x1 = session.response().get_attribute<const char*>("name");
-
-				if (strcmp("niek", x1))
-					session.response().status(http::status::ok);
+				if (format == "json")
+				{
+					manager().server_information(configuration_.to_json_string());
+					manager().router_information(router_.to_json_string());
+					session.response().body()
+						= manager().to_json_string(http::basic::server::server_manager::json_status_options::full);
+					session.response().type("json");
+				}
 				else
-					session.response().status(http::status::not_acceptable);
+				{
+					manager().server_information(configuration_.to_string());
+					manager().router_information(router_.to_string());
+					session.response().body() = manager().to_string();
+					session.response().type("text");
+				}
+
+				session.response().status(http::status::ok);
 			});
 
-			S::router_.on_get("/status", [this](http::session_handler& session) {
-				S::manager().server_information(S::configuration_.to_string());
-				S::manager().router_information(S::router_.to_string());
+			router_.on_get("/status/{section}", [this](http::session_handler& session) {
+				manager().server_information(configuration_.to_json_string());
+				manager().router_information(router_.to_json_string());
 
-				session.response().body().reserve(8192 * 4);
-				session.response().body() = S::manager().to_string();
+				auto section_option = http::basic::server::server_manager::json_status_options::full;
 
-				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
+				const auto& section = session.params().get("section");
+
+				if (section == "statistics")
+				{
+					section_option = http::basic::server::server_manager::json_status_options::server_stats;
+				}
+				else if (section == "configuration")
+				{
+					section_option = http::basic::server::server_manager::json_status_options::config;
+				}
+				else if (section == "router")
+				{
+					section_option = http::basic::server::server_manager::json_status_options::router;
+				}
+				else if (section == "access_log")
+				{
+					section_option = http::basic::server::server_manager::json_status_options::accesslog;
+				}
+				else
+				{
+					session.response().status(http::status::not_found);
+					return;
+				}
+
+				session.response().body() = manager().to_json_string(section_option);
+				session.response().type("json");
 				session.response().status(http::status::ok);
 			});
 

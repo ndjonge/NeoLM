@@ -1260,6 +1260,7 @@ public:
 
 private:
 	std::string body_;
+	const http::session_handler* session_handler_{ nullptr };
 
 public:
 	message() = default;
@@ -1271,12 +1272,21 @@ public:
 	message& operator=(const message&) = default;
 	message& operator=(message&&) noexcept = default;
 
+	message(const http::session_handler& session) : session_handler_(&session){};
+
 	// TODO use enableif....
 	message(const std::string& method, const std::string& target, const int version_nr = 11)
 	{
 		header<specialization>::version_nr_ = version_nr;
 		header<specialization>::method_ = http::method::to_method(method);
 		header<specialization>::target_ = target;
+	}
+
+	const http::session_handler& session() const
+	{
+		if (session_handler_ == nullptr) throw std::runtime_error{ "session is not set for this message" };
+
+		return *session_handler_;
 	}
 
 	template <typename T> T get_attribute(const std::string& attribute_name)
@@ -2517,8 +2527,8 @@ public:
 	http::request_parser& request_parser() { return request_parser_; };
 	http::response_message& response() { return response_; };
 	http::request_message& request() { return request_; };
-	http::api::params& params() { return *params_; };
-	http::api::routing& routing() { return *routing_; };
+	const http::api::params& params() const { return *params_; };
+	const http::api::routing& routing() const { return *routing_; };
 
 	void reset()
 	{
@@ -2537,8 +2547,8 @@ public:
 	void params(http::api::params& p) { params_ = &p; }
 
 private:
-	http::request_message request_;
-	http::response_message response_;
+	http::request_message request_{ *this };
+	http::response_message response_{ *this };
 	http::request_parser request_parser_;
 	http::configuration& configuration_;
 	http::api::routing* routing_{ nullptr };
@@ -2843,7 +2853,10 @@ public:
 					s << "|" << http::method::to_string(endpoint->first)
 					  << "\":" << endpoint->second->route_metrics().to_json_string();
 
-					if (endpoint + 1 != endpoints_.get()->cend()) s << ",";
+					if (endpoint + 1 != endpoints_.get()->cend())
+						s << ",";
+					else if (link_.size() > 0)
+						s << ",";
 				}
 			}
 
