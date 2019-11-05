@@ -838,15 +838,28 @@ public:
 
 	inline const T& get(const char* name) const
 	{
-		static const T not_found{};
-
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
 			return (http::util::case_insensitive_equal(f.name, name));
 		});
 
 		if (i == std::end(fields_))
 		{
+			static T not_found{};
 			return not_found;
+		}
+		else
+			return i->value;
+	}
+
+	inline const T& operator[](const char* name) const
+	{
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+			return (http::util::case_insensitive_equal(f.name, name));
+		});
+
+		if (i == std::end(fields_))
+		{
+			throw std::runtime_error{ std::string{ "field:" } + name + "not found" };
 		}
 		else
 			return i->value;
@@ -1289,15 +1302,30 @@ public:
 		return *session_handler_;
 	}
 
-	template <typename T> T get_attribute(const std::string& attribute_name)
+	template <typename T>
+	typename std::enable_if<std::is_integral<T>::value, T>::type get_attribute(const std::string& attribute_name) const
 	{
-		return reinterpret_cast<T>(attributes_.get(attribute_name.c_str()));
+		return static_cast<T>(attributes_.get(attribute_name.c_str()));
+	}
+
+	template <typename T>
+	typename std::enable_if<std::is_pointer<T>::value, T>::type get_attribute(const std::string& attribute_name) const
+	{
+		return reinterpret_cast<T>(attributes_[attribute_name.c_str()]);
+	}
+
+	template <typename T>
+	void set_attribute(
+		const std::string& attribute_name, typename std::enable_if<std::is_pointer<T>::value, T>::type attribute_value)
+	{
+		attributes_.set(attribute_name, reinterpret_cast<attributes::value_type::value_type>(attribute_value));
 	};
 
-	template <typename T> void set_attribute(const std::string& attribute_name, const T attribute_value)
+	template <typename T>
+	void set_attribute(
+		const std::string& attribute_name, typename std::enable_if<!std::is_pointer<T>::value, T>::type attribute_value)
 	{
-		attributes_.set(
-			attribute_name, reinterpret_cast<attributes::value_type::value_type>(const_cast<T>(attribute_value)));
+		attributes_.set(attribute_name, attribute_value);
 	};
 
 	std::string target() const { return header<specialization>::target_; }
@@ -2583,7 +2611,7 @@ public:
 		return default_value;
 	}
 
-	inline const std::string& try_get(const std::string& name) const noexcept(false)
+	inline const std::string& operator[](const std::string& name) const noexcept(false)
 	{
 		auto it = parameters.find(name);
 		static std::string no_ret = "";
@@ -3307,6 +3335,24 @@ const http::response_message
 get(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
 {
 	http::basic::client::curl curl{ "GET", url, hdrs, body };
+
+	std::string ec;
+	return curl.call(ec);
+}
+
+const http::response_message
+delete_(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
+{
+	http::basic::client::curl curl{ "DELETE", url, hdrs, body };
+
+	std::string ec;
+	return curl.call(ec);
+}
+
+const http::response_message
+put(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
+{
+	http::basic::client::curl curl{ "PUT", url, hdrs, body };
 
 	std::string ec;
 	return curl.call(ec);
@@ -4073,5 +4119,20 @@ private:
 } // namespace basic
 
 using middleware = http::api::router<>::middleware_type;
+
+namespace client
+{
+
+template <http::method::method_t method>
+const http::response_message
+request(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
+{
+	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
+
+	std::string ec;
+	return curl.call(ec);
+}
+
+} // namespace client
 
 } // namespace http
