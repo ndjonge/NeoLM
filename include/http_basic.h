@@ -4119,7 +4119,8 @@ namespace client
 {
 
 template <http::method::method_t method>
-http::response_message request(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
+http::response_message
+request(const std::string& url, std::initializer_list<std::string> hdrs = {}, const std::string& body = {})
 {
 	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
 
@@ -4127,13 +4128,12 @@ http::response_message request(const std::string& url, std::initializer_list<std
 }
 
 template <http::method::method_t method>
-http::response_message
-request(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body, std::string& ec)
+http::response_message request(
+	const std::string& url, std::string& ec, std::initializer_list<std::string> hdrs = {}, const std::string& body = {})
 {
 	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
-	std::string ec;
-
 	return curl.call(ec); // RVO
+
 }
 
 } // namespace client
