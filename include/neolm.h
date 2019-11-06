@@ -243,16 +243,6 @@ private:
 				session.response().body() += "\nWild Card Special Case Param: '" + session.params().get("*") + "'";
 
 				session.response().status(http::status::ok);
-
-				session.response().set_attribute<int>("xxx", 1000);
-				auto x = session.response().get_attribute<int>("xxx");
-
-				session.response().set_attribute<const char*>("xyz", "niek");
-				auto xy = session.response().get_attribute<const char*>("xyz");
-
-				double tt = 123.123;
-				session.response().set_attribute<double*>("xyt", &tt);
-				auto xyz = session.response().get_attribute<double*>("xyt-");
 			});
 
 			router_.on_get("/status", [this](http::session_handler& session) {
@@ -273,8 +263,6 @@ private:
 					session.response().body() = manager().to_string();
 					session.response().type("text");
 				}
-
-				auto response = http::client::request<http::method::get>("http://localhost:7777/status", {}, {});
 
 				session.response().status(http::status::ok);
 			});
@@ -311,6 +299,10 @@ private:
 
 				session.response().body() = manager().to_json_string(section_option);
 				session.response().type("json");
+
+				session.request().get_attribute<int>("name", 12435);
+				session.request().get<int>("name", 12435);
+
 				session.response().status(http::status::ok);
 			});
 

@@ -773,7 +773,7 @@ public:
 	}
 
 	template <typename P>
-	typename std::enable_if<std::is_same<P, bool>::value, bool>::type get(const std::string& name, const P value = P())
+	typename std::enable_if<std::is_same<P, bool>::value, bool>::type get(const std::string& name, const P value) const
 	{
 		P returnvalue = value;
 
@@ -790,8 +790,10 @@ public:
 	}
 
 	template <typename P>
-	typename std::enable_if<std::is_integral<T>::value && !std::is_same<P, bool>::value, P>::type
-	get(const std::string& name, const P value = P())
+	typename std::enable_if<
+		std::is_integral<P>::value && (!std::is_same<P, bool>::value && !std::is_same<T, std::string>::value),
+		P>::type
+	get(const std::string& name, const P value) const
 	{
 		P returnvalue = value;
 
@@ -799,14 +801,31 @@ public:
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
-		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
+		if (i != std::end(fields_)) returnvalue = static_cast<P>(i->value); // TODO std::stoi(i->value);
+
+		return static_cast<P>(returnvalue);
+	}
+
+	template <typename P>
+	typename std::enable_if<
+		std::is_integral<P>::value && (!std::is_same<P, bool>::value && std::is_same<T, std::string>::value),
+		P>::type
+	get(const std::string& name, const P value) const
+	{
+		P returnvalue = value;
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
+
+		if (i != std::end(fields_)) returnvalue = static_cast<P>(std::stoi(i->value));
 
 		return static_cast<P>(returnvalue);
 	}
 
 	template <typename P>
 	typename std::enable_if<std::is_same<P, std::string>::value, std::string>::type
-	get(const std::string& name, const P& value = P())
+	get(const std::string& name, const P& value) const
 	{
 		bool ignore_existance;
 		return get(name, ignore_existance, value);
@@ -814,7 +833,7 @@ public:
 
 	template <typename P>
 	typename std::enable_if<std::is_same<P, std::string>::value, std::string>::type
-	get(const std::string& name, bool& exists, const P& value = P())
+	get(const std::string& name, bool& exists, const P& value = P()) const
 	{
 		P returnvalue = value;
 
@@ -844,22 +863,7 @@ public:
 
 		if (i == std::end(fields_))
 		{
-			static T not_found{};
-			return not_found;
-		}
-		else
-			return i->value;
-	}
-
-	inline const T& operator[](const char* name) const
-	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return (http::util::case_insensitive_equal(f.name, name));
-		});
-
-		if (i == std::end(fields_))
-		{
-			throw std::runtime_error{ std::string{ "field:" } + name + "not found" };
+			throw std::runtime_error{ std::string{ "get of field: '" } + name + "' failed because it was not found" };
 		}
 		else
 			return i->value;
@@ -891,6 +895,17 @@ public:
 		}
 	}
 
+	inline void reset_if_exists(const std::string& name)
+	{
+		try
+		{
+			reset(name);
+		}
+		catch (...)
+		{
+		}
+	}
+
 	inline void reset(const std::string& name)
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
@@ -901,6 +916,8 @@ public:
 		{
 			fields_.erase(i);
 		}
+		else
+			throw std::runtime_error{ std::string{ "reset of field: '" } + name + "' failed because it was not found" };
 	}
 
 	inline void clear() { fields_.clear(); }
@@ -1017,7 +1034,7 @@ public:
 			return (http::util::case_insensitive_equal(f.name, name));
 		});
 
-		if (i != std::end(fields_)) returnvalue = std::stoi(i->value);
+		if (i != std::end(fields_)) returnvalue = std::stoi(i->value); // TODO klopt dit nog? T is_integral
 
 		return static_cast<T>(returnvalue);
 	}
@@ -1309,9 +1326,10 @@ public:
 	}
 
 	template <typename T>
-	typename std::enable_if<std::is_pointer<T>::value, T>::type get_attribute(const std::string& attribute_name) const
+	typename std::enable_if<std::is_integral<T>::value, T>::type
+	get_attribute(const std::string& attribute_name, const T& default_value) const
 	{
-		return reinterpret_cast<T>(attributes_[attribute_name.c_str()]);
+		return attributes_.get<T>(attribute_name.c_str(), default_value);
 	}
 
 	template <typename T>
@@ -1327,6 +1345,8 @@ public:
 	{
 		attributes_.set(attribute_name, attribute_value);
 	};
+
+	void reset_attribute(const std::string& attribute_name) { attributes_.reset(attribute_name); };
 
 	std::string target() const { return header<specialization>::target_; }
 
@@ -1348,7 +1368,7 @@ public:
 
 	const std::string& body() const { return body_; }
 
-	bool chunked() const { return (http::fields<std::string>::get("Transfer-Encoding") == "chunked"); }
+	bool chunked() const { return (http::fields<std::string>::get("Transfer-Encoding", std::string{}) == "chunked"); }
 
 	void chunked(bool value)
 	{
@@ -1360,7 +1380,7 @@ public:
 
 	bool has_content_length() const
 	{
-		if (http::fields<std::string>::get("Content-Length").empty())
+		if (http::fields<std::string>::get("Content-Length", std::string{}).empty())
 			return false;
 		else
 			return true;
@@ -1381,7 +1401,7 @@ public:
 
 	uint64_t content_length() const
 	{
-		auto content_length_ = http::fields<std::string>::get("Content-Length");
+		auto content_length_ = http::fields<std::string>::get("Content-Length", std::string{});
 
 		if (content_length_.empty())
 			return 0;
@@ -1393,7 +1413,7 @@ public:
 
 	bool connection_close() const
 	{
-		if (http::util::case_insensitive_equal(http::fields<std::string>::get("Connection"), "close"))
+		if (http::util::case_insensitive_equal(http::fields<std::string>::get("Connection", std::string{}), "close"))
 			return true;
 		else
 			return false;
@@ -1401,7 +1421,8 @@ public:
 
 	bool connection_keep_alive() const
 	{
-		if (http::util::case_insensitive_equal(http::fields<std::string>::get("Connection"), "Keep-Alive"))
+		if (http::util::case_insensitive_equal(
+				http::fields<std::string>::get("Connection", std::string{}), "Keep-Alive"))
 			return true;
 		else
 			return false;
@@ -2485,7 +2506,7 @@ public:
 			}
 		}
 
-		if (request_.get("Content-Encoding") == "gzip")
+		if (request_.get("Content-Encoding", std::string{}) == "gzip")
 		{
 			request_.body() = gzip::decompress(request_.body().c_str(), request_.content_length());
 		}
@@ -2537,8 +2558,8 @@ public:
 		if (response_.status() == http::status::no_content)
 		{
 			response_.body() = "";
-			response_.reset("Content-Type");
-			response_.reset("Content-Length");
+			response_.reset_if_exists("Content-Type");
+			response_.reset_if_exists("Content-Length");
 		}
 		else
 		{
@@ -2601,7 +2622,7 @@ public:
 		return ret.second;
 	}
 
-	inline const std::string& get(const std::string& name, const std::string& default_value = {}) const
+	inline const std::string& get(const std::string& name, const std::string& default_value) const
 	{
 		auto it = parameters.find(name);
 
@@ -2611,15 +2632,14 @@ public:
 		return default_value;
 	}
 
-	inline const std::string& operator[](const std::string& name) const noexcept(false)
+	inline const std::string& get(const std::string& name) const noexcept(false)
 	{
 		auto it = parameters.find(name);
-		static std::string no_ret = "";
 
 		if (it != parameters.end()) // if found
 			return it->second;
 		else
-			throw std::runtime_error("route param: {" + name + "} does not exists");
+			throw std::runtime_error("route param: '" + name + "' does not exists");
 	}
 
 	inline bool empty() const noexcept { return parameters.empty(); };
@@ -3210,7 +3230,7 @@ namespace client
 {
 
 const http::response_message
-get(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body);
+_get(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body);
 
 class curl
 {
@@ -3256,7 +3276,7 @@ public:
 		bool verbose = false)
 		: hnd_(curl_easy_init()), buffer_(), headers_(nullptr)
 	{
-		strcpy(error_buf_, ""); // TODO refactor the usage of CURL in C++!
+		strcpy(error_buf_, "");
 
 		if (verbose)
 		{
@@ -3299,7 +3319,7 @@ public:
 		curl_easy_setopt(hnd_, CURLOPT_POSTFIELDS, data_str_.c_str());
 	}
 
-	const http::response_message& call(std::string& error) noexcept
+	http::response_message call(std::string& error) noexcept
 	{
 		CURLcode ret = curl_easy_perform(hnd_);
 
@@ -3315,7 +3335,7 @@ public:
 		}
 	}
 
-	const http::response_message& call()
+	http::response_message call()
 	{
 		CURLcode ret = curl_easy_perform(hnd_);
 
@@ -3330,33 +3350,6 @@ public:
 		}
 	}
 };
-
-const http::response_message
-get(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
-{
-	http::basic::client::curl curl{ "GET", url, hdrs, body };
-
-	std::string ec;
-	return curl.call(ec);
-}
-
-const http::response_message
-delete_(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
-{
-	http::basic::client::curl curl{ "DELETE", url, hdrs, body };
-
-	std::string ec;
-	return curl.call(ec);
-}
-
-const http::response_message
-put(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
-{
-	http::basic::client::curl curl{ "PUT", url, hdrs, body };
-
-	std::string ec;
-	return curl.call(ec);
-}
 
 } // namespace client
 
@@ -3406,11 +3399,12 @@ public:
 			std::stringstream s;
 			std::lock_guard<std::mutex> g(mutex_);
 
-			s << R"(')" << session.request().get("Remote_Addr") << R"(')"
+			s << R"(')" << session.request().get("Remote_Addr", std::string{}) << R"(')"
 			  << R"( - ')" << session.request().method() << " " << session.request().url_requested() << " "
 			  << session.request().version() << R"(')"
 			  << " - " << session.response().status() << " - " << session.response().content_length() << " - "
-			  << session.request().content_length() << R"( - ')" << session.request().get("User-Agent") << "\'";
+			  << session.request().content_length() << R"( - ')" << session.request().get("User-Agent", std::string{})
+			  << "\'";
 
 			access_log_.emplace_back(s.str());
 
@@ -4038,7 +4032,8 @@ public:
 						// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip is good
 
 						if ((gzip_min_length_ < response.body().size())
-							&& (session_handler_.request().get("Accept-Encoding").find("gzip") != std::string::npos))
+							&& (session_handler_.request().get("Accept-Encoding", std::string{}).find("gzip")
+								!= std::string::npos))
 						{
 							response.body() = gzip::compress(response.body().c_str(), response.body().size());
 							response.set("Content-Encoding", "gzip");
@@ -4124,13 +4119,21 @@ namespace client
 {
 
 template <http::method::method_t method>
-const http::response_message
-request(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
+http::response_message request(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
 {
 	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
 
+	return curl.call(); // RVO
+}
+
+template <http::method::method_t method>
+http::response_message
+request(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body, std::string& ec)
+{
+	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
 	std::string ec;
-	return curl.call(ec);
+
+	return curl.call(ec); // RVO
 }
 
 } // namespace client
