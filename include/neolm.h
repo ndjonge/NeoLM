@@ -300,42 +300,11 @@ private:
 				session.response().body() = manager().to_json_string(section_option);
 				session.response().type("json");
 
-				session.request().set_attribute<int>("name", 12435);
-				auto x2 = session.request().get_attribute<int>("name", 12436);
+				session.request().get_attribute<int>("name", 12435);
+				session.request().get<int>("name", 12435);
 
-				try
-				{
-					auto x3 = session.request().get<int>("name"); // unkown header throws
-				}
-				catch (std::runtime_error& e)
-				{
-					std::cout << e.what() << "\n";
-				}
-
-				auto x4 = session.request().get_attribute<int>("name", 12435);
-
-				try
-				{
-					auto x5 = session.request().get("name"); // unkown header throws
-				}
-				catch (std::runtime_error& e)
-				{
-					std::cout << e.what() << "\n";
-				}
-
-				auto x6 = session.request().get_attribute<const char*>("name");
-
-				try
-				{
-					auto x7 = session.request().get_attribute<const char*>("name-2");
-				}
-				catch (std::runtime_error& e)
-				{
-					std::cout << e.what() << "\n";
-				}
-
-				// auto x6 = session.request().get_attribute<const char*>(this);
-
+				std::string err;
+				http::client::request<http::method::get>("http://localhost:3000/status", err);
 				session.response().status(http::status::ok);
 			});
 
