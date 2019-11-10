@@ -3928,9 +3928,6 @@ public:
 			, session_handler_(server.configuration_)
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
-			, bytes_received_(0)
-			, bytes_send_(0)
-
 		{
 		}
 
@@ -3951,35 +3948,35 @@ public:
 		{
 			using data_store_buffer_t = std::array<char, 1024 * 4>;
 			data_store_buffer_t buffer{};
-			auto c = std::begin(buffer);
+			auto c0 = std::begin(buffer);
+			auto bytes_parsed = size_t{ 0 };
+			auto bytes_received = size_t{ 0 };
+
 			while (true)
 			{
-				size_t left_of_buffer_size = buffer.size() - (c - std::begin(buffer));
+				size_t left_of_buffer_size = buffer.size() - (c0 - std::begin(buffer));
 
-				int ret = network::read(client_socket_, network::buffer(&(*c), left_of_buffer_size));
+				int ret = network::read(client_socket_, network::buffer(&(*c0), left_of_buffer_size));
 
 				if (ret <= 0)
 				{
 					break;
 				}
 
-				bytes_received_ += ret;
-
+				bytes_received += ret;
 				http::session_handler::result_type parse_result;
 
 				auto& response = session_handler_.response();
 				auto& request = session_handler_.request();
 
-				std::tie(parse_result, c) = session_handler_.parse_request(c, c + ret);
+				std::tie(parse_result, c0) = session_handler_.parse_request(c0, c0 + ret);
+				bytes_parsed = c0 - std::begin(buffer);
 
 				if ((parse_result == http::request_parser::result_type::good) && (request.has_content_length()))
 				{
-					auto x = c - std::begin(buffer); // start of body in received buffer.
-					auto e = ret - x; // end of data in received buffer
+					request.body().assign(&buffer.data()[bytes_parsed], size_t{ bytes_received - bytes_parsed });
 
-					request.body().assign(buffer.data() + x, (ret - x));
-
-					if (request.content_length() > std::uint64_t(ret - x))
+					if (request.content_length() > std::uint64_t((bytes_received - bytes_parsed)))
 					{
 						while (true)
 						{
@@ -3996,7 +3993,7 @@ public:
 								break;
 							}
 
-							bytes_received_ += ret;
+							bytes_received += ret;
 
 							request.body().append(buffer.data(), buffer.data() + ret);
 
@@ -4105,7 +4102,7 @@ public:
 					if (response.connection_keep_alive() == true)
 					{
 						session_handler_.reset();
-						c = buffer.begin();
+						c0 = buffer.begin();
 					}
 					else
 					{
@@ -4125,8 +4122,6 @@ public:
 		http::session_handler session_handler_;
 		int connection_timeout_;
 		size_t gzip_min_length_;
-		size_t bytes_received_;
-		size_t bytes_send_;
 
 		void reset_session() { session_handler_.reset(); }
 	};
