@@ -3948,15 +3948,15 @@ public:
 		{
 			using data_store_buffer_t = std::array<char, 1024 * 4>;
 			data_store_buffer_t buffer{};
-			auto c0 = std::begin(buffer);
+			auto c = std::begin(buffer);
 			auto bytes_parsed = size_t{ 0 };
 			auto bytes_received = size_t{ 0 };
 
 			while (true)
 			{
-				size_t left_of_buffer_size = buffer.size() - (c0 - std::begin(buffer));
+				size_t left_of_buffer_size = buffer.size() - (c - std::begin(buffer));
 
-				int ret = network::read(client_socket_, network::buffer(&(*c0), left_of_buffer_size));
+				int ret = network::read(client_socket_, network::buffer(&(*c), left_of_buffer_size));
 
 				if (ret <= 0)
 				{
@@ -3969,8 +3969,8 @@ public:
 				auto& response = session_handler_.response();
 				auto& request = session_handler_.request();
 
-				std::tie(parse_result, c0) = session_handler_.parse_request(c0, c0 + ret);
-				bytes_parsed = c0 - std::begin(buffer);
+				std::tie(parse_result, c) = session_handler_.parse_request(c, c + ret);
+				bytes_parsed = c - std::begin(buffer);
 
 				if ((parse_result == http::request_parser::result_type::good) && (request.has_content_length()))
 				{
@@ -4102,7 +4102,7 @@ public:
 					if (response.connection_keep_alive() == true)
 					{
 						session_handler_.reset();
-						c0 = buffer.begin();
+						c = buffer.begin();
 					}
 					else
 					{
@@ -4187,7 +4187,6 @@ http::response_message request(
 {
 	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
 	return curl.call(ec); // RVO
-
 }
 
 } // namespace client
