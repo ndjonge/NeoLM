@@ -246,7 +246,7 @@ private:
 			});
 
 			router_.on_get("/status", [this](http::session_handler& session) {
-				const auto& format = session.request().query().get<std::string>("format", "text");
+				const auto& format = session.request().query().get("format", "text");
 
 				if (format == "json")
 				{
@@ -300,8 +300,41 @@ private:
 				session.response().body() = manager().to_json_string(section_option);
 				session.response().type("json");
 
-				session.request().get_attribute<int>("name", 12435);
-				session.request().get<int>("name", 12435);
+				session.request().set_attribute<int>("name", 12435);
+				auto x2 = session.request().get_attribute<int>("name", 12436);
+
+				try
+				{
+					auto x3 = session.request().get<int>("name"); // unkown header throws
+				}
+				catch (std::runtime_error& e)
+				{
+					std::cout << e.what() << "\n";
+				}
+
+				auto x4 = session.request().get_attribute<int>("name", 12435);
+
+				try
+				{
+					auto x5 = session.request().get("name"); // unkown header throws
+				}
+				catch (std::runtime_error& e)
+				{
+					std::cout << e.what() << "\n";
+				}
+
+				auto x6 = session.request().get_attribute<const char*>("name");
+
+				try
+				{
+					auto x7 = session.request().get_attribute<const char*>("name-2");
+				}
+				catch (std::runtime_error& e)
+				{
+					std::cout << e.what() << "\n";
+				}
+
+				// auto x6 = session.request().get_attribute<const char*>(this);
 
 				session.response().status(http::status::ok);
 			});

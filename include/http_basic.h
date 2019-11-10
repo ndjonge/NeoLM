@@ -13,6 +13,7 @@
 #include <functional>
 #include <future>
 #include <iomanip> // put_time
+#include <iostream>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -801,7 +802,7 @@ public:
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
-		if (i != std::end(fields_)) returnvalue = static_cast<P>(i->value); // TODO std::stoi(i->value);
+		if (i != std::end(fields_)) returnvalue = static_cast<P>(i->value);
 
 		return static_cast<P>(returnvalue);
 	}
@@ -821,6 +822,38 @@ public:
 		if (i != std::end(fields_)) returnvalue = static_cast<P>(std::stoi(i->value));
 
 		return static_cast<P>(returnvalue);
+	}
+
+	template <typename P>
+	typename std::enable_if<
+		std::is_integral<P>::value && (!std::is_same<P, bool>::value && !std::is_same<T, std::string>::value),
+		P>::type
+	get(const std::string& name) const
+	{
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
+
+		if (i != std::end(fields_))
+			return static_cast<P>(i->value);
+		else
+			throw std::runtime_error{ std::string{ "get of field: '" } + name + "' failed because it was not found" };
+	}
+
+	template <typename P>
+	typename std::enable_if<
+		std::is_integral<P>::value && (!std::is_same<P, bool>::value && std::is_same<T, std::string>::value),
+		P>::type
+	get(const std::string& name) const
+	{
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
+
+		if (i != std::end(fields_))
+			return static_cast<P>(std::stoi(i->value));
+		else
+			throw std::runtime_error{ std::string{ "get of field: '" } + name + "' failed because it was not found" };
 	}
 
 	template <typename P>
@@ -855,7 +888,7 @@ public:
 
 	inline typename std::vector<fields::value_type>::reverse_iterator last_new_field() { return fields_.rbegin(); }
 
-	inline const T& get(const char* name) const
+	inline const T get(const char* name) const
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
 			return (http::util::case_insensitive_equal(f.name, name));
@@ -867,6 +900,24 @@ public:
 		}
 		else
 			return i->value;
+	}
+
+	inline const T get(const char* name, const T& default_value) const
+	{
+		T returnvalue = default_value;
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
+
+		if (i != std::end(fields_))
+		{
+			return i->value;
+		}
+		else
+		{
+			return default_value;
+		}
 	}
 
 	inline bool has(const char* name) const
@@ -897,12 +948,13 @@ public:
 
 	inline void reset_if_exists(const std::string& name)
 	{
-		try
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
+
+		if (i != std::end(fields_))
 		{
-			reset(name);
-		}
-		catch (...)
-		{
+			fields_.erase(i);
 		}
 	}
 
@@ -1317,6 +1369,12 @@ public:
 		if (session_handler_ == nullptr) throw std::runtime_error{ "session is not set for this message" };
 
 		return *session_handler_;
+	}
+
+	template <typename T>
+	typename std::enable_if<std::is_pointer<T>::value, T>::type get_attribute(const std::string& attribute_name) const
+	{
+		return reinterpret_cast<T>(attributes_.get(attribute_name.c_str()));
 	}
 
 	template <typename T>
@@ -3916,7 +3974,8 @@ public:
 
 				if ((parse_result == http::request_parser::result_type::good) && (request.has_content_length()))
 				{
-					auto x = c - std::begin(buffer);
+					auto x = c - std::begin(buffer); // start of body in received buffer.
+					auto e = ret - x; // end of data in received buffer
 
 					request.body().assign(buffer.data() + x, (ret - x));
 
@@ -4119,7 +4178,8 @@ namespace client
 {
 
 template <http::method::method_t method>
-http::response_message request(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body)
+http::response_message
+request(const std::string& url, std::initializer_list<std::string> hdrs = {}, const std::string& body = {})
 {
 	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
 
@@ -4127,12 +4187,10 @@ http::response_message request(const std::string& url, std::initializer_list<std
 }
 
 template <http::method::method_t method>
-http::response_message
-request(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body, std::string& ec)
+http::response_message request(
+	const std::string& url, std::string& ec, std::initializer_list<std::string> hdrs = {}, const std::string& body = {})
 {
 	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
-	std::string ec;
-
 	return curl.call(ec); // RVO
 }
 
