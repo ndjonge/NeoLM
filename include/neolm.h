@@ -302,6 +302,7 @@ private:
 
 				session.request().get_attribute<int>("name", 12435);
 				session.request().get<int>("name", 12435);
+				session.request().get<std::string>("name", "12356");
 
 				std::string err;
 				http::client::request<http::method::get>("http://localhost:3000/status", err);

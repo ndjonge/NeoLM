@@ -4187,6 +4187,7 @@ http::response_message request(
 {
 	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
 	return curl.call(ec); // RVO
+
 }
 
 } // namespace client
