@@ -246,9 +246,9 @@ private:
 			});
 
 			router_.on_get("/status", [this](http::session_handler& session) {
-				const auto& format = session.request().query().get("format", "text");
+				const auto& format = session.request().get("Accept", "application/json");
 
-				if (format == "json")
+				if (format.find("application/json") != std::string::npos)
 				{
 					manager().server_information(configuration_.to_json_string());
 					manager().router_information(router_.to_json_string());
@@ -303,6 +303,7 @@ private:
 				session.request().get_attribute<int>("name", 12435);
 				session.request().get<int>("name", 12435);
 				session.request().get<std::string>("name", "12356");
+
 
 				std::string err;
 				http::client::request<http::method::get>("http://localhost:3000/status", err);

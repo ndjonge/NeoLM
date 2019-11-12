@@ -1313,7 +1313,7 @@ struct mapping
 	const char* mime_type;
 } const mappings[]
 	= { { "json", "application/json" }, { "text", "text/plain" }, { "ico", "image/x-icon" }, { "gif", "image/gif" },
-		{ "htm", "text/html" },			{ "html", "text/html" },  { "jpg", "image/jpeg" },	 { "jpeg", "image/jpeg" },
+		{ "htm", "text/html" },			{ "html", "text/html" },  { "jpg", "image/jpeg" },   { "jpeg", "image/jpeg" },
 		{ "png", "image/png" },			{ nullptr, nullptr } };
 
 static std::string extension_to_type(const std::string& extension)
@@ -3324,7 +3324,7 @@ class curl
 	}
 
 	// debugger callback for cURL tracing.
-	static int debug_callback(CURL* , curl_infotype type, char* data, size_t size, void* userptr)
+	static int debug_callback(CURL*, curl_infotype type, char* data, size_t size, void* userptr)
 	{
 		std::ostream& out = *static_cast<std::ostream*>(userptr);
 
@@ -3362,7 +3362,7 @@ class curl
 		char* ptr = data;
 
 		out << "==start==\n" << data << "\n==end==\n";
-		//return 0;
+		// return 0;
 		//  "%s, %10.10ld bytes (0x%8.8lx)\n",
 		for (i = 0; i < size; i += width)
 		{
@@ -3503,22 +3503,29 @@ public:
 		std::string router_information_;
 
 		std::atomic<size_t> requests_handled_{ 0 };
-		std::atomic<size_t> requests_handled_prev_{ 0 };
 		std::atomic<size_t> connections_accepted_{ 0 };
 		std::atomic<size_t> requests_current_{ 0 };
 		std::atomic<size_t> connections_current_{ 0 };
 		std::atomic<size_t> connections_highest_{ 0 };
 
+		std::atomic<std::chrono::steady_clock::time_point> idle_since_{};
+
 		std::vector<std::string> access_log_;
 		mutable std::mutex mutex_;
 
 	public:
-		server_manager() noexcept : server_information_(""), router_information_("") { access_log_.reserve(32); };
+		server_manager() noexcept
+			: server_information_(""), router_information_(""), idle_since_(std::chrono::steady_clock::now())
+		{
+			access_log_.reserve(32);
+		};
 
 		std::atomic<size_t>& requests_handled() { return requests_handled_; }
 		std::atomic<size_t>& connections_accepted() { return connections_accepted_; }
 		std::atomic<size_t>& connections_current() { return connections_current_; }
 		std::atomic<size_t>& requests_current() { return requests_current_; }
+		std::atomic<std::chrono::steady_clock::time_point>& idle_since() { return idle_since_; }
+
 
 		void log_access(http::session_handler& session)
 		{
@@ -3582,12 +3589,18 @@ public:
 				}
 				case json_status_options::server_stats:
 				{
+
 					std::lock_guard<std::mutex> g(mutex_);
 					s << "\"stats\": "
 					  << "{\"connections_current\":" << connections_current_ << ","
 					  << "\"connections_accepted\":" << connections_accepted_ << ","
 					  << "\"connections_highest\":" << connections_accepted_ << ","
-					  << "\"requests_handled\" : " << requests_handled_ << "}";
+					  << "\"requests_handled\" : " << requests_handled_ << ","
+					  << "\"idle_time\" : "
+					  << (std::chrono::duration<std::int64_t, std::nano>(
+							 std::chrono::steady_clock::now() - idle_since_.load())
+								 .count()) / 1000000000
+					  << "}";
 					break;
 				}
 				case json_status_options::router:
@@ -4165,6 +4178,7 @@ public:
 						}
 
 						ret = network::write(client_socket_, http::to_string(response));
+						server_.manager().idle_since().store(std::chrono::steady_clock::now());
 					}
 
 					if (response.connection_keep_alive() == true)
