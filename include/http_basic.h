@@ -3602,13 +3602,13 @@ public:
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
 		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
 		, http_listen_port_(0)
-		, endpoint_http_(http_listen_port_begin_)
+		, endpoint_http_(configuration.get<std::string>("http_listen_address", "::0"), http_listen_port_begin_)
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
 		, https_listen_port_begin_(configuration.get<int>(
 			  "https_listen_port_begin", configuration.get<int>("http_listen_port_begin") + 2000))
 		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
 		, https_listen_port_(0)
-		, endpoint_https_(https_listen_port_begin_)
+		, endpoint_https_(configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 		, http_connection_thread_([this]() { http_listener_handler(); })
@@ -4172,9 +4172,43 @@ using middleware = http::api::router<>::middleware_type;
 namespace client
 {
 
+// request<>(url, [trace]) 1
+// request<>(url, body, [trace]) 2
+// request<>(url, headers, body, [trace]) 3
+
+// request<>(url, ec, [trace])
+// request<>(url, ec, body, [trace])
+// request<>(url, ec, headers, body, [trace])
+
+auto default_logger = []() { std::cout << " hoi!\n"; };
+
+// 1
 template <http::method::method_t method>
-http::response_message
-request(const std::string& url, std::initializer_list<std::string> hdrs = {}, const std::string& body = {})
+http::response_message request(
+	const std::string& url, std::function<bool()> trace = []() { return true; })
+{
+	http::basic::client::curl curl{ http::method::to_string(method), url, {}, {} };
+
+	return curl.call(); // RVO
+}
+
+// 2
+template <http::method::method_t method>
+http::response_message request(
+	const std::string& url, const std::string& body, std::function<void()> trace = []() { return true; })
+{
+	http::basic::client::curl curl{ http::method::to_string(method), url, {}, body };
+
+	return curl.call(); // RVO
+}
+
+// 3
+template <http::method::method_t method>
+http::response_message request(
+	const std::string& url,
+	std::initializer_list<std::string> hdrs,
+	const std::string& body,
+	std::function<void()> trace = []() { return true; })
 {
 	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
 
@@ -4183,7 +4217,11 @@ request(const std::string& url, std::initializer_list<std::string> hdrs = {}, co
 
 template <http::method::method_t method>
 http::response_message request(
-	const std::string& url, std::string& ec, std::initializer_list<std::string> hdrs = {}, const std::string& body = {})
+	const std::string& url,
+	std::string& ec,
+	std::initializer_list<std::string> hdrs = {},
+	const std::string& body = {},
+	std::function<void()>& trace = std::function<bool>()[] { return true; })
 {
 	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
 	return curl.call(ec); // RVO

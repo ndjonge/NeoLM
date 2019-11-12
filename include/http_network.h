@@ -512,7 +512,26 @@ public:
 		}
 	}
 
-	// endpoint(const std::string& ip, std::int16_t port) : socket_(0), protocol_(SOCK_STREAM) {}
+	endpoint(const std::string& ip, std::int32_t port, socket::family fam) noexcept
+	{
+		if (fam == socket::family::v6)
+			std::memset(&endpoint::data_.v6, 0, sizeof(data_.v6));
+		else
+			std::memset(&endpoint::data_.v4, 0, sizeof(data_.v6));
+
+		data_.base.sa_family = static_cast<std::int16_t>(fam);
+
+		if (fam == socket::family::v6)
+		{
+			data_.v6.sin6_port = htons(static_cast<std::uint16_t>(port));
+			inet_pton(AF_INET6, ip.c_str(), &(data_.v6.sin6_addr));
+		}
+		else
+		{
+			data_.v4.sin_port = htons(static_cast<std::uint16_t>(port));
+			inet_pton(AF_INET, ip.c_str(), &(data_.v4.sin_addr.s_addr));
+		}
+	}
 
 	endpoint(sockaddr& addr)
 	{
@@ -868,7 +887,7 @@ inline std::int32_t write(const socket_t& s, const std::string& str) noexcept
 
 inline std::int32_t read(const network::tcp::socket& s, const buffer& b) noexcept
 {
-	return ::recv(s.lowest_layer(), b.data(), 128, 0); // static_cast<int>(b.size()), 0);
+	return ::recv(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0);
 }
 
 inline std::int32_t write(const network::tcp::socket& s, const buffer& b) noexcept
