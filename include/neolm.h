@@ -304,8 +304,19 @@ private:
 				session.request().get<int>("name", 12435);
 				session.request().get<std::string>("name", "12356");
 
-				std::string err;
-				http::client::request<http::method::get>("http://localhost:3000/status", err);
+				std::string ec{};
+
+				try
+				{
+					http::client::request<http::method::get>("http://localhost:3001/status", std::clog, true);
+				}
+				catch (std::runtime_error& e)
+				{
+					std::clog << e.what() << "\n";
+				}
+
+				http::client::request<http::method::get>("http://localhost:3000/status");
+
 				session.response().status(http::status::ok);
 			});
 

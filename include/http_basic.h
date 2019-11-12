@@ -3287,9 +3287,6 @@ namespace basic
 namespace client
 {
 
-const http::response_message
-_get(const std::string& url, std::initializer_list<std::string> hdrs, const std::string& body);
-
 class curl
 {
 	CURL* hnd_;
@@ -3300,6 +3297,8 @@ class curl
 	http::response_message response_message_;
 	http::response_parser response_message_parser_;
 	http::response_parser::result_type response_message_parser_result_;
+	std::string verb_;
+	std::string url_;
 
 	// needed by cURL to read the data from the http(s) connection
 	static size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp)
@@ -3324,71 +3323,39 @@ class curl
 	}
 
 	// debugger callback for cURL tracing.
-	static int debug_callback(CURL* , curl_infotype type, char* data, size_t size, void* userptr)
+	static int debug_callback(CURL*, curl_infotype type, char* data, size_t size, void* userptr)
 	{
 		std::ostream& out = *static_cast<std::ostream*>(userptr);
+		std::string data_str{ data, size };
 
 		switch (type)
 		{
 			case CURLINFO_TEXT:
-				out << "== Info: " << data << std::endl;
+				out << "== Info: " << data_str;
 				return 0;
 			default: /* in case a new one is introduced to shock us */
 				return 0;
-
 			case CURLINFO_HEADER_OUT:
-				out << "=> Send header" << std::endl;
+				out << "=> Send header\n";
 				break;
 			case CURLINFO_DATA_OUT:
-				out << "=> Send data" << std::endl;
+				out << "=> Send data";
 				break;
 			case CURLINFO_SSL_DATA_OUT:
-				out << "=> Send SSL data" << std::endl;
+				out << "=> Send SSL data\n";
 				break;
 			case CURLINFO_HEADER_IN:
-				out << "<= Recv header" << std::endl;
+				out << "<= Recv header\n";
 				break;
 			case CURLINFO_DATA_IN:
-				out << "<= Recv data" << std::endl;
+				out << "<= Recv data\n";
 				break;
 			case CURLINFO_SSL_DATA_IN:
-				out << "<= Recv SSL data" << std::endl;
+				out << "<= Recv SSL data";
 				break;
 		}
 
-		size_t i;
-		size_t c;
-		unsigned int width = 0x10;
-		char* ptr = data;
-
-		out << "==start==\n" << data << "\n==end==\n";
-		//return 0;
-		//  "%s, %10.10ld bytes (0x%8.8lx)\n",
-		for (i = 0; i < size; i += width)
-		{
-			out << std::setw(4) << std::hex << i;
-
-			/* show hex to the left */
-			for (c = 0; c < width; c++)
-			{
-				if (i + c < size)
-				{
-					out << std::showbase << std::hex << ptr[i + c] << " ";
-				}
-				else
-				{
-					out << "   ";
-				}
-			}
-
-			/* show data on the right */
-			for (c = 0; (c < width) && (i + c < size); c++)
-			{
-				char x = (ptr[i + c] >= 0x20 && ptr[i + c] < 0x80) ? ptr[i + c] : '.';
-				out << x;
-			}
-			out << std::endl;
-		}
+		out << "==start==\n" << data_str << "\n==end==\n";
 
 		return 0;
 	}
@@ -3399,8 +3366,9 @@ public:
 		const std::string& url,
 		std::initializer_list<std::string> hdrs,
 		const std::string& body,
-		bool verbose = false)
-		: hnd_(curl_easy_init()), buffer_(), headers_(nullptr)
+		bool verbose = false,
+		std::ostream& verbose_output_stream = std::clog)
+		: hnd_(curl_easy_init()), buffer_(), headers_(nullptr), verb_(verb), url_(url)
 	{
 		strcpy(error_buf_, "");
 
@@ -3408,6 +3376,7 @@ public:
 		{
 			curl_easy_setopt(hnd_, CURLOPT_VERBOSE, 1);
 			curl_easy_setopt(hnd_, CURLOPT_DEBUGFUNCTION, debug_callback);
+			curl_easy_setopt(hnd_, CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
 		}
 
 		curl_easy_setopt(hnd_, CURLOPT_WRITEFUNCTION, write_callback);
@@ -3451,7 +3420,7 @@ public:
 
 		if (ret != CURLE_OK)
 		{
-			error = curl_easy_strerror(ret);
+			error = std::string{ curl_easy_strerror(ret) } + " when requesting " + verb_ + " on url: " + url_;
 			return response_message_;
 		}
 		else
@@ -3467,7 +3436,7 @@ public:
 
 		if (ret != CURLE_OK)
 		{
-			throw std::runtime_error{ curl_easy_strerror(ret) };
+			throw std::runtime_error{ std::string{ curl_easy_strerror(ret) } + " request:" + verb_ + " " + url_ };
 		}
 		else
 		{
@@ -4244,28 +4213,21 @@ namespace client
 // request<>(url, body, [trace]) 2
 // request<>(url, headers, body, [trace]) 3
 
-// request<>(url, ec, [trace])
-// request<>(url, ec, body, [trace])
-// request<>(url, ec, headers, body, [trace])
-
-auto default_logger = []() { std::cout << " hoi!\n"; };
-
 // 1
 template <http::method::method_t method>
-http::response_message request(
-	const std::string& url, std::function<bool()> trace = []() { return true; })
+http::response_message request(const std::string& url, std::ostream& s = std::clog, bool verbose = false)
 {
-	http::basic::client::curl curl{ http::method::to_string(method), url, {}, {} };
+	http::basic::client::curl curl{ http::method::to_string(method), url, {}, {}, verbose, s };
 
 	return curl.call(); // RVO
 }
 
 // 2
 template <http::method::method_t method>
-http::response_message request(
-	const std::string& url, const std::string& body, std::function<void()> trace = []() { return true; })
+http::response_message
+request(const std::string& url, const std::string& body, std::ostream& s = std::clog, bool verbose = false)
 {
-	http::basic::client::curl curl{ http::method::to_string(method), url, {}, body };
+	http::basic::client::curl curl{ http::method::to_string(method), url, {}, body, verbose, s };
 
 	return curl.call(); // RVO
 }
@@ -4276,22 +4238,50 @@ http::response_message request(
 	const std::string& url,
 	std::initializer_list<std::string> hdrs,
 	const std::string& body,
-	std::function<void()> trace = []() { return true; })
+	std::ostream& s = std::clog,
+	bool verbose = false)
 {
-	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
+	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body, verbose, s };
 
 	return curl.call(); // RVO
 }
 
+// request<>(url, ec, [trace]) 4
+// request<>(url, ec, body, [trace]) 5
+// request<>(url, ec, headers, body, [trace]) 6
+
+// 4
+template <http::method::method_t method>
+http::response_message
+request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bool verbose = false)
+{
+	http::basic::client::curl curl{ http::method::to_string(method), url, {}, {}, verbose, s };
+
+	return curl.call(ec); // RVO
+}
+
+// 5
+template <http::method::method_t method>
+http::response_message request(
+	const std::string& url, std::string& ec, const std::string& body, std::ostream& s = std::clog, bool verbose = false)
+{
+	http::basic::client::curl curl{ http::method::to_string(method), url, {}, body, verbose, s };
+
+	return curl.call(ec); // RVO
+}
+
+// 6
 template <http::method::method_t method>
 http::response_message request(
 	const std::string& url,
 	std::string& ec,
-	std::initializer_list<std::string> hdrs = {},
-	const std::string& body = {},
-	std::function<void()>& trace = std::function<bool>()[] { return true; })
+	std::initializer_list<std::string> hdrs,
+	const std::string& body,
+	std::ostream& s = std::clog,
+	bool verbose = false)
 {
-	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body };
+	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body, verbose, s };
+
 	return curl.call(ec); // RVO
 }
 
