@@ -35,38 +35,11 @@
 #define CURL_STATICLIB
 #include <curl/curl.h>
 
-#if defined(_USE_CPP17_STD_FILESYSTEM)
-#include <experimental/filesystem>
-#endif
-
 #if defined(_WIN32) && !defined(gmtime_r)
 #define gmtime_r(X, Y) gmtime_s(Y, X)
 #endif
 
 #include "http_network.h"
-
-namespace filesystem
-{
-inline std::uintmax_t file_size(const std::string& path)
-{
-	struct stat t
-	{
-	};
-
-	int ret = stat(path.c_str(), &t);
-
-	if (ret == 0)
-		return t.st_size;
-	else
-		return 0;
-}
-} // namespace filesystem
-
-#if defined(_USE_CPP17_STD_FILESYSTEM)
-namespace fs = std::experimental::filesystem;
-#else
-namespace fs = filesystem;
-#endif
 
 namespace gzip
 {
@@ -1313,7 +1286,7 @@ struct mapping
 	const char* mime_type;
 } const mappings[]
 	= { { "json", "application/json" }, { "text", "text/plain" }, { "ico", "image/x-icon" }, { "gif", "image/gif" },
-		{ "htm", "text/html" },			{ "html", "text/html" },  { "jpg", "image/jpeg" },   { "jpeg", "image/jpeg" },
+		{ "htm", "text/html" },			{ "html", "text/html" },  { "jpg", "image/jpeg" },	 { "jpeg", "image/jpeg" },
 		{ "png", "image/png" },			{ nullptr, nullptr } };
 
 static std::string extension_to_type(const std::string& extension)
@@ -3495,7 +3468,6 @@ public:
 		std::atomic<size_t>& requests_current() { return requests_current_; }
 		std::atomic<std::chrono::steady_clock::time_point>& idle_since() { return idle_since_; }
 
-
 		void log_access(http::session_handler& session)
 		{
 			std::stringstream s;
@@ -3567,8 +3539,9 @@ public:
 					  << "\"requests_handled\" : " << requests_handled_ << ","
 					  << "\"idle_time\" : "
 					  << (std::chrono::duration<std::int64_t, std::nano>(
-							 std::chrono::steady_clock::now() - idle_since_.load())
-								 .count()) / 1000000000
+							  std::chrono::steady_clock::now() - idle_since_.load())
+							  .count())
+							 / 1000000000
 					  << "}";
 					break;
 				}
