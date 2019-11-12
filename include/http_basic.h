@@ -3323,7 +3323,75 @@ class curl
 		return size * nmemb;
 	}
 
-	static int debug_callback(CURL*, curl_infotype, char*, size_t, void*) { return 0; }
+	// debugger callback for cURL tracing.
+	static int debug_callback(CURL* , curl_infotype type, char* data, size_t size, void* userptr)
+	{
+		std::ostream& out = *static_cast<std::ostream*>(userptr);
+
+		switch (type)
+		{
+			case CURLINFO_TEXT:
+				out << "== Info: " << data << std::endl;
+				return 0;
+			default: /* in case a new one is introduced to shock us */
+				return 0;
+
+			case CURLINFO_HEADER_OUT:
+				out << "=> Send header" << std::endl;
+				break;
+			case CURLINFO_DATA_OUT:
+				out << "=> Send data" << std::endl;
+				break;
+			case CURLINFO_SSL_DATA_OUT:
+				out << "=> Send SSL data" << std::endl;
+				break;
+			case CURLINFO_HEADER_IN:
+				out << "<= Recv header" << std::endl;
+				break;
+			case CURLINFO_DATA_IN:
+				out << "<= Recv data" << std::endl;
+				break;
+			case CURLINFO_SSL_DATA_IN:
+				out << "<= Recv SSL data" << std::endl;
+				break;
+		}
+
+		size_t i;
+		size_t c;
+		unsigned int width = 0x10;
+		char* ptr = data;
+
+		out << "==start==\n" << data << "\n==end==\n";
+		//return 0;
+		//  "%s, %10.10ld bytes (0x%8.8lx)\n",
+		for (i = 0; i < size; i += width)
+		{
+			out << std::setw(4) << std::hex << i;
+
+			/* show hex to the left */
+			for (c = 0; c < width; c++)
+			{
+				if (i + c < size)
+				{
+					out << std::showbase << std::hex << ptr[i + c] << " ";
+				}
+				else
+				{
+					out << "   ";
+				}
+			}
+
+			/* show data on the right */
+			for (c = 0; (c < width) && (i + c < size); c++)
+			{
+				char x = (ptr[i + c] >= 0x20 && ptr[i + c] < 0x80) ? ptr[i + c] : '.';
+				out << x;
+			}
+			out << std::endl;
+		}
+
+		return 0;
+	}
 
 public:
 	curl(
