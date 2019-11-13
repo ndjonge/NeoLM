@@ -2746,6 +2746,7 @@ public:
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
+			active_count_.store(r.active_count_);
 		}
 
 		metrics& operator=(const metrics& r) noexcept
@@ -2753,7 +2754,7 @@ public:
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
-
+			active_count_.store(r.active_count_);
 			return *this;
 		}
 
@@ -2762,6 +2763,7 @@ public:
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
+			active_count_.store(r.active_count_);
 		}
 
 		metrics& operator=(metrics&& r) noexcept
@@ -2769,19 +2771,21 @@ public:
 			request_latency_.store(r.request_latency_);
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
+			active_count_.store(r.active_count_);
 			return *this;
 		}
 
 		std::atomic<std::uint64_t> request_latency_{ 0 };
 		std::atomic<std::uint64_t> processing_duration_{ 0 };
 		std::atomic<std::uint64_t> hit_count_{ 0 };
+		std::atomic<std::uint64_t> active_count_{ 0 };
 
 		std::string to_string()
 		{
 			std::stringstream s;
 
 			s << request_latency_.load() / 1000000.0 << "ms, " << processing_duration_.load() / 1000000.0 << "ms, "
-			  << hit_count_ << "x";
+			  << active_count_ << "x, " << hit_count_ << "x";
 
 			return s.str();
 		};
@@ -2792,7 +2796,7 @@ public:
 
 			s << "{\"request_latency\" :" << request_latency_.load() / 1000000.0
 			  << ",\"processing_duration\":" << processing_duration_.load() / 1000000.0
-			  << ",\"hit_count\":" << hit_count_ << "}";
+			  << ",\"active_count\":" << active_count_ << ",\"hit_count\":" << hit_count_ << "}";
 
 			return s.str();
 		};
@@ -2837,7 +2841,9 @@ public:
 
 		const endpoint_lambda& endpoint() { return endpoint_; };
 
-		void update_metrics(
+		auto& metric_active_count() { return metrics_.active_count_; }
+
+		void update_hitcount_and_timing_metrics(
 			std::chrono::high_resolution_clock::duration request_duration,
 			std::chrono::high_resolution_clock::duration new_processing_duration_)
 		{
@@ -3242,9 +3248,11 @@ public:
 		if (route_context.match_result() == http::api::router_match::match_found)
 		{
 			auto t0 = std::chrono::steady_clock::now();
+			route_context.the_route().metric_active_count()++;
 			route_context.the_route().endpoint()(session);
+			route_context.the_route().metric_active_count()--;
 			auto t1 = std::chrono::steady_clock::now();
-			route_context.the_route().update_metrics(
+			route_context.the_route().update_hitcount_and_timing_metrics(
 				std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
 				std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 		}
@@ -3465,8 +3473,15 @@ public:
 		std::atomic<size_t>& requests_handled() { return requests_handled_; }
 		std::atomic<size_t>& connections_accepted() { return connections_accepted_; }
 		std::atomic<size_t>& connections_current() { return connections_current_; }
-		std::atomic<size_t>& requests_current() { return requests_current_; }
-		std::atomic<std::chrono::steady_clock::time_point>& idle_since() { return idle_since_; }
+
+		std::atomic<size_t>& requests_current()
+		{
+			if (requests_current_.load() > 0)
+			{
+				idle_since_.store(std::chrono::steady_clock::now());
+			}
+			return requests_current_;
+		}
 
 		void log_access(http::session_handler& session)
 		{
@@ -3537,6 +3552,7 @@ public:
 					  << "\"connections_accepted\":" << connections_accepted_ << ","
 					  << "\"connections_highest\":" << connections_accepted_ << ","
 					  << "\"requests_handled\" : " << requests_handled_ << ","
+					  << "\"requests_current\" : " << requests_current_ << ","
 					  << "\"idle_time\" : "
 					  << (std::chrono::duration<std::int64_t, std::nano>(
 							  std::chrono::steady_clock::now() - idle_since_.load())
@@ -3589,6 +3605,12 @@ public:
 			s << "connections_highest: " << connections_highest_ << "\n";
 			s << "connections_current: " << connections_current_ << "\n";
 			s << "requests_handled: " << requests_handled_ << "\n";
+			s << "requests_current: " << requests_current_ << "\n";
+			s << "idle_time: "
+			  << (std::chrono::duration<std::int64_t, std::nano>(std::chrono::steady_clock::now() - idle_since_.load())
+					  .count())
+					 / 1000000000
+			  << "s\n";
 
 			s << "\nEndPoints:\n" << router_information_ << "\n";
 
@@ -4120,7 +4142,6 @@ public:
 						}
 
 						ret = network::write(client_socket_, http::to_string(response));
-						server_.manager().idle_since().store(std::chrono::steady_clock::now());
 					}
 
 					if (response.connection_keep_alive() == true)

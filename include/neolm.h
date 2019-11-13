@@ -325,6 +325,13 @@ private:
 				session.response().status(http::status::no_content);
 			});
 
+			S::router_.on_get("/slowmo/{sec}", [this](http::session_handler& session) {
+				size_t sec = std::atoi(session.params().get("sec", "2").data());
+				std::this_thread::sleep_for(std::chrono::seconds(sec));
+				session.response().body() = "slomo:";
+				session.response().status(http::status::ok);
+			});
+
 			S::router_.use_middleware("/status", "type", "varken::knor_pre", "varken::knor_post");
 
 			S::router_.use_middleware(
