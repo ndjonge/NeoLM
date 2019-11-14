@@ -933,7 +933,7 @@ public:
 
 	inline void reset(const std::string& name)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
@@ -1376,6 +1376,19 @@ public:
 	{
 		attributes_.set(attribute_name, attribute_value);
 	};
+
+	// TODO use std::enable_if for better performance?
+	template <typename T> std::vector<field<T>> attributes_as_vector() const
+	{
+		std::vector<field<T>> vec;
+
+		for (const auto& attribute : attributes_.as_vector())
+		{
+			vec.emplace_back(attribute.name, get_attribute<T>(attribute.name));
+		}
+
+		return vec;
+	}
 
 	void reset_attribute(const std::string& attribute_name) { attributes_.reset(attribute_name); };
 
@@ -4019,6 +4032,18 @@ public:
 
 				if ((parse_result == http::request_parser::result_type::good) && (request.has_content_length()))
 				{
+					if (bytes_parsed == bytes_received && request.content_length() > 0)
+					{
+						ret = network::read(client_socket_, network::buffer(&(*c), left_of_buffer_size));
+						if (ret <= 0)
+						{
+							// TODO headers received, but client did not send the body....
+							break;
+						}
+						bytes_received += ret;
+						// TODO 4K header test
+					}
+
 					request.body().assign(&buffer.data()[bytes_parsed], size_t{ bytes_received - bytes_parsed });
 
 					if (request.content_length() > std::uint64_t((bytes_received - bytes_parsed)))
@@ -4148,6 +4173,8 @@ public:
 					{
 						session_handler_.reset();
 						c = buffer.begin();
+						bytes_received = 0;
+						bytes_parsed = 0;
 					}
 					else
 					{
