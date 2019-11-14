@@ -2841,7 +2841,7 @@ public:
 
 		const endpoint_lambda& endpoint() { return endpoint_; };
 
-		auto& metric_active_count() { return metrics_.active_count_; }
+		std::atomic<std::uint64_t>& metric_active_count() { return metrics_.active_count_; }
 
 		void update_hitcount_and_timing_metrics(
 			std::chrono::high_resolution_clock::duration request_duration,
@@ -3458,7 +3458,7 @@ public:
 		std::atomic<size_t> connections_current_{ 0 };
 		std::atomic<size_t> connections_highest_{ 0 };
 
-		std::atomic<std::chrono::steady_clock::time_point> idle_since_{};
+		std::atomic<std::chrono::steady_clock::time_point> idle_since_;
 
 		std::vector<std::string> access_log_;
 		mutable std::mutex mutex_;
@@ -4217,11 +4217,6 @@ using middleware = http::api::router<>::middleware_type;
 namespace client
 {
 
-// request<>(url, [trace]) 1
-// request<>(url, body, [trace]) 2
-// request<>(url, headers, body, [trace]) 3
-
-// 1
 template <http::method::method_t method>
 http::response_message request(const std::string& url, std::ostream& s = std::clog, bool verbose = false)
 {
@@ -4230,7 +4225,6 @@ http::response_message request(const std::string& url, std::ostream& s = std::cl
 	return curl.call(); // RVO
 }
 
-// 2
 template <http::method::method_t method>
 http::response_message
 request(const std::string& url, const std::string& body, std::ostream& s = std::clog, bool verbose = false)
@@ -4240,7 +4234,6 @@ request(const std::string& url, const std::string& body, std::ostream& s = std::
 	return curl.call(); // RVO
 }
 
-// 3
 template <http::method::method_t method>
 http::response_message request(
 	const std::string& url,
@@ -4254,11 +4247,6 @@ http::response_message request(
 	return curl.call(); // RVO
 }
 
-// request<>(url, ec, [trace]) 4
-// request<>(url, ec, body, [trace]) 5
-// request<>(url, ec, headers, body, [trace]) 6
-
-// 4
 template <http::method::method_t method>
 http::response_message
 request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bool verbose = false)
@@ -4268,7 +4256,6 @@ request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bo
 	return curl.call(ec); // RVO
 }
 
-// 5
 template <http::method::method_t method>
 http::response_message request(
 	const std::string& url, std::string& ec, const std::string& body, std::ostream& s = std::clog, bool verbose = false)
@@ -4278,7 +4265,6 @@ http::response_message request(
 	return curl.call(ec); // RVO
 }
 
-// 6
 template <http::method::method_t method>
 http::response_message request(
 	const std::string& url,
