@@ -3278,7 +3278,7 @@ public:
 			}
 			catch (std::runtime_error& e)
 			{
-				this->internal_error_method_(session, e);
+				if (internal_error_method_) internal_error_method_(session, e);
 			}
 		}
 		return route_context.match_result();
