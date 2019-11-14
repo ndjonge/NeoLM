@@ -321,6 +321,7 @@ private:
 			});
 
 			S::router_.on_get("/no_content", [this](http::session_handler& session) {
+				session.params().get("sec2");
 				session.response().body() = "body text!";
 				session.response().status(http::status::no_content);
 			});
@@ -330,6 +331,12 @@ private:
 				std::this_thread::sleep_for(std::chrono::seconds(sec));
 				session.response().body() = "slomo:";
 				session.response().status(http::status::ok);
+			});
+
+			S::router_.on_internal_error([this](http::session_handler& session, std::runtime_error& e) {
+				session.response().body() = "eroor : ";
+				session.response().body() += e.what();
+				session.response().status(http::status::internal_server_error);
 			});
 
 			S::router_.use_middleware("/status", "type", "varken::knor_pre", "varken::knor_post");

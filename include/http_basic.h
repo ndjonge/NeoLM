@@ -1378,13 +1378,13 @@ public:
 	};
 
 	// TODO use std::enable_if for better performance?
-	template <typename T>
-	std::vector<field<T>> attributes_as_vector() const
+	template <typename T> std::vector<field<T>> attributes_as_vector() const
 	{
 		std::vector<field<T>> vec;
 
-		for ( const auto& attribute : attributes_.as_vector() ) {
-			vec.emplace_back( attribute.name, get_attribute<T>(attribute.name) );
+		for (const auto& attribute : attributes_.as_vector())
+		{
+			vec.emplace_back(attribute.name, get_attribute<T>(attribute.name));
 		}
 
 		return vec;
@@ -2746,7 +2746,7 @@ public:
 	using endpoint_lambda = std::function<void(session_handler_type& session)>;
 	using middleware_lambda
 		= std::function<outcome<std::int64_t>(middleware_lambda_context& context, session_handler_type& session)>;
-
+	using exception_lambda = std::function<void(session_handler_type& session, std::runtime_error& e)>;
 	using result = http::api::router_match::route_context_type;
 
 	struct metrics
@@ -2894,7 +2894,8 @@ template <
 	typename M = http::method::method_t,
 	typename T = std::string,
 	typename R = routing::endpoint_lambda,
-	typename W = routing::middleware_lambda>
+	typename W = routing::middleware_lambda,
+	typename E = routing::exception_lambda>
 class router
 {
 public:
@@ -2902,6 +2903,7 @@ public:
 	using route_url_type = T;
 	using route_endpoint_type = R;
 	using route_middleware_type = W;
+	using route_exception_type = E;
 
 	class route_part
 	{
@@ -2994,6 +2996,7 @@ public:
 
 public:
 	std::unique_ptr<route_part> root_;
+	E internal_error_method_;
 
 public:
 	router() : root_(new router::route_part{})
@@ -3046,6 +3049,8 @@ public:
 
 		on_middleware(path, middleware_pair);
 	}
+
+	void on_internal_error(E&& internal_error_method) { internal_error_method_ = std::move(internal_error_method); }
 
 	void on_get(std::string&& route, R&& api_method) { on_http_method(method::get, route, std::move(api_method)); }
 
@@ -3260,14 +3265,21 @@ public:
 
 		if (route_context.match_result() == http::api::router_match::match_found)
 		{
-			auto t0 = std::chrono::steady_clock::now();
-			route_context.the_route().metric_active_count()++;
-			route_context.the_route().endpoint()(session);
-			route_context.the_route().metric_active_count()--;
-			auto t1 = std::chrono::steady_clock::now();
-			route_context.the_route().update_hitcount_and_timing_metrics(
-				std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
-				std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
+			try
+			{
+				auto t0 = std::chrono::steady_clock::now();
+				route_context.the_route().metric_active_count()++;
+				route_context.the_route().endpoint()(session);
+				route_context.the_route().metric_active_count()--;
+				auto t1 = std::chrono::steady_clock::now();
+				route_context.the_route().update_hitcount_and_timing_metrics(
+					std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
+					std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
+			}
+			catch (std::runtime_error& e)
+			{
+				this->internal_error_method_(session, e);
+			}
 		}
 		return route_context.match_result();
 	}
@@ -4045,8 +4057,6 @@ public:
 					}
 
 					request.body().assign(&buffer.data()[bytes_parsed], size_t{ bytes_received - bytes_parsed });
-
-
 
 					if (request.content_length() > std::uint64_t((bytes_received - bytes_parsed)))
 					{
