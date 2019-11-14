@@ -1378,13 +1378,13 @@ public:
 	};
 
 	// TODO use std::enable_if for better performance?
-	template <typename T> std::vector<field<T>> attributes_as_vector() const
+	template <typename T>
+	std::vector<field<T>> attributes_as_vector() const
 	{
 		std::vector<field<T>> vec;
 
-		for (const auto& attribute : attributes_.as_vector())
-		{
-			vec.emplace_back(attribute.name, get_attribute<T>(attribute.name));
+		for ( const auto& attribute : attributes_.as_vector() ) {
+			vec.emplace_back( attribute.name, get_attribute<T>(attribute.name) );
 		}
 
 		return vec;
@@ -4045,6 +4045,8 @@ public:
 					}
 
 					request.body().assign(&buffer.data()[bytes_parsed], size_t{ bytes_received - bytes_parsed });
+
+
 
 					if (request.content_length() > std::uint64_t((bytes_received - bytes_parsed)))
 					{

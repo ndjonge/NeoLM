@@ -448,7 +448,14 @@ public:
 			SO_REUSEADDR,
 			reinterpret_cast<char*>(&option_values_[options::reuseaddr]),
 			sizeof(std::int32_t));
-
+#ifdef SO_REUSEPORT
+		::setsockopt(
+			socket_,
+			SOL_SOCKET,
+			SO_REUSEPORT,
+			reinterpret_cast<char*>(&option_values_[options::reuseport]),
+			sizeof(std::int32_t));
+#endif
 		return socket_;
 	}
 
