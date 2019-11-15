@@ -2746,7 +2746,7 @@ public:
 	using endpoint_lambda = std::function<void(session_handler_type& session)>;
 	using middleware_lambda
 		= std::function<outcome<std::int64_t>(middleware_lambda_context& context, session_handler_type& session)>;
-	using exception_lambda = std::function<void(session_handler_type& session, std::runtime_error& e)>;
+	using exception_lambda = std::function<void(session_handler_type& session, std::exception& e)>;
 	using result = http::api::router_match::route_context_type;
 
 	struct metrics
@@ -3265,21 +3265,28 @@ public:
 
 		if (route_context.match_result() == http::api::router_match::match_found)
 		{
-			try
+			auto t0 = std::chrono::steady_clock::now();
+			route_context.the_route().metric_active_count()++;
+
+			if (internal_error_method_)
 			{
-				auto t0 = std::chrono::steady_clock::now();
-				route_context.the_route().metric_active_count()++;
+				try
+				{
+					route_context.the_route().endpoint()(session);
+				}
+				catch (std::runtime_error& e)
+				{
+					if (internal_error_method_) internal_error_method_(session, e);
+				}
+			}
+			else
 				route_context.the_route().endpoint()(session);
-				route_context.the_route().metric_active_count()--;
-				auto t1 = std::chrono::steady_clock::now();
-				route_context.the_route().update_hitcount_and_timing_metrics(
-					std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
-					std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
-			}
-			catch (std::runtime_error& e)
-			{
-				if (internal_error_method_) internal_error_method_(session, e);
-			}
+
+			route_context.the_route().metric_active_count()--;
+			auto t1 = std::chrono::steady_clock::now();
+			route_context.the_route().update_hitcount_and_timing_metrics(
+				std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
+				std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 		}
 		return route_context.match_result();
 	}

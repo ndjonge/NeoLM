@@ -333,9 +333,9 @@ private:
 				session.response().status(http::status::ok);
 			});
 
-			S::router_.on_internal_error([this](http::session_handler& session, std::runtime_error& e) {
+			S::router_.on_internal_error([this](http::session_handler& session, std::exception&) {
 				session.response().body() = "eroor : ";
-				session.response().body() += e.what();
+				// session.response().body() += e.what();
 				session.response().status(http::status::internal_server_error);
 			});
 
