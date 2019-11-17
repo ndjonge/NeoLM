@@ -1034,7 +1034,7 @@ public:
 	}
 
 	template <typename T>
-	typename std::enable_if<std::is_same<T, bool>::value, bool>::type get(const std::string& name, const T value = T())
+	typename std::enable_if<std::is_same<T, bool>::value, bool>::type get(const std::string& name, const T value = T()) const
 	{
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
@@ -1050,7 +1050,7 @@ public:
 
 	template <typename T>
 	typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type
-	get(const std::string& name, const T value = T())
+	get(const std::string& name, const T value = T()) const
 	{
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
@@ -1066,7 +1066,7 @@ public:
 
 	template <typename T>
 	typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type
-	get(const std::string& name, const T& value = T())
+	get(const std::string& name, const T& value = T()) const
 	{
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
@@ -1286,7 +1286,7 @@ struct mapping
 	const char* mime_type;
 } const mappings[]
 	= { { "json", "application/json" }, { "text", "text/plain" }, { "ico", "image/x-icon" }, { "gif", "image/gif" },
-		{ "htm", "text/html" },			{ "html", "text/html" },  { "jpg", "image/jpeg" },	 { "jpeg", "image/jpeg" },
+		{ "htm", "text/html" },			{ "html", "text/html" },  { "jpg", "image/jpeg" },   { "jpeg", "image/jpeg" },
 		{ "png", "image/png" },			{ nullptr, nullptr } };
 
 static std::string extension_to_type(const std::string& extension)
@@ -3477,6 +3477,11 @@ public:
 	std::atomic<bool>& active() { return active_; }
 
 	virtual void start_server() { active_ = true; }
+
+	const configuration& configuration() const 
+	{ 
+		return configuration_;
+	}
 
 	class server_manager
 	{

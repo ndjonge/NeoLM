@@ -12,6 +12,8 @@
 #include <utility>
 using json = nlohmann::json;
 
+#include "http_upstream_node.h"
+
 namespace neolm
 {
 
@@ -116,21 +118,13 @@ template <class S> class license_manager
 {
 public:
 private:
-	class api_server : public S //, public http::upstream::enable_server_as_upstream<http::upstream::for_nginx>
+	class api_server : public S, public http::upstream::enable_server_as_upstream
 	{
 	public:
 		api_server(license_manager& license_manager, http::configuration& configuration)
-			: S(configuration)
-			//			, enable_server_as_upstream(configuration, *this)
+			: S(configuration), http::upstream::enable_server_as_upstream(this)
 			, license_manager_(license_manager)
 		{
-			/*			S::router_.use("/static/");
-						S::router_.use("/images/");
-						S::router_.use("/styles/");
-						S::router_.use("/index.html");
-						S::router_.use("/");
-						S::router_.use("/files/");*/
-
 			// Get secific node info, or get list of nodes per tenant-cluster.
 			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
 				const auto& tenant = session.params().get("tenant");
@@ -250,7 +244,7 @@ private:
 
 				if (format.find("application/json") != std::string::npos)
 				{
-					manager().server_information(configuration_.to_json_string());
+					manager().server_information(http::basic::server::configuration_.to_json_string());
 					manager().router_information(router_.to_json_string());
 					session.response().body()
 						= manager().to_json_string(http::basic::server::server_manager::json_status_options::full);
@@ -258,7 +252,7 @@ private:
 				}
 				else
 				{
-					manager().server_information(configuration_.to_string());
+					manager().server_information(http::basic::server::configuration_.to_string());
 					manager().router_information(router_.to_string());
 					session.response().body() = manager().to_string();
 					session.response().type("text");
@@ -364,7 +358,7 @@ public:
 	{
 	}
 
-	~license_manager() = default;
+	~license_manager() { api_server_.upstream_controller_->remove(); }
 
 	license_manager(const license_manager&) = default;
 	license_manager(license_manager&&) = default;
@@ -372,7 +366,10 @@ public:
 	license_manager& operator=(const license_manager&) = default;
 	license_manager& operator=(license_manager&&) = default;
 
-	void start_server() { this->api_server_.start_server(); }
+	void start_server() { 
+		this->api_server_.start_server(); 
+		api_server_.upstream_controller_->add();
+	}
 
 	void run()
 	{
