@@ -53,7 +53,7 @@ public:
 	{
 		do
 		{
-			auto up_result = http::basic::client::get(
+			auto up_result = http::client::request<http::method::get>(
 				endpoint_base_url_
 					+ "&up=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1")
 					+ ":" + configuration_.get("http_listen_port"),
@@ -66,7 +66,7 @@ public:
 			}
 			else
 			{
-				auto add_result = http::basic::client::get(
+				auto add_result = http::client::request<http::method::get>(
 					endpoint_base_url_ + "&add=&server="
 						+ configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":"
 						+ configuration_.get("http_listen_port"),
@@ -82,7 +82,7 @@ public:
 
 	result remove() const noexcept
 	{
-		auto down_result = http::basic::client::get(
+		auto down_result = http::client::request<http::method::get>(
 			endpoint_base_url_
 				+ "&down=&server=" + configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1")
 				+ ":" + configuration_.get("http_listen_port"),
@@ -91,7 +91,7 @@ public:
 
 		if (down_result.status() == http::status::ok)
 		{
-			auto remove_result = http::basic::client::get(
+			auto remove_result = http::client::request<http::method::get>(
 				endpoint_base_url_ + "&remove=&server="
 					+ configuration_.get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":"
 					+ configuration_.get("http_listen_port"),
