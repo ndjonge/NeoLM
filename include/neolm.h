@@ -122,8 +122,7 @@ private:
 	{
 	public:
 		api_server(license_manager& license_manager, http::configuration& configuration)
-			: S(configuration), http::upstream::enable_server_as_upstream(this)
-			, license_manager_(license_manager)
+			: S(configuration), http::upstream::enable_server_as_upstream(this), license_manager_(license_manager)
 		{
 			// Get secific node info, or get list of nodes per tenant-cluster.
 			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
@@ -366,8 +365,9 @@ public:
 	license_manager& operator=(const license_manager&) = default;
 	license_manager& operator=(license_manager&&) = default;
 
-	void start_server() { 
-		this->api_server_.start_server(); 
+	void start_server()
+	{
+		this->api_server_.start_server();
 		api_server_.upstream_controller_->add();
 	}
 
@@ -414,6 +414,7 @@ public:
 
 		test t(this->api_server_, the_test);
 		*/
+
 		do
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));

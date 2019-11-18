@@ -1287,7 +1287,7 @@ struct mapping
 	const char* mime_type;
 } const mappings[]
 	= { { "json", "application/json" }, { "text", "text/plain" }, { "ico", "image/x-icon" }, { "gif", "image/gif" },
-		{ "htm", "text/html" },			{ "html", "text/html" },  { "jpg", "image/jpeg" },   { "jpeg", "image/jpeg" },
+		{ "htm", "text/html" },			{ "html", "text/html" },  { "jpg", "image/jpeg" },	 { "jpeg", "image/jpeg" },
 		{ "png", "image/png" },			{ nullptr, nullptr } };
 
 static std::string extension_to_type(const std::string& extension)
@@ -3724,13 +3724,13 @@ public:
 		auto waiting = 0;
 		auto timeout = 2;
 
-		while (http_enabled_ && !http_listen_port_ && waiting < timeout)
+		while (http_enabled_ && http_listen_port_ > 0 && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
 		}
 
-		while (https_enabled_ && !https_listen_port_ && waiting < timeout)
+		while (https_enabled_ && https_listen_port_ > 0 && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
@@ -3861,7 +3861,6 @@ public:
 
 							https_listen_port_ = endpoint_https_tmp.port();
 						}
-						this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
 
 						break;
 					}
@@ -3878,6 +3877,8 @@ public:
 						"cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":"
 						+ std::to_string(https_listen_port_end_) + " ]"));
 				}
+				else
+					configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
 				network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
@@ -3950,8 +3951,6 @@ public:
 							http_listen_port_ = endpoint_http_tmp.port();
 						}
 
-						configuration_.set("http_listen_port", std::to_string(http_listen_port_));
-
 						break;
 					}
 					else if (ec == network::error::address_in_use)
@@ -3967,6 +3966,8 @@ public:
 						"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":"
 						+ std::to_string(http_listen_port_end_) + " ]"));
 				}
+				else
+					configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
 				acceptor_http.listen();
 

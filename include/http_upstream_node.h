@@ -48,6 +48,7 @@ public:
 	{
 		do
 		{
+			bool retry = false;
 			auto up_result = http::client::request<http::method::get>(
 				endpoint_base_url_
 					+ "&up=&server=" + server_.config().get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1")
@@ -68,7 +69,16 @@ public:
 					{},
 					{});
 
-				return http::upstream::sucess;
+				if (add_result.status() == http::status::ok)
+				{
+					return http::upstream::sucess;
+				}
+				else
+				{
+					if (retry == true) break;
+
+					retry = true;
+				}
 			}
 		} while (remove() == http::upstream::sucess); // remove ourself and try again....
 
@@ -112,12 +122,16 @@ public:
 	{
 		char buffer[4096];
 
+		auto http_listen_port = server_.config().get<std::string>("http_listen_port");
+
 		auto haproxy_addr = network::ip::make_address(
 			server_.config().get<std::string>("upstream-node-haproxy-endpoint", "::1:9999"));
 
 		auto this_addr = network::ip::make_address(
-			server_.config().get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":"
-			+ server_.config().get("http_listen_port"));
+			server_.config().get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1:" + http_listen_port));
+
+		auto backend = server_.config().get<std::string>("upstream-node-haproxy-backend", "upstream");
+		auto node = server_.config().get<std::string>("upstream-node-haproxy-node", "bshell-0");
 
 		network::tcp::v6 s(haproxy_addr);
 		network::error_code ec;
@@ -126,15 +140,13 @@ public:
 
 		if (!ec)
 		{
-			std::cout << "set server " + server_.config().get("upstream-node-haproxy-group") + "/" + +" addr "
-							 + this_addr.first + " port " + std::to_string(this_addr.second) + "\n";
+			auto cmd = "set server " + backend + "/" + node + " addr " + this_addr.first + " port " + http_listen_port
+					   + "\n";
 
-			network::write(
-				s.socket(),
-				"set server " + server_.config().get("upstream-node-haproxy-group") + "/" + +" addr " + this_addr.first
-					+ " port " + std::to_string(this_addr.second) + "\n");
+			network::write(s.socket(), cmd);
 
-			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
+			network::read(s.socket(), network::buffer(buffer, sizeof(buffer))); // on error no such server // success:
+																				// no need to change
 		}
 
 		s.close();
@@ -142,13 +154,9 @@ public:
 
 		if (!ec)
 		{
-			std::cout << "enable server " + server_.config().get("upstream-node-haproxy-group") + "/" + this_addr.first
-							 + " state ready\n";
+			auto cmd = "enable server " + backend + "/" + node + " state ready\n";
 
-			network::write(
-				s.socket(),
-				"enable server " + server_.config().get("upstream-node-haproxy-group") + "/" + this_addr.first
-					+ " state ready\n");
+			network::write(s.socket(), cmd);
 			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
 		}
 
@@ -157,24 +165,31 @@ public:
 
 	result remove() const noexcept
 	{
-		// char buffer[4096];
+		char buffer[4096];
 
-		// network::tcp::v6 s;
-		//
+		auto http_listen_port = server_.config().get<std::string>("http_listen_port");
 
-		// network::ip::address reverse_proxy_this_node_url_address
-		//	= network::ip::make_address(reverse_proxy_this_node_url);
+		auto haproxy_addr = network::ip::make_address(
+			server_.config().get<std::string>("upstream-node-haproxy-endpoint", "::1:9999"));
 
-		// network::error_code ec;
+		auto this_addr = network::ip::make_address(
+			server_.config().get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1:" + http_listen_port));
 
-		// s.connect(ec);
+		auto backend = server_.config().get<std::string>("upstream-node-haproxy-backend", "upstream");
+		auto node = server_.config().get<std::string>("upstream-node-haproxy-node", "bshell-0");
 
-		// if (!ec)
-		//{
-		//	std::cout << "set server " + upstream_node_name + " state drain\n";
-		//	network::write(s.socket(), "set server " + upstream_node_name + " state drain\n");
-		//	network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
-		//}
+		network::tcp::v6 s(haproxy_addr);
+		network::error_code ec;
+
+		s.connect(ec);
+
+		if (!ec)
+		{
+			auto cmd = "set server " + backend + "/" + node + " state drain\n";
+
+			network::write(s.socket(), cmd);
+			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
+		}
 
 		return http::upstream::sucess;
 	}
