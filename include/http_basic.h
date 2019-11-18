@@ -1034,7 +1034,8 @@ public:
 	}
 
 	template <typename T>
-	typename std::enable_if<std::is_same<T, bool>::value, bool>::type get(const std::string& name, const T value = T()) const
+	typename std::enable_if<std::is_same<T, bool>::value, bool>::type
+	get(const std::string& name, const T value = T()) const
 	{
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
@@ -3478,10 +3479,7 @@ public:
 
 	virtual void start_server() { active_ = true; }
 
-	const configuration& configuration() const 
-	{ 
-		return configuration_;
-	}
+	const configuration& config() const { return configuration_; }
 
 	class server_manager
 	{
