@@ -894,7 +894,7 @@ inline std::int32_t write(const socket_t& s, const std::string& str) noexcept
 
 inline std::int32_t read(const network::tcp::socket& s, const buffer& b) noexcept
 {
-	return ::recv(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0);
+	return ::recv(s.lowest_layer(), b.data(), 16, 0); // static_cast<int>(b.size()), 0);
 }
 
 inline std::int32_t write(const network::tcp::socket& s, const buffer& b) noexcept

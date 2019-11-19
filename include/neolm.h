@@ -238,6 +238,12 @@ private:
 				session.response().status(http::status::ok);
 			});
 
+			router_.on_put("/put_test", [this](http::session_handler& session) {
+				session.response().status(http::status::created);
+
+				std::clog << http::to_string(session.request());
+			});
+
 			router_.on_get("/status", [this](http::session_handler& session) {
 				const auto& format = session.request().get("Accept", "application/json");
 

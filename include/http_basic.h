@@ -1174,7 +1174,7 @@ public:
 		this->method_ = http::method::unknown;
 		this->target_.clear();
 		this->url_requested_.clear();
-
+		this->params_.clear();
 		this->fields_.clear();
 	}
 
@@ -3524,8 +3524,8 @@ public:
 			std::lock_guard<std::mutex> g(mutex_);
 
 			s << R"(')" << session.request().get("Remote_Addr", std::string{}) << R"(')"
-			  << R"( - ')" << session.request().method() << " " << session.request().url_requested() << " "
-			  << session.request().version() << R"(')"
+			  << R"( - ')" << http::method::to_string(session.request().method()) << " "
+			  << session.request().url_requested() << " " << session.request().version() << R"(')"
 			  << " - " << session.response().status() << " - " << session.response().content_length() << " - "
 			  << session.request().content_length() << R"( - ')" << session.request().get("User-Agent", std::string{})
 			  << "\'";
@@ -3990,7 +3990,6 @@ public:
 						http_connection_queue_has_connection_.notify_one();
 					}
 				}
-				// std::cout << "https_listener_handler_::end2\n";
 			}
 			catch (...)
 			{
@@ -4029,80 +4028,55 @@ public:
 		{
 			using data_store_buffer_t = std::array<char, 1024 * 4>;
 			data_store_buffer_t buffer{};
-			auto c = std::begin(buffer);
-			auto bytes_parsed = size_t{ 0 };
-			auto bytes_received = size_t{ 0 };
+			auto data_begin = std::begin(buffer);
+			auto data_end = data_begin;
 
 			while (true)
 			{
-				size_t left_of_buffer_size = buffer.size() - (c - std::begin(buffer));
-
-				int ret = network::read(client_socket_, network::buffer(&(*c), left_of_buffer_size));
-
-				if (ret <= 0)
+				ASSERT(data_begin <= data_end);
+				if (std::distance(data_begin, data_end) == 0)
 				{
-					break;
+					data_begin = std::begin(buffer);
+					int ret = network::read(client_socket_, network::buffer(&*data_begin, buffer.size()));
+
+					if (ret <= 0)
+					{
+						break;
+					}
+					data_end = data_begin + ret;
 				}
 
-				bytes_received += ret;
 				http::session_handler::result_type parse_result;
 
 				auto& response = session_handler_.response();
 				auto& request = session_handler_.request();
 
-				std::tie(parse_result, c) = session_handler_.parse_request(c, c + ret);
-				bytes_parsed = c - std::begin(buffer);
+				std::tie(parse_result, data_begin) = session_handler_.parse_request(data_begin, data_end);
 
 				if ((parse_result == http::request_parser::result_type::good) && (request.has_content_length()))
 				{
-					if (bytes_parsed == bytes_received && request.content_length() > 0)
+					auto content_length = request.content_length();
+
+					// Assign any data, possibly none, left in the buffer:
+					request.body().assign(data_begin, data_end);
+
+					while (request.body().size() < content_length)
 					{
-						ret = network::read(client_socket_, network::buffer(&(*c), left_of_buffer_size));
+						data_begin = std::begin(buffer);
+						int ret = network::read(client_socket_, network::buffer(&*data_begin, buffer.size()));
+
 						if (ret <= 0)
 						{
-							// TODO headers received, but client did not send the body....
+							parse_result = http::request_parser::result_type::bad;
 							break;
 						}
-						bytes_received += ret;
-						// TODO 4K header test
+						data_end = data_begin + ret;
+						request.body().append(data_begin, data_end);
 					}
 
-					request.body().assign(&buffer.data()[bytes_parsed], size_t{ bytes_received - bytes_parsed });
-
-					if (request.content_length() > std::uint64_t((bytes_received - bytes_parsed)))
+					if (request.body().length() > content_length)
 					{
-						while (true)
-						{
-							parse_result = http::request_parser::result_type::bad;
-
-							ret = network::read(client_socket_, network::buffer(buffer.data(), buffer.size()));
-
-							if (ret == 0)
-							{
-								break;
-							}
-							if (ret < 0)
-							{
-								break;
-							}
-
-							bytes_received += ret;
-
-							request.body().append(buffer.data(), buffer.data() + ret);
-
-							if (request.content_length() == request.body().length())
-							{
-								parse_result = http::request_parser::result_type::good;
-								break;
-							}
-							else if (request.content_length() < request.body().length())
-							{
-								parse_result = http::request_parser::result_type::bad;
-								break;
-							}
-							else
-								continue;
-						}
+						parse_result = http::request_parser::result_type::bad;
 					}
 				}
 
@@ -4155,7 +4129,7 @@ public:
 						{
 							std::string headers = response.header_to_string();
 
-							ret = network::write(client_socket_, network::buffer(&headers[0], headers.length()));
+							int ret = network::write(client_socket_, network::buffer(&headers[0], headers.length()));
 
 							std::ifstream is(session_handler_.request().target(), std::ios::in | std::ios::binary);
 
@@ -4189,15 +4163,14 @@ public:
 							response.set("Content-Length", std::to_string(response.body().size()));
 						}
 
-						ret = network::write(client_socket_, http::to_string(response));
+						(void)network::write(client_socket_, http::to_string(response));
 					}
 
 					if (response.connection_keep_alive() == true)
 					{
+						data_begin = std::begin(buffer);
+						data_end = data_begin;
 						session_handler_.reset();
-						c = buffer.begin();
-						bytes_received = 0;
-						bytes_parsed = 0;
 					}
 					else
 					{

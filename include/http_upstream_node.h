@@ -39,9 +39,9 @@ class upstream_controller_nginx : public upstream_controller_base
 public:
 	upstream_controller_nginx(const http::basic::server& server) : upstream_controller_base(server)
 	{
-		endpoint_base_url_ = server.config().get("upstream-node-nginx-endpoint") + "/"
-							 + server.config().get("upstream-node-nginx-group")
-							 + "?upstream=" + server.config().get("upstream-node-nginx-group") + "-zone";
+		endpoint_base_url_ = server.config().get("upstream_node_nginx_endpoint") + "/"
+							 + server.config().get("upstream_node_nginx_group")
+							 + "?upstream=" + server.config().get("upstream_node_nginx_group") + "-zone";
 	};
 
 	result add() const noexcept
@@ -51,7 +51,7 @@ public:
 			bool retry = false;
 			auto up_result = http::client::request<http::method::get>(
 				endpoint_base_url_
-					+ "&up=&server=" + server_.config().get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1")
+					+ "&up=&server=" + server_.config().get<std::string>("upstream_node_nginx_my_endpoint", "127.0.0.1")
 					+ ":" + server_.config().get("http_listen_port"),
 				{},
 				{});
@@ -64,7 +64,7 @@ public:
 			{
 				auto add_result = http::client::request<http::method::get>(
 					endpoint_base_url_ + "&add=&server="
-						+ server_.config().get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":"
+						+ server_.config().get<std::string>("upstream_node_nginx_my_endpoint", "127.0.0.1") + ":"
 						+ server_.config().get("http_listen_port"),
 					{},
 					{});
@@ -89,7 +89,7 @@ public:
 	{
 		auto down_result = http::client::request<http::method::get>(
 			endpoint_base_url_
-				+ "&down=&server=" + server_.config().get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1")
+				+ "&down=&server=" + server_.config().get<std::string>("upstream_node_nginx_my_endpoint", "127.0.0.1")
 				+ ":" + server_.config().get("http_listen_port"),
 			{},
 			{});
@@ -98,7 +98,7 @@ public:
 		{
 			auto remove_result = http::client::request<http::method::get>(
 				endpoint_base_url_ + "&remove=&server="
-					+ server_.config().get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1") + ":"
+					+ server_.config().get<std::string>("upstream_node_nginx_my_endpoint", "127.0.0.1") + ":"
 					+ server_.config().get("http_listen_port"),
 				{},
 				{});
@@ -120,18 +120,19 @@ public:
 
 	result add() const noexcept
 	{
+		result ret = http::upstream::failed;
 		char buffer[4096];
 
 		auto http_listen_port = server_.config().get<std::string>("http_listen_port");
 
 		auto haproxy_addr = network::ip::make_address(
-			server_.config().get<std::string>("upstream-node-haproxy-endpoint", "::1:9999"));
+			server_.config().get<std::string>("upstream_node_haproxy_endpoint", "::1:9999"));
 
 		auto this_addr = network::ip::make_address(
-			server_.config().get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1:" + http_listen_port));
+			server_.config().get<std::string>("upstream_node_nginx_my-endpoint", "127.0.0.1:" + http_listen_port));
 
-		auto backend = server_.config().get<std::string>("upstream-node-haproxy-backend", "upstream");
-		auto node = server_.config().get<std::string>("upstream-node-haproxy-node", "bshell-0");
+		auto backend = server_.config().get<std::string>("upstream_node_haproxy_backend", "upstream");
+		auto node = server_.config().get<std::string>("upstream_node_haproxy_node", "bshell-0");
 
 		network::tcp::v6 s(haproxy_addr);
 		network::error_code ec;
@@ -147,36 +148,39 @@ public:
 
 			network::read(s.socket(), network::buffer(buffer, sizeof(buffer))); // on error no such server // success:
 																				// no need to change
+
+			s.close();
+			s.connect(ec);
+
+			if (!ec)
+			{
+				cmd = "enable server " + backend + "/" + node + " state ready\n";
+
+				network::write(s.socket(), cmd);
+				network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
+
+				ret = http::upstream::sucess;
+			}
 		}
 
-		s.close();
-		s.connect(ec);
-
-		if (!ec)
-		{
-			auto cmd = "enable server " + backend + "/" + node + " state ready\n";
-
-			network::write(s.socket(), cmd);
-			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
-		}
-
-		return http::upstream::sucess;
+		return ret;
 	}
 
 	result remove() const noexcept
 	{
+		result ret = http::upstream::failed;
 		char buffer[4096];
 
 		auto http_listen_port = server_.config().get<std::string>("http_listen_port");
 
 		auto haproxy_addr = network::ip::make_address(
-			server_.config().get<std::string>("upstream-node-haproxy-endpoint", "::1:9999"));
+			server_.config().get<std::string>("upstream_node_haproxy_endpoint", "::1:9999"));
 
 		auto this_addr = network::ip::make_address(
-			server_.config().get<std::string>("upstream-node-nginx-my-endpoint", "127.0.0.1:" + http_listen_port));
+			server_.config().get<std::string>("upstream_node_nginx-my_endpoint", "127.0.0.1:" + http_listen_port));
 
-		auto backend = server_.config().get<std::string>("upstream-node-haproxy-backend", "upstream");
-		auto node = server_.config().get<std::string>("upstream-node-haproxy-node", "bshell-0");
+		auto backend = server_.config().get<std::string>("upstream_node_haproxy_backend", "upstream");
+		auto node = server_.config().get<std::string>("upstream_node_haproxy_node", "bshell-0");
 
 		network::tcp::v6 s(haproxy_addr);
 		network::error_code ec;
@@ -189,9 +193,10 @@ public:
 
 			network::write(s.socket(), cmd);
 			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
+			ret = http::upstream::sucess;
 		}
 
-		return http::upstream::sucess;
+		return ret;
 	}
 
 private:
@@ -217,12 +222,12 @@ protected:
 
 std::unique_ptr<upstream_controller_base> make_upstream_controler_from_configuration(const http::basic::server& server)
 {
-	if (server.config().get("upstream-node-type") == "nginx")
+	if (server.config().get("upstream_node_type") == "nginx")
 	{
 		return std::move(std::unique_ptr<http::upstream::implementations::upstream_controller_nginx>(
 			new http::upstream::implementations::upstream_controller_nginx(server)));
 	}
-	else if (server.config().get("upstream-node-type") == "haproxy")
+	else if (server.config().get("upstream_node_type") == "haproxy")
 	{
 		return std::move(std::unique_ptr<http::upstream::implementations::upstream_controller_haproxy>(
 			new http::upstream::implementations::upstream_controller_haproxy(server)));

@@ -36,10 +36,10 @@ int main()
 							 { "doc_root", "/Projects/doc_root" },
 							 { "ssl_certificate", "/projects/ssl/server.crt" },
 							 { "ssl_certificate_key", "/projects/ssl/server.key" },
-							 { "internal-services-base", "/server" },
-							 { "upstream-node-type", "nginx" },
-							 { "upstream-node-nginx-endpoint", "nlbavlflex01.infor.com:7777" },
-							 { "upstream-node-nginx-group", "bshell-workers" } },
+							 { "server_admin_base", "/_server" },
+							 { "upstream_node_type", "nginx" },
+							 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },
+							 { "upstream_node_nginx-group", "bshell-workers" } },
 		"/projects/neolm_licenses/"
 	};
 
