@@ -39,9 +39,10 @@ class upstream_controller_nginx : public upstream_controller_base
 public:
 	upstream_controller_nginx(const http::basic::server& server) : upstream_controller_base(server)
 	{
-		endpoint_base_url_ = server.config().get("upstream_node_nginx_endpoint") + "/"
-							 + server.config().get("upstream_node_nginx_group")
-							 + "?upstream=" + server.config().get("upstream_node_nginx_group") + "-zone";
+		endpoint_base_url_
+			= server.config().get<std::string>("upstream_node_nginx_endpoint", "http://localhost:7777") + "/"
+			  + server.config().get<std::string>("upstream_node_nginx_group", "bshell-workers") + "?upstream="
+			  + server.config().get<std::string>("upstream_node_nginx_group", "bshell-workers") + "-zone";
 	};
 
 	result add() const noexcept

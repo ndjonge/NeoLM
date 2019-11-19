@@ -363,7 +363,10 @@ public:
 	{
 	}
 
-	~license_manager() { api_server_.upstream_controller_->remove(); }
+	~license_manager()
+	{
+		if (api_server_.upstream_controller_) api_server_.upstream_controller_->remove();
+	}
 
 	license_manager(const license_manager&) = default;
 	license_manager(license_manager&&) = default;
@@ -374,7 +377,7 @@ public:
 	void start_server()
 	{
 		this->api_server_.start_server();
-		api_server_.upstream_controller_->add();
+		if (api_server_.upstream_controller_) api_server_.upstream_controller_->add();
 	}
 
 	void run()
