@@ -3973,7 +3973,7 @@ public:
 
 				while (active_ == true)
 				{
-					network::tcp::socket http_socket{ 0 };
+					network::tcp::socket http_socket{ network::tcp::socket::invalid_socket };
 					ec = network::error::success;
 
 					acceptor_http.accept(http_socket, ec, 5);
@@ -3983,7 +3983,7 @@ public:
 
 					network::timeout(http_socket, connection_timeout_);
 
-					if (http_socket.lowest_layer() > 0)
+					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket) //
 					{
 						std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 						http_connection_queue_.push(std::move(http_socket));
@@ -4013,6 +4013,7 @@ public:
 
 		~connection_handler()
 		{
+
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
 			--server_.manager().connections_current();
@@ -4034,12 +4035,12 @@ public:
 			while (true)
 			{
 				ASSERT(data_begin <= data_end);
-				if (std::distance(data_begin, data_end) == 0)
+				if (data_begin == data_end)
 				{
 					data_begin = std::begin(buffer);
 					int ret = network::read(client_socket_, network::buffer(&*data_begin, buffer.size()));
 
-					if (ret <= 0)
+					if (ret < 0)
 					{
 						break;
 					}
@@ -4052,13 +4053,15 @@ public:
 				auto& request = session_handler_.request();
 
 				std::tie(parse_result, data_begin) = session_handler_.parse_request(data_begin, data_end);
+				ASSERT(data_begin <= data_end);
 
 				if ((parse_result == http::request_parser::result_type::good) && (request.has_content_length()))
 				{
 					auto content_length = request.content_length();
 
-					// Assign any data, possibly none, left in the buffer:
+					// Assign any data left in the buffer, possibly none:
 					request.body().assign(data_begin, data_end);
+					data_begin = data_end;
 
 					while (request.body().size() < content_length)
 					{
@@ -4072,6 +4075,7 @@ public:
 						}
 						data_end = data_begin + ret;
 						request.body().append(data_begin, data_end);
+						data_begin = data_end;
 					}
 
 					if (request.body().length() > content_length)
@@ -4093,6 +4097,7 @@ public:
 									"X-Forwarded-For", network::get_client_info(client_socket_)));
 
 							++server_.manager().requests_current();
+							std::cout << " --> " << http::to_string(request);
 							session_handler_.handle_request(server_.router_);
 							--server_.manager().requests_current();
 
@@ -4168,8 +4173,6 @@ public:
 
 					if (response.connection_keep_alive() == true)
 					{
-						data_begin = std::begin(buffer);
-						data_end = data_begin;
 						session_handler_.reset();
 					}
 					else

@@ -398,13 +398,15 @@ public:
 
 	socket(socket_t s) : socket_(s) {}
 
+	static const socket_t invalid_socket{ static_cast<socket_t>(-1) };
+
 	enum family
 	{
 		v4 = AF_INET,
 		v6 = AF_INET6
 	};
 
-	socket(socket&& s) noexcept : socket_(s.socket_), options_(s.options_) { s.socket_ = 0; }
+	socket(socket&& s) noexcept : socket_(s.socket_), options_(s.options_) { s.socket_ = invalid_socket; }
 
 	socket(const socket& s) noexcept : socket_(s.socket_), options_(s.options_) {}
 
@@ -428,7 +430,7 @@ public:
 	void assign(socket&& socket)
 	{
 		socket_ = socket.lowest_layer();
-		socket.lowest_layer() = static_cast<socket_t>(-1); // NOLINT
+		socket.lowest_layer() = invalid_socket; // NOLINT
 	};
 
 	socket_t open(family fam, protocol prot)
@@ -461,16 +463,16 @@ public:
 
 	socket_t close()
 	{
-		if (socket_ && socket_ != -1)
+		if (socket_ && socket_ != invalid_socket)
 		{
 			::closesocket(socket_);
-			socket_ = 0;
+			socket_ = invalid_socket;
 		}
 
 		return socket_;
 	}
 
-	bool is_open() const { return socket_ != 0; }
+	bool is_open() const { return socket_ != invalid_socket; }
 
 	const socket_t& lowest_layer() const { return socket_; }
 
@@ -483,7 +485,7 @@ public:
 	}
 
 private:
-	socket_t socket_{ static_cast<socket_t>(-1) };
+	socket_t socket_{ invalid_socket };
 	options options_{ none };
 	std::int32_t option_values_[options::size] = {};
 };
@@ -894,7 +896,7 @@ inline std::int32_t write(const socket_t& s, const std::string& str) noexcept
 
 inline std::int32_t read(const network::tcp::socket& s, const buffer& b) noexcept
 {
-	return ::recv(s.lowest_layer(), b.data(), 16, 0); // static_cast<int>(b.size()), 0);
+	return ::recv(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0);
 }
 
 inline std::int32_t write(const network::tcp::socket& s, const buffer& b) noexcept
