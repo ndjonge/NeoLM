@@ -3494,14 +3494,16 @@ public:
 		std::atomic<size_t> connections_current_{ 0 };
 		std::atomic<size_t> connections_highest_{ 0 };
 
-		std::atomic<std::chrono::steady_clock::time_point> idle_since_;
+		std::atomic<std::int64_t> idle_since_;
 
 		std::vector<std::string> access_log_;
 		mutable std::mutex mutex_;
 
 	public:
 		server_manager() noexcept
-			: server_information_(""), router_information_(""), idle_since_(std::chrono::steady_clock::now())
+			: server_information_("")
+			, router_information_("")
+			, idle_since_(std::chrono::steady_clock::now().time_since_epoch().count())
 		{
 			access_log_.reserve(32);
 		};
@@ -3514,7 +3516,7 @@ public:
 		{
 			if (requests_current_.load() > 0)
 			{
-				idle_since_.store(std::chrono::steady_clock::now());
+				idle_since_.store(std::chrono::steady_clock::now().time_since_epoch().count());
 			}
 			return requests_current_;
 		}
@@ -3591,7 +3593,7 @@ public:
 					  << "\"requests_current\" : " << requests_current_ << ","
 					  << "\"idle_time\" : "
 					  << (std::chrono::duration<std::int64_t, std::nano>(
-							  std::chrono::steady_clock::now() - idle_since_.load())
+							  std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
 							  .count())
 							 / 1000000000
 					  << "}";
@@ -3643,7 +3645,8 @@ public:
 			s << "requests_handled: " << requests_handled_ << "\n";
 			s << "requests_current: " << requests_current_ << "\n";
 			s << "idle_time: "
-			  << (std::chrono::duration<std::int64_t, std::nano>(std::chrono::steady_clock::now() - idle_since_.load())
+			  << (std::chrono::duration<std::int64_t, std::nano>(
+					  std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
 					  .count())
 					 / 1000000000
 			  << "s\n";
