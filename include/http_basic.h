@@ -3494,13 +3494,13 @@ public:
 		std::atomic<size_t> connections_current_{ 0 };
 		std::atomic<size_t> connections_highest_{ 0 };
 
-		std::atomic<std::chrono::steady_clock::time_point> idle_since_;
+		std::atomic<size_t> idle_since_;
 
 		std::vector<std::string> access_log_;
 		mutable std::mutex mutex_;
 
 	public:
-		server_manager() noexcept
+		server_manager() 
 			: server_information_(""), router_information_(""), idle_since_(std::chrono::steady_clock::now())
 		{
 			access_log_.reserve(32);

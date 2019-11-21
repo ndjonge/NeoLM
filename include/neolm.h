@@ -259,38 +259,38 @@ private:
 				session.response().status(http::status::ok);
 			});
 
-			router_.on_put("/put_test", [this](http::session_handler& session) {
+            S::router_.on_put("/put_test", [this](http::session_handler& session) {
 				session.response().status(http::status::created);
 
 				std::clog << http::to_string(session.request());
 			});
 
-			router_.on_get("/status", [this](http::session_handler& session) {
+            S::router_.on_get("/status", [this](http::session_handler& session) {
 				const auto& format = session.request().get("Accept", "application/json");
 
 				if (format.find("application/json") != std::string::npos)
 				{
-					manager().server_information(
+                    S::manager().server_information(
 						http::basic::server::configuration_.to_json_string());
-					manager().router_information(router_.to_json_string());
-					session.response().body() = manager().to_json_string(
+                    S::manager().router_information(S::router_.to_json_string());
+					session.response().body() = S::manager().to_json_string(
 						http::basic::server::server_manager::json_status_options::full);
 					session.response().type("json");
 				}
 				else
 				{
-					manager().server_information(http::basic::server::configuration_.to_string());
-					manager().router_information(router_.to_string());
-					session.response().body() = manager().to_string();
+                    S::manager().server_information(http::basic::server::configuration_.to_string());
+                    S::manager().router_information(S::router_.to_string());
+					session.response().body() = S::manager().to_string();
 					session.response().type("text");
 				}
 
 				session.response().status(http::status::ok);
 			});
 
-			router_.on_get("/status/{section}", [this](http::session_handler& session) {
-				manager().server_information(configuration_.to_json_string());
-				manager().router_information(router_.to_json_string());
+            S::router_.on_get("/status/{section}", [this](http::session_handler& session) {
+                S::manager().server_information(S::configuration_.to_json_string());
+                S::manager().router_information(S::router_.to_json_string());
 
 				auto section_option
 					= http::basic::server::server_manager::json_status_options::full;
@@ -323,7 +323,7 @@ private:
 					return;
 				}
 
-				session.response().body() = manager().to_json_string(section_option);
+				session.response().body() = S::manager().to_json_string(section_option);
 				session.response().type("json");
 
 				session.request().get_attribute<int>("name", 12435);
