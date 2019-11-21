@@ -1175,6 +1175,7 @@ public:
 		this->target_.clear();
 		this->url_requested_.clear();
 		this->params_.clear();
+
 		this->fields_.clear();
 	}
 
@@ -3275,7 +3276,7 @@ public:
 				{
 					route_context.the_route().endpoint()(session);
 				}
-				catch (std::runtime_error& e)
+				catch (std::exception& e)
 				{
 					if (internal_error_method_) internal_error_method_(session, e);
 				}
@@ -3689,7 +3690,7 @@ public:
 		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
 		, https_listen_port_(0)
 		, endpoint_https_(configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
-		, connection_timeout_(configuration.get<int>("keepalive_timeout", 4))
+		, connection_timeout_(configuration.get<int>("keepalive_timeout", 5))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 		, http_connection_thread_([this]() { http_listener_handler(); })
 		, https_connection_thread_([this]() { https_listener_handler(); })
@@ -3724,13 +3725,13 @@ public:
 		auto waiting = 0;
 		auto timeout = 2;
 
-		while (http_enabled_ && http_listen_port_ > 0 && waiting < timeout)
+		while (http_enabled_ && !http_listen_port_ && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
 		}
 
-		while (https_enabled_ && https_listen_port_ > 0 && waiting < timeout)
+		while (https_enabled_ && !https_listen_port_ && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
@@ -3756,11 +3757,13 @@ public:
 
 			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
-			// std::cout << "http_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
-
 			if (http_connection_queue_.empty())
 			{
+				// std::cerr << "http_connection_queue_: before yield:" << std::to_string(http_connection_queue_.size())
+				// << "\n";
 				std::this_thread::yield();
+				// std::cerr << "http_connection_queue_: after  yield:" << std::to_string(http_connection_queue_.size())
+				// << "\n";
 			}
 			else
 			{
@@ -3769,6 +3772,9 @@ public:
 
 					// network::timeout(http_socket, connection_timeout_);
 					// network::tcp_nodelay(http_socket, 1);
+					// std::cerr << "http_connection_queue_: new connection " <<
+					// std::to_string(http_connection_queue_.size()) << "\n";
+
 					auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
 						*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_);
 
@@ -3782,7 +3788,7 @@ public:
 				}
 			}
 		}
-		// std::cout << "http_connection_queue_::end1\n";
+		// std::cerr << "http_connection_queue_::end1\n";
 	}
 
 	void https_connection_queue_handler()
@@ -3861,6 +3867,7 @@ public:
 
 							https_listen_port_ = endpoint_https_tmp.port();
 						}
+						this->configuration_.set("https_listen_port", std::to_string(https_listen_port_));
 
 						break;
 					}
@@ -3877,8 +3884,6 @@ public:
 						"cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":"
 						+ std::to_string(https_listen_port_end_) + " ]"));
 				}
-				else
-					configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
 				network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
@@ -3933,7 +3938,10 @@ public:
 
 				network::ipv6only(endpoint_http_.socket(), 0);
 
-				network::use_portsharding(endpoint_http_.socket(), 1); // TODO disable port sharding?
+				if ((http_listen_port_begin_ != 0) && (http_listen_port_begin_ == http_listen_port_end_))
+					network::use_portsharding(endpoint_http_.socket(), 1);
+				else
+					network::use_portsharding(endpoint_http_.socket(), 0);
 
 				network::error_code ec = network::error::success;
 
@@ -3951,6 +3959,8 @@ public:
 							http_listen_port_ = endpoint_http_tmp.port();
 						}
 
+						configuration_.set("http_listen_port", std::to_string(http_listen_port_));
+
 						break;
 					}
 					else if (ec == network::error::address_in_use)
@@ -3966,8 +3976,6 @@ public:
 						"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":"
 						+ std::to_string(http_listen_port_end_) + " ]"));
 				}
-				else
-					configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
 				acceptor_http.listen();
 
@@ -3977,19 +3985,22 @@ public:
 					ec = network::error::success;
 
 					acceptor_http.accept(http_socket, ec, 5);
+					// std::cerr << " http: accept() ec = " << ec << std::endl;
 
 					if (ec == network::error::interrupted) break;
 					if (ec == network::error::operation_would_block) continue;
 
 					network::timeout(http_socket, connection_timeout_);
 
-					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket) //
+					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
 					{
+						// std::cerr << " http_socket " << http_socket.lowest_layer()  << std::endl;
 						std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 						http_connection_queue_.push(std::move(http_socket));
 						http_connection_queue_has_connection_.notify_one();
 					}
 				}
+				// std::cout << "https_listener_handler_::end2\n";
 			}
 			catch (...)
 			{
@@ -4013,10 +4024,11 @@ public:
 
 		~connection_handler()
 		{
-
+			// std::cerr << "~connection_handler(): before shutdown" << std::endl;
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
 			--server_.manager().connections_current();
+			// std::cerr << "~connection_handler(): after  shutdown" << std::endl;
 		}
 
 		connection_handler(const connection_handler&) = delete;
@@ -4038,10 +4050,20 @@ public:
 				if (data_begin == data_end)
 				{
 					data_begin = std::begin(buffer);
-					int ret = network::read(client_socket_, network::buffer(&*data_begin, buffer.size()));
+					// std::cerr << std::hex <<std::this_thread::get_id() << ": " << std::dec << __FILE__ << " " <<
+					// __LINE__ <<
+					//	"------- start read" << std::endl;
 
-					if (ret < 0)
+					int ret = network::read(client_socket_, network::buffer(&*data_begin, buffer.size()));
+					// std::cerr << std::hex <<std::this_thread::get_id() << ": " << std::dec<< __FILE__ << " " <<
+					// __LINE__ <<
+					//	"------- end read ret = " << ret << std::endl;
+
+					if (ret <= 0)
 					{
+						// std::cerr << std::hex <<std::this_thread::get_id() << std::dec << ": " << __FILE__ << " " <<
+						// __LINE__ <<
+						// 	"------- end read (error) " << std::endl;
 						break;
 					}
 					data_end = data_begin + ret;
@@ -4097,8 +4119,11 @@ public:
 									"X-Forwarded-For", network::get_client_info(client_socket_)));
 
 							++server_.manager().requests_current();
-							std::cout << " --> " << http::to_string(request);
+							// std::cerr << std::hex <<std::this_thread::get_id() << ": " << __FILE__ << " " << __LINE__
+							// << http::to_string(request) << std::endl;
 							session_handler_.handle_request(server_.router_);
+							// std::cerr << std::hex << std::this_thread::get_id() << ": " << __FILE__ << " " <<
+							// __LINE__ << http::to_string(response) << std::endl;
 							--server_.manager().requests_current();
 
 							++server_.manager().requests_handled();
@@ -4173,10 +4198,16 @@ public:
 
 					if (response.connection_keep_alive() == true)
 					{
+						// std::cerr << std::hex << std::this_thread::get_id() << ": " << __FILE__ << "@" << __LINE__ <<
+						// " session_handler.reset()" << std::endl;
+						data_begin = std::begin(buffer);
+						data_end = data_begin;
 						session_handler_.reset();
 					}
 					else
 					{
+						// std::cerr << std::hex << std::this_thread::get_id() << ": " << __FILE__ << "@" << __LINE__ <<
+						// " session_handler.reset()" << std::endl;
 						return;
 					}
 				}

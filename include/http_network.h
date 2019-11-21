@@ -239,8 +239,9 @@ public:
 		verify_client_once
 	};
 
-	void set_verify_mode(verify_mode v) // network::ssl::verify_peer | boost::asio::ssl::verify_fail_if_no_peer_cert |
-										// boost::asio::ssl::verify_client_once);
+	void set_verify_mode(verify_mode v) // network::ssl::verify_peer |
+										// boost::asio::ssl::verify_fail_if_no_peer_cert
+										// | boost::asio::ssl::verify_client_once);
 	{
 		verify_mode_ = v;
 	}
@@ -824,7 +825,9 @@ public:
 		int rv;
 
 		FD_ZERO(&set); /* clear the set */
-		FD_SET(endpoint_->socket().lowest_layer(), &set); /* add our file descriptor to the set */
+		FD_SET(endpoint_->socket().lowest_layer(), &set); /* add our file
+															 descriptor to the
+															 set */
 
 		t.tv_sec = timeout;
 		t.tv_usec = 0;
@@ -954,7 +957,11 @@ inline int tcp_nodelay(network::tcp::socket& s, int value)
 {
 	int reuseaddr = value;
 	return ::setsockopt(
-		s.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&reuseaddr), sizeof(reuseaddr)); // NOLINT
+		s.lowest_layer(),
+		IPPROTO_TCP,
+		TCP_NODELAY,
+		reinterpret_cast<char*>(&reuseaddr),
+		sizeof(reuseaddr)); // NOLINT
 }
 
 inline int reuse_address(network::tcp::socket& s, std::int32_t value)
@@ -993,7 +1000,11 @@ inline int no_linger(network::tcp::socket& s, int value)
 	}
 
 	int ret = ::setsockopt(
-		s.lowest_layer(), SOL_SOCKET, SO_LINGER, reinterpret_cast<char*>(&linger_), sizeof(linger)); // NOLINT
+		s.lowest_layer(),
+		SOL_SOCKET,
+		SO_LINGER,
+		reinterpret_cast<char*>(&linger_),
+		sizeof(linger)); // NOLINT
 
 	return ret;
 }
