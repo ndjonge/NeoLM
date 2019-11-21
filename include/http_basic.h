@@ -2999,9 +2999,10 @@ public:
 public:
 	std::unique_ptr<route_part> root_;
 	E internal_error_method_;
+	std::string internal_base_;
 
 public:
-	router() : root_(new router::route_part{})
+	router(std::string internal_base) : root_(new router::route_part{}), internal_base_(internal_base)
 	{
 		// std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
 		// std::cout << "sizeof(router::route_part)" << std::to_string(sizeof(router::route_part)) << "\n";
@@ -3267,6 +3268,8 @@ public:
 
 		if (route_context.match_result() == http::api::router_match::match_found)
 		{
+			bool internal_server_route = url.find(internal_base_, 0) == 0;
+
 			auto t0 = std::chrono::steady_clock::now();
 			route_context.the_route().metric_active_count()++;
 
@@ -3285,10 +3288,14 @@ public:
 				route_context.the_route().endpoint()(session);
 
 			route_context.the_route().metric_active_count()--;
-			auto t1 = std::chrono::steady_clock::now();
-			route_context.the_route().update_hitcount_and_timing_metrics(
-				std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
-				std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
+
+			if (internal_server_route == false)
+			{
+				auto t1 = std::chrono::steady_clock::now();
+				route_context.the_route().update_hitcount_and_timing_metrics(
+					std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
+					std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
+			}
 		}
 		return route_context.match_result();
 	}
@@ -3466,7 +3473,8 @@ public:
 class server
 {
 public:
-	server(http::configuration& configuration) : router_(), configuration_(configuration){};
+	server(http::configuration& configuration)
+		: router_(configuration.get<std::string>("internal_base", "")), configuration_(configuration){};
 
 	server(const server&) = delete;
 	server(server&&) = delete;
@@ -3510,11 +3518,15 @@ public:
 
 		std::atomic<size_t>& requests_handled() { return requests_handled_; }
 		std::atomic<size_t>& connections_accepted() { return connections_accepted_; }
-		std::atomic<size_t>& connections_current() { return connections_current_; }
-
-		std::atomic<size_t>& requests_current()
+		std::atomic<size_t>& connections_current()
 		{
-			if (requests_current_.load() > 0)
+			if (connections_current_ > connections_highest_) connections_highest_.store(connections_current_.load());
+			return connections_current_;
+		}
+
+		std::atomic<size_t>& requests_current(bool internal_route = false)
+		{
+			if (!internal_route && requests_current_.load() > 0)
 			{
 				idle_since_.store(std::chrono::steady_clock::now().time_since_epoch().count());
 			}
@@ -4121,13 +4133,15 @@ public:
 								session_handler_.request().get(
 									"X-Forwarded-For", network::get_client_info(client_socket_)));
 
-							++server_.manager().requests_current();
+							bool internal_base_request = request.target().find(server_.router_.internal_base_, 0) == 0;
+
+							++server_.manager().requests_current(internal_base_request);
 							// std::cerr << std::hex <<std::this_thread::get_id() << ": " << __FILE__ << " " << __LINE__
 							// << http::to_string(request) << std::endl;
 							session_handler_.handle_request(server_.router_);
 							// std::cerr << std::hex << std::this_thread::get_id() << ": " << __FILE__ << " " <<
 							// __LINE__ << http::to_string(response) << std::endl;
-							--server_.manager().requests_current();
+							--server_.manager().requests_current(internal_base_request);
 
 							++server_.manager().requests_handled();
 							server_.manager().log_access(session_handler_);

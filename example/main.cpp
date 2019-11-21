@@ -36,7 +36,7 @@ int main()
 							 { "doc_root", "/Projects/doc_root" },
 							 { "ssl_certificate", "/projects/ssl/server.crt" },
 							 { "ssl_certificate_key", "/projects/ssl/server.key" },
-							 { "server_admin_base", "/_server" },
+							 { "internal_base", "/_internal/server" },
 							 { "upstream_node_type", "" },
 							 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },
 							 { "upstream_node_nginx-group", "bshell-workers" } },

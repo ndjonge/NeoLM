@@ -29,10 +29,7 @@ using group_members = std::unordered_map<std::string, pm::group::member>;
 class member
 {
 public:
-	member(std::string tenant_id, std::string url)
-		: tenant_id_(std::move(tenant_id)), url_(std::move(url))
-	{
-	}
+	member(std::string tenant_id, std::string url) : tenant_id_(std::move(tenant_id)), url_(std::move(url)) {}
 
 	const std::string to_string()
 	{
@@ -84,8 +81,7 @@ public:
 class server
 {
 public:
-	server(std::string id, std::string hostname)
-		: id_(std::move(id)), hostname_(std::move(hostname)){};
+	server(std::string id, std::string hostname) : id_(std::move(id)), hostname_(std::move(hostname)){};
 
 	std::string id_;
 	std::string hostname_;
@@ -94,8 +90,7 @@ public:
 class named_user_license
 {
 public:
-	named_user_license(size_t max_heavy, size_t max_light)
-		: max_heavy_(max_heavy), max_light_(max_light){};
+	named_user_license(size_t max_heavy, size_t max_light) : max_heavy_(max_heavy), max_light_(max_light){};
 
 private:
 	size_t max_heavy_;
@@ -128,224 +123,186 @@ private:
 	{
 	public:
 		api_server(license_manager& license_manager, http::configuration& configuration)
-			: S(configuration)
-			, http::upstream::enable_server_as_upstream(this)
-			, license_manager_(license_manager)
+			: S(configuration), http::upstream::enable_server_as_upstream(this), license_manager_(license_manager)
 		{
 			// Get secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_get(
-				"/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
-					const auto& tenant = session.params().get("tenant");
-					const auto& node = session.params().get("node");
+			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
+				const auto& tenant = session.params().get("tenant");
+				const auto& node = session.params().get("node");
 
-					if (tenant.empty() && node.empty())
-					{
-						for (auto& member : license_manager_.group_members_)
-							session.response().body() += member.second.to_string();
-					}
-					else if (node.empty())
-					{
-						for (auto& member : license_manager_.group_members_)
-							if (member.second.tenant() == tenant)
-								session.response().body() += member.second.to_string();
-					}
+				if (tenant.empty() && node.empty())
+				{
+					for (auto& member : license_manager_.group_members_)
+						session.response().body() += member.second.to_string();
+				}
+				else if (node.empty())
+				{
+					for (auto& member : license_manager_.group_members_)
+						if (member.second.tenant() == tenant) session.response().body() += member.second.to_string();
+				}
+				else
+				{
+					const auto& member = license_manager_.group_members_.find(tenant + node);
+
+					if (member != license_manager_.group_members_.end())
+						session.response().body() += member->second.to_string();
 					else
-					{
-						const auto& member = license_manager_.group_members_.find(tenant + node);
-
-						if (member != license_manager_.group_members_.end())
-							session.response().body() += member->second.to_string();
-						else
-							session.response().status(http::status::not_found);
-					}
-				});
+						session.response().status(http::status::not_found);
+				}
+			});
 
 			// Remove secific node info, or get list of nodes per tenant-cluster.
-			S::router_.on_delete(
-				"/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
-					const auto& tenant = session.params().get("tenant");
-					const auto& node = session.params().get("node");
+			S::router_.on_delete("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
+				const auto& tenant = session.params().get("tenant");
+				const auto& node = session.params().get("node");
 
-					if (tenant.empty() && node.empty())
+				if (tenant.empty() && node.empty())
+				{
+					license_manager_.group_members_.clear();
+					session.response().status(http::status::ok);
+				}
+				else if (node.empty())
+				{
+					bool found = false;
+					for (auto& member : license_manager_.group_members_)
 					{
-						license_manager_.group_members_.clear();
+						if (member.second.tenant() == tenant)
+						{
+							license_manager_.group_members_.erase(member.first);
+							found = true;
+						}
+					}
+
+					if (found)
+						session.response().status(http::status::ok);
+					else
+						session.response().status(http::status::not_found);
+				}
+				else
+				{
+					const auto& member = license_manager_.group_members_.find(tenant + node);
+
+					if (member != license_manager_.group_members_.end())
+					{
+						license_manager_.group_members_.erase(member);
 						session.response().status(http::status::ok);
 					}
-					else if (node.empty())
-					{
-						bool found = false;
-						for (auto& member : license_manager_.group_members_)
-						{
-							if (member.second.tenant() == tenant)
-							{
-								license_manager_.group_members_.erase(member.first);
-								found = true;
-							}
-						}
-
-						if (found)
-							session.response().status(http::status::ok);
-						else
-							session.response().status(http::status::not_found);
-					}
 					else
-					{
-						const auto& member = license_manager_.group_members_.find(tenant + node);
-
-						if (member != license_manager_.group_members_.end())
-						{
-							license_manager_.group_members_.erase(member);
-							session.response().status(http::status::ok);
-						}
-						else
-							session.response().status(http::status::not_found);
-					}
-				});
+						session.response().status(http::status::not_found);
+				}
+			});
 
 			// New node, tenant must exist.
-			S::router_.on_put(
-				"/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
-					const auto& tenant = session.params().get("tenant");
-					const auto& node = session.params().get("node");
+			S::router_.on_put("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
+				const auto& tenant = session.params().get("tenant");
+				const auto& node = session.params().get("node");
 
-					if (tenant.empty() || node.empty())
+				if (tenant.empty() || node.empty())
+				{
+					session.response().status(http::status::bad_request);
+				}
+				else
+				{
+					if (license_manager_.group_members_.find(tenant + node) != license_manager_.group_members_.end())
 					{
-						session.response().status(http::status::bad_request);
+						session.response().status(http::status::conflict);
 					}
 					else
 					{
-						if (license_manager_.group_members_.find(tenant + node)
-							!= license_manager_.group_members_.end())
-						{
-							session.response().status(http::status::conflict);
-						}
-						else
-						{
-							license_manager_.group_members_.emplace(
-								tenant + node, pm::group::member{ tenant, node });
+						license_manager_.group_members_.emplace(tenant + node, pm::group::member{ tenant, node });
 
-							session.response().status(http::status::created);
-						}
+						session.response().status(http::status::created);
 					}
-				});
+				}
+			});
 
 			S::router_.on_get("/api/rest/fx/*", [this](http::session_handler& session) {
-				session.response().body()
-					+= "\nLast Request:\n" + http::to_string(session.request());
+				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
-				session.response().body()
-					+= "\nWild Card Param: '" + session.params().get("*") + "'";
+				session.response().body() += "\nWild Card Param: '" + session.params().get("*") + "'";
 				session.response().status(http::status::ok);
 			});
 
-			S::router_.on_get(
-				"/api/rest/fx/test/urlencodedparam/{1}", [this](http::session_handler& session) {
-					session.response().body()
-						+= "\nLast Request:\n" + http::to_string(session.request());
+			S::router_.on_get("/api/rest/fx/test/urlencodedparam/{1}", [this](http::session_handler& session) {
+				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
-					session.response().body() += "\nParam 1: '" + session.params().get("1") + "'";
-					session.response().body()
-						+= "\nParam 1: '" + session.response().session().params().get("1") + "'";
-					session.response().status(http::status::ok);
-				});
+				session.response().body() += "\nParam 1: '" + session.params().get("1") + "'";
+				session.response().body() += "\nParam 1: '" + session.response().session().params().get("1") + "'";
+				session.response().status(http::status::ok);
+			});
 
 			S::router_.on_get("/api/rest/fx/test/niek/*", [this](http::session_handler& session) {
-				session.response().body()
-					+= "\nLast Request:\n" + http::to_string(session.request());
+				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
-				session.response().body()
-					+= "\nWild Card Special Case Param: '" + session.params().get("*") + "'";
+				session.response().body() += "\nWild Card Special Case Param: '" + session.params().get("*") + "'";
 
 				session.response().status(http::status::ok);
 			});
 
-            S::router_.on_put("/put_test", [this](http::session_handler& session) {
+			S::router_.on_put("/put_test", [this](http::session_handler& session) {
 				session.response().status(http::status::created);
 
 				std::clog << http::to_string(session.request());
 			});
 
-            S::router_.on_get("/status", [this](http::session_handler& session) {
-				const auto& format = session.request().get("Accept", "application/json");
+			S::router_.on_get(
+				S::configuration_.get<std::string>("internal_base", "") + "/status",
+				[this](http::session_handler& session) {
+					const auto& format = session.request().get("Accept", "application/json");
 
-				if (format.find("application/json") != std::string::npos)
-				{
-                    S::manager().server_information(
-						http::basic::server::configuration_.to_json_string());
-                    S::manager().router_information(S::router_.to_json_string());
-					session.response().body() = S::manager().to_json_string(
-						http::basic::server::server_manager::json_status_options::full);
-					session.response().type("json");
-				}
-				else
-				{
-                    S::manager().server_information(http::basic::server::configuration_.to_string());
-                    S::manager().router_information(S::router_.to_string());
-					session.response().body() = S::manager().to_string();
-					session.response().type("text");
-				}
+					if (format.find("application/json") != std::string::npos)
+					{
+						S::manager().server_information(http::basic::server::configuration_.to_json_string());
+						S::manager().router_information(S::router_.to_json_string());
+						session.response().body() = S::manager().to_json_string(
+							http::basic::server::server_manager::json_status_options::full);
+						session.response().type("json");
+					}
+					else
+					{
+						S::manager().server_information(http::basic::server::configuration_.to_string());
+						S::manager().router_information(S::router_.to_string());
+						session.response().body() = S::manager().to_string();
+						session.response().type("text");
+					}
 
-				session.response().status(http::status::ok);
-			});
+					session.response().status(http::status::ok);
+				});
 
-            S::router_.on_get("/status/{section}", [this](http::session_handler& session) {
-                S::manager().server_information(S::configuration_.to_json_string());
-                S::manager().router_information(S::router_.to_json_string());
+			S::router_.on_get(
+				S::configuration_.get<std::string>("internal_base", "") + "/status/{section}",
+				[this](http::session_handler& session) {
+					S::manager().server_information(S::configuration_.to_json_string());
+					S::manager().router_information(S::router_.to_json_string());
 
-				auto section_option
-					= http::basic::server::server_manager::json_status_options::full;
+					auto section_option = http::basic::server::server_manager::json_status_options::full;
 
-				const auto& section = session.params().get("section");
+					const auto& section = session.params().get("section");
 
-				if (section == "statistics")
-				{
-					section_option
-						= http::basic::server::server_manager::json_status_options::server_stats;
-				}
-				else if (section == "configuration")
-				{
-					section_option
-						= http::basic::server::server_manager::json_status_options::config;
-				}
-				else if (section == "router")
-				{
-					section_option
-						= http::basic::server::server_manager::json_status_options::router;
-				}
-				else if (section == "access_log")
-				{
-					section_option
-						= http::basic::server::server_manager::json_status_options::accesslog;
-				}
-				else
-				{
-					session.response().status(http::status::not_found);
-					return;
-				}
+					if (section == "statistics")
+					{
+						section_option = http::basic::server::server_manager::json_status_options::server_stats;
+					}
+					else if (section == "configuration")
+					{
+						section_option = http::basic::server::server_manager::json_status_options::config;
+					}
+					else if (section == "router")
+					{
+						section_option = http::basic::server::server_manager::json_status_options::router;
+					}
+					else if (section == "access_log")
+					{
+						section_option = http::basic::server::server_manager::json_status_options::accesslog;
+					}
+					else
+					{
+						session.response().status(http::status::not_found);
+						return;
+					}
 
-				session.response().body() = S::manager().to_json_string(section_option);
-				session.response().type("json");
-
-				session.request().get_attribute<int>("name", 12435);
-				session.request().get<int>("name", 12435);
-				session.request().get<std::string>("name", "12356");
-
-				std::string ec{};
-
-				try
-				{
-					http::client::request<http::method::get>(
-						"http://localhost:3001/status", std::clog, true);
-				}
-				catch (std::runtime_error& e)
-				{
-					std::clog << e.what() << "\n";
-				}
-
-				http::client::request<http::method::get>("http://localhost:3000/status");
-
-				session.response().status(http::status::ok);
-			});
+					session.response().status(http::status::ok);
+				});
 
 			S::router_.on_get("/no_content", [this](http::session_handler& session) {
 				session.params().get("sec2");
@@ -393,9 +350,7 @@ private:
 
 public:
 	license_manager(http::configuration configuration, std::string home_dir)
-		: configuration_{ std::move(configuration) }
-		, api_server_(*this, configuration_)
-		, home_dir_(std::move(home_dir))
+		: configuration_{ std::move(configuration) }, api_server_(*this, configuration_), home_dir_(std::move(home_dir))
 	{
 	}
 
