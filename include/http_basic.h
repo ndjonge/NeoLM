@@ -3268,8 +3268,6 @@ public:
 
 		if (route_context.match_result() == http::api::router_match::match_found)
 		{
-			bool internal_server_route = url.find(internal_base_, 0) == 0;
-
 			auto t0 = std::chrono::steady_clock::now();
 			route_context.the_route().metric_active_count()++;
 
@@ -3289,13 +3287,10 @@ public:
 
 			route_context.the_route().metric_active_count()--;
 
-			if (internal_server_route == false)
-			{
-				auto t1 = std::chrono::steady_clock::now();
-				route_context.the_route().update_hitcount_and_timing_metrics(
-					std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
-					std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
-			}
+			auto t1 = std::chrono::steady_clock::now();
+			route_context.the_route().update_hitcount_and_timing_metrics(
+				std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
+				std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 		}
 		return route_context.match_result();
 	}
