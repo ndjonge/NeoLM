@@ -246,7 +246,7 @@ private:
 			});
 
 			S::router_.on_get(
-				S::configuration_.get<std::string>("internal_base", "") + "/status",
+				S::configuration_.template get<std::string>("internal_base", "") + "/status",
 				[this](http::session_handler& session) {
 					const auto& format = session.request().get("Accept", "application/json");
 
@@ -270,7 +270,7 @@ private:
 				});
 
 			S::router_.on_get(
-				S::configuration_.get<std::string>("internal_base", "") + "/status/{section}",
+				S::configuration_.template get<std::string>("internal_base", "") + "/status/{section}",
 				[this](http::session_handler& session) {
 					S::manager().server_information(S::configuration_.to_json_string());
 					S::manager().router_information(S::router_.to_json_string());
