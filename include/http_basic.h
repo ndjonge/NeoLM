@@ -2999,10 +2999,10 @@ public:
 public:
 	std::unique_ptr<route_part> root_;
 	E internal_error_method_;
-	std::string internal_base_;
+	std::string private_base_;
 
 public:
-	router(std::string internal_base) : root_(new router::route_part{}), internal_base_(internal_base)
+	router(std::string private_base) : root_(new router::route_part{}), private_base_(private_base)
 	{
 		// std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
 		// std::cout << "sizeof(router::route_part)" << std::to_string(sizeof(router::route_part)) << "\n";
@@ -3403,7 +3403,7 @@ public:
 		curl_easy_setopt(hnd_, CURLOPT_NOSIGNAL, 1);
 		curl_easy_setopt(hnd_, CURLOPT_HEADERFUNCTION, recv_header_callback);
 		curl_easy_setopt(hnd_, CURLOPT_HEADERDATA, (void*)this);
-
+		curl_easy_setopt(hnd_, CURLOPT_TIMEOUT, 1L);
 		setup(verb, url, hdrs, body);
 	}
 
@@ -3469,7 +3469,7 @@ class server
 {
 public:
 	server(http::configuration& configuration)
-		: router_(configuration.get<std::string>("internal_base", "")), configuration_(configuration){};
+		: router_(configuration.get<std::string>("private_base", "")), configuration_(configuration){};
 
 	server(const server&) = delete;
 	server(server&&) = delete;
@@ -3595,11 +3595,11 @@ public:
 					s << "\"stats\": "
 					  << "{\"connections_current\":" << connections_current_ << ","
 					  << "\"connections_accepted\":" << connections_accepted_ << ","
-					  << "\"connections_highest\":" << connections_accepted_ << ","
+					  << "\"connections_highest\":" << connections_highest_ << ","
 					  << "\"requests_handled\" : " << requests_handled_ << ","
 					  << "\"requests_current\" : " << requests_current_ << ","
 					  << "\"idle_time\" : "
-					  << (std::chrono::duration<std::int64_t, std::nano>(
+					  << (std::chrono::duration<std::int64_t, std::ratio<1, 1>>(
 							  std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
 							  .count())
 							 / 1000000000
@@ -3767,6 +3767,7 @@ public:
 
 			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
+			// std::cout << "http_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
 			if (http_connection_queue_.empty())
 			{
 				// std::cerr << "http_connection_queue_: before yield:" << std::to_string(http_connection_queue_.size())
@@ -3798,7 +3799,7 @@ public:
 				}
 			}
 		}
-		// std::cerr << "http_connection_queue_::end1\n";
+		// std::cout << "http_connection_queue_::end1\n";
 	}
 
 	void https_connection_queue_handler()
@@ -3995,7 +3996,6 @@ public:
 					ec = network::error::success;
 
 					acceptor_http.accept(http_socket, ec, 5);
-					// std::cerr << " http: accept() ec = " << ec << std::endl;
 
 					if (ec == network::error::interrupted) break;
 					if (ec == network::error::operation_would_block) continue;
@@ -4004,7 +4004,6 @@ public:
 
 					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
 					{
-						// std::cerr << " http_socket " << http_socket.lowest_layer()  << std::endl;
 						std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 						http_connection_queue_.push(std::move(http_socket));
 						http_connection_queue_has_connection_.notify_one();
@@ -4034,11 +4033,9 @@ public:
 
 		~connection_handler()
 		{
-			// std::cerr << "~connection_handler(): before shutdown" << std::endl;
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
 			--server_.manager().connections_current();
-			// std::cerr << "~connection_handler(): after  shutdown" << std::endl;
 		}
 
 		connection_handler(const connection_handler&) = delete;
@@ -4062,18 +4059,15 @@ public:
 					data_begin = std::begin(buffer);
 					// std::cerr << std::hex <<std::this_thread::get_id() << ": " << std::dec << __FILE__ << " " <<
 					// __LINE__ <<
-					//	"------- start read" << std::endl;
 
 					int ret = network::read(client_socket_, network::buffer(&*data_begin, buffer.size()));
 					// std::cerr << std::hex <<std::this_thread::get_id() << ": " << std::dec<< __FILE__ << " " <<
 					// __LINE__ <<
-					//	"------- end read ret = " << ret << std::endl;
 
 					if (ret <= 0)
 					{
 						// std::cerr << std::hex <<std::this_thread::get_id() << std::dec << ": " << __FILE__ << " " <<
 						// __LINE__ <<
-						// 	"------- end read (error) " << std::endl;
 						break;
 					}
 					data_end = data_begin + ret;
@@ -4128,15 +4122,15 @@ public:
 								session_handler_.request().get(
 									"X-Forwarded-For", network::get_client_info(client_socket_)));
 
-							bool internal_base_request = request.target().find(server_.router_.internal_base_, 0) == 0;
+							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
-							++server_.manager().requests_current(internal_base_request);
+							++server_.manager().requests_current(private_base_request);
 							// std::cerr << std::hex <<std::this_thread::get_id() << ": " << __FILE__ << " " << __LINE__
 							// << http::to_string(request) << std::endl;
 							session_handler_.handle_request(server_.router_);
 							// std::cerr << std::hex << std::this_thread::get_id() << ": " << __FILE__ << " " <<
 							// __LINE__ << http::to_string(response) << std::endl;
-							--server_.manager().requests_current(internal_base_request);
+							--server_.manager().requests_current(private_base_request);
 
 							++server_.manager().requests_handled();
 							server_.manager().log_access(session_handler_);
@@ -4212,8 +4206,6 @@ public:
 					{
 						// std::cerr << std::hex << std::this_thread::get_id() << ": " << __FILE__ << "@" << __LINE__ <<
 						// " session_handler.reset()" << std::endl;
-						data_begin = std::begin(buffer);
-						data_end = data_begin;
 						session_handler_.reset();
 					}
 					else

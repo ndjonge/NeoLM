@@ -301,6 +301,9 @@ private:
 						return;
 					}
 
+					session.response().body() = S::manager().to_json_string(section_option);
+					session.response().type("json");
+
 					session.response().status(http::status::ok);
 				});
 
