@@ -1891,7 +1891,13 @@ private:
 	std::string error_reason_; // can be used when parse fails.
 
 public:
-	static std::string url_decode(const std::string& in)
+	enum class url_decode_options
+	{
+		path,
+		query
+	};
+
+	static std::string url_decode(const std::string& in, url_decode_options options = url_decode_options::path)
 	{
 		std::string ret;
 		ret.reserve(in.size());
@@ -1919,7 +1925,7 @@ public:
 					return "";
 				}
 			}
-			else if (in[i] == '+')
+			else if (options == url_decode_options::query && in[i] == '+')
 			{
 				ret += ' ';
 			}
@@ -1933,7 +1939,9 @@ public:
 
 	/// Perform URL-decoding on a string. Returns false if the encoding was
 	/// invalid.
-	static bool url_decode(const std::string& in, std::string& out)
+
+	static bool
+	url_decode(const std::string& in, std::string& out, url_decode_options options = url_decode_options::path)
 	{
 		out.clear();
 		out.reserve(in.size());
@@ -1960,7 +1968,7 @@ public:
 					return false;
 				}
 			}
-			else if (in[i] == '+')
+			else if (options == url_decode_options::query && in[i] == '+')
 			{
 				out += ' ';
 			}
@@ -2544,9 +2552,11 @@ public:
 			{
 				std::vector<std::string> name_value = http::util::split(token, "=");
 
-				std::string name_decoded = http::request_parser::url_decode(name_value[0]);
-				std::string value_decoded
-					= (name_value.size() == 2) ? http::request_parser::url_decode(name_value[1]) : "";
+				std::string name_decoded
+					= http::request_parser::url_decode(name_value[0], http::request_parser::url_decode_options::query);
+				std::string value_decoded = (name_value.size() == 2) ? http::request_parser::url_decode(
+												name_value[1], http::request_parser::url_decode_options::query)
+																	 : "";
 
 				request_.query().set(name_decoded, value_decoded);
 			}
@@ -3688,7 +3698,7 @@ class server : public http::basic::server
 public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
-		, thread_count_(configuration.get<int>("thread_count", 5))
+		, http_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
 		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
@@ -3860,7 +3870,11 @@ public:
 
 				network::ipv6only(endpoint_https_.socket(), 0);
 
-				network::use_portsharding(endpoint_https_.socket(), 1);
+				if ((http_use_portsharding_ == true) && (http_listen_port_begin_ != 0)
+					&& (http_listen_port_begin_ == http_listen_port_end_))
+					network::use_portsharding(endpoint_http_.socket(), 1);
+				else
+					network::use_portsharding(endpoint_http_.socket(), 0);
 
 				// network::no_linger(endpoint_http.socket(), 1);
 
@@ -3949,7 +3963,8 @@ public:
 
 				network::ipv6only(endpoint_http_.socket(), 0);
 
-				if ((http_listen_port_begin_ != 0) && (http_listen_port_begin_ == http_listen_port_end_))
+				if ((http_use_portsharding_ == true) && (http_listen_port_begin_ != 0)
+					&& (http_listen_port_begin_ == http_listen_port_end_))
 					network::use_portsharding(endpoint_http_.socket(), 1);
 				else
 					network::use_portsharding(endpoint_http_.socket(), 0);
@@ -4233,8 +4248,7 @@ public:
 	};
 
 private:
-	int thread_count_;
-
+	bool http_use_portsharding_;
 	bool http_enabled_;
 	std::int32_t http_listen_port_begin_;
 	std::int32_t http_listen_port_end_;

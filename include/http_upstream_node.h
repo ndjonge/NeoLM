@@ -39,9 +39,10 @@ class upstream_controller_nginx : public upstream_controller_base
 public:
 	upstream_controller_nginx(const http::basic::server& server) : upstream_controller_base(server)
 	{
-		endpoint_base_url_ = server.config().get<std::string>("upstream_node_nginx_endpoint", "http://localhost:7777") + "/"
-							 + server.config().get<std::string>("upstream_node_nginx_group",  "bshell-workers")
-							 + "?upstream=" + server.config().get<std::string>("upstream_node_nginx_group", "bshell-workers") + "-zone";
+		endpoint_base_url_
+			= server.config().get<std::string>("upstream_node_nginx_endpoint", "http://localhost:7777") + "/"
+			  + server.config().get<std::string>("upstream_node_nginx_group", "bshell-workers") + "?upstream="
+			  + server.config().get<std::string>("upstream_node_nginx_group", "bshell-workers") + "-zone";
 	};
 
 	result add() const noexcept
@@ -51,8 +52,8 @@ public:
 			bool retry = false;
 			auto up_result = http::client::request<http::method::get>(
 				endpoint_base_url_
-					+ "&up=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1")
-					+ ":" + server_.config().get("http_listen_port"),
+					+ "&up=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
+					+ server_.config().get("http_listen_port"),
 				{},
 				{});
 
@@ -63,9 +64,9 @@ public:
 			else
 			{
 				auto add_result = http::client::request<http::method::get>(
-					endpoint_base_url_ + "&add=&server="
-						+ server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
-						+ server_.config().get("http_listen_port"),
+					endpoint_base_url_
+						+ "&add=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1")
+						+ ":" + server_.config().get("http_listen_port"),
 					{},
 					{});
 
@@ -89,16 +90,16 @@ public:
 	{
 		auto down_result = http::client::request<http::method::get>(
 			endpoint_base_url_
-				+ "&down=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1")
-				+ ":" + server_.config().get("http_listen_port"),
+				+ "&down=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
+				+ server_.config().get("http_listen_port"),
 			{},
 			{});
 
 		if (down_result.status() == http::status::ok)
 		{
 			auto remove_result = http::client::request<http::method::get>(
-				endpoint_base_url_ + "&remove=&server="
-					+ server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
+				endpoint_base_url_
+					+ "&remove=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
 					+ server_.config().get("http_listen_port"),
 				{},
 				{});
@@ -132,7 +133,7 @@ public:
 			server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":" + http_listen_port);
 
 		auto backend = server_.config().get<std::string>("upstream_node_haproxy_backend", "upstream");
-		auto node = server_.config().get<std::string>("upstream_node_haproxy_node", "bshell-0");
+		auto node = server_.config().get<std::string>("upstream_node_haproxy_node", "bshell-" + http_listen_port);
 
 		network::tcp::v6 s(haproxy_addr);
 		network::error_code ec;
@@ -180,7 +181,7 @@ public:
 			server_.config().get<std::string>("upstream_node_haproxy_this_ip", "127.0.0.1") + ":" + http_listen_port);
 
 		auto backend = server_.config().get<std::string>("upstream_node_haproxy_backend", "upstream");
-		auto node = server_.config().get<std::string>("upstream_node_haproxy_node", "bshell-0");
+		auto node = server_.config().get<std::string>("upstream_node_haproxy_node", "bshell-" + http_listen_port);
 
 		network::tcp::v6 s(haproxy_addr);
 		network::error_code ec;

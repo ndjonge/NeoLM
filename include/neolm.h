@@ -226,8 +226,10 @@ private:
 			S::router_.on_get("/api/rest/fx/test/urlencodedparam/{1}", [this](http::session_handler& session) {
 				session.response().body() += "\nLast Request:\n" + http::to_string(session.request());
 
-				session.response().body() += "\nParam 1: '" + session.params().get("1") + "'";
-				session.response().body() += "\nParam 1: '" + session.response().session().params().get("1") + "'";
+				session.response().body() += "\nRoute Param 1: '" + session.params().get("1") + "'";
+				session.response().body()
+					+= "\nQuery Param A: '" + session.request().query().get<std::string>("a c", "not set") + "'";
+
 				session.response().status(http::status::ok);
 			});
 
