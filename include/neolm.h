@@ -14,6 +14,8 @@ using json = nlohmann::json;
 
 #include "http_upstream_node.h"
 
+#include "log.h"
+
 namespace neolm
 {
 

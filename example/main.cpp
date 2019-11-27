@@ -20,6 +20,10 @@ using json = nlohmann::json;
 
 int main()
 {
+	util::logger::oprefixstream info("info", std::cout);
+
+	info << "this is info\n";
+
 	network::init();
 	network::ssl::init();
 
