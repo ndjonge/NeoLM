@@ -28,8 +28,112 @@ std::size_t get_thread_id() noexcept
 	return id;
 }
 
-namespace logger
+template <typename... A> void log(const char* format) { printf("%s", format); }
+
+template <typename... A> void log(const char* format, const A&... args)
 {
+	class argument
+	{
+	public:
+		enum type
+		{
+			int_,
+			string_,
+			double_
+		};
+		type value_;
+		union {
+			int int_value;
+			double dbl_value;
+			const char* string_value;
+		} u;
+
+	public:
+		argument(int value) : value_(int_) { u.int_value = value; }
+		argument(double value) : value_(double_) { u.dbl_value = value; }
+		argument(const char* value) : value_(string_) { u.string_value = value; }
+	};
+
+	enum class format_state
+	{
+		start,
+		type,
+		literal,
+		end
+	};
+
+	argument argument_array[] = { args... };
+	argument* a = argument_array;
+
+	format_state state = format_state::literal;
+	std::array<char, 255> buffer;
+	size_t i = 0;
+
+	for (; *format; format++)
+	{
+		switch (*format)
+		{
+			default:
+				state = format_state::literal;
+				buffer[i++] = *format;
+				break;
+			case '{':
+				if (state == format_state::type)
+				{
+					state = format_state::literal;
+					buffer[i++] = *format;
+				}
+				else
+					state = format_state::type;
+				break;
+			case '}':
+				if (state == format_state::literal)
+				{
+					state = format_state::type;
+					buffer[i++] = *format;
+				}
+				else
+					state = format_state::literal;
+				break;
+			case 's':
+				if (state == format_state::type && a->value_ == argument::type::string_)
+				{
+					i += sprintf(&buffer[i], "%s", a++->u.string_value);
+					state = format_state::end;
+				}
+				else
+				{
+					buffer[i++] = *format;
+				}
+				break;
+			case 'd':
+				if (state == format_state::type && a->value_ == argument::type::int_)
+				{
+					i += sprintf(&buffer[i], "%d", a++->u.int_value);
+					state = format_state::literal;
+				}
+				else
+				{
+					buffer[i++] = *format;
+				}
+				break;
+			case 'f':
+				if (state == format_state::type && a->value_ == argument::type::double_)
+				{
+					i += sprintf(&buffer[i], "%f", a++->u.dbl_value);
+					state = format_state::literal;
+				}
+				else
+				{
+					buffer[i++] = *format;
+				}
+				break;
+		}
+	}
+	buffer[i++] = 0;
+
+	printf("%s", &buffer[0]);
+}
 
 class prefixbuf : public std::streambuf
 {
@@ -45,18 +149,30 @@ class prefixbuf : public std::streambuf
 		{
 			if (this->need_prefix && !this->prefix_.empty())
 			{
-				std::string tmp;
-				tmp = get_time_stamp();
-				this->sbuf->sputn(&tmp[0], tmp.size());
-				this->sbuf->sputn(" ", 1);
+				std::array<char, 64> prefix_buf;
+				auto now = std::chrono::system_clock::now();
+				auto in_time_t = std::chrono::system_clock::to_time_t(now);
+				auto msec
+					= std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
 
-				tmp = "T" + std::to_string(get_thread_id());
+				std::tm buf;
+				(void)gmtime_r(&in_time_t, &buf);
 
-				this->sbuf->sputn(&tmp[0], tmp.size());
-				this->sbuf->sputn(" ", 1);
+				auto prefix_size = snprintf(
+					&prefix_buf[0],
+					prefix_buf.size(),
+					"%04d-%02d-%02dT%02d:%02d:%02d.%lldZ T%llu %s: ",
+					buf.tm_year + 1900,
+					buf.tm_mon + 1,
+					buf.tm_mday,
+					buf.tm_hour,
+					buf.tm_min,
+					buf.tm_sec,
+					msec,
+					get_thread_id(),
+					prefix_.data());
 
-				if (static_cast<std::streamsize>(this->prefix_.size())
-					!= this->sbuf->sputn(&this->prefix_[0], this->prefix_.size()))
+				if (static_cast<std::streamsize>(prefix_buf.size()) != this->sbuf->sputn(&prefix_buf[0], prefix_size))
 				{
 					return std::char_traits<char>::eof();
 				}
@@ -80,7 +196,5 @@ public:
 	{
 	}
 };
-
-} // namespace logger
 
 } // namespace util
