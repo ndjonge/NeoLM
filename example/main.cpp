@@ -22,7 +22,10 @@ int main()
 {
 	// info << "this is info\naapnootmies\n";
 
-	util::log("A log message {s} {s} {d}\n", "aap", "aap", 1000);
+	std::array<char, 2> b{ 'a', 0 };
+	std::string s = "aap3";
+
+	std::cout << util::format("A log message {s} {d} {x} {X} {s} {s}\n", "aap", 10, 10, 16, &b[0], s);
 
 	network::init();
 	network::ssl::init();
