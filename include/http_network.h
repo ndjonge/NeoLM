@@ -239,8 +239,9 @@ public:
 		verify_client_once
 	};
 
-	void set_verify_mode(verify_mode v) // network::ssl::verify_peer | boost::asio::ssl::verify_fail_if_no_peer_cert |
-										// boost::asio::ssl::verify_client_once);
+	void set_verify_mode(verify_mode v) // network::ssl::verify_peer |
+										// boost::asio::ssl::verify_fail_if_no_peer_cert
+										// | boost::asio::ssl::verify_client_once);
 	{
 		verify_mode_ = v;
 	}
@@ -398,13 +399,15 @@ public:
 
 	socket(socket_t s) : socket_(s) {}
 
+	static const socket_t invalid_socket{ static_cast<socket_t>(-1) };
+
 	enum family
 	{
 		v4 = AF_INET,
 		v6 = AF_INET6
 	};
 
-	socket(socket&& s) noexcept : socket_(s.socket_), options_(s.options_) { s.socket_ = 0; }
+	socket(socket&& s) noexcept : socket_(s.socket_), options_(s.options_) { s.socket_ = invalid_socket; }
 
 	socket(const socket& s) noexcept : socket_(s.socket_), options_(s.options_) {}
 
@@ -428,7 +431,7 @@ public:
 	void assign(socket&& socket)
 	{
 		socket_ = socket.lowest_layer();
-		socket.lowest_layer() = static_cast<socket_t>(-1); // NOLINT
+		socket.lowest_layer() = invalid_socket; // NOLINT
 	};
 
 	socket_t open(family fam, protocol prot)
@@ -461,16 +464,16 @@ public:
 
 	socket_t close()
 	{
-		if (socket_ && socket_ != -1)
+		if (socket_ && socket_ != invalid_socket)
 		{
 			::closesocket(socket_);
-			socket_ = 0;
+			socket_ = invalid_socket;
 		}
 
 		return socket_;
 	}
 
-	bool is_open() const { return socket_ != 0; }
+	bool is_open() const { return socket_ != invalid_socket; }
 
 	const socket_t& lowest_layer() const { return socket_; }
 
@@ -483,7 +486,7 @@ public:
 	}
 
 private:
-	socket_t socket_{ static_cast<socket_t>(-1) };
+	socket_t socket_{ invalid_socket };
 	options options_{ none };
 	std::int32_t option_values_[options::size] = {};
 };
@@ -822,7 +825,9 @@ public:
 		int rv;
 
 		FD_ZERO(&set); /* clear the set */
-		FD_SET(endpoint_->socket().lowest_layer(), &set); /* add our file descriptor to the set */
+		FD_SET(endpoint_->socket().lowest_layer(), &set); /* add our file
+															 descriptor to the
+															 set */
 
 		t.tv_sec = timeout;
 		t.tv_usec = 0;
@@ -894,7 +899,7 @@ inline std::int32_t write(const socket_t& s, const std::string& str) noexcept
 
 inline std::int32_t read(const network::tcp::socket& s, const buffer& b) noexcept
 {
-	return ::recv(s.lowest_layer(), b.data(), 16, 0); // static_cast<int>(b.size()), 0);
+	return ::recv(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0);
 }
 
 inline std::int32_t write(const network::tcp::socket& s, const buffer& b) noexcept
@@ -952,7 +957,11 @@ inline int tcp_nodelay(network::tcp::socket& s, int value)
 {
 	int reuseaddr = value;
 	return ::setsockopt(
-		s.lowest_layer(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&reuseaddr), sizeof(reuseaddr)); // NOLINT
+		s.lowest_layer(),
+		IPPROTO_TCP,
+		TCP_NODELAY,
+		reinterpret_cast<char*>(&reuseaddr),
+		sizeof(reuseaddr)); // NOLINT
 }
 
 inline int reuse_address(network::tcp::socket& s, std::int32_t value)
@@ -991,7 +1000,11 @@ inline int no_linger(network::tcp::socket& s, int value)
 	}
 
 	int ret = ::setsockopt(
-		s.lowest_layer(), SOL_SOCKET, SO_LINGER, reinterpret_cast<char*>(&linger_), sizeof(linger)); // NOLINT
+		s.lowest_layer(),
+		SOL_SOCKET,
+		SO_LINGER,
+		reinterpret_cast<char*>(&linger_),
+		sizeof(linger)); // NOLINT
 
 	return ret;
 }
