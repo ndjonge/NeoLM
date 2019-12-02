@@ -1891,7 +1891,13 @@ private:
 	std::string error_reason_; // can be used when parse fails.
 
 public:
-	static std::string url_decode(const std::string& in)
+	enum class url_decode_options
+	{
+		path,
+		query
+	};
+
+	static std::string url_decode(const std::string& in, url_decode_options options = url_decode_options::path)
 	{
 		std::string ret;
 		ret.reserve(in.size());
@@ -1919,7 +1925,7 @@ public:
 					return "";
 				}
 			}
-			else if (in[i] == '+')
+			else if (options == url_decode_options::query && in[i] == '+')
 			{
 				ret += ' ';
 			}
@@ -1933,7 +1939,9 @@ public:
 
 	/// Perform URL-decoding on a string. Returns false if the encoding was
 	/// invalid.
-	static bool url_decode(const std::string& in, std::string& out)
+
+	static bool
+	url_decode(const std::string& in, std::string& out, url_decode_options options = url_decode_options::path)
 	{
 		out.clear();
 		out.reserve(in.size());
@@ -1960,7 +1968,7 @@ public:
 					return false;
 				}
 			}
-			else if (in[i] == '+')
+			else if (options == url_decode_options::query && in[i] == '+')
 			{
 				out += ' ';
 			}
@@ -2544,9 +2552,11 @@ public:
 			{
 				std::vector<std::string> name_value = http::util::split(token, "=");
 
-				std::string name_decoded = http::request_parser::url_decode(name_value[0]);
-				std::string value_decoded
-					= (name_value.size() == 2) ? http::request_parser::url_decode(name_value[1]) : "";
+				std::string name_decoded
+					= http::request_parser::url_decode(name_value[0], http::request_parser::url_decode_options::query);
+				std::string value_decoded = (name_value.size() == 2) ? http::request_parser::url_decode(
+												name_value[1], http::request_parser::url_decode_options::query)
+																	 : "";
 
 				request_.query().set(name_decoded, value_decoded);
 			}
@@ -2999,9 +3009,10 @@ public:
 public:
 	std::unique_ptr<route_part> root_;
 	E internal_error_method_;
+	std::string private_base_;
 
 public:
-	router() : root_(new router::route_part{})
+	router(std::string private_base) : root_(new router::route_part{}), private_base_(private_base)
 	{
 		// std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
 		// std::cout << "sizeof(router::route_part)" << std::to_string(sizeof(router::route_part)) << "\n";
@@ -3285,6 +3296,7 @@ public:
 				route_context.the_route().endpoint()(session);
 
 			route_context.the_route().metric_active_count()--;
+
 			auto t1 = std::chrono::steady_clock::now();
 			route_context.the_route().update_hitcount_and_timing_metrics(
 				std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
@@ -3401,7 +3413,7 @@ public:
 		curl_easy_setopt(hnd_, CURLOPT_NOSIGNAL, 1);
 		curl_easy_setopt(hnd_, CURLOPT_HEADERFUNCTION, recv_header_callback);
 		curl_easy_setopt(hnd_, CURLOPT_HEADERDATA, (void*)this);
-
+		curl_easy_setopt(hnd_, CURLOPT_TIMEOUT, 1L);
 		setup(verb, url, hdrs, body);
 	}
 
@@ -3466,7 +3478,8 @@ public:
 class server
 {
 public:
-	server(http::configuration& configuration) : router_(), configuration_(configuration){};
+	server(http::configuration& configuration)
+		: router_(configuration.get<std::string>("private_base", "")), configuration_(configuration){};
 
 	server(const server&) = delete;
 	server(server&&) = delete;
@@ -3494,27 +3507,33 @@ public:
 		std::atomic<size_t> connections_current_{ 0 };
 		std::atomic<size_t> connections_highest_{ 0 };
 
-		std::atomic<std::chrono::steady_clock::time_point> idle_since_;
+		std::atomic<std::int64_t> idle_since_;
 
 		std::vector<std::string> access_log_;
 		mutable std::mutex mutex_;
 
 	public:
 		server_manager() noexcept
-			: server_information_(""), router_information_(""), idle_since_(std::chrono::steady_clock::now())
+			: server_information_("")
+			, router_information_("")
+			, idle_since_(std::chrono::steady_clock::now().time_since_epoch().count())
 		{
 			access_log_.reserve(32);
 		};
 
 		std::atomic<size_t>& requests_handled() { return requests_handled_; }
 		std::atomic<size_t>& connections_accepted() { return connections_accepted_; }
-		std::atomic<size_t>& connections_current() { return connections_current_; }
-
-		std::atomic<size_t>& requests_current()
+		std::atomic<size_t>& connections_current()
 		{
-			if (requests_current_.load() > 0)
+			if (connections_current_ > connections_highest_) connections_highest_.store(connections_current_.load());
+			return connections_current_;
+		}
+
+		std::atomic<size_t>& requests_current(bool internal_route = false)
+		{
+			if (!internal_route && requests_current_.load() > 0)
 			{
-				idle_since_.store(std::chrono::steady_clock::now());
+				idle_since_.store(std::chrono::steady_clock::now().time_since_epoch().count());
 			}
 			return requests_current_;
 		}
@@ -3586,12 +3605,12 @@ public:
 					s << "\"stats\": "
 					  << "{\"connections_current\":" << connections_current_ << ","
 					  << "\"connections_accepted\":" << connections_accepted_ << ","
-					  << "\"connections_highest\":" << connections_accepted_ << ","
+					  << "\"connections_highest\":" << connections_highest_ << ","
 					  << "\"requests_handled\" : " << requests_handled_ << ","
 					  << "\"requests_current\" : " << requests_current_ << ","
 					  << "\"idle_time\" : "
-					  << (std::chrono::duration<std::int64_t, std::nano>(
-							  std::chrono::steady_clock::now() - idle_since_.load())
+					  << (std::chrono::duration<std::int64_t, std::ratio<1, 1>>(
+							  std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
 							  .count())
 							 / 1000000000
 					  << "}";
@@ -3643,7 +3662,8 @@ public:
 			s << "requests_handled: " << requests_handled_ << "\n";
 			s << "requests_current: " << requests_current_ << "\n";
 			s << "idle_time: "
-			  << (std::chrono::duration<std::int64_t, std::nano>(std::chrono::steady_clock::now() - idle_since_.load())
+			  << (std::chrono::duration<std::int64_t, std::nano>(
+					  std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
 					  .count())
 					 / 1000000000
 			  << "s\n";
@@ -3678,7 +3698,7 @@ class server : public http::basic::server
 public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
-		, thread_count_(configuration.get<int>("thread_count", 5))
+		, http_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
 		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
@@ -3757,6 +3777,7 @@ public:
 
 			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
+			// std::cout << "http_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
 			if (http_connection_queue_.empty())
 			{
 				// std::cerr << "http_connection_queue_: before yield:" << std::to_string(http_connection_queue_.size())
@@ -3788,7 +3809,7 @@ public:
 				}
 			}
 		}
-		// std::cerr << "http_connection_queue_::end1\n";
+		// std::cout << "http_connection_queue_::end1\n";
 	}
 
 	void https_connection_queue_handler()
@@ -3849,7 +3870,11 @@ public:
 
 				network::ipv6only(endpoint_https_.socket(), 0);
 
-				network::use_portsharding(endpoint_https_.socket(), 1);
+				if ((http_use_portsharding_ == true) && (http_listen_port_begin_ != 0)
+					&& (http_listen_port_begin_ == http_listen_port_end_))
+					network::use_portsharding(endpoint_http_.socket(), 1);
+				else
+					network::use_portsharding(endpoint_http_.socket(), 0);
 
 				// network::no_linger(endpoint_http.socket(), 1);
 
@@ -3938,7 +3963,8 @@ public:
 
 				network::ipv6only(endpoint_http_.socket(), 0);
 
-				if ((http_listen_port_begin_ != 0) && (http_listen_port_begin_ == http_listen_port_end_))
+				if ((http_use_portsharding_ == true) && (http_listen_port_begin_ != 0)
+					&& (http_listen_port_begin_ == http_listen_port_end_))
 					network::use_portsharding(endpoint_http_.socket(), 1);
 				else
 					network::use_portsharding(endpoint_http_.socket(), 0);
@@ -3985,7 +4011,6 @@ public:
 					ec = network::error::success;
 
 					acceptor_http.accept(http_socket, ec, 5);
-					// std::cerr << " http: accept() ec = " << ec << std::endl;
 
 					if (ec == network::error::interrupted) break;
 					if (ec == network::error::operation_would_block) continue;
@@ -3994,7 +4019,6 @@ public:
 
 					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
 					{
-						// std::cerr << " http_socket " << http_socket.lowest_layer()  << std::endl;
 						std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 						http_connection_queue_.push(std::move(http_socket));
 						http_connection_queue_has_connection_.notify_one();
@@ -4024,11 +4048,9 @@ public:
 
 		~connection_handler()
 		{
-			// std::cerr << "~connection_handler(): before shutdown" << std::endl;
 			network::shutdown(client_socket_, network::shutdown_send);
 			network::closesocket(client_socket_);
 			--server_.manager().connections_current();
-			// std::cerr << "~connection_handler(): after  shutdown" << std::endl;
 		}
 
 		connection_handler(const connection_handler&) = delete;
@@ -4052,18 +4074,15 @@ public:
 					data_begin = std::begin(buffer);
 					// std::cerr << std::hex <<std::this_thread::get_id() << ": " << std::dec << __FILE__ << " " <<
 					// __LINE__ <<
-					//	"------- start read" << std::endl;
 
 					int ret = network::read(client_socket_, network::buffer(&*data_begin, buffer.size()));
 					// std::cerr << std::hex <<std::this_thread::get_id() << ": " << std::dec<< __FILE__ << " " <<
 					// __LINE__ <<
-					//	"------- end read ret = " << ret << std::endl;
 
 					if (ret <= 0)
 					{
 						// std::cerr << std::hex <<std::this_thread::get_id() << std::dec << ": " << __FILE__ << " " <<
 						// __LINE__ <<
-						// 	"------- end read (error) " << std::endl;
 						break;
 					}
 					data_end = data_begin + ret;
@@ -4118,13 +4137,15 @@ public:
 								session_handler_.request().get(
 									"X-Forwarded-For", network::get_client_info(client_socket_)));
 
-							++server_.manager().requests_current();
+							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
+
+							++server_.manager().requests_current(private_base_request);
 							// std::cerr << std::hex <<std::this_thread::get_id() << ": " << __FILE__ << " " << __LINE__
 							// << http::to_string(request) << std::endl;
 							session_handler_.handle_request(server_.router_);
 							// std::cerr << std::hex << std::this_thread::get_id() << ": " << __FILE__ << " " <<
 							// __LINE__ << http::to_string(response) << std::endl;
-							--server_.manager().requests_current();
+							--server_.manager().requests_current(private_base_request);
 
 							++server_.manager().requests_handled();
 							server_.manager().log_access(session_handler_);
@@ -4200,8 +4221,6 @@ public:
 					{
 						// std::cerr << std::hex << std::this_thread::get_id() << ": " << __FILE__ << "@" << __LINE__ <<
 						// " session_handler.reset()" << std::endl;
-						data_begin = std::begin(buffer);
-						data_end = data_begin;
 						session_handler_.reset();
 					}
 					else
@@ -4229,8 +4248,7 @@ public:
 	};
 
 private:
-	int thread_count_;
-
+	bool http_use_portsharding_;
 	bool http_enabled_;
 	std::int32_t http_listen_port_begin_;
 	std::int32_t http_listen_port_end_;

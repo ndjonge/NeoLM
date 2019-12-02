@@ -20,6 +20,13 @@ using json = nlohmann::json;
 
 int main()
 {
+	// info << "this is info\naapnootmies\n";
+
+	std::array<char, 2> b{ 'a', 0 };
+	std::string s = "aap3";
+
+	std::cout << util::format("A log message {s} {d} {x} {X} {s} {s}\n", "aap", 10, 10, 16, &b[0], s);
+
 	network::init();
 	network::ssl::init();
 
@@ -32,12 +39,12 @@ int main()
 							 { "http_enabled", "true" },
 							 { "https_enabled", "false" },
 							 { "keepalive_count", "1048576" },
-							 { "keepalive_timeout", "30" },
+							 { "keepalive_timeout", "4" },
 							 { "doc_root", "/Projects/doc_root" },
 							 { "ssl_certificate", "/projects/ssl/server.crt" },
 							 { "ssl_certificate_key", "/projects/ssl/server.key" },
-							 { "server_admin_base", "/_server" },
-							 { "upstream_node_type", "nginx" },
+							 { "private_base", "/_internal" },
+							 { "upstream_node_type", "" },
 							 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },
 							 { "upstream_node_nginx-group", "bshell-workers" } },
 		"/projects/neolm_licenses/"

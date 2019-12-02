@@ -132,7 +132,7 @@ public:
 			server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":" + http_listen_port);
 
 		auto backend = server_.config().get<std::string>("upstream_node_haproxy_backend", "upstream");
-		auto node = server_.config().get<std::string>("upstream_node_haproxy_node", "bshell-0");
+		auto node = server_.config().get<std::string>("upstream_node_haproxy_node", "bshell-" + http_listen_port);
 
 		network::tcp::v6 s(haproxy_addr);
 		network::error_code ec;
@@ -180,7 +180,7 @@ public:
 			server_.config().get<std::string>("upstream_node_haproxy_this_ip", "127.0.0.1") + ":" + http_listen_port);
 
 		auto backend = server_.config().get<std::string>("upstream_node_haproxy_backend", "upstream");
-		auto node = server_.config().get<std::string>("upstream_node_haproxy_node", "bshell-0");
+		auto node = server_.config().get<std::string>("upstream_node_haproxy_node", "bshell-" + http_listen_port);
 
 		network::tcp::v6 s(haproxy_addr);
 		network::error_code ec;
