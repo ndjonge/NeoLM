@@ -28,9 +28,21 @@ std::size_t get_thread_id() noexcept
 	return id;
 }
 
-template <typename... A> std::string format(const char* format) { return std::string{ format }; } // namespace util
+namespace prefix
+{
+	static const char debug[] = "debug    : ";
+	static const char log[] = "log      : ";
+	static const char info[] = "info     : ";
+	static const char error[] = "error    : ";
+	static const char critical[] = "critical : ";
+} // namespace prefix
 
-template <typename... A> std::string format(const char* format, const A&... args)
+template <const char* P, typename... A> std::string log(const char* format)
+{
+	return std::format<P>("{s}", format);
+} // namespace util
+
+template <const char* P, typename... A> std::string log(const char* format, const A&... args)
 {
 	class argument
 	{
@@ -86,16 +98,16 @@ template <typename... A> std::string format(const char* format, const A&... args
 	auto msec = static_cast<int>(
 		std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000000);
 
-	std::string buffer(size_t{ 255 }, char{ 0 });
+	std::string buffer(size_t{ 10 }, char{ 0 });
 	std::array<char, 30> tmp{ char{ 0 } };
 
 	std::strftime(&tmp[i], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
-	
 	buffer.assign(&tmp[0]);
 	buffer.append(std::to_string(msec));
 	buffer.append(" T");
 	buffer.append(std::to_string(get_thread_id()));
-	buffer.append(" info : ");
+	buffer.append(" ");
+	buffer.append(P);
 
 	for (; *format; format++)
 	{
@@ -197,6 +209,10 @@ template <typename... A> std::string format(const char* format, const A&... args
 
 	return buffer;
 }
+
+
+template <const char* P, typename... A> info<typename... Args> = log<prefix::log
+	, typename... Args>;
 
 class prefixbuf : public std::streambuf
 {
