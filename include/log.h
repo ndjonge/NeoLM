@@ -30,6 +30,7 @@ std::size_t get_thread_id() noexcept
 
 namespace prefix
 {
+	static const char warning[] = "warning  : ";
 	static const char debug[] = "debug    : ";
 	static const char log[] = "log      : ";
 	static const char info[] = "info     : ";
@@ -211,8 +212,16 @@ template <const char* P, typename... A> std::string log(const char* format, cons
 }
 
 
-template <const char* P, typename... A> info<typename... Args> = log<prefix::log
-	, typename... Args>;
+template <typename... A> std::string info(const char* format, const A&... args)
+{
+	return log<prefix::log, A...>(format, args...);
+}
+
+
+template <typename... A> std::string warning(const char* format, const A&... args)
+{
+	return log<prefix::warning, A...>(format, args...);
+}
 
 class prefixbuf : public std::streambuf
 {

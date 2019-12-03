@@ -28,7 +28,8 @@ int main()
 	std::string s = "aap3";
 
 	//for (int x=0; x != 1000; x++)
-	std::cout << util::info("A log message {s} {d} {x} {X} {s} {s} ...end\n", "aap", 10, 10, 24, &b[0], s);
+	std::cout << util::info("A info log message {s} {d} {x} {X} {s} {s} ...end\n", "aap", 10, 10, 24, &b[0], s);
+	std::cout << util::warning("A warning log message {s} {d} {x} {X} {s} {s} ...end\n", "aap", 10, 10, 24, &b[0], s);
 
 	network::init();
 	network::ssl::init();
