@@ -2,7 +2,7 @@
 (
 mkdir nginx-build
 cd nginx-build &&
-export NGINX_VERSION=1.16.0 &&
+export NGINX_VERSION=1.17.6 &&
 wget --no-check-certificate -O ngx_vts.zip https://github.com/vozlt/nginx-module-vts/archive/master.zip && unzip -o ngx_vts.zip &&
 wget --no-check-certificate -O ngx_dynamic_upstream.zip https://github.com/cubicdaiya/ngx_dynamic_upstream/archive/master.zip && unzip -o ngx_dynamic_upstream.zip &&
 wget http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && tar xf nginx-${NGINX_VERSION}.tar.gz &&
@@ -16,9 +16,9 @@ cd nginx-${NGINX_VERSION} &&
 --error-log-path=/var/log/nginx/error.log \
 --pid-path=/var/run/nginx.pid \
 --lock-path=/var/run/nginx.lock \
---user=nginx \
---group=nginx \
---build=Ubuntu \
+--user=ndjonge \
+--group=ndjonge \
+--build=RHEL76 \
 --http-log-path=/var/log/nginx/access.log \
 --http-client-body-temp-path=/var/cache/nginx/client_temp \
 --http-proxy-temp-path=/var/cache/nginx/proxy_temp \
