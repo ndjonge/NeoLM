@@ -28,9 +28,22 @@ std::size_t get_thread_id() noexcept
 	return id;
 }
 
-template <typename... A> std::string format(const char* format) { return std::string{ format }; } // namespace util
+namespace prefix
+{
+	static const char warning[] = "warning  : ";
+	static const char debug[] = "debug    : ";
+	static const char log[] = "log      : ";
+	static const char info[] = "info     : ";
+	static const char error[] = "error    : ";
+	static const char critical[] = "critical : ";
+} // namespace prefix
 
-template <typename... A> std::string format(const char* format, const A&... args)
+template <const char* P, typename... A> std::string log(const char* format)
+{
+	return std::format<P>("{s}", format);
+} // namespace util
+
+template <const char* P, typename... A> std::string log(const char* format, const A&... args)
 {
 	class argument
 	{
@@ -43,16 +56,28 @@ template <typename... A> std::string format(const char* format, const A&... args
 		};
 		type value_;
 		union {
-			int int_value;
-			double dbl_value;
-			const char* string_value;
+			int int_value_;
+			double dbl_value_;
+			struct
+			{
+				const char* string_value_;
+				size_t string_size_;
+			} string_v_;
 		} u;
 
 	public:
-		argument(int value) : value_(int_) { u.int_value = value; }
-		argument(double value) : value_(double_) { u.dbl_value = value; }
-		argument(const char* value) : value_(string_) { u.string_value = value; }
-		argument(const std::string& value) : value_(string_) { u.string_value = value.data(); }
+		argument(int value) : value_(int_) { u.int_value_ = value; }
+		argument(double value) : value_(double_) { u.dbl_value_ = value; }
+		argument(const char* value) : value_(string_)
+		{
+			u.string_v_.string_value_ = value;
+			u.string_v_.string_size_ = std::strlen(value);
+		}
+		argument(const std::string& value) : value_(string_)
+		{
+			u.string_v_.string_value_ = value.data();
+			u.string_v_.string_size_ = value.size();
+		}
 	};
 
 	enum class format_state
@@ -74,24 +99,30 @@ template <typename... A> std::string format(const char* format, const A&... args
 	auto msec = static_cast<int>(
 		std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000000);
 
-	std::array<char, 255> buffer;
+	std::string buffer(size_t{ 10 }, char{ 0 });
+	std::array<char, 30> tmp{ char{ 0 } };
 
-	i += std::strftime(&buffer[i], sizeof(buffer), "%FT%T", std::gmtime(&in_time_t));
-	i += sprintf(&buffer[i], ".%05d T%llu INFO: ", msec, get_thread_id());
+	std::strftime(&tmp[i], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
+	buffer.assign(&tmp[0]);
+	buffer.append(std::to_string(msec));
+	buffer.append(" T");
+	buffer.append(std::to_string(get_thread_id()));
+	buffer.append(" ");
+	buffer.append(P);
 
-	for (; *format && argument_index < sizeof(argument_array); format++)
+	for (; *format; format++)
 	{
 		switch (*format)
 		{
 			default:
 				expect = format_state::literal;
-				buffer[i++] = *format;
+				buffer.append(size_t{ 1 }, *format);
 				break;
 			case '{':
 				if (expect == format_state::type)
 				{
 					expect = format_state::literal;
-					buffer[i++] = *format;
+					buffer.append(size_t{ 1 }, *format);
 				}
 				else
 					expect = format_state::type;
@@ -102,62 +133,70 @@ template <typename... A> std::string format(const char* format, const A&... args
 				else
 				{
 					expect = format_state::end;
-					buffer[i++] = *format;
+					buffer.append(size_t{ 1 }, *format);
 				}
 				break;
 			case 's':
 				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::string_)
 				{
-					i += sprintf(&buffer[i], "%s", argument_array[argument_index++].u.string_value);
+					buffer.append(
+						argument_array[argument_index].u.string_v_.string_value_,
+						argument_array[argument_index].u.string_v_.string_size_);
+
+					i += argument_array[argument_index].u.string_v_.string_size_;
+					argument_index++;
 					expect = format_state::end;
 				}
 				else
 				{
-					buffer[i++] = *format;
+					buffer.append(size_t{ 1 }, *format);
 				}
 				break;
 			case 'd':
 				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 				{
-					i += sprintf(&buffer[i], "%d", argument_array[argument_index++].u.int_value);
+					auto s = snprintf(&tmp[0], tmp.size(), "%d", argument_array[argument_index++].value_);
+					buffer.append(&tmp[0], s);
 					expect = format_state::end;
 				}
 				else
 				{
-					buffer[i++] = *format;
+					buffer.append(size_t{ 1 }, *format);
 				}
 				break;
 			case 'x':
 				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 				{
-					i += sprintf(&buffer[i], "%x", argument_array[argument_index++].u.int_value);
+					auto s = snprintf(&tmp[0], tmp.size(), "%x", argument_array[argument_index++].u.int_value_);
+					buffer.append(&tmp[0], s);
 					expect = format_state::end;
 				}
 				else
 				{
-					buffer[i++] = *format;
+					buffer.append(size_t{ 1 }, *format);
 				}
 				break;
 			case 'X':
 				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 				{
-					i += sprintf(&buffer[i], "%X", argument_array[argument_index++].u.int_value);
+					auto s = snprintf(&tmp[0], tmp.size(), "%X", argument_array[argument_index++].u.int_value_);
+					buffer.append(&tmp[0], s);
 					expect = format_state::end;
 				}
 				else
 				{
-					buffer[i++] = *format;
+					buffer.append(size_t{ 1 }, *format);
 				}
 				break;
 			case 'f':
 				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::double_)
 				{
-					i += sprintf(&buffer[i], "%f", argument_array[argument_index++].u.dbl_value);
+					buffer.append(std::to_string(argument_array[argument_index++].u.dbl_value_));
 					expect = format_state::end;
 				}
 				else
 				{
-					buffer[i++] = *format;
+					buffer.append(size_t{ 1 }, *format);
 				}
 				break;
 		}
@@ -168,9 +207,20 @@ template <typename... A> std::string format(const char* format, const A&... args
 		throw std::runtime_error{ "wrong nr of arguments format: " + argument_index
 								  + std::string("arguments: " + arguments_count) };
 	}
-	buffer[i++] = 0;
 
-	return std::string{ &buffer[0], i };
+	return buffer;
+}
+
+
+template <typename... A> std::string info(const char* format, const A&... args)
+{
+	return log<prefix::log, A...>(format, args...);
+}
+
+
+template <typename... A> std::string warning(const char* format, const A&... args)
+{
+	return log<prefix::warning, A...>(format, args...);
 }
 
 class prefixbuf : public std::streambuf

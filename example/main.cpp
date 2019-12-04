@@ -22,10 +22,14 @@ int main()
 {
 	// info << "this is info\naapnootmies\n";
 
-	std::array<char, 2> b{ 'a', 0 };
+	std::array<char, 4> b;
+	b.fill('a');
+	b[b.size()-1] = 0;
 	std::string s = "aap3";
 
-	std::cout << util::format("A log message {s} {d} {x} {X} {s} {s}\n", "aap", 10, 10, 16, &b[0], s);
+	//for (int x=0; x != 1000; x++)
+	std::cout << util::info("A info log message {s} {d} {x} {X} {s} {s} ...end\n", "aap", 10, 10, 24, &b[0], s);
+	std::cout << util::warning("A warning log message {s} {d} {x} {X} {s} {s} ...end\n", "aap", 10, 10, 24, &b[0], s);
 
 	network::init();
 	network::ssl::init();
