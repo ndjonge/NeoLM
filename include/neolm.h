@@ -14,8 +14,6 @@ using json = nlohmann::json;
 
 #include "http_upstream_node.h"
 
-#include "log.h"
-
 namespace neolm
 {
 
@@ -124,8 +122,10 @@ private:
 	class api_server : public S, public http::upstream::enable_server_as_upstream
 	{
 	public:
-		api_server(license_manager& license_manager, http::configuration& configuration)
-			: S(configuration), http::upstream::enable_server_as_upstream(this), license_manager_(license_manager)
+		api_server(license_manager& license_manager, http::configuration& configuration, lgr::logger& logger)
+			: S(configuration, logger)
+			, http::upstream::enable_server_as_upstream(this)
+			, license_manager_(license_manager)
 		{
 			// Get secific node info, or get list of nodes per tenant-cluster.
 			S::router_.on_get("/pm/tenants/{tenant}/upstreams/{node}", [&](http::session_handler& session) {
@@ -356,8 +356,10 @@ private:
 	};
 
 public:
-	license_manager(http::configuration configuration, std::string home_dir)
-		: configuration_{ std::move(configuration) }, api_server_(*this, configuration_), home_dir_(std::move(home_dir))
+	license_manager(http::configuration configuration, std::string home_dir, lgr::logger& logger)
+		: configuration_{ std::move(configuration) }
+		, api_server_(*this, configuration_, logger)
+		, home_dir_(std::move(home_dir))
 	{
 	}
 

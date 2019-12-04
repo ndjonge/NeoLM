@@ -160,6 +160,302 @@ inline std::string decompress(const char* data, std::size_t size)
 }
 } // namespace gzip
 
+namespace lgr
+{
+
+enum class level
+{
+	log,
+	error,
+	warning,
+	info,
+	debug
+};
+
+namespace
+{
+auto level_ = level::log;
+}
+
+void log_level(level l) { level_ = l; }
+const level& log_level() { return level_; }
+
+class logger
+{
+public:
+	logger(std::ostream& ofstr) : ostream_(ofstr){};
+
+	std::ostream& operator<<(const std::string& s)
+	{
+		ostream_ << s;
+		return ostream_;
+	}
+
+	std::ostream& operator<<(const char* s)
+	{
+		ostream_ << s;
+		return ostream_;
+	}
+
+private:
+	std::ostream& ostream_;
+};
+
+std::string get_time_stamp()
+{
+	auto now = std::chrono::system_clock::now();
+	auto in_time_t = std::chrono::system_clock::to_time_t(now);
+	auto msec = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
+
+	std::stringstream ss;
+	std::tm buf;
+
+	(void)gmtime_r(&in_time_t, &buf);
+
+	ss << std::put_time(&buf, "%FT%T");
+	ss << "." << msec << "Z";
+
+	return ss.str();
+}
+
+std::size_t get_thread_id() noexcept
+{
+	static std::atomic<std::size_t> thread_idx{ 0 };
+	thread_local std::size_t id = thread_idx;
+	thread_idx++;
+	return id;
+}
+
+namespace prefix
+{
+static const char warning[] = "warning  : ";
+static const char debug[] = "debug    : ";
+static const char log[] = "log      : ";
+static const char info[] = "info     : ";
+static const char error[] = "error    : ";
+} // namespace prefix
+
+template <const char* P, typename... A> std::string log(const char* msg)
+{
+	auto now = std::chrono::system_clock::now();
+	auto in_time_t = std::chrono::system_clock::to_time_t(now);
+	auto msec = static_cast<int>(
+		std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000000);
+
+	std::string buffer(size_t{ 10 }, char{ 0 });
+	std::array<char, 30> tmp{ char{ 0 } };
+
+	std::strftime(&tmp[0], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
+	buffer.assign(&tmp[0]);
+	buffer.append(std::to_string(msec));
+	buffer.append(" T");
+	buffer.append(std::to_string(get_thread_id()));
+	buffer.append(" ");
+	buffer.append(P);
+	buffer.append(msg);
+
+	return buffer;
+} // namespace util
+
+template <const char* P, typename... A> std::string log(const char* format, const A&... args)
+{
+	class argument
+	{
+	public:
+		enum type
+		{
+			size_t_,
+			int_,
+			string_,
+			double_
+		};
+		type value_;
+		union {
+			size_t size_t_value_;
+			int int_value_;
+			double dbl_value_;
+			struct
+			{
+				const char* string_value_;
+				size_t string_size_;
+			} string_v_;
+		} u;
+
+	public:
+		argument(size_t value) : value_(size_t_) { u.size_t_value_ = value; }
+		argument(int value) : value_(int_) { u.int_value_ = value; }
+		argument(double value) : value_(double_) { u.dbl_value_ = value; }
+		argument(const char* value) : value_(string_)
+		{
+			u.string_v_.string_value_ = value;
+			u.string_v_.string_size_ = std::strlen(value);
+		}
+		argument(const std::string& value) : value_(string_)
+		{
+			u.string_v_.string_value_ = value.data();
+			u.string_v_.string_size_ = value.size();
+		}
+	};
+
+	enum class format_state
+	{
+		start,
+		type,
+		literal,
+		end
+	};
+
+	argument argument_array[] = { args... };
+	size_t argument_index = 0;
+	size_t arguments_count = std::extent<decltype(argument_array)>::value;
+	format_state expect = format_state::literal;
+
+	auto now = std::chrono::system_clock::now();
+	auto in_time_t = std::chrono::system_clock::to_time_t(now);
+	auto msec = static_cast<int>(
+		std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000000);
+
+	std::string buffer(size_t{ 10 }, char{ 0 });
+	std::array<char, 30> tmp{ char{ 0 } };
+
+	std::strftime(&tmp[0], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
+	buffer.assign(&tmp[0]);
+	buffer.append(std::to_string(msec));
+	buffer.append(" T");
+	buffer.append(std::to_string(get_thread_id()));
+	buffer.append(" ");
+	buffer.append(P);
+
+	for (; *format; format++)
+	{
+		switch (*format)
+		{
+			default:
+				expect = format_state::literal;
+				buffer.append(size_t{ 1 }, *format);
+				break;
+			case '{':
+				if (expect == format_state::type)
+				{
+					expect = format_state::literal;
+					buffer.append(size_t{ 1 }, *format);
+				}
+				else
+					expect = format_state::type;
+				break;
+			case '}':
+				if (expect == format_state::end)
+					expect = format_state::literal;
+				else
+				{
+					expect = format_state::end;
+					buffer.append(size_t{ 1 }, *format);
+				}
+				break;
+			case 's':
+				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::string_)
+				{
+					buffer.append(
+						argument_array[argument_index].u.string_v_.string_value_,
+						argument_array[argument_index].u.string_v_.string_size_);
+
+					argument_array[argument_index].u.string_v_.string_size_;
+					argument_index++;
+					expect = format_state::end;
+				}
+				else
+				{
+					buffer.append(size_t{ 1 }, *format);
+				}
+				break;
+			case 'u':
+				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::size_t_)
+				{
+					auto s = snprintf(&tmp[0], tmp.size(), "%llu", argument_array[argument_index++].u.size_t_value_);
+					buffer.append(&tmp[0], s);
+					expect = format_state::end;
+				}
+				else
+				{
+					buffer.append(size_t{ 1 }, *format);
+				}
+				break;
+			case 'd':
+				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
+				{
+					auto s = snprintf(&tmp[0], tmp.size(), "%d", argument_array[argument_index++].u.int_value_);
+					buffer.append(&tmp[0], s);
+					expect = format_state::end;
+				}
+				else
+				{
+					buffer.append(size_t{ 1 }, *format);
+				}
+				break;
+			case 'x':
+				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
+				{
+					auto s = snprintf(&tmp[0], tmp.size(), "%x", argument_array[argument_index++].u.int_value_);
+					buffer.append(&tmp[0], s);
+					expect = format_state::end;
+				}
+				else
+				{
+					buffer.append(size_t{ 1 }, *format);
+				}
+				break;
+			case 'X':
+				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
+				{
+					auto s = snprintf(&tmp[0], tmp.size(), "%X", argument_array[argument_index++].u.int_value_);
+					buffer.append(&tmp[0], s);
+					expect = format_state::end;
+				}
+				else
+				{
+					buffer.append(size_t{ 1 }, *format);
+				}
+				break;
+			case 'f':
+				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::double_)
+				{
+					buffer.append(std::to_string(argument_array[argument_index++].u.dbl_value_));
+					expect = format_state::end;
+				}
+				else
+				{
+					buffer.append(size_t{ 1 }, *format);
+				}
+				break;
+		}
+	}
+
+	if (argument_index != arguments_count)
+	{
+		throw std::runtime_error{ "wrong nr of arguments format: " + argument_index
+								  + std::string("arguments: " + arguments_count) };
+	}
+
+	return buffer;
+}
+
+template <typename... A> std::string info(const char* format, const A&... args)
+{
+	return log<prefix::log, A...>(format, args...);
+}
+
+template <typename... A> std::string warning(const char* format, const A&... args)
+{
+	return log<prefix::warning, A...>(format, args...);
+}
+
+template <typename... A> std::string debug(const char* format, const A&... args)
+{
+	return log<prefix::debug, A...>(format, args...);
+}
+
+} // namespace lgr
+
 namespace http
 {
 class request_parser;
@@ -2510,7 +2806,7 @@ public:
 
 	const std::string& parse_error_reason() const { return request_parser_.error_reason(); }
 
-	template <typename router_t> void handle_request(router_t& router_)
+	template <typename router_t> http::api::routing handle_request(router_t& router_)
 	{
 		std::string request_path;
 
@@ -2523,13 +2819,13 @@ public:
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
 			response_.status(http::status::bad_request);
-			return;
+			return http::api::routing{};
 		}
 
 		if (request_path.empty() || request_path[0] != '/' || request_path.find("..") != std::string::npos)
 		{
 			response_.status(http::status::bad_request);
-			return;
+			return http::api::routing{};
 		}
 
 		std::size_t last_slash_pos = request_path.find_last_of('/');
@@ -2573,7 +2869,8 @@ public:
 		t0_ = std::chrono::steady_clock::now();
 		t1_ = t0_;
 
-		switch (router_.call_route(*this))
+		auto route_result = router_.call_route(*this);
+		switch (route_result.match_result())
 		{
 			case http::api::router_match::match_found:
 			{
@@ -3265,7 +3562,7 @@ public:
 		return result.str();
 	}
 
-	http::api::router_match::route_context_type call_route(session_handler_type& session)
+	http::api::routing call_route(session_handler_type& session)
 	{
 		auto url = session.request().url_requested().substr(0, session.request().url_requested().find_first_of('?'));
 
@@ -3302,7 +3599,7 @@ public:
 				std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
 				std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
 		}
-		return route_context.match_result();
+		return route_context;
 	}
 }; // namespace api
 
@@ -3478,8 +3775,8 @@ public:
 class server
 {
 public:
-	server(http::configuration& configuration)
-		: router_(configuration.get<std::string>("private_base", "")), configuration_(configuration){};
+	server(http::configuration& configuration, lgr::logger& logger)
+		: router_(configuration.get<std::string>("private_base", "")), configuration_(configuration), logger_(logger){};
 
 	server(const server&) = delete;
 	server(server&&) = delete;
@@ -3685,6 +3982,7 @@ protected:
 	server_manager manager_;
 	http::api::router<> router_;
 	http::configuration& configuration_;
+	lgr::logger logger_;
 	std::atomic<bool> active_{ true };
 }; // namespace basic
 
@@ -3696,8 +3994,8 @@ class server : public http::basic::server
 	using socket_t = SOCKET;
 
 public:
-	server(http::configuration& configuration)
-		: http::basic::server{ configuration }
+	server(http::configuration& configuration, lgr::logger& logger)
+		: http::basic::server{ configuration, logger }
 		, http_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
@@ -3745,13 +4043,13 @@ public:
 		auto waiting = 0;
 		auto timeout = 2;
 
-		while (http_enabled_ && !http_listen_port_ && waiting < timeout)
+		while (http_enabled_ && http_listen_port_ > 0 && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
 		}
 
-		while (https_enabled_ && !https_listen_port_ && waiting < timeout)
+		while (https_enabled_ && https_listen_port_ > 0 && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
@@ -3763,11 +4061,7 @@ public:
 		http::basic::server::start_server();
 	}
 
-	virtual void deactivate()
-	{
-		http::basic::server::active_ = false;
-		// std::cout << "\ndeactivated!\n";
-	}
+	virtual void deactivate() { http::basic::server::active_ = false; }
 
 	void http_connection_queue_handler()
 	{
@@ -3777,27 +4071,19 @@ public:
 
 			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
-			// std::cout << "http_connection_queue_:" << std::to_string(http_connection_queue_.size()) << "\n";
 			if (http_connection_queue_.empty())
 			{
-				// std::cerr << "http_connection_queue_: before yield:" << std::to_string(http_connection_queue_.size())
-				// << "\n";
 				std::this_thread::yield();
-				// std::cerr << "http_connection_queue_: after  yield:" << std::to_string(http_connection_queue_.size())
-				// << "\n";
 			}
 			else
 			{
 				while (!http_connection_queue_.empty())
 				{
-
-					// network::timeout(http_socket, connection_timeout_);
-					// network::tcp_nodelay(http_socket, 1);
-					// std::cerr << "http_connection_queue_: new connection " <<
-					// std::to_string(http_connection_queue_.size()) << "\n";
-
 					auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
 						*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_);
+
+					logger_ << lgr::debug(
+						"new http connection_handler queue_size:{u}\n", http_connection_queue_.size());
 
 					std::thread connection_thread([new_connection_handler]() { new_connection_handler->proceed(); });
 					connection_thread.detach();
@@ -3809,7 +4095,7 @@ public:
 				}
 			}
 		}
-		// std::cout << "http_connection_queue_::end1\n";
+		logger_ << lgr::debug("http connection queue handler stops...queue_size:{u}\n", http_connection_queue_.size());
 	}
 
 	void https_connection_queue_handler()
@@ -3837,8 +4123,8 @@ public:
 			{
 				while (!https_connection_queue_.empty())
 				{
-					// network::timeout(http_socket, connection_timeout_);
-					// network::tcp_nodelay(http_socket, 1);
+					logger_ << lgr::debug(
+						"new https connection_handler queue_size:{u}\n", https_connection_queue_.size());
 
 					auto new_connection_handler
 						= std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
@@ -3853,7 +4139,7 @@ public:
 				}
 			}
 		}
-		// std::cout << "https_connection_queue_::end2\n";
+		logger_ << lgr::debug("new https connection_handler queue_size:{u}\n", https_connection_queue_.size());
 	}
 
 	void https_listener_handler()
@@ -4072,17 +4358,11 @@ public:
 				if (data_begin == data_end)
 				{
 					data_begin = std::begin(buffer);
-					// std::cerr << std::hex <<std::this_thread::get_id() << ": " << std::dec << __FILE__ << " " <<
-					// __LINE__ <<
 
 					int ret = network::read(client_socket_, network::buffer(&*data_begin, buffer.size()));
-					// std::cerr << std::hex <<std::this_thread::get_id() << ": " << std::dec<< __FILE__ << " " <<
-					// __LINE__ <<
 
 					if (ret <= 0)
 					{
-						// std::cerr << std::hex <<std::this_thread::get_id() << std::dec << ": " << __FILE__ << " " <<
-						// __LINE__ <<
 						break;
 					}
 					data_end = data_begin + ret;
@@ -4140,11 +4420,15 @@ public:
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
 							++server_.manager().requests_current(private_base_request);
-							// std::cerr << std::hex <<std::this_thread::get_id() << ": " << __FILE__ << " " << __LINE__
-							// << http::to_string(request) << std::endl;
-							session_handler_.handle_request(server_.router_);
-							// std::cerr << std::hex << std::this_thread::get_id() << ": " << __FILE__ << " " <<
-							// __LINE__ << http::to_string(response) << std::endl;
+
+							server_.logger_
+								<< lgr::debug("connection_handler<http> request:\n{s}\n", http::to_string(request));
+
+							auto route = session_handler_.handle_request(server_.router_);
+
+							server_.logger_
+								<< lgr::debug("connection_handler<http> request:\n{s}\n", http::to_string(response));
+
 							--server_.manager().requests_current(private_base_request);
 
 							++server_.manager().requests_handled();
