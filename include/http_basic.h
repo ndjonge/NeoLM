@@ -201,23 +201,6 @@ private:
 	std::ostream& ostream_;
 };
 
-std::string get_time_stamp()
-{
-	auto now = std::chrono::system_clock::now();
-	auto in_time_t = std::chrono::system_clock::to_time_t(now);
-	auto msec = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
-
-	std::stringstream ss;
-	std::tm buf;
-
-	(void)gmtime_r(&in_time_t, &buf);
-
-	ss << std::put_time(&buf, "%FT%T");
-	ss << "." << msec << "Z";
-
-	return ss.str();
-}
-
 std::size_t get_thread_id() noexcept
 {
 	static std::atomic<std::size_t> thread_idx{ 0 };
@@ -228,30 +211,26 @@ std::size_t get_thread_id() noexcept
 
 namespace prefix
 {
-static const char warning[] = "warning  : ";
-static const char debug[] = "debug    : ";
-static const char log[] = "log      : ";
-static const char info[] = "info     : ";
-static const char error[] = "error    : ";
-} // namespace prefix
+static const char warning[] = "[warning]: ";
+static const char debug[] =   "[debug]  : ";
+static const char log[] =     "[log]    : ";
+static const char info[] =    "[info]   : ";
+static const char error[] =   "[error]  : ";
+} // namespace prefixS
 
 template <const char* P, typename... A> std::string log(const char* msg)
 {
 	auto now = std::chrono::system_clock::now();
 	auto in_time_t = std::chrono::system_clock::to_time_t(now);
 	auto msec = static_cast<int>(
-		std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000000);
+		std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
 
-	std::string buffer(size_t{ 10 }, char{ 0 });
-	std::array<char, 30> tmp{ char{ 0 } };
+	std::string buffer(size_t{ 255 }, char{ 0 });
+	std::array<char, 64> tmp{ char{ 0 } };
 
-	std::strftime(&tmp[0], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
+	auto offset = std::strftime(&tmp[0], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
+	snprintf(&tmp[offset], tmp.size() - offset, ".%03dZ T%03llu %s ", msec, get_thread_id() % 1000, P);
 	buffer.assign(&tmp[0]);
-	buffer.append(std::to_string(msec));
-	buffer.append("Z T");
-	buffer.append(std::to_string(get_thread_id()));
-	buffer.append(" ");
-	buffer.append(P);
 	buffer.append(msg);
 
 	return buffer;
@@ -313,18 +292,14 @@ template <const char* P, typename... A> std::string log(const char* format, cons
 	auto now = std::chrono::system_clock::now();
 	auto in_time_t = std::chrono::system_clock::to_time_t(now);
 	auto msec = static_cast<int>(
-		std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000000);
+		std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
 
-	std::string buffer(size_t{ 10 }, char{ 0 });
-	std::array<char, 30> tmp{ char{ 0 } };
+	std::string buffer(size_t{ 255 }, char{ 0 });
+	std::array<char, 64> tmp{ char{ 0 } };
 
-	std::strftime(&tmp[0], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
+	auto offset = std::strftime(&tmp[0], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
+	snprintf(&tmp[offset], tmp.size() - offset, ".%03dZ T%03llu %s ", msec, get_thread_id() % 1000, P);
 	buffer.assign(&tmp[0]);
-	buffer.append(std::to_string(msec));
-	buffer.append("Z T");
-	buffer.append(std::to_string(get_thread_id()));
-	buffer.append(" ");
-	buffer.append(P);
 
 	for (; *format; format++)
 	{
@@ -4107,7 +4082,7 @@ public:
 				}
 			}
 		}
-		logger_ << lgr::debug("http connection queue handler stops...queue_size:{u}\n", http_connection_queue_.size());
+		logger_ << lgr::debug("http_connection_queue_handler: closed\n");
 	}
 
 	void https_connection_queue_handler()
@@ -4118,26 +4093,14 @@ public:
 
 			https_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
 
-			// std::cout << "https_connection_queue_:" << std::to_string(https_connection_queue_.size()) << "\n";
 			if (https_connection_queue_.empty())
 			{
 				std::this_thread::yield();
-
-				/*	if (manager_.connections_current() == 0)
-					{
-						if (router_.call_on_idle())
-						{
-							manager_.idle(true);
-						}
-					}*/
 			}
 			else
 			{
 				while (!https_connection_queue_.empty())
 				{
-					logger_ << lgr::debug(
-						"new https connection_handler queue_size:{u}\n", https_connection_queue_.size());
-
 					auto new_connection_handler
 						= std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
 							*this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_);
@@ -4151,7 +4114,7 @@ public:
 				}
 			}
 		}
-		logger_ << lgr::debug("new https connection_handler queue_size:{u}\n", https_connection_queue_.size());
+		logger_ << lgr::debug("https_connection_queue_handler: closed\n");
 	}
 
 	void https_listener_handler()
