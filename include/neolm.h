@@ -428,9 +428,8 @@ public:
 
 		do
 		{
-			std::this_thread::sleep_for(std::chrono::seconds(1));
-			std::cout << "neolm::run\n";
-
+			api_server_.logger_ << lgr::info("Alive!\n");
+			std::this_thread::sleep_for(std::chrono::seconds(10));
 		} while (api_server_.active_ == true);
 	}
 

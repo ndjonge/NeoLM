@@ -248,7 +248,7 @@ template <const char* P, typename... A> std::string log(const char* msg)
 	std::strftime(&tmp[0], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
 	buffer.assign(&tmp[0]);
 	buffer.append(std::to_string(msec));
-	buffer.append(" T");
+	buffer.append("Z T");
 	buffer.append(std::to_string(get_thread_id()));
 	buffer.append(" ");
 	buffer.append(P);
@@ -321,7 +321,7 @@ template <const char* P, typename... A> std::string log(const char* format, cons
 	std::strftime(&tmp[0], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
 	buffer.assign(&tmp[0]);
 	buffer.append(std::to_string(msec));
-	buffer.append(" T");
+	buffer.append("Z T");
 	buffer.append(std::to_string(get_thread_id()));
 	buffer.append(" ");
 	buffer.append(P);
@@ -4433,10 +4433,11 @@ public:
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
 							++server_.manager().requests_current(private_base_request);
-							server_.logger_
-								<< lgr::info("start routing request {s} {s}\n", http::method::to_string(request.method()), request.target());
-							auto routing
-								= session_handler_.handle_request(server_.router_);
+							server_.logger_ << lgr::info(
+								"start routing request {s} {s}\n",
+								http::method::to_string(request.method()),
+								request.target());
+							auto routing = session_handler_.handle_request(server_.router_);
 							server_.logger_ << lgr::info(
 								"end routing request {s} {s} response -> {s}",
 								http::method::to_string(request.method()),
