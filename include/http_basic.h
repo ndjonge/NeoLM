@@ -3824,17 +3824,15 @@ public:
 
 		void log_access(http::session_handler& session)
 		{
-			std::stringstream s;
 			std::lock_guard<std::mutex> g(mutex_);
-
-			s << R"(')" << session.request().get("Remote_Addr", std::string{}) << R"(')"
-			  << R"( - ')" << http::method::to_string(session.request().method()) << " "
-			  << session.request().url_requested() << " " << session.request().version() << R"(')"
-			  << " - " << session.response().status() << " - " << session.response().content_length() << " - "
-			  << session.request().content_length() << R"( - ')" << session.request().get("User-Agent", std::string{})
-			  << "\'";
-
-			access_log_.emplace_back(s.str());
+			access_log_.emplace_back(lgr::info(
+				"'{s}' - '{s}' - '{s}' - '{d}' - '{u}' - '{u}'",
+				session.request().get("Remote_Addr", std::string{}),
+				http::method::to_string(session.request().method()),
+				session.request().url_requested(),
+				http::status::to_int(session.response().status()),
+				session.request().content_length(),
+				session.response().content_length()));
 
 			if (access_log_.size() >= 32) access_log_.erase(access_log_.begin());
 		}
@@ -4052,36 +4050,95 @@ public:
 
 	void http_connection_queue_handler()
 	{
-		while (active_ == true && http_enabled_ == true)
+		if (http_enabled_ == true)
 		{
-			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
-
-			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
-
-			if (http_connection_queue_.empty())
+			try
 			{
-				std::this_thread::yield();
-			}
-			else
-			{
-				while (!http_connection_queue_.empty())
+				network::tcp::acceptor acceptor_http{};
+
+				acceptor_http.open(endpoint_http_.protocol());
+
+				if (http_listen_port_begin_ == http_listen_port_end_)
+					network::reuse_address(endpoint_http_.socket(), 1);
+				else
+					network::reuse_address(endpoint_http_.socket(), 0);
+
+				network::ipv6only(endpoint_http_.socket(), 0);
+
+				if ((http_use_portsharding_ == true) && (http_listen_port_begin_ != 0)
+					&& (http_listen_port_begin_ == http_listen_port_end_))
+					network::use_portsharding(endpoint_http_.socket(), 1);
+				else
+					network::use_portsharding(endpoint_http_.socket(), 0);
+
+				network::error_code ec = network::error::success;
+
+				for (http_listen_port_ = http_listen_port_begin_; http_listen_port_ <= http_listen_port_end_;)
 				{
-					auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
-						*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_);
+					acceptor_http.bind(endpoint_http_, ec);
 
-					logger_ << lgr::debug(
-						"new http connection_handler queue_size:{u}\n", http_connection_queue_.size());
+					if (ec == network::error::success)
+					{
+						if (!http_listen_port_)
+						{
+							network::tcp::v6 endpoint_http_tmp{ 0 };
+							acceptor_http.get_local_endpoint(endpoint_http_tmp, ec);
 
-					std::thread connection_thread([new_connection_handler]() { new_connection_handler->proceed(); });
-					connection_thread.detach();
+							http_listen_port_ = endpoint_http_tmp.port();
+						}
 
-					http_connection_queue_.pop();
+						configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
-					++manager_.connections_accepted();
-					++manager_.connections_current();
+						break;
+					}
+					else if (ec == network::error::address_in_use)
+					{
+						http_listen_port_++;
+						endpoint_http_.port(http_listen_port_);
+					}
+				}
+
+				if (ec)
+				{
+					throw std::runtime_error(std::string(
+						"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":"
+						+ std::to_string(http_listen_port_end_) + " ]"));
+				}
+
+				acceptor_http.listen();
+
+				while (active_ == true)
+				{
+					network::tcp::socket http_socket{ network::tcp::socket::invalid_socket };
+					ec = network::error::success;
+
+					acceptor_http.accept(http_socket, ec, 5);
+
+					if (ec == network::error::interrupted) break;
+					if (ec == network::error::operation_would_block) continue;
+
+					network::timeout(http_socket, connection_timeout_);
+
+					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
+					{
+						auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
+							*this, std::move(http_socket), connection_timeout_, gzip_min_length_);
+
+						std::thread connection_thread(
+							[new_connection_handler]() { new_connection_handler->proceed(); });
+						connection_thread.detach();
+
+						++manager_.connections_accepted();
+						++manager_.connections_current();
+					}
 				}
 			}
+			catch (...)
+			{
+				// TODO
+			}
 		}
+
 		logger_ << lgr::debug("http_connection_queue_handler: closed\n");
 	}
 
@@ -4209,89 +4266,6 @@ public:
 
 	void http_listener_handler()
 	{
-		if (http_enabled_ == true)
-		{
-			try
-			{
-				network::tcp::acceptor acceptor_http{};
-
-				acceptor_http.open(endpoint_http_.protocol());
-
-				if (http_listen_port_begin_ == http_listen_port_end_)
-					network::reuse_address(endpoint_http_.socket(), 1);
-				else
-					network::reuse_address(endpoint_http_.socket(), 0);
-
-				network::ipv6only(endpoint_http_.socket(), 0);
-
-				if ((http_use_portsharding_ == true) && (http_listen_port_begin_ != 0)
-					&& (http_listen_port_begin_ == http_listen_port_end_))
-					network::use_portsharding(endpoint_http_.socket(), 1);
-				else
-					network::use_portsharding(endpoint_http_.socket(), 0);
-
-				network::error_code ec = network::error::success;
-
-				for (http_listen_port_ = http_listen_port_begin_; http_listen_port_ <= http_listen_port_end_;)
-				{
-					acceptor_http.bind(endpoint_http_, ec);
-
-					if (ec == network::error::success)
-					{
-						if (!http_listen_port_)
-						{
-							network::tcp::v6 endpoint_http_tmp{ 0 };
-							acceptor_http.get_local_endpoint(endpoint_http_tmp, ec);
-
-							http_listen_port_ = endpoint_http_tmp.port();
-						}
-
-						configuration_.set("http_listen_port", std::to_string(http_listen_port_));
-
-						break;
-					}
-					else if (ec == network::error::address_in_use)
-					{
-						http_listen_port_++;
-						endpoint_http_.port(http_listen_port_);
-					}
-				}
-
-				if (ec)
-				{
-					throw std::runtime_error(std::string(
-						"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":"
-						+ std::to_string(http_listen_port_end_) + " ]"));
-				}
-
-				acceptor_http.listen();
-
-				while (active_ == true)
-				{
-					network::tcp::socket http_socket{ network::tcp::socket::invalid_socket };
-					ec = network::error::success;
-
-					acceptor_http.accept(http_socket, ec, 5);
-
-					if (ec == network::error::interrupted) break;
-					if (ec == network::error::operation_would_block) continue;
-
-					network::timeout(http_socket, connection_timeout_);
-
-					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
-					{
-						std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
-						http_connection_queue_.push(std::move(http_socket));
-						http_connection_queue_has_connection_.notify_one();
-					}
-				}
-				// std::cout << "https_listener_handler_::end2\n";
-			}
-			catch (...)
-			{
-				// TODO
-			}
-		}
 	}
 
 	template <class S> class connection_handler
@@ -4396,16 +4370,16 @@ public:
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
 							++server_.manager().requests_current(private_base_request);
-							server_.logger_ << lgr::info(
+/*							server_.logger_ << lgr::info(
 								"start routing request {s} {s}\n",
 								http::method::to_string(request.method()),
-								request.target());
+								request.target());*/
 							auto routing = session_handler_.handle_request(server_.router_);
-							server_.logger_ << lgr::info(
+/*							server_.logger_ << lgr::info(
 								"end routing request {s} {s} response -> {s}",
 								http::method::to_string(request.method()),
 								request.target(),
-								http::status::to_string(response.status()));
+								http::status::to_string(response.status()));*/
 
 							t0 = std::chrono::steady_clock::now();
 
