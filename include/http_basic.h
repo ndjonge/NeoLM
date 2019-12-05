@@ -441,7 +441,7 @@ template <const char* P, typename... A> std::string log(const char* format, cons
 
 template <typename... A> std::string info(const char* format, const A&... args)
 {
-	return log<prefix::log, A...>(format, args...);
+	return log<prefix::info, A...>(format, args...);
 }
 
 template <typename... A> std::string warning(const char* format, const A&... args)
@@ -522,16 +522,16 @@ inline bool case_insensitive_equal(const std::string& str1, const std::string& s
 
 inline std::string return_current_time_and_date()
 {
+	std::string result;
 	auto now = std::chrono::system_clock::now();
 	auto in_time_t = std::chrono::system_clock::to_time_t(now);
 
-	std::stringstream ss;
-	std::tm buf;
+	std::array<char, 32> tmp{ char{ 0 } };
+	auto size = std::strftime(&tmp[0], sizeof(tmp), "%a, %d %b %Y %H:%M:%S GMT", std::gmtime(&in_time_t));
+	assert(size <= tmp.size());
+	result.assign(&tmp[0], size);
 
-	(void)gmtime_r(&in_time_t, &buf);
-
-	ss << std::put_time(&buf, "%a, %d %b %Y %H:%M:%S GMT");
-	return ss.str();
+	return result;
 }
 
 namespace split_opt
@@ -2792,7 +2792,7 @@ public:
 
 	session_handler(http::configuration& configuration)
 		: configuration_(configuration)
-		, keepalive_count_(configuration.get<int>("keepalive_count", 10))
+		, keepalive_count_(configuration.get<int>("keepalive_count", 10000))
 		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
 		, t0_(std::chrono::steady_clock::now())
 	{
@@ -2918,6 +2918,8 @@ public:
 		{
 			response_.content_length(response_.body().length());
 		}
+
+		return route_result;
 	}
 
 	void keepalive_count_decr() { --keepalive_count_; };
@@ -3069,6 +3071,7 @@ public:
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
 			active_count_.store(r.active_count_);
+			response_latency_.store(r.response_latency_);
 		}
 
 		metrics& operator=(const metrics& r) noexcept
@@ -3077,6 +3080,7 @@ public:
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
 			active_count_.store(r.active_count_);
+			response_latency_.store(r.response_latency_);
 			return *this;
 		}
 
@@ -3086,6 +3090,7 @@ public:
 			processing_duration_.store(r.processing_duration_);
 			hit_count_.store(r.hit_count_);
 			active_count_.store(r.active_count_);
+			response_latency_.store(r.response_latency_);
 		}
 
 		metrics& operator=(metrics&& r) noexcept
@@ -3101,13 +3106,14 @@ public:
 		std::atomic<std::uint64_t> processing_duration_{ 0 };
 		std::atomic<std::uint64_t> hit_count_{ 0 };
 		std::atomic<std::uint64_t> active_count_{ 0 };
+		std::atomic<std::uint64_t> response_latency_{ 0 };
 
 		std::string to_string()
 		{
 			std::stringstream s;
 
 			s << request_latency_.load() / 1000000.0 << "ms, " << processing_duration_.load() / 1000000.0 << "ms, "
-			  << active_count_ << "x, " << hit_count_ << "x";
+			  << response_latency_.load() / 1000000.0 << "ms, " << active_count_ << "x, " << hit_count_ << "x";
 
 			return s.str();
 		};
@@ -3118,6 +3124,7 @@ public:
 
 			s << "{\"request_latency\" :" << request_latency_.load() / 1000000.0
 			  << ",\"processing_duration\":" << processing_duration_.load() / 1000000.0
+			  << ",\"response_latency\":" << response_latency_.load() / 1000000.0
 			  << ",\"active_count\":" << active_count_ << ",\"hit_count\":" << hit_count_ << "}";
 
 			return s.str();
@@ -3164,12 +3171,16 @@ public:
 		const endpoint_lambda& endpoint() { return endpoint_; };
 
 		std::atomic<std::uint64_t>& metric_active_count() { return metrics_.active_count_; }
+		void metric_request_turn_around(std::uint64_t turn_around)
+		{
+			return metrics_.response_latency_.store(turn_around);
+		}
 
 		void update_hitcount_and_timing_metrics(
-			std::chrono::high_resolution_clock::duration request_duration,
+			std::chrono::high_resolution_clock::duration response_latency,
 			std::chrono::high_resolution_clock::duration new_processing_duration_)
 		{
-			metrics_.request_latency_.store(request_duration.count());
+			metrics_.request_latency_.store(response_latency.count());
 			metrics_.processing_duration_.store(new_processing_duration_.count());
 			metrics_.hit_count_++;
 		}
@@ -3184,6 +3195,7 @@ public:
 	using middlewares = std::vector<std::pair<middleware, middleware>>;
 
 	routing(result r = http::api::router_match::no_route) : result_(r) {}
+	routing(const routing& r) : result_(r.result_), route_(r.route_), middlewares_(r.middlewares_) {}
 
 	result& match_result() { return result_; };
 	result match_result() const { return result_; };
@@ -4000,13 +4012,13 @@ public:
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
 		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
-		, http_listen_port_(0)
+		, http_listen_port_(-1)
 		, endpoint_http_(configuration.get<std::string>("http_listen_address", "::0"), http_listen_port_begin_)
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
 		, https_listen_port_begin_(configuration.get<int>(
 			  "https_listen_port_begin", configuration.get<int>("http_listen_port_begin") + 2000))
 		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
-		, https_listen_port_(0)
+		, https_listen_port_(-1)
 		, endpoint_https_(configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 5))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
@@ -4043,13 +4055,13 @@ public:
 		auto waiting = 0;
 		auto timeout = 2;
 
-		while (http_enabled_ && http_listen_port_ > 0 && waiting < timeout)
+		while (http_enabled_ && http_listen_port_.load() == -1 && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
 		}
 
-		while (https_enabled_ && https_listen_port_ > 0 && waiting < timeout)
+		while (https_enabled_ && https_listen_port_.load() == -1 && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
@@ -4351,6 +4363,7 @@ public:
 			data_store_buffer_t buffer{};
 			auto data_begin = std::begin(buffer);
 			auto data_end = data_begin;
+			std::chrono::steady_clock::time_point t0{};
 
 			while (true)
 			{
@@ -4360,11 +4373,11 @@ public:
 					data_begin = std::begin(buffer);
 
 					int ret = network::read(client_socket_, network::buffer(&*data_begin, buffer.size()));
-
 					if (ret <= 0)
 					{
 						break;
 					}
+
 					data_end = data_begin + ret;
 				}
 
@@ -4420,19 +4433,44 @@ public:
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
 							++server_.manager().requests_current(private_base_request);
-
 							server_.logger_
-								<< lgr::debug("connection_handler<http> request:\n{s}\n", http::to_string(request));
+								<< lgr::info("start routing request {s} {s}\n", http::method::to_string(request.method()), request.target());
+							auto routing
+								= session_handler_.handle_request(server_.router_);
+							server_.logger_ << lgr::info(
+								"end routing request {s} {s} response -> {s}",
+								http::method::to_string(request.method()),
+								request.target(),
+								http::status::to_string(response.status()));
 
-							auto route = session_handler_.handle_request(server_.router_);
-
-							server_.logger_
-								<< lgr::debug("connection_handler<http> request:\n{s}\n", http::to_string(response));
+							t0 = std::chrono::steady_clock::now();
 
 							--server_.manager().requests_current(private_base_request);
 
 							++server_.manager().requests_handled();
 							server_.manager().log_access(session_handler_);
+
+							// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the
+							// word "gzip".
+							// TODO: "Accept-Encoding: gzip;q=0" means *no* gzip
+							// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip is
+							// good
+							if ((gzip_min_length_ < response.body().size())
+								&& (session_handler_.request().get("Accept-Encoding", std::string{}).find("gzip")
+									!= std::string::npos))
+							{
+								response.body() = gzip::compress(response.body().c_str(), response.body().size());
+								response.set("Content-Encoding", "gzip");
+								response.set("Content-Length", std::to_string(response.body().size()));
+							}
+
+							(void)network::write(client_socket_, http::to_string(response));
+
+							if (routing.match_result() == http::api::router_match::match_found)
+								routing.the_route().metric_request_turn_around(
+									std::chrono::duration<std::uint64_t, std::nano>(
+										std::chrono::steady_clock::now() - t0)
+										.count());
 						}
 						else
 						{
@@ -4442,6 +4480,7 @@ public:
 							response.type("text");
 							response.set("Connection", "close");
 							response.content_length(response.body().size());
+							(void)network::write(client_socket_, http::to_string(response));
 						}
 					}
 					else
@@ -4454,51 +4493,8 @@ public:
 							response.body() = error_reason;
 							response.type("text");
 							response.content_length(error_reason.size());
+							(void)network::write(client_socket_, http::to_string(response));
 						}
-					}
-
-					if (response.body().empty())
-					{
-						std::array<char, 1024 * 4> file_buffer{};
-
-						{
-							std::string headers = response.header_to_string();
-
-							int ret = network::write(client_socket_, network::buffer(&headers[0], headers.length()));
-
-							std::ifstream is(session_handler_.request().target(), std::ios::in | std::ios::binary);
-
-							is.seekg(0, std::ifstream::ios_base::beg);
-							is.rdbuf()->pubsetbuf(file_buffer.data(), file_buffer.size());
-
-							std::streamsize bytes_in = is.read(file_buffer.data(), file_buffer.size()).gcount();
-
-							while (bytes_in > 0 && ret != -1)
-							{
-								ret = network::write(
-									client_socket_, network::buffer(&file_buffer[0], static_cast<size_t>(bytes_in)));
-
-								bytes_in = is.read(file_buffer.data(), file_buffer.size()).gcount();
-							}
-						}
-					}
-					else
-					{
-						// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the word
-						// "gzip".
-						// TODO: "Accept-Encoding: gzip;q=0" means *no* gzip
-						// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip is good
-
-						if ((gzip_min_length_ < response.body().size())
-							&& (session_handler_.request().get("Accept-Encoding", std::string{}).find("gzip")
-								!= std::string::npos))
-						{
-							response.body() = gzip::compress(response.body().c_str(), response.body().size());
-							response.set("Content-Encoding", "gzip");
-							response.set("Content-Length", std::to_string(response.body().size()));
-						}
-
-						(void)network::write(client_socket_, http::to_string(response));
 					}
 
 					if (response.connection_keep_alive() == true)
