@@ -529,7 +529,9 @@ namespace util
 
 inline std::string escape_json(const std::string& s)
 {
-	std::ostringstream o;
+	thread_local static std::ostringstream o;
+	o.str("");
+
 	for (const auto& c : s)
 	{
 		switch (c)
@@ -1081,7 +1083,9 @@ public:
 
 	inline std::string to_string() const noexcept
 	{
-		std::stringstream ss;
+		thread_local static std::ostringstream ss;
+		ss.str("");
+
 		for (auto&& field : fields_)
 		{
 			ss << field.name << ": " << field.value << "\r\n";
@@ -1359,7 +1363,8 @@ public:
 
 	inline std::string to_string() const noexcept
 	{
-		std::stringstream ss;
+		thread_local static std::ostringstream ss;
+		ss.str("");
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		for (auto&& field : fields_)
@@ -1372,7 +1377,8 @@ public:
 
 	inline std::string to_json_string() const noexcept
 	{
-		std::stringstream ss;
+		thread_local static std::ostringstream ss;
+		ss.str("");
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		for (auto field = fields_.cbegin(); field != fields_.cend(); ++field)
@@ -1533,7 +1539,7 @@ public:
 
 	std::string header_to_string() const
 	{
-		std::stringstream ss;
+		std::ostringstream ss;
 
 		ss << http::method::to_string(method_) << " " << target_ << " HTTP/";
 
@@ -1613,7 +1619,7 @@ public:
 
 	std::string header_to_string() const
 	{
-		std::stringstream ss;
+		std::ostringstream ss;
 
 		ss << status::to_string(status_);
 
@@ -2848,7 +2854,7 @@ public:
 
 	session_handler(http::configuration& configuration)
 		: configuration_(configuration)
-		, keepalive_count_(configuration.get<int>("keepalive_count", 10000))
+		, keepalive_count_(configuration.get<int>("keepalive_count", 16 * 1024))
 		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
 		, t0_(std::chrono::steady_clock::now())
 	{
@@ -2869,8 +2875,8 @@ public:
 		response_.status(http::status::bad_request);
 		response_.type("text");
 
-		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
-		response_.set("Date", util::return_current_time_and_date());
+//		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
+//		response_.set("Date", util::return_current_time_and_date());
 
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
@@ -2978,7 +2984,11 @@ public:
 		return route_result;
 	}
 
-	void keepalive_count_decr() { --keepalive_count_; };
+	void keepalive_count_decr()
+	{
+		--keepalive_count_;
+		if (keepalive_count_ % 32 == 0) std::this_thread::yield();
+	};
 	int keepalive_count() const { return keepalive_count_; };
 
 	void keepalive_max(const int& keepalive_max) { keepalive_max_ = keepalive_max; };
@@ -3166,7 +3176,7 @@ public:
 
 		std::string to_string()
 		{
-			std::stringstream s;
+			std::ostringstream s;
 
 			s << request_latency_.load() / 1000000.0 << "ms, " << processing_duration_.load() / 1000000.0 << "ms, "
 			  << response_latency_.load() / 1000000.0 << "ms, " << active_count_ << "x, " << hit_count_ << "x";
@@ -3176,7 +3186,7 @@ public:
 
 		std::string to_json_string()
 		{
-			std::stringstream s;
+			std::ostringstream s;
 
 			s << "{\"request_latency\" :" << request_latency_.load() / 1000000.0
 			  << ",\"processing_duration\":" << processing_duration_.load() / 1000000.0
@@ -3317,7 +3327,7 @@ public:
 			return false;
 		}
 
-		void to_string_stream_json(std::stringstream& s, std::vector<std::string>& path)
+		void to_string_stream_json(std::ostringstream& s, std::vector<std::string>& path)
 		{
 			if (endpoints_)
 			{
@@ -3348,7 +3358,7 @@ public:
 			}
 		}
 
-		void to_string_stream(std::stringstream& s, std::vector<std::string>& path)
+		void to_string_stream(std::ostringstream& s, std::vector<std::string>& path)
 		{
 			if (endpoints_)
 			{
@@ -3610,7 +3620,7 @@ public:
 
 	std::string to_json_string()
 	{
-		std::stringstream result;
+		std::ostringstream result;
 
 		std::vector<std::string> path_stack;
 
@@ -3621,7 +3631,7 @@ public:
 
 	std::string to_string()
 	{
-		std::stringstream result;
+		std::ostringstream result;
 
 		std::vector<std::string> path_stack;
 
@@ -3682,7 +3692,7 @@ namespace client
 class curl
 {
 	CURL* hnd_;
-	std::stringstream buffer_;
+	std::ostringstream buffer_;
 	char error_buf_[CURL_ERROR_SIZE];
 	curl_slist* headers_;
 	std::string data_str_; // must remain alive during cURL transfer
@@ -3695,7 +3705,7 @@ class curl
 	// needed by cURL to read the data from the http(s) connection
 	static size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp)
 	{
-		auto* str = static_cast<std::stringstream*>(userp);
+		auto* str = static_cast<std::ostringstream*>(userp);
 		char* buf = static_cast<char*>(contents);
 		str->write(buf, size * nmemb);
 
@@ -3945,7 +3955,7 @@ public:
 
 		std::string to_json_string(json_status_options options, bool main_object = true) const
 		{
-			std::stringstream s;
+			std::ostringstream s;
 
 			if (main_object) s << "{";
 
@@ -4017,7 +4027,7 @@ public:
 
 		std::string to_string() const
 		{
-			std::stringstream s;
+			std::ostringstream s;
 			std::lock_guard<std::mutex> g(mutex_);
 
 			s << "Server Configuration:\n" << server_information_ << "\n";

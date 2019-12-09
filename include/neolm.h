@@ -273,6 +273,7 @@ private:
 					session.response().status(http::status::ok);
 				});
 
+
 			S::router_.on_get(
 				S::configuration_.template get<std::string>("internal_base", "") + "/status/{section}",
 				[this](http::session_handler& session) {

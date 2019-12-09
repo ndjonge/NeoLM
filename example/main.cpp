@@ -20,7 +20,7 @@ using json = nlohmann::json;
 
 int main()
 {
-	lgr::logger log_output{ std::cout, lgr::level::info };
+	lgr::logger log_output{ std::cout, lgr::level::error };
 
 	network::init();
 	network::ssl::init();
