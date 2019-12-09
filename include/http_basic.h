@@ -165,32 +165,341 @@ namespace lgr
 
 enum class level
 {
-	log,
+	none = 0,
 	error,
+	accesslog,
 	warning,
 	info,
 	debug
 };
 
+namespace prefix
+{
+static const char none[] = "";
+static const char error[] = "[error]  : ";
+static const char accesslog[] = "[access] : ";
+static const char warning[] = "[warning]: ";
+static const char info[] = "[info]   : ";
+static const char debug[] = "[debug]  : ";
+
+} // namespace prefix
+
+template <const char* P, typename... A> std::string format(const std::string& msg)
+{
+	return logger::format<lgr::prefix::none>(msg);
+}
+
+template <const char* P, typename... A> std::string format(const char* msg)
+{
+	return logger::format<lgr::prefix::none>(msg);
+}
+
+template <const char* P, typename... A> std::string format(const char* format, const A&... args)
+{
+	return logger::format<lgr::prefix::none>(format, args...);
+}
+
 class logger
 {
 public:
-	logger(std::ostream& ofstr) : ostream_(ofstr){};
+public:
+	logger(std::ostream& ofstr, level l = level::error) : ostream_(ofstr), level_(l){};
 
-	std::ostream& operator<<(const std::string& s)
+	template <const char* P, typename... A> static std::string format(const std::string& msg) { return msg.c_str(); }
+
+	template <const char* P, typename... A> static std::string format(const char* msg)
 	{
-		ostream_ << s;
-		return ostream_;
+		auto now = std::chrono::system_clock::now();
+		auto in_time_t = std::chrono::system_clock::to_time_t(now);
+		auto msec = static_cast<int>(
+			std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
+
+		std::string buffer(size_t{ 255 }, char{ 0 });
+		std::array<char, 64> tmp{ char{ 0 } };
+
+		auto offset = strftime(&tmp[0], sizeof(tmp), "%FT%T", gmtime(&in_time_t));
+		snprintf(&tmp[offset], tmp.size() - offset, ".%03dZ T%03zu %s ", msec, get_thread_id() % 1000, P);
+		buffer.assign(&tmp[0]);
+		buffer.append(msg);
+
+		return buffer;
+	} // namespace util
+
+	template <const char* P, typename... A> static std::string format(const char* format, const A&... args)
+	{
+		class argument
+		{
+		public:
+			enum type
+			{
+				size_t_,
+				int_,
+				string_,
+				double_
+			};
+			type value_;
+			union {
+				size_t size_t_value_;
+				int int_value_;
+				double dbl_value_;
+				struct
+				{
+					const char* string_value_;
+					size_t string_size_;
+				} string_v_;
+			} u;
+
+		public:
+			argument(size_t value) : value_(size_t_) { u.size_t_value_ = value; }
+			argument(int value) : value_(int_) { u.int_value_ = value; }
+			argument(double value) : value_(double_) { u.dbl_value_ = value; }
+			argument(const char* value) : value_(string_)
+			{
+				u.string_v_.string_value_ = value;
+				u.string_v_.string_size_ = std::strlen(value);
+			}
+			argument(const std::string& value) : value_(string_)
+			{
+				u.string_v_.string_value_ = value.data();
+				u.string_v_.string_size_ = value.size();
+			}
+		};
+
+		enum class format_state
+		{
+			start,
+			type,
+			literal,
+			end
+		};
+
+		argument argument_array[] = { args... };
+		size_t argument_index = 0;
+		size_t arguments_count = std::extent<decltype(argument_array)>::value;
+		format_state expect = format_state::literal;
+
+		auto now = std::chrono::system_clock::now();
+		auto in_time_t = std::chrono::system_clock::to_time_t(now);
+		auto msec = static_cast<int>(
+			std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
+
+		std::string buffer(size_t{ 255 }, char{ 0 });
+		std::array<char, 64> tmp{ char{ 0 } };
+
+		auto offset = strftime(&tmp[0], sizeof(tmp), "%FT%T", gmtime(&in_time_t));
+		snprintf(&tmp[offset], tmp.size() - offset, ".%03dZ T%03zu %s ", msec, get_thread_id() % 1000, P);
+		buffer.assign(&tmp[0]);
+
+		for (; *format; format++)
+		{
+			switch (*format)
+			{
+				default:
+					expect = format_state::literal;
+					buffer.append(size_t{ 1 }, *format);
+					break;
+				case '{':
+					if (expect == format_state::type)
+					{
+						expect = format_state::literal;
+						buffer.append(size_t{ 1 }, *format);
+					}
+					else
+						expect = format_state::type;
+					break;
+				case '}':
+					if (expect == format_state::end)
+						expect = format_state::literal;
+					else
+					{
+						expect = format_state::end;
+						buffer.append(size_t{ 1 }, *format);
+					}
+					break;
+				case 's':
+					if (expect == format_state::type
+						&& argument_array[argument_index].value_ == argument::type::string_)
+					{
+						buffer.append(
+							argument_array[argument_index].u.string_v_.string_value_,
+							argument_array[argument_index].u.string_v_.string_size_);
+
+						argument_array[argument_index].u.string_v_.string_size_;
+						argument_index++;
+						expect = format_state::end;
+					}
+					else
+					{
+						buffer.append(size_t{ 1 }, *format);
+					}
+					break;
+				case 'u':
+					if (expect == format_state::type
+						&& argument_array[argument_index].value_ == argument::type::size_t_)
+					{
+						auto s = snprintf(&tmp[0], tmp.size(), "%zu", argument_array[argument_index++].u.size_t_value_);
+						buffer.append(&tmp[0], s);
+						expect = format_state::end;
+					}
+					else
+					{
+						buffer.append(size_t{ 1 }, *format);
+					}
+					break;
+				case 'd':
+					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
+					{
+						auto s = snprintf(&tmp[0], tmp.size(), "%d", argument_array[argument_index++].u.int_value_);
+						buffer.append(&tmp[0], s);
+						expect = format_state::end;
+					}
+					else
+					{
+						buffer.append(size_t{ 1 }, *format);
+					}
+					break;
+				case 'x':
+					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
+					{
+						auto s = snprintf(&tmp[0], tmp.size(), "%x", argument_array[argument_index++].u.int_value_);
+						buffer.append(&tmp[0], s);
+						expect = format_state::end;
+					}
+					else
+					{
+						buffer.append(size_t{ 1 }, *format);
+					}
+					break;
+				case 'X':
+					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
+					{
+						auto s = snprintf(&tmp[0], tmp.size(), "%X", argument_array[argument_index++].u.int_value_);
+						buffer.append(&tmp[0], s);
+						expect = format_state::end;
+					}
+					else
+					{
+						buffer.append(size_t{ 1 }, *format);
+					}
+					break;
+				case 'f':
+					if (expect == format_state::type
+						&& argument_array[argument_index].value_ == argument::type::double_)
+					{
+						buffer.append(std::to_string(argument_array[argument_index++].u.dbl_value_));
+						expect = format_state::end;
+					}
+					else
+					{
+						buffer.append(size_t{ 1 }, *format);
+					}
+					break;
+			}
+		}
+
+		if (argument_index != arguments_count)
+		{
+			throw std::runtime_error{ "wrong nr of arguments format: " + argument_index
+									  + std::string("arguments: " + arguments_count) };
+		}
+
+		return buffer;
 	}
 
-	std::ostream& operator<<(const char* s)
+	/*
+
+	off = 0,
+	error,
+	warning,
+	info,
+	debug,
+	trace
+
+	*/
+
+	template <typename... A> void error(const char* format, const A&... args)
 	{
-		ostream_ << s;
-		return ostream_;
+		if (level_ >= level::error)
+		{
+			ostream_ << logger::format<prefix::error, A...>(format, args...);
+		}
+	}
+
+	template <typename... A> void error(const std::string& str)
+	{
+		if (level_ >= level::error)
+		{
+			ostream_ << logger::format<prefix::error>(str);
+		}
+	}
+
+	template <typename... A> void warning(const char* format, const A&... args)
+	{
+		if (level_ >= level::warning)
+		{
+			ostream_ << logger::format<prefix::warning, A...>(format, args...);
+		}
+	}
+
+	template <typename... A> void warning(const std::string& str)
+	{
+		if (level_ >= level::warning)
+		{
+			ostream_ << logger::format<prefix::warning>(str);
+		}
+	}
+
+	template <typename... A> void info(const char* format, const A&... args)
+	{
+		if (level_ >= level::info)
+		{
+			ostream_ << logger::format<prefix::info, A...>(format, args...);
+		}
+	}
+
+	template <typename... A> void info(const std::string& str)
+	{
+		if (level_ >= level::info)
+		{
+			ostream_ << logger::format<prefix::info>(str);
+		}
+	}
+
+	template <typename... A> void accesslog(const char* format, const A&... args)
+	{
+		if (level_ >= level::accesslog)
+		{
+			ostream_ << logger::format<prefix::accesslog, A...>(format, args...);
+		}
+	}
+
+	template <typename... A> void accesslog(const std::string& str)
+	{
+		if (level_ >= level::accesslog)
+		{
+			ostream_ << logger::format<prefix::accesslog>(msg);
+		}
+	}
+
+	template <typename... A> void debug(const char* format, const A&... args)
+	{
+		if (level_ >= level::debug)
+		{
+			ostream_ << logger::format<prefix::debug, A...>(format, args...);
+		}
+	}
+
+	template <typename... A> void debug(const std::string& str)
+	{
+		if (level_ >= level::debug)
+		{
+			ostream_ << logger::format<prefix::debug>(msg);
+		}
 	}
 
 private:
 	std::ostream& ostream_;
+	level level_;
 };
 
 inline std::size_t get_thread_id() noexcept
@@ -199,226 +508,6 @@ inline std::size_t get_thread_id() noexcept
 	thread_local std::size_t id = thread_idx;
 	thread_idx++;
 	return id;
-}
-
-namespace prefix
-{
-static const char warning[] = "[warning]: ";
-static const char debug[] = "[debug]  : ";
-static const char log[] = "[log]    : ";
-static const char info[] = "[info]   : ";
-static const char error[] = "[error]  : ";
-} // namespace prefix
-
-template <const char* P, typename... A> std::string log(const char* msg)
-{
-	auto now = std::chrono::system_clock::now();
-	auto in_time_t = std::chrono::system_clock::to_time_t(now);
-	auto msec = static_cast<int>(
-		std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
-
-	std::string buffer(size_t{ 255 }, char{ 0 });
-	std::array<char, 64> tmp{ char{ 0 } };
-
-	auto offset = std::strftime(&tmp[0], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
-	snprintf(&tmp[offset], tmp.size() - offset, ".%03dZ T%03llu %s ", msec, get_thread_id() % 1000, P);
-	buffer.assign(&tmp[0]);
-	buffer.append(msg);
-
-	return buffer;
-} // namespace util
-
-template <const char* P, typename... A> std::string log(const char* format, const A&... args)
-{
-	class argument
-	{
-	public:
-		enum type
-		{
-			size_t_,
-			int_,
-			string_,
-			double_
-		};
-		type value_;
-		union {
-			size_t size_t_value_;
-			int int_value_;
-			double dbl_value_;
-			struct
-			{
-				const char* string_value_;
-				size_t string_size_;
-			} string_v_;
-		} u;
-
-	public:
-		argument(size_t value) : value_(size_t_) { u.size_t_value_ = value; }
-		argument(int value) : value_(int_) { u.int_value_ = value; }
-		argument(double value) : value_(double_) { u.dbl_value_ = value; }
-		argument(const char* value) : value_(string_)
-		{
-			u.string_v_.string_value_ = value;
-			u.string_v_.string_size_ = std::strlen(value);
-		}
-		argument(const std::string& value) : value_(string_)
-		{
-			u.string_v_.string_value_ = value.data();
-			u.string_v_.string_size_ = value.size();
-		}
-	};
-
-	enum class format_state
-	{
-		start,
-		type,
-		literal,
-		end
-	};
-
-	argument argument_array[] = { args... };
-	size_t argument_index = 0;
-	size_t arguments_count = std::extent<decltype(argument_array)>::value;
-	format_state expect = format_state::literal;
-
-	auto now = std::chrono::system_clock::now();
-	auto in_time_t = std::chrono::system_clock::to_time_t(now);
-	auto msec = static_cast<int>(
-		std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
-
-	std::string buffer(size_t{ 255 }, char{ 0 });
-	std::array<char, 64> tmp{ char{ 0 } };
-
-	auto offset = strftime(&tmp[0], sizeof(tmp), "%FT%T", gmtime(&in_time_t));
-	snprintf(&tmp[offset], tmp.size() - offset, ".%03dZ T%03zu %s ", msec, get_thread_id() % 1000, P);
-	buffer.assign(&tmp[0]);
-
-	for (; *format; format++)
-	{
-		switch (*format)
-		{
-			default:
-				expect = format_state::literal;
-				buffer.append(size_t{ 1 }, *format);
-				break;
-			case '{':
-				if (expect == format_state::type)
-				{
-					expect = format_state::literal;
-					buffer.append(size_t{ 1 }, *format);
-				}
-				else
-					expect = format_state::type;
-				break;
-			case '}':
-				if (expect == format_state::end)
-					expect = format_state::literal;
-				else
-				{
-					expect = format_state::end;
-					buffer.append(size_t{ 1 }, *format);
-				}
-				break;
-			case 's':
-				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::string_)
-				{
-					buffer.append(
-						argument_array[argument_index].u.string_v_.string_value_,
-						argument_array[argument_index].u.string_v_.string_size_);
-
-					argument_array[argument_index].u.string_v_.string_size_;
-					argument_index++;
-					expect = format_state::end;
-				}
-				else
-				{
-					buffer.append(size_t{ 1 }, *format);
-				}
-				break;
-			case 'u':
-				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::size_t_)
-				{
-					auto s = snprintf(&tmp[0], tmp.size(), "%zu", argument_array[argument_index++].u.size_t_value_);
-					buffer.append(&tmp[0], s);
-					expect = format_state::end;
-				}
-				else
-				{
-					buffer.append(size_t{ 1 }, *format);
-				}
-				break;
-			case 'd':
-				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
-				{
-					auto s = snprintf(&tmp[0], tmp.size(), "%d", argument_array[argument_index++].u.int_value_);
-					buffer.append(&tmp[0], s);
-					expect = format_state::end;
-				}
-				else
-				{
-					buffer.append(size_t{ 1 }, *format);
-				}
-				break;
-			case 'x':
-				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
-				{
-					auto s = snprintf(&tmp[0], tmp.size(), "%x", argument_array[argument_index++].u.int_value_);
-					buffer.append(&tmp[0], s);
-					expect = format_state::end;
-				}
-				else
-				{
-					buffer.append(size_t{ 1 }, *format);
-				}
-				break;
-			case 'X':
-				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
-				{
-					auto s = snprintf(&tmp[0], tmp.size(), "%X", argument_array[argument_index++].u.int_value_);
-					buffer.append(&tmp[0], s);
-					expect = format_state::end;
-				}
-				else
-				{
-					buffer.append(size_t{ 1 }, *format);
-				}
-				break;
-			case 'f':
-				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::double_)
-				{
-					buffer.append(std::to_string(argument_array[argument_index++].u.dbl_value_));
-					expect = format_state::end;
-				}
-				else
-				{
-					buffer.append(size_t{ 1 }, *format);
-				}
-				break;
-		}
-	}
-
-	if (argument_index != arguments_count)
-	{
-		throw std::runtime_error{ "wrong nr of arguments format: " + argument_index
-								  + std::string("arguments: " + arguments_count) };
-	}
-
-	return buffer;
-}
-
-template <typename... A> std::string info(const char* format, const A&... args)
-{
-	return log<prefix::info, A...>(format, args...);
-}
-
-template <typename... A> std::string warning(const char* format, const A&... args)
-{
-	return log<prefix::warning, A...>(format, args...);
-}
-
-template <typename... A> std::string debug(const char* format, const A&... args)
-{
-	return log<prefix::debug, A...>(format, args...);
 }
 
 } // namespace lgr
@@ -3814,19 +3903,23 @@ public:
 			return requests_current_;
 		}
 
-		void log_access(http::session_handler& session)
+		std::string log_access(http::session_handler& session)
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			access_log_.emplace_back(lgr::info(
+			std::string msg = lgr::format<lgr::prefix::none>(
 				"'{s}' - '{s}' - '{s}' - '{d}' - '{u}' - '{u}'",
 				session.request().get("Remote_Addr", std::string{}),
 				http::method::to_string(session.request().method()),
 				session.request().url_requested(),
 				http::status::to_int(session.response().status()),
 				session.request().content_length(),
-				session.response().content_length()));
+				session.response().content_length());
+
+			access_log_.emplace_back(msg);
 
 			if (access_log_.size() >= 32) access_log_.erase(access_log_.begin());
+
+			return msg;
 		}
 
 		void server_information(std::string info)
@@ -4259,6 +4352,8 @@ public:
 
 		void proceed()
 		{
+			server_.logger_.info("Connection: Start\n");
+
 			using data_store_buffer_t = std::array<char, 1024 * 4>;
 			data_store_buffer_t buffer{};
 			auto data_begin = std::begin(buffer);
@@ -4333,23 +4428,23 @@ public:
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
 							++server_.manager().requests_current(private_base_request);
-							/*							server_.logger_ << lgr::info(
-															"start routing request {s} {s}\n",
-															http::method::to_string(request.method()),
-															request.target());*/
 							auto routing = session_handler_.handle_request(server_.router_);
-							/*							server_.logger_ << lgr::info(
-															"end routing request {s} {s} response -> {s}",
-															http::method::to_string(request.method()),
-															request.target(),
-															http::status::to_string(response.status()));*/
-
 							t0 = std::chrono::steady_clock::now();
 
 							--server_.manager().requests_current(private_base_request);
 
-							++server_.manager().requests_handled();
 							server_.manager().log_access(session_handler_);
+
+							server_.logger_.accesslog(
+								"{s} - {s} - {s} - {d} - {u} - {u}\n",
+								request.get("Remote_Addr", std::string{}),
+								http::method::to_string(request.method()),
+								request.url_requested(),
+								http::status::to_int(response.status()),
+								request.content_length(),
+								response.content_length());
+
+							++server_.manager().requests_handled();
 
 							// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the
 							// word "gzip".
@@ -4376,6 +4471,8 @@ public:
 						else
 						{
 							// The server is not active; do not accept further requests.
+							server_.logger_.warning("HTTP server deactivated, send server unavailable(503) reply\n");
+
 							response.status(http::status::service_unavailable);
 							response.body() = "HTTP server has been stopped";
 							response.type("text");
@@ -4389,6 +4486,9 @@ public:
 						// Parse error
 						response.status(http::status::bad_request);
 						auto error_reason = session_handler_.parse_error_reason();
+						server_.logger_.error(
+							"HTTP parse error, send bad request(400) reply, reason \"{s}\"\n", error_reason);
+
 						if (error_reason.size() > 0)
 						{
 							response.body() = error_reason;
@@ -4400,15 +4500,12 @@ public:
 
 					if (response.connection_keep_alive() == true)
 					{
-						// std::cerr << std::hex << std::this_thread::get_id() << ": " << __FILE__ << "@" << __LINE__ <<
-						// " session_handler.reset()" << std::endl;
+						server_.logger_.info("Connection: Keep-Alive\n");
 						session_handler_.reset();
 					}
 					else
 					{
-						// std::cerr << std::hex << std::this_thread::get_id() << ": " << __FILE__ << "@" << __LINE__ <<
-						// " session_handler.reset()" << std::endl;
-						return;
+						break;
 					}
 				}
 				else if (parse_result == http::request_parser::result_type::indeterminate)
@@ -4416,6 +4513,7 @@ public:
 					continue;
 				}
 			}
+			server_.logger_.info("Connection: Closed\n");
 		}
 
 	protected:

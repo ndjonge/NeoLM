@@ -20,16 +20,7 @@ using json = nlohmann::json;
 
 int main()
 {
-	std::array<char, 8192> b;
-	b.fill('a');
-	b[b.size() - 1] = 0;
-	std::string s = "aap3";
-
-	lgr::logger log_output(std::cout);
-
-	//	log_output << lgr::info("A info log message {s} {d} {x} {X} {s} {s} ...end\n", "aap", 10, 10, 24, &b[0], s);
-	//	log_output << lgr::warning("A warning log message {s} {d} {x} {X} {s} {s} ...end\n", "aap", 10, 10, 24, &b[0],
-	//s);
+	lgr::logger log_output{ std::cout, lgr::level::info };
 
 	network::init();
 	network::ssl::init();
