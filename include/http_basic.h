@@ -172,14 +172,6 @@ enum class level
 	debug
 };
 
-namespace
-{
-auto level_ = level::log;
-}
-
-void log_level(level l) { level_ = l; }
-const level& log_level() { return level_; }
-
 class logger
 {
 public:
@@ -201,7 +193,7 @@ private:
 	std::ostream& ostream_;
 };
 
-std::size_t get_thread_id() noexcept
+inline std::size_t get_thread_id() noexcept
 {
 	static std::atomic<std::size_t> thread_idx{ 0 };
 	thread_local std::size_t id = thread_idx;
@@ -212,11 +204,11 @@ std::size_t get_thread_id() noexcept
 namespace prefix
 {
 static const char warning[] = "[warning]: ";
-static const char debug[] =   "[debug]  : ";
-static const char log[] =     "[log]    : ";
-static const char info[] =    "[info]   : ";
-static const char error[] =   "[error]  : ";
-} // namespace prefixS
+static const char debug[] = "[debug]  : ";
+static const char log[] = "[log]    : ";
+static const char info[] = "[info]   : ";
+static const char error[] = "[error]  : ";
+} // namespace prefix
 
 template <const char* P, typename... A> std::string log(const char* msg)
 {
@@ -297,8 +289,8 @@ template <const char* P, typename... A> std::string log(const char* format, cons
 	std::string buffer(size_t{ 255 }, char{ 0 });
 	std::array<char, 64> tmp{ char{ 0 } };
 
-	auto offset = std::strftime(&tmp[0], sizeof(tmp), "%FT%T", std::gmtime(&in_time_t));
-	snprintf(&tmp[offset], tmp.size() - offset, ".%03dZ T%03llu %s ", msec, get_thread_id() % 1000, P);
+	auto offset = strftime(&tmp[0], sizeof(tmp), "%FT%T", gmtime(&in_time_t));
+	snprintf(&tmp[offset], tmp.size() - offset, ".%03dZ T%03zu %s ", msec, get_thread_id() % 1000, P);
 	buffer.assign(&tmp[0]);
 
 	for (; *format; format++)
@@ -346,7 +338,7 @@ template <const char* P, typename... A> std::string log(const char* format, cons
 			case 'u':
 				if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::size_t_)
 				{
-					auto s = snprintf(&tmp[0], tmp.size(), "%llu", argument_array[argument_index++].u.size_t_value_);
+					auto s = snprintf(&tmp[0], tmp.size(), "%zu", argument_array[argument_index++].u.size_t_value_);
 					buffer.append(&tmp[0], s);
 					expect = format_state::end;
 				}
@@ -502,8 +494,8 @@ inline std::string return_current_time_and_date()
 	auto in_time_t = std::chrono::system_clock::to_time_t(now);
 
 	std::array<char, 32> tmp{ char{ 0 } };
-	auto size = std::strftime(&tmp[0], sizeof(tmp), "%a, %d %b %Y %H:%M:%S GMT", std::gmtime(&in_time_t));
-	assert(size <= tmp.size());
+	auto size = strftime(&tmp[0], sizeof(tmp), "%a, %d %b %Y %H:%M:%S GMT", gmtime(&in_time_t));
+	ASSERT(size <= tmp.size());
 	result.assign(&tmp[0], size);
 
 	return result;
@@ -3966,7 +3958,7 @@ public:
 protected:
 	server_manager manager_;
 	http::api::router<> router_;
-	http::configuration& configuration_;
+	http::configuration configuration_;
 	lgr::logger logger_;
 	std::atomic<bool> active_{ true };
 }; // namespace basic
@@ -4087,8 +4079,6 @@ public:
 							http_listen_port_ = endpoint_http_tmp.port();
 						}
 
-						configuration_.set("http_listen_port", std::to_string(http_listen_port_));
-
 						break;
 					}
 					else if (ec == network::error::address_in_use)
@@ -4104,6 +4094,8 @@ public:
 						"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":"
 						+ std::to_string(http_listen_port_end_) + " ]"));
 				}
+
+				configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
 				acceptor_http.listen();
 
@@ -4139,7 +4131,7 @@ public:
 			}
 		}
 
-		logger_ << lgr::debug("http_connection_queue_handler: closed\n");
+		// logger_ << lgr::debug("http_connection_queue_handler: closed\n");
 	}
 
 	void https_connection_queue_handler()
@@ -4171,7 +4163,7 @@ public:
 				}
 			}
 		}
-		logger_ << lgr::debug("https_connection_queue_handler: closed\n");
+		// logger_ << lgr::debug("https_connection_queue_handler: closed\n");
 	}
 
 	void https_listener_handler()
@@ -4235,6 +4227,8 @@ public:
 				ssl_context.use_private_key_file(
 					configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
 
+				configuration_.set("https_listen_port", std::to_string(endpoint_http_.port()));
+
 				acceptor_https.listen();
 
 				while (active_ == true)
@@ -4264,9 +4258,7 @@ public:
 		}
 	}
 
-	void http_listener_handler()
-	{
-	}
+	void http_listener_handler() {}
 
 	template <class S> class connection_handler
 	{
@@ -4370,16 +4362,16 @@ public:
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
 							++server_.manager().requests_current(private_base_request);
-/*							server_.logger_ << lgr::info(
-								"start routing request {s} {s}\n",
-								http::method::to_string(request.method()),
-								request.target());*/
+							/*							server_.logger_ << lgr::info(
+															"start routing request {s} {s}\n",
+															http::method::to_string(request.method()),
+															request.target());*/
 							auto routing = session_handler_.handle_request(server_.router_);
-/*							server_.logger_ << lgr::info(
-								"end routing request {s} {s} response -> {s}",
-								http::method::to_string(request.method()),
-								request.target(),
-								http::status::to_string(response.status()));*/
+							/*							server_.logger_ << lgr::info(
+															"end routing request {s} {s} response -> {s}",
+															http::method::to_string(request.method()),
+															request.target(),
+															http::status::to_string(response.status()));*/
 
 							t0 = std::chrono::steady_clock::now();
 
