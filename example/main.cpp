@@ -22,7 +22,7 @@ int main()
 {
 
 	std::ofstream ofs("/projects/access.log", std::ofstream::out);
-	lgr::logger log_output{ ofs, lgr::level::accesslog };
+	lgr::logger log_output{ ofs, lgr::level::info };
 
 	network::init();
 	network::ssl::init();
@@ -34,7 +34,6 @@ int main()
 							 { "https_listen_port_begin", "0" },
 							 { "https_listen_port_end", "0" },
 							 { "private_base", "/_internal" },
-							 { "log_file", "" },
 							 { "upstream_node_type", "" },
 							 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },
 							 { "upstream_node_nginx-group", "bshell-workers" } },

@@ -430,6 +430,7 @@ public:
 		if (level_ >= level::error)
 		{
 			ostream_ << logger::format<prefix::error>(str);
+			ostream_.flush();
 		}
 	}
 
@@ -438,6 +439,7 @@ public:
 		if (level_ >= level::warning)
 		{
 			ostream_ << logger::format<prefix::warning, A...>(format, args...);
+			ostream_.flush();
 		}
 	}
 
@@ -446,6 +448,7 @@ public:
 		if (level_ >= level::warning)
 		{
 			ostream_ << logger::format<prefix::warning>(str);
+			ostream_.flush();
 		}
 	}
 
@@ -454,6 +457,7 @@ public:
 		if (level_ >= level::info)
 		{
 			ostream_ << logger::format<prefix::info, A...>(format, args...);
+			ostream_.flush();
 		}
 	}
 
@@ -462,6 +466,7 @@ public:
 		if (level_ >= level::info)
 		{
 			ostream_ << logger::format<prefix::info>(str);
+			ostream_.flush();
 		}
 	}
 
@@ -470,6 +475,7 @@ public:
 		if (level_ >= level::accesslog)
 		{
 			ostream_ << logger::format<prefix::accesslog, A...>(format, args...);
+			ostream_.flush();
 		}
 	}
 
@@ -478,6 +484,7 @@ public:
 		if (level_ >= level::accesslog)
 		{
 			ostream_ << logger::format<prefix::accesslog>(msg);
+			ostream_.flush();
 		}
 	}
 
@@ -486,6 +493,7 @@ public:
 		if (level_ >= level::debug)
 		{
 			ostream_ << logger::format<prefix::debug, A...>(format, args...);
+			ostream_.flush();
 		}
 	}
 
@@ -494,6 +502,7 @@ public:
 		if (level_ >= level::debug)
 		{
 			ostream_ << logger::format<prefix::debug>(msg);
+			ostream_.flush();
 		}
 	}
 
@@ -2871,7 +2880,7 @@ public:
 	template <typename router_t> http::api::routing handle_request(router_t& router_)
 	{
 		static thread_local std::string server_id{ configuration_.get<std::string>("server", "http/server/0") };
-		
+
 		response_.set("Server", server_id);
 		response_.set("Date", util::return_current_time_and_date());
 
@@ -2879,7 +2888,6 @@ public:
 		response_.type("text");
 
 		std::string request_path;
-
 
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
@@ -4200,7 +4208,27 @@ public:
 
 				configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
+				std::vector<std::thread> threads_{ size_t{ 4 } };
+				std::vector<connection_handler<network::tcp::socket>> http_connection_handlers;
+				http_connection_handlers.reserve(4);
+
+				for (int i = 0; i != 4; i++)
+				{
+					http_connection_handlers.emplace_back(
+						*this,
+						std::move(network::tcp::socket{ network::tcp::socket::invalid_socket }),
+						connection_timeout_,
+						gzip_min_length_);
+
+					threads_.emplace_back(
+						[&http_connection_handlers, i]() { http_connection_handlers.at(i).proceed_pooled(); });
+
+					// detach?
+				}
+
 				acceptor_http.listen();
+
+				int i = 0;
 
 				while (active_ == true)
 				{
@@ -4216,15 +4244,11 @@ public:
 
 					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
 					{
-						auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
-							*this, std::move(http_socket), connection_timeout_, gzip_min_length_);
+						http_connection_handlers[i % 4].assign_connection(std::move(http_socket));
 
-						std::thread connection_thread(
-							[new_connection_handler]() { new_connection_handler->proceed(); });
-						connection_thread.detach();
+						++i;
 
 						++manager_.connections_accepted();
-						++manager_.connections_current();
 					}
 				}
 			}
@@ -4317,6 +4341,7 @@ public:
 
 					if (https_socket.lowest_layer().lowest_layer() != network::tcp::socket::invalid_socket)
 					{
+
 						auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
 							*this, std::move(https_socket.lowest_layer()), connection_timeout_, gzip_min_length_);
 
@@ -4343,8 +4368,8 @@ public:
 		connection_handler(
 			http::basic::threaded::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
-			, client_socket_(std::move(client_socket))
 			, session_handler_(server.configuration_)
+			, client_socket_(std::move(client_socket))
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
 		{
@@ -4358,10 +4383,52 @@ public:
 		}
 
 		connection_handler(const connection_handler&) = delete;
-		connection_handler(connection_handler&&) = delete;
+
+		connection_handler(connection_handler&& s)
+			: server_(s.server_)
+			, session_handler_(s.server_.configuration_)
+			, client_socket_(std::move(s.client_socket_))
+			, connection_timeout_(s.connection_timeout_)
+			, gzip_min_length_(s.gzip_min_length_)
+		{
+		}
 
 		connection_handler& operator=(connection_handler&) = delete;
 		connection_handler& operator=(const connection_handler&&) = delete;
+
+		void assign_connection(S&& s)
+		{
+			std::unique_lock<std::mutex> lock(http_connection_mutex_);
+			client_socket_ = std::move(s);
+			s = network::tcp::socket::invalid_socket;
+			http_has_connection_.notify_one();
+			server_.logger_.info("http_socket: {u} assigned to connection_handler\n", client_socket_.lowest_layer());
+		}
+
+		void proceed_pooled()
+		{
+			while (server_.active())
+			{
+				std::unique_lock<std::mutex> lock(http_connection_mutex_);
+
+				http_has_connection_.wait_for(lock, std::chrono::seconds(1));
+
+				if (client_socket_.lowest_layer() == network::tcp::socket::invalid_socket)
+				{
+					std::this_thread::yield();
+				}
+				else
+				{
+					++server_.manager_.connections_current();
+					proceed();
+					network::shutdown(client_socket_, network::shutdown_send);
+					network::closesocket(client_socket_);
+					server_.logger_.info("http_socket: {u} closed\n", client_socket_.lowest_layer());
+					client_socket_ = network::tcp::socket::invalid_socket;
+					--server_.manager().connections_current();
+				}
+			}
+		}
 
 		void proceed()
 		{
@@ -4531,10 +4598,13 @@ public:
 
 	protected:
 		http::basic::threaded::server& server_;
-		S client_socket_;
 		http::session_handler session_handler_;
+		S client_socket_;
 		int connection_timeout_;
 		size_t gzip_min_length_;
+
+		std::mutex http_connection_mutex_;
+		std::condition_variable http_has_connection_;
 
 		void reset_session() { session_handler_.reset(); }
 	};
@@ -4558,10 +4628,6 @@ private:
 	size_t gzip_min_length_;
 
 	std::mutex configuration_mutex_;
-
-	std::queue<network::tcp::socket> http_connection_queue_;
-	std::queue<network::ssl::stream<network::tcp::socket>> https_connection_queue_;
-
 	std::thread http_connection_handler_thread_;
 	std::thread https_connection_handler_thread_;
 };
