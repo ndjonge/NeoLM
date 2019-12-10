@@ -1069,7 +1069,7 @@ protected:
 	std::vector<fields::value_type> fields_;
 
 public:
-	fields() = default;
+	fields() { fields_.reserve(10); };
 
 	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list){};
 
