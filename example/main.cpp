@@ -20,9 +20,12 @@ using json = nlohmann::json;
 
 int main()
 {
-
+	std::array<char, 255> buf;
 	std::ofstream ofs("/projects/access.log", std::ofstream::out);
-	lgr::logger log_output{ ofs, lgr::level::none };
+
+	ofs.rdbuf()->pubsetbuf(&(*buf.begin()), buf.size());
+
+	lgr::logger log_output{ ofs, lgr::level::accesslog };
 
 	network::init();
 	network::ssl::init();
