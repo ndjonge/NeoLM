@@ -4208,11 +4208,11 @@ public:
 
 				configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
-				std::vector<std::thread> threads_{ size_t{ 4 } };
+				std::vector<std::thread> threads_{ };
 				std::vector<connection_handler<network::tcp::socket>> http_connection_handlers;
 				http_connection_handlers.reserve(4);
 
-				for (int i = 0; i != 4; i++)
+				for (int i = 0; i != 10; i++)
 				{
 					http_connection_handlers.emplace_back(
 						*this,
@@ -4244,7 +4244,12 @@ public:
 
 					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
 					{
-						http_connection_handlers[i % 4].assign_connection(std::move(http_socket));
+						auto success = http_connection_handlers[i % 10].assign_connection(std::move(http_socket));
+
+						if (!success)
+						{
+							exit(1);
+						}
 
 						++i;
 
@@ -4377,9 +4382,9 @@ public:
 
 		~connection_handler()
 		{
-			network::shutdown(client_socket_, network::shutdown_send);
-			network::closesocket(client_socket_);
-			--server_.manager().connections_current();
+		//	network::shutdown(client_socket_, network::shutdown_send);
+		//	network::closesocket(client_socket_);
+		//	--server_.manager().connections_current();
 		}
 
 		connection_handler(const connection_handler&) = delete;
@@ -4396,13 +4401,21 @@ public:
 		connection_handler& operator=(connection_handler&) = delete;
 		connection_handler& operator=(const connection_handler&&) = delete;
 
-		void assign_connection(S&& s)
+		bool assign_connection(S&& s)
 		{
 			std::unique_lock<std::mutex> lock(http_connection_mutex_);
+
+			if (client_socket_.lowest_layer() != network::tcp::socket::invalid_socket)
+			{
+				return false;
+			}
+
 			client_socket_ = std::move(s);
 			s = network::tcp::socket::invalid_socket;
 			http_has_connection_.notify_one();
 			server_.logger_.info("http_socket: {u} assigned to connection_handler\n", client_socket_.lowest_layer());
+
+			return true;
 		}
 
 		void proceed_pooled()

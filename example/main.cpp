@@ -22,7 +22,7 @@ int main()
 {
 
 	std::ofstream ofs("/projects/access.log", std::ofstream::out);
-	lgr::logger log_output{ ofs, lgr::level::info };
+	lgr::logger log_output{ ofs, lgr::level::none };
 
 	network::init();
 	network::ssl::init();
