@@ -824,6 +824,8 @@ public:
 		timeval t{};
 		int rv;
 
+		ec = network::error::io_error;
+
 		FD_ZERO(&set); /* clear the set */
 		FD_SET(endpoint_->socket().lowest_layer(), &set); /* add our file
 															 descriptor to the
@@ -847,6 +849,7 @@ public:
 		{
 			auto client_socket = ::accept(endpoint_->socket().lowest_layer(), endpoint_->addr(), &len);
 			s.assign(client_socket);
+			ec = network::error::success;
 
 			if (client_socket == -1)
 			{
