@@ -184,20 +184,14 @@ static const char debug[] = "[debug]  : ";
 
 } // namespace prefix
 
-template <const char* P, typename... A> std::string format(const std::string& msg)
+inline std::size_t get_thread_id() noexcept
 {
-	return logger::format<lgr::prefix::none>(msg);
+	static std::atomic<std::size_t> thread_idx{ 0 };
+	thread_local std::size_t id = thread_idx;
+	thread_idx++;
+	return id;
 }
 
-template <const char* P, typename... A> std::string format(const char* msg)
-{
-	return logger::format<lgr::prefix::none>(msg);
-}
-
-template <const char* P, typename... A> std::string format(const char* format, const A&... args)
-{
-	return logger::format<lgr::prefix::none>(format, args...);
-}
 
 class logger
 {
@@ -324,7 +318,6 @@ public:
 							argument_array[argument_index].u.string_v_.string_value_,
 							argument_array[argument_index].u.string_v_.string_size_);
 
-						argument_array[argument_index].u.string_v_.string_size_;
 						argument_index++;
 						expect = format_state::end;
 					}
@@ -399,8 +392,8 @@ public:
 
 		if (argument_index != arguments_count)
 		{
-			throw std::runtime_error{ "wrong nr of arguments format: " + argument_index
-									  + std::string("arguments: " + arguments_count) };
+			throw std::runtime_error{ "wrong nr of arguments format: " + std::to_string(argument_index)
+									  + std::string("arguments: " + std::to_string(arguments_count)) };
 		}
 
 		return buffer;
@@ -485,7 +478,7 @@ public:
 	{
 		if (level_ >= level::debug)
 		{
-			ostream_ << logger::format<prefix::debug>(msg);
+			ostream_ << logger::format<prefix::debug>(str);
 		}
 	}
 
@@ -494,13 +487,6 @@ private:
 	level level_;
 };
 
-inline std::size_t get_thread_id() noexcept
-{
-	static std::atomic<std::size_t> thread_idx{ 0 };
-	thread_local std::size_t id = thread_idx;
-	thread_idx++;
-	return id;
-}
 
 } // namespace lgr
 
@@ -2860,7 +2846,7 @@ public:
 
 	const std::string& parse_error_reason() const { return request_parser_.error_reason(); }
 
-	template <typename router_t> http::api::routing handle_request(router_t& router_)
+	template <typename router_t> typename router_t::request_result_type handle_request(router_t& router_)
 	{
 		static thread_local std::string server_id{ configuration_.get<std::string>("server", "http/server/0") };
 
@@ -2875,13 +2861,14 @@ public:
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
 			response_.status(http::status::bad_request);
-			return http::api::routing{};
+			
+			return typename router_t::request_result_type{};
 		}
 
 		if (request_path.empty() || request_path[0] != '/' || request_path.find("..") != std::string::npos)
 		{
 			response_.status(http::status::bad_request);
-			return http::api::routing{};
+			return typename router_t::request_result_type{};
 		}
 
 		std::size_t last_slash_pos = request_path.find_last_of('/');
@@ -3285,6 +3272,7 @@ public:
 	using route_endpoint_type = R;
 	using route_middleware_type = W;
 	using route_exception_type = E;
+	using request_result_type = routing;
 
 	class route_part
 	{
@@ -3910,7 +3898,7 @@ public:
 		std::string log_access(http::session_handler& session)
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			std::string msg = lgr::format<lgr::prefix::none>(
+			std::string msg = lgr::logger::format<lgr::prefix::none>(
 				"'{s}' - '{s}' - '{s}' - '{d}' - '{u}' - '{u}'",
 				session.request().get("Remote_Addr", std::string{}),
 				http::method::to_string(session.request().method()),
@@ -4469,7 +4457,7 @@ public:
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
 							++server_.manager().requests_current(private_base_request);
-							auto routing = session_handler_.handle_request(server_.router_);
+							http::api::router<>::request_result_type routing = session_handler_.handle_request(server_.router_);
 							t0 = std::chrono::steady_clock::now();
 
 							--server_.manager().requests_current(private_base_request);
