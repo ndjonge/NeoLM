@@ -2870,6 +2870,7 @@ public:
 			response_.status(http::status::bad_request);
 			return typename router_t::request_result_type{};
 		}
+	
 
 		std::size_t last_slash_pos = request_path.find_last_of('/');
 		std::size_t last_dot_pos = request_path.find_last_of('.');
