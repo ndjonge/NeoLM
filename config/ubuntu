@@ -1,0 +1,6 @@
+sudo apt install gnome-extensions-shell
+sudo apt install chrome-gnome-shell
+sudp apt install arc-theme
+sudo apt install papirus-icon-theme
+sudo apt install gnome-tweaks
+

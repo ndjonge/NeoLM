@@ -192,12 +192,30 @@ inline std::size_t get_thread_id() noexcept
 	return id;
 }
 
-
 class logger
 {
 public:
-public:
-	logger(std::ostream& ofstr, level l = level::error) : ostream_(ofstr), level_(l){};
+	logger(std::string& file, std::string& level) : ostream_(&std::cerr)
+	{
+		if (file != "std::cerr")
+		{
+			redirected_ostream_.open(file, std::ofstream::app | std::ofstream::out);
+			ostream_ = &redirected_ostream_;
+		}
+
+		if (level == "accesslog")
+			level_ = level::accesslog;
+		else if (level == "error")
+			level_ = level::error;
+		else if (level == "info")
+			level_ = level::info;
+		else if (level == "debug")
+			level_ = level::debug;
+		else
+			level_ = level::none;
+
+		if (file != "std::cerr") *ostream_ << "logging with loglevel: " << level << std::endl;
+	}
 
 	template <const char* P, typename... A> static std::string format(const std::string& msg) { return msg.c_str(); }
 
@@ -414,7 +432,7 @@ public:
 	{
 		if (level_ >= level::error)
 		{
-			ostream_ << logger::format<prefix::error, A...>(format, args...);
+			*ostream_ << logger::format<prefix::error, A...>(format, args...);
 		}
 	}
 
@@ -422,7 +440,7 @@ public:
 	{
 		if (level_ >= level::error)
 		{
-			ostream_ << logger::format<prefix::error>(str);
+			*ostream_ << logger::format<prefix::error>(str);
 		}
 	}
 
@@ -430,7 +448,7 @@ public:
 	{
 		if (level_ >= level::warning)
 		{
-			ostream_ << logger::format<prefix::warning, A...>(format, args...);
+			*ostream_ << logger::format<prefix::warning, A...>(format, args...);
 		}
 	}
 
@@ -438,7 +456,7 @@ public:
 	{
 		if (level_ >= level::warning)
 		{
-			ostream_ << logger::format<prefix::warning>(str);
+			*ostream_ << logger::format<prefix::warning>(str);
 		}
 	}
 
@@ -446,7 +464,7 @@ public:
 	{
 		if (level_ >= level::info)
 		{
-			ostream_ << logger::format<prefix::info, A...>(format, args...);
+			*ostream_ << logger::format<prefix::info, A...>(format, args...);
 		}
 	}
 
@@ -454,15 +472,16 @@ public:
 	{
 		if (level_ >= level::info)
 		{
-			ostream_ << logger::format<prefix::info>(str);
+			*ostream_ << logger::format<prefix::info>(str);
 		}
 	}
 
-	template <typename... A> void accesslog(const std::string& str)
+	template <typename... A> void accesslog(std::string str)
 	{
 		if (level_ >= level::accesslog)
 		{
-			ostream_ << str;
+			str += "\n";
+			*ostream_ << str;
 		}
 	}
 
@@ -470,7 +489,7 @@ public:
 	{
 		if (level_ >= level::debug)
 		{
-			ostream_ << logger::format<prefix::debug, A...>(format, args...);
+			*ostream_ << logger::format<prefix::debug, A...>(format, args...);
 		}
 	}
 
@@ -478,15 +497,15 @@ public:
 	{
 		if (level_ >= level::debug)
 		{
-			ostream_ << logger::format<prefix::debug>(str);
+			*ostream_ << logger::format<prefix::debug>(str);
 		}
 	}
 
 private:
-	std::ostream& ostream_;
+	std::ostream* ostream_;
+	std::ofstream redirected_ostream_;
 	level level_;
 };
-
 
 } // namespace lgr
 
@@ -1047,7 +1066,7 @@ protected:
 	std::vector<fields::value_type> fields_;
 
 public:
-	fields() { fields_.reserve(10); };
+	fields() { fields_.reserve(20); };
 
 	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list){};
 
@@ -1417,7 +1436,7 @@ public:
 		return returnvalue;
 	}
 
-	inline const std::string& get(const char* name) const
+	inline const std::string get(const char* name) const
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		static const std::string not_found = "";
@@ -1517,14 +1536,13 @@ public:
 
 	std::string header_to_string() const
 	{
-		std::ostringstream ss;
-
-		ss << http::method::to_string(method_) << " " << target_ << " HTTP/";
+		thread_local static std::ostringstream ss;
+		ss.str("");
 
 		if (version_nr() == 11)
-			ss << "1.1\r\n";
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.1\r\n";
 		else
-			ss << "1.0\r\n";
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.0\r\n";
 
 		for (auto&& field : fields_)
 		{
@@ -2861,7 +2879,7 @@ public:
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
 			response_.status(http::status::bad_request);
-			
+
 			return typename router_t::request_result_type{};
 		}
 
@@ -2870,7 +2888,6 @@ public:
 			response_.status(http::status::bad_request);
 			return typename router_t::request_result_type{};
 		}
-	
 
 		std::size_t last_slash_pos = request_path.find_last_of('/');
 		std::size_t last_dot_pos = request_path.find_last_of('.');
@@ -3836,8 +3853,12 @@ public:
 class server
 {
 public:
-	server(http::configuration& configuration, lgr::logger& logger)
-		: router_(configuration.get<std::string>("private_base", "")), configuration_(configuration), logger_(logger){};
+	server(http::configuration& configuration)
+		: router_(configuration.get<std::string>("private_base", ""))
+		, configuration_(configuration)
+		, logger_(
+			  configuration.get<std::string>("log_file", "std::cerr"),
+			  configuration.get<std::string>("log_level", "acceslog")){};
 
 	server(const server&) = delete;
 	server(server&&) = delete;
@@ -4057,8 +4078,8 @@ class server : public http::basic::server
 	using socket_t = SOCKET;
 
 public:
-	server(http::configuration& configuration, lgr::logger& logger)
-		: http::basic::server{ configuration, logger }
+	server(http::configuration& configuration)
+		: http::basic::server{ configuration }
 		, http_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
@@ -4458,7 +4479,8 @@ public:
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
 							++server_.manager().requests_current(private_base_request);
-							http::api::router<>::request_result_type routing = session_handler_.handle_request(server_.router_);
+							http::api::router<>::request_result_type routing
+								= session_handler_.handle_request(server_.router_);
 							t0 = std::chrono::steady_clock::now();
 
 							--server_.manager().requests_current(private_base_request);
