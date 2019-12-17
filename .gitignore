@@ -30,7 +30,10 @@
 *.exe
 *.out
 *.app
-./NeoLM
+mir_http
 
 /.vs
+/.vscode
+/build
+/CMakefiles
 

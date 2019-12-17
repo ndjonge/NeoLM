@@ -20,12 +20,12 @@ using json = nlohmann::json;
 
 int main()
 {
-	std::array<char, 255> buf;
-	std::ofstream ofs("/projects/access.log", std::ofstream::out);
+	// std::array<char, 255> buf;
+	// std::ofstream ofs("/projects/access.log", std::ofstream::out);
 
-	ofs.rdbuf()->pubsetbuf(&(*buf.begin()), buf.size());
+	// ofs.rdbuf()->pubsetbuf(&(*buf.begin()), buf.size());
 
-	lgr::logger log_output{ ofs, lgr::level::accesslog };
+	// lgr::logger log_output{ ofs, lgr::level::accesslog };
 
 	network::init();
 	network::ssl::init();
@@ -37,11 +37,12 @@ int main()
 							 { "https_listen_port_begin", "0" },
 							 { "https_listen_port_end", "0" },
 							 { "private_base", "/_internal" },
+							 { "log_file", "/projects/accesslog.log" },
+							 { "log_level", "accesslog" },
 							 { "upstream_node_type", "" },
 							 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },
 							 { "upstream_node_nginx-group", "bshell-workers" } },
-		"/projects/neolm_licenses/",
-		log_output
+		"/projects/neolm_licenses/"
 	};
 
 	license_server.start_server();
