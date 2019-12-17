@@ -3381,12 +3381,27 @@ public:
 	std::string private_base_;
 
 public:
-	router(std::string private_base) : root_(new router::route_part{}), private_base_(private_base)
+	enum class state
+	{
+		configuring,
+		configured
+	};
+
+	std::atomic<state> state_;
+
+	router(std::string private_base)
+		: state_(state::configuring), root_(new router::route_part{}), private_base_(private_base)
 	{
 		// std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
 		// std::cout << "sizeof(router::route_part)" << std::to_string(sizeof(router::route_part)) << "\n";
 		// std::cout << "sizeof(router::route)" << std::to_string(sizeof(router::route)) << "\n";
 		// std::cout << "sizeof(router::metrics)" << std::to_string(sizeof(router::metrics)) << "\n";
+	}
+
+	state use()
+	{
+		state_.store(state::configured);
+		return state_.load();
 	}
 
 	enum class middleware_type
@@ -4134,6 +4149,8 @@ public:
 		if (https_enabled_ && !https_listen_port_) throw std::runtime_error("failed to start https listener");
 
 		http::basic::server::start_server();
+
+		// checklist complete....
 	}
 
 	virtual void deactivate() { http::basic::server::active_ = false; }
@@ -4185,6 +4202,11 @@ public:
 					throw std::runtime_error(std::string(
 						"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":"
 						+ std::to_string(http_listen_port_end_) + " ]"));
+				}
+
+				while (router_.state_ != http::api::router<>::state::configured)
+				{
+					std::this_thread::sleep_for(std::chrono::seconds(1));
 				}
 
 				configuration_.set("http_listen_port", std::to_string(endpoint_http_.port()));
@@ -4474,7 +4496,7 @@ public:
 
 							--server_.manager().requests_current(private_base_request);
 
-							std::string log_msg = server_.manager().log_access(session_handler_);
+							std::string log_msg = server_.manager().log_access(session_handler_) + "\n";
 
 							server_.logger_.accesslog(log_msg);
 
