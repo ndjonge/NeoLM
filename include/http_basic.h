@@ -195,7 +195,7 @@ inline std::size_t get_thread_id() noexcept
 class logger
 {
 public:
-	logger(std::string& file, std::string& level) : ostream_(&std::cerr)
+	logger(const std::string& file, const std::string& level) : ostream_(&std::cerr)
 	{
 		if (file != "std::cerr")
 		{
@@ -482,6 +482,7 @@ public:
 		{
 			str += "\n";
 			*ostream_ << str;
+			ostream_->flush();
 		}
 	}
 
@@ -4086,7 +4087,7 @@ public:
 		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
 		, http_listen_port_(-1)
 		, endpoint_http_(configuration.get<std::string>("http_listen_address", "::0"), http_listen_port_begin_)
-		, https_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
+		, https_use_portsharding_(configuration.get<bool>("https_use_portsharding", false))
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
 		, https_listen_port_begin_(configuration.get<int>(
 			  "https_listen_port_begin", configuration.get<int>("http_listen_port_begin") + 2000))
@@ -4126,9 +4127,9 @@ public:
 	void start_server() override
 	{
 		auto waiting = 0;
-		auto timeout = 2;
+		auto timeout = 4;
 
-		while (http_enabled_ && http_listen_port_.load() == -1 && waiting < timeout)
+		while (http_enabled_ && http_listen_port_.load() == network::tcp::socket::invalid_socket && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
@@ -4140,8 +4141,10 @@ public:
 			waiting++;
 		}
 
-		if (http_enabled_ && !http_listen_port_) throw std::runtime_error("failed to start http listener");
-		if (https_enabled_ && !https_listen_port_) throw std::runtime_error("failed to start https listener");
+		if (http_enabled_ && http_listen_port_.load() == network::tcp::socket::invalid_socket)
+			throw std::runtime_error("failed to start http listener");
+		if (https_enabled_ && https_listen_port_.load() == network::tcp::socket::invalid_socket)
+			throw std::runtime_error("failed to start https listener");
 
 		http::basic::server::start_server();
 	}
@@ -4197,7 +4200,7 @@ public:
 						+ std::to_string(http_listen_port_end_) + " ]"));
 				}
 
-				configuration_.set("http_listen_port", std::to_string(endpoint_http_.port()));
+				configuration_.set("http_listen_port", std::to_string(http_listen_port_));
 
 				acceptor_http.listen();
 
@@ -4222,7 +4225,8 @@ public:
 			}
 			catch (std::runtime_error& e)
 			{
-				std::cout << e.what();
+				http_listen_port_ = -1;
+				logger_.error(e.what());
 			}
 		}
 	}
@@ -4337,7 +4341,7 @@ public:
 						+ std::to_string(https_listen_port_end_) + " ]"));
 				}
 
-				configuration_.set("https_listen_port", std::to_string(endpoint_http_.port()));
+				configuration_.set("https_listen_port", std::to_string(https_listen_port_));
 
 				network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
@@ -4370,7 +4374,8 @@ public:
 			}
 			catch (std::runtime_error& e)
 			{
-				std::cout << e.what();
+				https_listen_port_ = -1;
+				logger_.error(e.what());
 			}
 		}
 	}
