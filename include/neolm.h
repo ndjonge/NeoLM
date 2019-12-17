@@ -346,6 +346,9 @@ private:
 					session.response().set("name", "value2");
 					return http::api::routing::outcome<std::int64_t>{ 0 };
 				});
+
+			std::this_thread::sleep_for(std::chrono::seconds{ 5 });
+			S::router_.use();
 		}
 
 	private:
