@@ -176,12 +176,11 @@ enum class level
 namespace prefix
 {
 static const char none[] = "";
-static const char error[] = "[error]  : ";
-static const char accesslog[] = "[access] : ";
-static const char warning[] = "[warning]: ";
-static const char info[] = "[info]   : ";
-static const char debug[] = "[debug]  : ";
-
+static const char error[] = "[err]: ";
+static const char accesslog[] = "[acc]: ";
+static const char warning[] = "[war]: ";
+static const char info[] = "[inf]: ";
+static const char debug[] = "[dbg]: ";
 } // namespace prefix
 
 inline std::size_t get_thread_id() noexcept
@@ -197,12 +196,6 @@ class logger
 public:
 	logger(const std::string& file, const std::string& level) : ostream_(&std::cerr)
 	{
-		if (file != "std::cerr")
-		{
-			redirected_ostream_.open(file, std::ofstream::app | std::ofstream::out);
-			ostream_ = &redirected_ostream_;
-		}
-
 		if (level == "accesslog")
 			level_ = level::accesslog;
 		else if (level == "error")
@@ -214,8 +207,16 @@ public:
 		else
 			level_ = level::none;
 
-		if (file != "std::cerr") *ostream_ << "logging with loglevel: " << level << std::endl;
+		if (level_ != level::none && file != "std::cerr")
+		{
+			redirected_ostream_.open(file, std::ofstream::app | std::ofstream::out);
+			ostream_ = &redirected_ostream_;
+		}
+
+		accesslog("logging with loglevel: {s} started\n", level);
 	}
+
+	~logger() { accesslog("logger stopped\n"); }
 
 	template <const char* P, typename... A> static std::string format(const std::string& msg) { return msg.c_str(); }
 
@@ -433,6 +434,7 @@ public:
 		if (level_ >= level::error)
 		{
 			*ostream_ << logger::format<prefix::error, A...>(format, args...);
+			ostream_->flush();
 		}
 	}
 
@@ -441,6 +443,7 @@ public:
 		if (level_ >= level::error)
 		{
 			*ostream_ << logger::format<prefix::error>(str);
+			ostream_->flush();
 		}
 	}
 
@@ -449,6 +452,7 @@ public:
 		if (level_ >= level::warning)
 		{
 			*ostream_ << logger::format<prefix::warning, A...>(format, args...);
+			ostream_->flush();
 		}
 	}
 
@@ -457,6 +461,7 @@ public:
 		if (level_ >= level::warning)
 		{
 			*ostream_ << logger::format<prefix::warning>(str);
+			ostream_->flush();
 		}
 	}
 
@@ -465,6 +470,7 @@ public:
 		if (level_ >= level::info)
 		{
 			*ostream_ << logger::format<prefix::info, A...>(format, args...);
+			ostream_->flush();
 		}
 	}
 
@@ -473,6 +479,16 @@ public:
 		if (level_ >= level::info)
 		{
 			*ostream_ << logger::format<prefix::info>(str);
+			ostream_->flush();
+		}
+	}
+
+	template <typename... A> void accesslog(const char* format, const A&... args)
+	{
+		if (level_ >= level::accesslog)
+		{
+			*ostream_ << logger::format<prefix::accesslog, A...>(format, args...);
+			ostream_->flush();
 		}
 	}
 
@@ -480,7 +496,7 @@ public:
 	{
 		if (level_ >= level::accesslog)
 		{
-			str += "\n";
+			if (str.back() != '\n') str += "\n";
 			*ostream_ << str;
 			ostream_->flush();
 		}
@@ -491,6 +507,7 @@ public:
 		if (level_ >= level::debug)
 		{
 			*ostream_ << logger::format<prefix::debug, A...>(format, args...);
+			ostream_->flush();
 		}
 	}
 
@@ -499,6 +516,7 @@ public:
 		if (level_ >= level::debug)
 		{
 			*ostream_ << logger::format<prefix::debug>(str);
+			ostream_->flush();
 		}
 	}
 
@@ -2869,11 +2887,11 @@ public:
 	{
 		static thread_local std::string server_id{ configuration_.get<std::string>("server", "http/server/0") };
 
-		response_.set("Server", server_id);
-		response_.set("Date", util::return_current_time_and_date());
-
 		response_.status(http::status::bad_request);
 		response_.type("text");
+
+		response_.set("Server", server_id);
+		response_.set("Date", util::return_current_time_and_date());
 
 		std::string request_path;
 
@@ -2984,11 +3002,7 @@ public:
 		return route_result;
 	}
 
-	void keepalive_count_decr()
-	{
-		--keepalive_count_;
-		if (keepalive_count_ % 32 == 0) std::this_thread::yield();
-	};
+	void keepalive_count_decr() { --keepalive_count_; };
 	int keepalive_count() const { return keepalive_count_; };
 
 	void keepalive_max(const int& keepalive_max) { keepalive_max_ = keepalive_max; };
@@ -3804,7 +3818,7 @@ public:
 		curl_easy_setopt(hnd_, CURLOPT_NOSIGNAL, 1);
 		curl_easy_setopt(hnd_, CURLOPT_HEADERFUNCTION, recv_header_callback);
 		curl_easy_setopt(hnd_, CURLOPT_HEADERDATA, (void*)this);
-		curl_easy_setopt(hnd_, CURLOPT_TIMEOUT, 1L);
+		curl_easy_setopt(hnd_, CURLOPT_TIMEOUT, 5L);
 		setup(verb, url, hdrs, body);
 	}
 
@@ -3884,9 +3898,21 @@ public:
 
 	~server() = default;
 
-	std::atomic<bool>& active() { return active_; }
+	enum class state
+	{
+		not_active,
+		activating,
+		active,
+		deactivating
+	};
 
-	virtual void start_server() { active_ = true; }
+	std::atomic<server::state>& active() { return active_; }
+
+	virtual state start_server()
+	{
+		active_ = state::active;
+		return active_;
+	}
 
 	const configuration& config() const { return configuration_; }
 
@@ -3936,7 +3962,7 @@ public:
 		std::string log_access(http::session_handler& session)
 		{
 			std::lock_guard<std::mutex> g(mutex_);
-			std::string msg = lgr::logger::format<lgr::prefix::none>(
+			std::string msg = lgr::logger::format<lgr::prefix::accesslog>(
 				"'{s}' - '{s}' - '{s}' - '{d}' - '{u}' - '{u}'",
 				session.request().get("Remote_Addr", std::string{}),
 				http::method::to_string(session.request().method()),
@@ -4083,7 +4109,8 @@ protected:
 	http::api::router<> router_;
 	http::configuration configuration_;
 	lgr::logger logger_;
-	std::atomic<bool> active_{ true };
+
+	std::atomic<state> active_{ state::activating };
 }; // namespace basic
 
 namespace threaded
@@ -4116,10 +4143,13 @@ public:
 		, http_connection_queue_thread_([this]() { http_connection_queue_handler(); })
 		, https_connection_queue_thread_([this]() { https_connection_queue_handler(); })
 	{
+		logger_.debug("server created\n");
 	}
 
 	~server()
 	{
+		logger_.debug("server joining connection threads\n");
+
 		http_connection_thread_.join();
 		https_connection_thread_.join();
 		http_connection_queue_thread_.join();
@@ -4128,8 +4158,11 @@ public:
 		// Wait for all connections to close:
 		while (manager_.connections_current() > 0)
 		{
+			logger_.debug("server still has connection\n");
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
+
+		logger_.debug("server deleted\n");
 	}
 
 	server() = delete;
@@ -4139,123 +4172,87 @@ public:
 	server& operator=(const server&) = delete;
 	server& operator=(const server&&) = delete;
 
-	void start_server() override
+	http::basic::server::state start_server() override
 	{
-		auto waiting = 0;
-		auto timeout = 4;
+		logger_.info("start_server: begin\n");
 
-		while (http_enabled_ && http_listen_port_.load() == network::tcp::socket::invalid_socket && waiting < timeout)
+		if (router_.state_ == http::api::router<>::state::configured)
 		{
-			std::this_thread::sleep_for(std::chrono::seconds(1));
-			waiting++;
+			// router must be in configured state
+			// wait for listener(s to have an valid listen socket if listener is enabled)
+			auto waiting = 0;
+			auto timeout = 5;
+
+			logger_.info("start_server: router configured\n");
+
+			while (http_enabled_ && http_listen_port_.load() == network::tcp::socket::invalid_socket
+				   && waiting < timeout)
+			{
+				std::this_thread::sleep_for(std::chrono::seconds(1));
+				waiting++;
+			}
+
+			while (https_enabled_ && https_listen_port_.load() == -1 && waiting < timeout)
+			{
+				std::this_thread::sleep_for(std::chrono::seconds(1));
+				waiting++;
+			}
 		}
 
-		while (https_enabled_ && https_listen_port_.load() == -1 && waiting < timeout)
+		if (http_enabled_)
 		{
-			std::this_thread::sleep_for(std::chrono::seconds(1));
-			waiting++;
+			if (http_listen_port_.load() == network::tcp::socket::invalid_socket)
+			{
+				if (this->http_listen_port_end_)
+					logger_.error(
+						"failed to start http listener in ports: {d}-{d}\n",
+						this->http_listen_port_begin_,
+						this->http_listen_port_end_);
+				else
+					logger_.error("failed to start http on port: {d}\n", this->http_listen_port_begin_);
+			}
+			else
+			{
+				logger_.accesslog("http listener started on port: {d}\n", this->http_listen_port_.load());
+			}
 		}
 
-		if (http_enabled_ && http_listen_port_.load() == network::tcp::socket::invalid_socket)
-			throw std::runtime_error("failed to start http listener");
-		if (https_enabled_ && https_listen_port_.load() == network::tcp::socket::invalid_socket)
-			throw std::runtime_error("failed to start https listener");
+		if (https_enabled_)
+		{
+			if (https_listen_port_.load() == network::tcp::socket::invalid_socket)
+			{
+				if (this->https_listen_port_end_)
+					logger_.error(
+						"failed to start https listener in ports: {d}-{d}\n",
+						this->https_listen_port_begin_,
+						this->https_listen_port_end_);
+				else
+					logger_.error("failed to start https on port: {d}\n", this->https_listen_port_begin_);
+			}
+			else
+			{
+				logger_.accesslog("https listener started on port: {d}\n", this->https_listen_port_.load());
+			}
+		}
 
-		http::basic::server::start_server();
+		// take-off checklist complete....
+		logger_.info("start_server: listener(s) started\n");
 
-		// checklist complete....
+		active_.store(http::basic::server::state::active);
+
+		return active_.load();
 	}
 
-	virtual void deactivate() { http::basic::server::active_ = false; }
-
-	void http_listener_handler()
+	virtual void deactivate()
 	{
-		if (http_enabled_ == true)
-		{
-			try
-			{
-				network::tcp::acceptor acceptor_http{};
-
-				acceptor_http.open(endpoint_https_.protocol());
-
-				network::ipv6only(endpoint_http_.socket(), 0);
-
-				if ((http_use_portsharding_ == true) && (http_listen_port_begin_ != 0)
-					&& (http_listen_port_begin_ == http_listen_port_end_))
-					network::use_portsharding(endpoint_http_.socket(), 1);
-				else
-					network::use_portsharding(endpoint_http_.socket(), 0);
-
-				network::error_code ec = network::error::success;
-
-				for (http_listen_port_ = http_listen_port_begin_; http_listen_port_ <= http_listen_port_end_;)
-				{
-					acceptor_http.bind(endpoint_http_, ec);
-					if (ec == network::error::success)
-					{
-						if (!http_listen_port_)
-						{
-							network::tcp::v6 endpoint_http_tmp{ 0 };
-							acceptor_http.get_local_endpoint(endpoint_http_tmp, ec);
-
-							http_listen_port_ = endpoint_http_tmp.port();
-						}
-
-						break;
-					}
-					else if (ec == network::error::address_in_use)
-					{
-						http_listen_port_++;
-						endpoint_http_.port(http_listen_port_.load());
-					}
-				}
-
-				if (ec)
-				{
-					throw std::runtime_error(std::string(
-						"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":"
-						+ std::to_string(http_listen_port_end_) + " ]"));
-				}
-
-				while (router_.state_ != http::api::router<>::state::configured)
-				{
-					std::this_thread::sleep_for(std::chrono::seconds(1));
-				}
-
-				configuration_.set("http_listen_port", std::to_string(http_listen_port_);
-
-				acceptor_http.listen();
-
-				while (active_ == true)
-				{
-					network::tcp::socket http_socket{};
-
-					acceptor_http.accept(http_socket, ec, 5);
-
-					if (ec == network::error::interrupted) break;
-					if (ec == network::error::operation_would_block) continue;
-
-					network::timeout(http_socket, connection_timeout_);
-
-					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
-					{
-						std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
-						http_connection_queue_.push(std::move(http_socket));
-						http_connection_queue_has_connection_.notify_one();
-					}
-				}
-			}
-			catch (std::runtime_error& e)
-			{
-				http_listen_port_ = -1;
-				logger_.error(e.what());
-			}
-		}
+		http::basic::server::active_ = state::deactivating;
+		http::basic::server::router_.state_ = http::api::router<>::state::configured;
+		logger_.info("deactivating:\n");
 	}
 
 	void http_connection_queue_handler()
 	{
-		while (active_ == true && http_enabled_)
+		while (http_enabled_ && (active_ == state::activating || active_ == state::active))
 		{
 			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 
@@ -4286,7 +4283,7 @@ public:
 
 	void https_connection_queue_handler()
 	{
-		while (active_ == true && https_enabled_)
+		while (https_enabled_ && (active_ == state::activating || active_ == state::active))
 		{
 			std::unique_lock<std::mutex> m(https_connection_queue_mutex_);
 
@@ -4325,6 +4322,11 @@ public:
 
 				acceptor_https.open(endpoint_https_.protocol());
 
+				if (https_listen_port_begin_ == https_listen_port_end_)
+					network::reuse_address(endpoint_https_.socket(), 1);
+				else
+					network::reuse_address(endpoint_https_.socket(), 0);
+
 				network::ipv6only(endpoint_https_.socket(), 0);
 
 				if ((https_use_portsharding_ == true) && (https_listen_port_begin_ != 0)
@@ -4335,27 +4337,34 @@ public:
 
 				network::error_code ec = network::error::success;
 
-				for (https_listen_port_ = https_listen_port_begin_; https_listen_port_ <= https_listen_port_end_;)
+				auto https_listen_port_probe = https_listen_port_begin_;
+
+				for (; https_listen_port_probe <= https_listen_port_end_; https_listen_port_probe++)
 				{
+					endpoint_https_.port(https_listen_port_probe);
+
 					acceptor_https.bind(endpoint_https_, ec);
+
 					if (ec == network::error::success)
 					{
-						if (!https_listen_port_)
+						if (!https_listen_port_probe)
 						{
 							network::tcp::v6 endpoint_https_tmp{ 0 };
 							acceptor_https.get_local_endpoint(endpoint_https_tmp, ec);
 
-							https_listen_port_ = endpoint_https_tmp.port();
+							https_listen_port_probe = endpoint_https_tmp.port();
 						}
 						break;
 					}
 					else if (ec == network::error::address_in_use)
 					{
-						https_listen_port_++;
-						endpoint_https_.port(https_listen_port_.load());
+						continue;
+					}
+					else
+					{
+						break;
 					}
 				}
-
 				if (ec)
 				{
 					throw std::runtime_error(std::string(
@@ -4363,7 +4372,10 @@ public:
 						+ std::to_string(https_listen_port_end_) + " ]"));
 				}
 
-				configuration_.set("https_listen_port", std::to_string(https_listen_port_));
+				while (router_.state_ != http::api::router<>::state::configured)
+				{
+					std::this_thread::sleep_for(std::chrono::seconds(1));
+				}
 
 				network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
@@ -4374,7 +4386,10 @@ public:
 
 				acceptor_https.listen();
 
-				while (active_ == true)
+				http_listen_port_.store(https_listen_port_probe);
+				configuration_.set("http_listen_port", std::to_string(http_listen_port_.load()));
+
+				while (active_ == state::active)
 				{
 					network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
 					ec = network::error::success;
@@ -4397,6 +4412,104 @@ public:
 			catch (std::runtime_error& e)
 			{
 				https_listen_port_ = -1;
+				logger_.error(e.what());
+			}
+		}
+	}
+
+	void http_listener_handler()
+	{
+		if (http_enabled_ == true)
+		{
+			try
+			{
+				network::tcp::acceptor acceptor_http{};
+
+				acceptor_http.open(endpoint_https_.protocol());
+
+				if (http_listen_port_begin_ == http_listen_port_end_)
+					network::reuse_address(endpoint_http_.socket(), 1);
+				else
+					network::reuse_address(endpoint_http_.socket(), 0);
+
+				network::ipv6only(endpoint_http_.socket(), 0);
+
+				if ((http_use_portsharding_ == true) && (http_listen_port_begin_ != 0)
+					&& (http_listen_port_begin_ == http_listen_port_end_))
+					network::use_portsharding(endpoint_http_.socket(), 1);
+				else
+					network::use_portsharding(endpoint_http_.socket(), 0);
+
+				network::error_code ec = network::error::success;
+
+				auto http_listen_port_probe = http_listen_port_begin_;
+
+				for (; http_listen_port_probe <= http_listen_port_end_; http_listen_port_probe++)
+				{
+					endpoint_http_.port(http_listen_port_probe);
+
+					acceptor_http.bind(endpoint_http_, ec);
+
+					if (ec == network::error::success)
+					{
+						if (!http_listen_port_probe)
+						{
+							network::tcp::v6 endpoint_http_tmp{ 0 };
+							acceptor_http.get_local_endpoint(endpoint_http_tmp, ec);
+
+							http_listen_port_probe = endpoint_http_tmp.port();
+						}
+						break;
+					}
+					else if (ec == network::error::address_in_use)
+					{
+						continue;
+					}
+					else
+					{
+						break;
+					}
+				}
+
+				if (ec)
+				{
+					throw std::runtime_error(std::string(
+						"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":"
+						+ std::to_string(http_listen_port_end_) + " ]"));
+				}
+
+				while (router_.state_ != http::api::router<>::state::configured)
+				{
+					std::this_thread::sleep_for(std::chrono::seconds(1));
+				}
+
+				acceptor_http.listen();
+
+				http_listen_port_.store(http_listen_port_probe);
+				configuration_.set("http_listen_port", std::to_string(http_listen_port_.load()));
+
+				while (active_ == state::activating || active_ == state::active)
+				{
+					network::tcp::socket http_socket{};
+
+					acceptor_http.accept(http_socket, ec, 5);
+
+					if (ec == network::error::interrupted) break;
+					if (ec == network::error::operation_would_block) continue;
+
+					network::timeout(http_socket, connection_timeout_);
+
+					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
+					{
+						std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
+						http_connection_queue_.push(std::move(http_socket));
+						http_connection_queue_has_connection_.notify_one();
+					}
+				}
+			}
+			catch (std::runtime_error& e)
+			{
+				http_listen_port_ = -1;
 				logger_.error(e.what());
 			}
 		}
@@ -4430,7 +4543,7 @@ public:
 
 		void proceed()
 		{
-			server_.logger_.info("Connection: Start\n");
+			server_.logger_.info("connection_handler: start\n");
 
 			using data_store_buffer_t = std::array<char, 1024 * 4>;
 			data_store_buffer_t buffer{};
@@ -4496,7 +4609,7 @@ public:
 				{
 					if (parse_result == http::request_parser::result_type::good)
 					{
-						if (server_.active().load() == true)
+						if (server_.active().load() == http::basic::server::state::active)
 						{
 							session_handler_.request().set(
 								"Remote_Addr",
@@ -4543,7 +4656,8 @@ public:
 						else
 						{
 							// The server is not active; do not accept further requests.
-							server_.logger_.warning("HTTP server deactivated, send server unavailable(503) reply\n");
+							server_.logger_.warning(
+								"server deactivated or deactivating, send server unavailable(503) reply\n");
 
 							response.status(http::status::service_unavailable);
 							response.body() = "HTTP server has been stopped";
@@ -4559,7 +4673,7 @@ public:
 						response.status(http::status::bad_request);
 						auto error_reason = session_handler_.parse_error_reason();
 						server_.logger_.error(
-							"HTTP parse error, send bad request(400) reply, reason \"{s}\"\n", error_reason);
+							"parse error, send bad request(400) reply, reason \"{s}\"\n", error_reason);
 
 						if (error_reason.size() > 0)
 						{
@@ -4572,7 +4686,7 @@ public:
 
 					if (response.connection_keep_alive() == true)
 					{
-						server_.logger_.info("Connection: Keep-Alive\n");
+						server_.logger_.info("connection_handler: restart\n");
 						session_handler_.reset();
 					}
 					else
@@ -4585,7 +4699,7 @@ public:
 					continue;
 				}
 			}
-			server_.logger_.info("Connection: Closed\n");
+			server_.logger_.info("connection_handler: stop\n");
 		}
 
 	protected:
@@ -4616,11 +4730,10 @@ private:
 	int connection_timeout_;
 	size_t gzip_min_length_;
 
-	std::mutex configuration_mutex_;
-
 	std::condition_variable http_connection_queue_has_connection_;
 	std::condition_variable https_connection_queue_has_connection_;
 
+	std::mutex configuration_mutex_;
 	std::mutex http_connection_queue_mutex_;
 	std::mutex https_connection_queue_mutex_;
 

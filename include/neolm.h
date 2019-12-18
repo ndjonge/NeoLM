@@ -347,7 +347,7 @@ private:
 					return http::api::routing::outcome<std::int64_t>{ 0 };
 				});
 
-			std::this_thread::sleep_for(std::chrono::seconds{ 5 });
+			// std::this_thread::sleep_for(std::chrono::seconds{ 60 });
 			S::router_.use();
 		}
 
@@ -376,6 +376,7 @@ public:
 	void start_server()
 	{
 		this->api_server_.start_server();
+
 		if (api_server_.upstream_controller_) api_server_.upstream_controller_->add();
 	}
 
@@ -425,11 +426,11 @@ public:
 		test t(this->api_server_, the_test);
 		*/
 
-		do
+		while (api_server_.active() == http::basic::server::state::active)
 		{
 			api_server_.logger_.info("Alive!\n");
 			std::this_thread::sleep_for(std::chrono::seconds(10));
-		} while (api_server_.active_ == true);
+		}
 	}
 
 private:
