@@ -49,11 +49,13 @@ public:
 	{
 		do
 		{
+			std::string ec;
 			bool retry = false;
 			auto up_result = http::client::request<http::method::get>(
 				endpoint_base_url_
 					+ "&up=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
 					+ server_.config().get("http_listen_port"),
+				ec,
 				{},
 				{});
 
@@ -67,6 +69,7 @@ public:
 					endpoint_base_url_
 						+ "&add=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1")
 						+ ":" + server_.config().get("http_listen_port"),
+					ec,
 					{},
 					{});
 
@@ -88,10 +91,12 @@ public:
 
 	result remove() const noexcept
 	{
+		std::string ec;
 		auto down_result = http::client::request<http::method::get>(
 			endpoint_base_url_
 				+ "&down=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
 				+ server_.config().get("http_listen_port"),
+			ec,
 			{},
 			{});
 
@@ -101,12 +106,15 @@ public:
 				endpoint_base_url_
 					+ "&remove=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
 					+ server_.config().get("http_listen_port"),
+				ec,
 				{},
 				{});
 			return http::upstream::sucess;
 		}
 		else
+		{
 			return http::upstream::failed;
+		}
 	}
 
 private:

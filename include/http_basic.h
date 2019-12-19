@@ -3408,10 +3408,9 @@ public:
 		configured
 	};
 
-	std::atomic<state> state_;
+	std::atomic<state> state_{ state::configuring };
 
-	router(std::string private_base)
-		: state_(state::configuring), root_(new router::route_part{}), private_base_(private_base)
+	router(std::string private_base) : root_(new router::route_part{}), private_base_(private_base)
 	{
 		// std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
 		// std::cout << "sizeof(router::route_part)" << std::to_string(sizeof(router::route_part)) << "\n";
@@ -3883,7 +3882,7 @@ public:
 class server
 {
 public:
-	server(http::configuration& configuration)
+	server(const http::configuration& configuration)
 		: router_(configuration.get<std::string>("private_base", ""))
 		, configuration_(configuration)
 		, logger_(
@@ -4121,7 +4120,7 @@ class server : public http::basic::server
 	using socket_t = SOCKET;
 
 public:
-	server(http::configuration& configuration)
+	server(const http::configuration& configuration)
 		: http::basic::server{ configuration }
 		, http_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
