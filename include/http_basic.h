@@ -211,12 +211,17 @@ public:
 		{
 			redirected_ostream_.open(file, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
 			ostream_ = &redirected_ostream_;
+			accesslog("logging with loglevel: [{s}] started\n", level);
 		}
-
-		accesslog("logging with loglevel: {s} started\n", level);
 	}
 
-	~logger() { accesslog("logger stopped\n"); }
+	~logger()
+	{
+		if (level_ != level::none)
+		{
+			accesslog("logger stopped\n");
+		}
+	}
 
 	level current_level() { return level_.load(); }
 
@@ -1899,10 +1904,13 @@ public:
 
 	static std::string to_string(const http::message<specialization>& message)
 	{
-		std::string ret = message.header_to_string();
-		ret += message.body();
+		thread_local static std::ostringstream o;
+		o.str("");
 
-		return ret;
+		o << message.header_to_string();
+		o << message.body();
+
+		return o.str();
 	}
 };
 
@@ -4707,15 +4715,26 @@ public:
 							(void)network::write(client_socket_, http::to_string(response));
 
 							if (routing.match_result() == http::api::router_match::match_found)
+							{
 								routing.the_route().metric_request_turn_around(
 									std::chrono::duration<std::uint64_t, std::nano>(
 										std::chrono::steady_clock::now() - t0)
 										.count());
 
-							std::string log_msg
-								= server_.manager().log_access(session_handler_, routing.the_route().route_metrics())
-								  + "\n";
-							server_.logger_.accesslog(log_msg);
+								std::string log_msg = server_.manager().log_access(
+														  session_handler_, routing.the_route().route_metrics())
+													  + "\n";
+
+								server_.logger_.accesslog(log_msg);
+							}
+							else
+							{
+								std::string log_msg
+									= server_.manager().log_access(session_handler_, http::api::routing::metrics{})
+									  + "\n";
+
+								server_.logger_.accesslog(log_msg);
+							}
 
 							if (server_.logger_.current_level() == lgr::level::debug)
 							{

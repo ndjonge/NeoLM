@@ -119,6 +119,12 @@ template <class S> class license_manager
 {
 public:
 private:
+	// /private/infra/implementer/version
+	// /private/infra/implementer/status
+	// /private/infra/implementer/status{1}
+	// /private/infra/implementer/healthcheck
+	// /private/infra/implementer/shutdown
+
 	class api_server : public S, public http::upstream::enable_server_as_upstream
 	{
 	public:
@@ -226,6 +232,15 @@ private:
 				});
 
 			S::router_.on_get(
+				S::configuration_.template get<std::string>("internal_base", "") + "/wait/{sec}",
+				[this](http::session_handler& session) {
+					size_t sec = std::atoi(session.params().get("sec", "2").data());
+					std::this_thread::sleep_for(std::chrono::seconds(sec));
+					session.response().body() = "slomo:";
+					session.response().status(http::status::ok);
+				});
+
+			S::router_.on_delete(
 				S::configuration_.template get<std::string>("internal_base", "") + "/wait/{sec}",
 				[this](http::session_handler& session) {
 					size_t sec = std::atoi(session.params().get("sec", "2").data());
