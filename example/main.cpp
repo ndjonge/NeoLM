@@ -39,7 +39,7 @@ int main()
 							 { "https_listen_port_end", "0" },
 							 { "private_base", "/_internal" },
 							 { "log_file", "/projects/accesslog.log" },
-							 { "log_level", "info" },
+							 { "log_level", "debug" },
 							 { "upstream_node_type", "" },
 							 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },
 							 { "upstream_node_nginx-group", "bshell-workers" } },

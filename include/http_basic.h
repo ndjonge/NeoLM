@@ -209,7 +209,7 @@ public:
 
 		if (level_ != level::none && file != "std::cerr")
 		{
-			redirected_ostream_.open(file, std::ofstream::app | std::ofstream::out);
+			redirected_ostream_.open(file, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
 			ostream_ = &redirected_ostream_;
 		}
 
@@ -217,6 +217,10 @@ public:
 	}
 
 	~logger() { accesslog("logger stopped\n"); }
+
+	level current_level() { return level_.load(); }
+
+	void set_level(level l) { level_.store(l); }
 
 	template <const char* P, typename... A> static std::string format(const std::string& msg) { return msg.c_str(); }
 
@@ -523,7 +527,7 @@ public:
 private:
 	std::ostream* ostream_;
 	std::ofstream redirected_ostream_;
-	level level_;
+	std::atomic<level> level_;
 };
 
 } // namespace lgr
@@ -1553,6 +1557,26 @@ public:
 		this->fields_.clear();
 	}
 
+	std::string header_to_dbg_string() const
+	{
+		std::ostringstream ss;
+
+		if (version_nr() == 11)
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.1\n";
+		else
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.0\n";
+
+		for (auto&& field : fields_)
+		{
+			ss << field.name << ": ";
+			ss << field.value << "\n";
+		}
+
+		ss << "\n";
+
+		return ss.str();
+	}
+
 	std::string header_to_string() const
 	{
 		thread_local static std::ostringstream ss;
@@ -1632,9 +1656,27 @@ public:
 		version_nr_ = 0;
 	}
 
-	std::string header_to_string() const
+	std::string header_to_dbg_string() const
 	{
 		std::ostringstream ss;
+
+		ss << status::to_string(status_);
+
+		for (auto&& field : fields_)
+		{
+			ss << field.name << ": ";
+			ss << field.value << "\n";
+		}
+
+		ss << "\n";
+
+		return ss.str();
+	}
+
+	std::string header_to_string() const
+	{
+		thread_local static std::ostringstream ss;
+		ss.str("");
 
 		ss << status::to_string(status_);
 
@@ -1847,6 +1889,14 @@ public:
 			return false;
 	}
 
+	static std::string to_dbg_string(const http::message<specialization>& message)
+	{
+		std::string ret = message.header_to_dbg_string();
+		ret += message.body();
+
+		return ret;
+	}
+
 	static std::string to_string(const http::message<specialization>& message)
 	{
 		std::string ret = message.header_to_string();
@@ -1855,6 +1905,12 @@ public:
 		return ret;
 	}
 };
+
+template <message_specializations specialization>
+std::string to_dbg_string(const http::message<specialization>& message)
+{
+	return http::message<specialization>::to_dbg_string(message);
+}
 
 template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
 {
@@ -3958,17 +4014,21 @@ public:
 			return requests_current_;
 		}
 
-		std::string log_access(http::session_handler& session)
+		std::string log_access(http::session_handler& session, http::api::routing::metrics m)
 		{
 			std::lock_guard<std::mutex> g(mutex_);
+
+			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_) / 1000000.0;
+
 			std::string msg = lgr::logger::format<lgr::prefix::accesslog>(
-				"'{s}' - '{s}' - '{s}' - '{d}' - '{u}' - '{u}'",
+				"'{s}' - '{s}' - '{s}' - '{d}' - '{u}' - '{u}' - '{f}'",
 				session.request().get("Remote_Addr", std::string{}),
 				http::method::to_string(session.request().method()),
 				session.request().url_requested(),
 				http::status::to_int(session.response().status()),
 				session.request().content_length(),
-				session.response().content_length());
+				session.response().content_length(),
+				response_time);
 
 			access_log_.emplace_back(msg);
 
@@ -4617,17 +4677,17 @@ public:
 
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
+							if (server_.logger_.current_level() == lgr::level::debug)
+							{
+								server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(request));
+							}
+
 							++server_.manager().requests_current(private_base_request);
 							http::api::router<>::request_result_type routing
 								= session_handler_.handle_request(server_.router_);
 							t0 = std::chrono::steady_clock::now();
 
 							--server_.manager().requests_current(private_base_request);
-
-							std::string log_msg = server_.manager().log_access(session_handler_) + "\n";
-
-							server_.logger_.accesslog(log_msg);
-
 							++server_.manager().requests_handled();
 
 							// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the
@@ -4651,6 +4711,16 @@ public:
 									std::chrono::duration<std::uint64_t, std::nano>(
 										std::chrono::steady_clock::now() - t0)
 										.count());
+
+							std::string log_msg
+								= server_.manager().log_access(session_handler_, routing.the_route().route_metrics())
+								  + "\n";
+							server_.logger_.accesslog(log_msg);
+
+							if (server_.logger_.current_level() == lgr::level::debug)
+							{
+								server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(response));
+							}
 						}
 						else
 						{
