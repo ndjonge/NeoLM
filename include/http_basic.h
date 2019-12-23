@@ -235,11 +235,12 @@ public:
 		auto in_time_t = std::chrono::system_clock::to_time_t(now);
 		auto msec = static_cast<int>(
 			std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
+        auto tmp_tm = std::tm{};
 
 		std::string buffer(size_t{ 255 }, char{ 0 });
 		std::array<char, 64> tmp{ char{ 0 } };
 
-		auto offset = strftime(&tmp[0], sizeof(tmp), "%FT%T", gmtime(&in_time_t));
+		auto offset = strftime(&tmp[0], sizeof(tmp), "%FT%T", gmtime_r(&in_time_t, &tmp_tm));
 		snprintf(&tmp[offset], tmp.size() - offset, ".%03dZ T%03zu %s ", msec, get_thread_id() % 1000, P);
 		buffer.assign(&tmp[0]);
 		buffer.append(msg);
@@ -304,11 +305,12 @@ public:
 		auto in_time_t = std::chrono::system_clock::to_time_t(now);
 		auto msec = static_cast<int>(
 			std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
+        auto tmp_tm = std::tm{};
 
 		std::string buffer(size_t{ 255 }, char{ 0 });
 		std::array<char, 64> tmp{ char{ 0 } };
 
-		auto offset = strftime(&tmp[0], sizeof(tmp), "%FT%T", gmtime(&in_time_t));
+		auto offset = strftime(&tmp[0], sizeof(tmp), "%FT%T", gmtime_r(&in_time_t, &tmp_tm));
 		snprintf(&tmp[offset], tmp.size() - offset, ".%03dZ T%03zu %s ", msec, get_thread_id() % 1000, P);
 		buffer.assign(&tmp[0]);
 
@@ -442,6 +444,7 @@ public:
 	{
 		if (level_ >= level::error)
 		{
+            std::unique_lock<std::mutex> l{lock_};
 			*ostream_ << logger::format<prefix::error, A...>(format, args...);
 			ostream_->flush();
 		}
@@ -451,6 +454,7 @@ public:
 	{
 		if (level_ >= level::error)
 		{
+            std::unique_lock<std::mutex> l{lock_};
 			*ostream_ << logger::format<prefix::error>(str);
 			ostream_->flush();
 		}
@@ -460,6 +464,7 @@ public:
 	{
 		if (level_ >= level::warning)
 		{
+            std::unique_lock<std::mutex> l{lock_};
 			*ostream_ << logger::format<prefix::warning, A...>(format, args...);
 			ostream_->flush();
 		}
@@ -469,6 +474,7 @@ public:
 	{
 		if (level_ >= level::warning)
 		{
+            std::unique_lock<std::mutex> l{lock_};
 			*ostream_ << logger::format<prefix::warning>(str);
 			ostream_->flush();
 		}
@@ -478,6 +484,7 @@ public:
 	{
 		if (level_ >= level::info)
 		{
+            std::unique_lock<std::mutex> l{lock_};
 			*ostream_ << logger::format<prefix::info, A...>(format, args...);
 			ostream_->flush();
 		}
@@ -487,6 +494,7 @@ public:
 	{
 		if (level_ >= level::info)
 		{
+            std::unique_lock<std::mutex> l{lock_};
 			*ostream_ << logger::format<prefix::info>(str);
 			ostream_->flush();
 		}
@@ -496,6 +504,7 @@ public:
 	{
 		if (level_ >= level::accesslog)
 		{
+            std::unique_lock<std::mutex> l{lock_};
 			*ostream_ << logger::format<prefix::accesslog, A...>(format, args...);
 			ostream_->flush();
 		}
@@ -506,7 +515,8 @@ public:
 		if (level_ >= level::accesslog)
 		{
 			if (str.back() != '\n') str += "\n";
-			*ostream_ << str;
+            std::unique_lock<std::mutex> l{lock_};
+            *ostream_ << str;
 			ostream_->flush();
 		}
 	}
@@ -515,6 +525,7 @@ public:
 	{
 		if (level_ >= level::debug)
 		{
+            std::unique_lock<std::mutex> l{lock_};
 			*ostream_ << logger::format<prefix::debug, A...>(format, args...);
 			ostream_->flush();
 		}
@@ -524,13 +535,15 @@ public:
 	{
 		if (level_ >= level::debug)
 		{
+            std::unique_lock<std::mutex> l{lock_};
 			*ostream_ << logger::format<prefix::debug>(str);
 			ostream_->flush();
 		}
 	}
 
 private:
-	std::ostream* ostream_;
+    std::mutex lock_;
+    std::ostream* ostream_;
 	std::ofstream redirected_ostream_;
 	std::atomic<level> level_;
 };
@@ -608,9 +621,9 @@ inline std::string return_current_time_and_date()
 	std::string result;
 	auto now = std::chrono::system_clock::now();
 	auto in_time_t = std::chrono::system_clock::to_time_t(now);
-
+    auto tmp_tm = std::tm{};
 	std::array<char, 32> tmp{ char{ 0 } };
-	auto size = strftime(&tmp[0], sizeof(tmp), "%a, %d %b %Y %H:%M:%S GMT", gmtime(&in_time_t));
+	auto size = strftime(&tmp[0], sizeof(tmp), "%a, %d %b %Y %H:%M:%S GMT", gmtime_r(&in_time_t, &tmp_tm));
 	ASSERT(size <= tmp.size());
 	result.assign(&tmp[0], size);
 
@@ -4069,17 +4082,20 @@ public:
 		std::string to_json_string(json_status_options options, bool main_object = true) const
 		{
 			std::ostringstream s;
-
-			if (main_object) s << "{";
+			std::unique_lock<std::mutex> g(mutex_);
+			
+            if (main_object) s << "{";
 
 			switch (options)
 			{
 				case json_status_options::full:
 				{
+                    mutex_.unlock();
 					s << to_json_string(json_status_options::config, false) << ", "
 					  << to_json_string(json_status_options::server_stats, false) << ", "
 					  << to_json_string(json_status_options::router, false) << ","
 					  << to_json_string(json_status_options::accesslog, false);
+                    mutex_.lock();
 					break;
 				}
 				case json_status_options::config:
@@ -4091,7 +4107,6 @@ public:
 				case json_status_options::server_stats:
 				{
 
-					std::lock_guard<std::mutex> g(mutex_);
 					s << "\"stats\": "
 					  << "{\"connections_current\":" << connections_current_ << ","
 					  << "\"connections_accepted\":" << connections_accepted_ << ","
@@ -4108,14 +4123,11 @@ public:
 				}
 				case json_status_options::router:
 				{
-					std::lock_guard<std::mutex> g(mutex_);
 					s << "\"router\": {" << router_information_ << "}";
 					break;
 				}
 				case json_status_options::accesslog:
 				{
-					std::lock_guard<std::mutex> g(mutex_);
-
 					s << "\"access_log\": [";
 					for (auto access_log_entry = access_log_.cbegin(); access_log_entry != access_log_.cend();
 						 ++access_log_entry)
