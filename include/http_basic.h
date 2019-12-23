@@ -3959,7 +3959,7 @@ public:
 	server& operator=(server&&) = delete;
 	server& operator=(const server&) = delete;
 
-	~server() = default;
+	virtual ~server() = default;
 
 	enum class state
 	{
@@ -4319,6 +4319,12 @@ public:
 
 	void http_connection_queue_handler()
 	{
+		while (active_ == state::activating)
+		{
+			// Wait until server and router is ready
+			std::this_thread::yield();
+		}
+
 		while (http_enabled_ && (active_ == state::activating || active_ == state::active))
 		{
 			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);

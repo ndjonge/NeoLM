@@ -49,5 +49,6 @@ int main()
 	license_server.start_server();
 
 	license_server.run();
+
 	std::cout << "exit!\n";
 }

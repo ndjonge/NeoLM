@@ -301,6 +301,8 @@ public:
 		if (api_server_.upstream_controller_) api_server_.upstream_controller_->add();
 	}
 
+	void stop_server() { this->api_server_.deactivate(); }
+
 	void run()
 	{
 		/*struct test
@@ -351,6 +353,8 @@ public:
 		{
 			api_server_.logger_.info("Alive!\n");
 			std::this_thread::sleep_for(std::chrono::seconds(10));
+
+			stop_server();
 		}
 	}
 
