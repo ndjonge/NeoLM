@@ -55,7 +55,7 @@ target_link_libraries( ${PROJECT_NAME} ${CURL_LIBRARIES} OpenSSL::SSL OpenSSL::C
 if(WIN32)
   target_link_libraries( ${PROJECT_NAME} wsock32 ws2_32)
 else()
-  add_definitions(-std=c++11 -Wreorder -g -fsanitize=address -fno-omit-frame-pointer) 
-  target_link_libraries( ${PROJECT_NAME} pthread -fsanitize=address -fno-omit-frame-pointer) 
+  add_definitions(-std=c++11 -Wreorder -g -fsanitize=thread -fno-omit-frame-pointer) 
+  target_link_libraries( ${PROJECT_NAME} pthread -fsanitize=thread -fno-omit-frame-pointer) 
 endif()
 
