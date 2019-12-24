@@ -4027,7 +4027,7 @@ public:
 		std::string to_json_string(json_status_options options, bool main_object = true) const
 		{
 			std::ostringstream s;
-			std::unique_lock<std::mutex> g(mutex_);
+			std::lock_guard<std::mutex> g(mutex_);
 
 			if (main_object) s << "{";
 
@@ -4433,7 +4433,7 @@ public:
 
 					if (https_socket.lowest_layer().lowest_layer() > network::tcp::socket::invalid_socket)
 					{
-						std::unique_lock<std::mutex> m(https_connection_queue_mutex_);
+						std::lock_guard<std::mutex> m(https_connection_queue_mutex_);
 						https_connection_queue_.push(std::move(https_socket));
 						https_connection_queue_has_connection_.notify_one();
 					}
@@ -4531,7 +4531,7 @@ public:
 
 					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
 					{
-						std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
+						std::lock_guard<std::mutex> m(http_connection_queue_mutex_);
 						http_connection_queue_.push(std::move(http_socket));
 						http_connection_queue_has_connection_.notify_one();
 					}
