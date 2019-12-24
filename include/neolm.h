@@ -353,8 +353,6 @@ public:
 		{
 			api_server_.logger_.info("Alive!\n");
 			std::this_thread::sleep_for(std::chrono::seconds(10));
-
-			stop_server();
 		}
 	}
 

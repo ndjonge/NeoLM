@@ -442,94 +442,47 @@ public:
 
 	*/
 
-	template <typename... A> void error(const char* format, const A&... args)
+	void log(const level l, const std::string& msg)
 	{
-		if (level_ >= level::error)
+		if (level_ == l)
 		{
-			std::unique_lock<std::mutex> l{ lock_ };
-			*ostream_ << logger::format<prefix::error, A...>(format, args...);
-			ostream_->flush();
-		}
-	}
-
-	template <typename... A> void error(const std::string& str)
-	{
-		if (level_ >= level::error)
-		{
-			std::unique_lock<std::mutex> l{ lock_ };
-			*ostream_ << logger::format<prefix::error>(str);
-			ostream_->flush();
-		}
-	}
-
-	template <typename... A> void warning(const char* format, const A&... args)
-	{
-		if (level_ >= level::warning)
-		{
-			std::unique_lock<std::mutex> l{ lock_ };
-			*ostream_ << logger::format<prefix::warning, A...>(format, args...);
-			ostream_->flush();
-		}
-	}
-
-	template <typename... A> void warning(const std::string& str)
-	{
-		if (level_ >= level::warning)
-		{
-			std::unique_lock<std::mutex> l{ lock_ };
-			*ostream_ << logger::format<prefix::warning>(str);
-			ostream_->flush();
-		}
-	}
-
-	template <typename... A> void info(const char* format, const A&... args)
-	{
-		if (level_ >= level::info)
-		{
-			std::unique_lock<std::mutex> l{ lock_ };
-			*ostream_ << logger::format<prefix::info, A...>(format, args...);
-			ostream_->flush();
-		}
-	}
-
-	template <typename... A> void info(const std::string& str)
-	{
-		if (level_ >= level::info)
-		{
-			std::unique_lock<std::mutex> l{ lock_ };
-			*ostream_ << logger::format<prefix::info>(str);
-			ostream_->flush();
+			std::lock_guard<std::mutex> g{ lock_ };
+			ostream_->write(msg.data(), msg.size()).flush();
 		}
 	}
 
 	template <typename... A> void accesslog(const char* format, const A&... args)
 	{
-		if (level_ >= level::accesslog)
-		{
-			std::unique_lock<std::mutex> l{ lock_ };
-			*ostream_ << logger::format<prefix::accesslog, A...>(format, args...);
-			ostream_->flush();
-		}
+		log(level::accesslog, logger::format<prefix::accesslog, A...>(format, args...));
 	}
 
-	template <typename... A> void accesslog(std::string str)
+	template <typename... A> void info(const char* format, const A&... args)
 	{
-		if (level_ >= level::accesslog)
-		{
-			if (str.back() != '\n') str += "\n";
-			std::unique_lock<std::mutex> l{ lock_ };
-			*ostream_ << str;
-			ostream_->flush();
-		}
+		log(level::info, logger::format<prefix::info, A...>(format, args...));
+	}
+
+	template <typename... A> void warning(const char* format, const A&... args)
+	{
+		log(level::warning, logger::format<prefix::warning, A...>(format, args...));
+	}
+
+	template <typename... A> void error(const char* format, const A&... args)
+	{
+		log(level::error, logger::format<prefix::error, A...>(format, args...));
 	}
 
 	template <typename... A> void debug(const char* format, const A&... args)
 	{
-		if (level_ >= level::debug)
+		log(level::debug, logger::format<prefix::debug, A...>(format, args...));
+	}
+
+	template <typename... A> void accesslog(std::string msg)
+	{
+		if (level_ >= level::accesslog)
 		{
-			std::unique_lock<std::mutex> l{ lock_ };
-			*ostream_ << logger::format<prefix::debug, A...>(format, args...);
-			ostream_->flush();
+			if (msg.back() != '\n') msg += "\n";
+			std::lock_guard<std::mutex> g{ lock_ };
+			ostream_->write(msg.data(), msg.size()).flush();
 		}
 	}
 
