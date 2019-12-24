@@ -196,22 +196,12 @@ class logger
 public:
 	logger(const std::string& file, const std::string& level) : ostream_(&std::cerr)
 	{
-		if (level == "accesslog")
-			level_ = level::accesslog;
-		else if (level == "error")
-			level_ = level::error;
-		else if (level == "info")
-			level_ = level::info;
-		else if (level == "debug")
-			level_ = level::debug;
-		else
-			level_ = level::none;
+		set_level(level);
 
 		if (level_ != level::none && file != "std::cerr")
 		{
 			redirected_ostream_.open(file, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
 			ostream_ = &redirected_ostream_;
-			accesslog("logging with loglevel: [{s}] started\n", level);
 		}
 	}
 
@@ -224,8 +214,37 @@ public:
 	}
 
 	level current_level() { return level_.load(); }
+	std::string current_level_to_string()
+	{
+		if (level_ == level::accesslog)
+			return "accesslog";
+		else if (level_ == level::error)
+			return "error";
+		else if (level_ == level::info)
+			return "info";
+		else if (level_ == level::debug)
+			return "debug";
+		else
+			return "none";
+	}
 
 	void set_level(level l) { level_.store(l); }
+
+	void set_level(const std::string& level)
+	{
+		if (level == "accesslog")
+			level_ = level::accesslog;
+		else if (level == "error")
+			level_ = level::error;
+		else if (level == "info")
+			level_ = level::info;
+		else if (level == "debug")
+			level_ = level::debug;
+		else
+			level_ = level::none;
+
+		accesslog("log_level set to: [{s}]\n", level);
+	}
 
 	template <const char* P, typename... A> static std::string format(const std::string& msg) { return msg.c_str(); }
 

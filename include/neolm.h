@@ -17,104 +17,6 @@ using json = nlohmann::json;
 namespace neolm
 {
 
-namespace pm
-{
-
-namespace group
-{
-class member;
-
-using group_members = std::unordered_map<std::string, pm::group::member>;
-
-class member
-{
-public:
-	member(std::string tenant_id, std::string url) : tenant_id_(std::move(tenant_id)), url_(std::move(url)) {}
-
-	const std::string to_string()
-	{
-		std::stringstream ret;
-
-		ret << tenant_id_ << " : " << url_ << "\n";
-
-		return ret.str();
-	}
-
-	std::string tenant() const { return tenant_id_; }
-
-	/*	void spawn(const std::string& command)
-		{
-			std::cout << "spawn:" << url_ << "\n";
-			auto future_ = std::async(std::launch::async, [this]() { auto result =
-	   std::system(url_.c_str()); });
-		}*/
-
-private:
-	std::string tenant_id_;
-	std::string url_;
-};
-
-} // namespace group
-} // namespace pm
-
-template <class M> class product
-{
-public:
-	product(std::string id, std::string description, M&& m)
-		: id_(std::move(id)), description_(std::move(description)), model_(m){};
-
-private:
-	std::string id_;
-	std::string description_;
-
-	M model_;
-};
-
-class user
-{
-public:
-	user(std::string name) : name_(std::move(name)){};
-
-	std::string name_;
-};
-
-class server
-{
-public:
-	server(std::string id, std::string hostname) : id_(std::move(id)), hostname_(std::move(hostname)){};
-
-	std::string id_;
-	std::string hostname_;
-};
-
-class named_user_license
-{
-public:
-	named_user_license(size_t max_heavy, size_t max_light) : max_heavy_(max_heavy), max_light_(max_light){};
-
-private:
-	size_t max_heavy_;
-	size_t max_light_;
-};
-
-class named_server_license
-{
-public:
-	named_server_license(size_t max) : max_(max){};
-
-private:
-	size_t max_;
-};
-
-class concurrent_user_license
-{
-public:
-	concurrent_user_license(size_t max) : max_(max) {}
-
-private:
-	size_t max_;
-};
-
 template <class S> class license_manager
 {
 public:
@@ -131,6 +33,18 @@ private:
 		api_server(license_manager& license_manager, http::configuration& configuration)
 			: S(configuration), http::upstream::enable_server_as_upstream(this), license_manager_(license_manager)
 		{
+			S::router_.on_post(
+				S::configuration_.template get<std::string>("internal_base", "") + "/log_level",
+				[this](http::session_handler& session) {
+					logger_.set_level(session.request().body());
+					auto new_level = logger_.current_level_to_string();
+
+					session.response().body() = logger_.current_level_to_string();
+					http::basic::server::configuration_.set("log_level", new_level);
+
+					session.response().status(http::status::ok);
+				});
+
 			S::router_.on_get(
 				S::configuration_.template get<std::string>("internal_base", "") + "/status",
 				[this](http::session_handler& session) {
@@ -228,24 +142,6 @@ private:
 					session.response().body() = S::manager().to_json_string(section_option);
 					session.response().type("json");
 
-					session.response().status(http::status::ok);
-				});
-
-			S::router_.on_get(
-				S::configuration_.template get<std::string>("internal_base", "") + "/wait/{sec}",
-				[this](http::session_handler& session) {
-					size_t sec = std::atoi(session.params().get("sec", "2").data());
-					std::this_thread::sleep_for(std::chrono::seconds(sec));
-					session.response().body() = "slomo:";
-					session.response().status(http::status::ok);
-				});
-
-			S::router_.on_delete(
-				S::configuration_.template get<std::string>("internal_base", "") + "/wait/{sec}",
-				[this](http::session_handler& session) {
-					size_t sec = std::atoi(session.params().get("sec", "2").data());
-					std::this_thread::sleep_for(std::chrono::seconds(sec));
-					session.response().body() = "slomo:";
 					session.response().status(http::status::ok);
 				});
 
@@ -353,7 +249,6 @@ public:
 		{
 			api_server_.logger_.info("Alive!\n");
 			std::this_thread::sleep_for(std::chrono::seconds(10));
-
 		}
 	}
 
@@ -362,7 +257,6 @@ private:
 	api_server api_server_;
 	std::string home_dir_;
 
-	pm::group::group_members group_members_;
 }; // namespace neolm
 
 } // namespace neolm
