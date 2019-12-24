@@ -476,23 +476,12 @@ public:
 		log(level::debug, logger::format<prefix::debug, A...>(format, args...));
 	}
 
-	template <typename... A> void accesslog(std::string msg)
+	template <typename... A> void accesslog(const std::string& msg)
 	{
 		if (level_ >= level::accesslog)
 		{
-			if (msg.back() != '\n') msg += "\n";
 			std::lock_guard<std::mutex> g{ lock_ };
 			ostream_->write(msg.data(), msg.size()).flush();
-		}
-	}
-
-	template <typename... A> void debug(const std::string& str)
-	{
-		if (level_ >= level::debug)
-		{
-			std::unique_lock<std::mutex> l{ lock_ };
-			*ostream_ << logger::format<prefix::debug>(str);
-			ostream_->flush();
 		}
 	}
 
@@ -557,7 +546,7 @@ inline std::string escape_json(const std::string& s)
 				}
 				else
 				{
-					o << c;
+					o.write(&c, 1);
 				}
 		}
 	}
@@ -4695,9 +4684,9 @@ public:
 										std::chrono::steady_clock::now() - t0)
 										.count());
 
-								std::string log_msg = server_.manager().log_access(
-														  session_handler_, routing.the_route().route_metrics())
-													  + "\n";
+								auto log_msg = server_.manager().log_access(
+												   session_handler_, routing.the_route().route_metrics())
+											   + "\n";
 
 								server_.logger_.accesslog(log_msg);
 							}
