@@ -242,8 +242,6 @@ public:
 			level_ = level::debug;
 		else
 			level_ = level::none;
-
-		accesslog("log_level set to: [{s}]\n", level);
 	}
 
 	template <const char* P, typename... A> static std::string format(const std::string& msg) { return msg.c_str(); }
@@ -4181,10 +4179,6 @@ public:
 		, endpoint_https_(configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 5))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
-		, http_connection_thread_([this]() { http_listener_handler(); })
-		, https_connection_thread_([this]() { https_listener_handler(); })
-		, http_connection_queue_thread_([this]() { http_connection_queue_handler(); })
-		, https_connection_queue_thread_([this]() { https_connection_queue_handler(); })
 	{
 		logger_.debug("server created\n");
 	}
@@ -4214,10 +4208,16 @@ public:
 
 	server& operator=(const server&) = delete;
 	server& operator=(const server&&) = delete;
-
+	 
 	http::basic::server::state start_server() override
 	{
 		logger_.info("start_server: begin\n");
+
+		http_connection_thread_ = std::move(std::thread{ [this]() { http_listener_handler(); } });
+		http_connection_queue_thread_ = std::move(std::thread{ [this]() { http_connection_queue_handler(); } });
+	
+		https_connection_thread_ = std::move(std::thread{ [this]() { https_listener_handler(); } });
+		https_connection_queue_thread_ = std::move(std::thread{ [this]() { https_connection_queue_handler(); } });
 
 		if (router_.state_ == http::api::router<>::state::configured)
 		{
