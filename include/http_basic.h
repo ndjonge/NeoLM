@@ -3441,26 +3441,12 @@ public:
 	std::string private_base_;
 
 public:
-	enum class state
-	{
-		configuring,
-		configured
-	};
-
-	std::atomic<state> state_{ state::configuring };
-
 	router(std::string private_base) : root_(new router::route_part{}), private_base_(private_base)
 	{
 		// std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
 		// std::cout << "sizeof(router::route_part)" << std::to_string(sizeof(router::route_part)) << "\n";
 		// std::cout << "sizeof(router::route)" << std::to_string(sizeof(router::route)) << "\n";
 		// std::cout << "sizeof(router::metrics)" << std::to_string(sizeof(router::metrics)) << "\n";
-	}
-
-	state use()
-	{
-		state_.store(state::configured);
-		return state_.load();
 	}
 
 	enum class middleware_type
@@ -3944,12 +3930,14 @@ public:
 		deactivating
 	};
 
-	std::atomic<server::state>& active() { return active_; }
+	void set_state(server::state s) { state_.store(s); }
+	std::atomic<state>& get_status() { return state_; }
+	bool is_active() { return state_.load() == state::active; }
 
-	virtual state start_server()
+	virtual server::state start_server()
 	{
-		active_ = state::active;
-		return active_;
+		state_ = state::active;
+		return state_;
 	}
 
 	const configuration& config() const { return configuration_; }
@@ -4151,7 +4139,7 @@ protected:
 	http::configuration configuration_;
 	lgr::logger logger_;
 
-	std::atomic<state> active_{ state::activating };
+	std::atomic<state> state_{ state::activating };
 }; // namespace basic
 
 namespace threaded
@@ -4183,14 +4171,16 @@ public:
 		logger_.debug("server created\n");
 	}
 
-	~server()
+	virtual ~server()
 	{
+		if (is_active()) this->deactivate();
+
 		logger_.debug("server joining connection threads\n");
 
-		http_connection_thread_.join();
-		https_connection_thread_.join();
-		http_connection_queue_thread_.join();
-		https_connection_queue_thread_.join();
+		if (http_connection_thread_.joinable()) http_connection_thread_.join();
+		if (https_connection_thread_.joinable()) https_connection_thread_.join();
+		if (http_connection_queue_thread_.joinable()) http_connection_queue_thread_.join();
+		if (https_connection_queue_thread_.joinable()) https_connection_queue_thread_.join();
 
 		// Wait for all connections to close:
 		while (manager_.connections_current() > 0)
@@ -4208,38 +4198,32 @@ public:
 
 	server& operator=(const server&) = delete;
 	server& operator=(const server&&) = delete;
-	 
+
 	http::basic::server::state start_server() override
 	{
 		logger_.info("start_server: begin\n");
 
 		http_connection_thread_ = std::move(std::thread{ [this]() { http_listener_handler(); } });
 		http_connection_queue_thread_ = std::move(std::thread{ [this]() { http_connection_queue_handler(); } });
-	
+
 		https_connection_thread_ = std::move(std::thread{ [this]() { https_listener_handler(); } });
 		https_connection_queue_thread_ = std::move(std::thread{ [this]() { https_connection_queue_handler(); } });
 
-		if (router_.state_ == http::api::router<>::state::configured)
+		// router must be in configured state
+		// wait for listener(s to have an valid listen socket if listener is enabled)
+		auto waiting = 0;
+		auto timeout = 5;
+
+		while (http_enabled_ && http_listen_port_.load() == network::tcp::socket::invalid_socket && waiting < timeout)
 		{
-			// router must be in configured state
-			// wait for listener(s to have an valid listen socket if listener is enabled)
-			auto waiting = 0;
-			auto timeout = 5;
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+			waiting++;
+		}
 
-			logger_.info("start_server: router configured\n");
-
-			while (http_enabled_ && http_listen_port_.load() == network::tcp::socket::invalid_socket
-				   && waiting < timeout)
-			{
-				std::this_thread::sleep_for(std::chrono::seconds(1));
-				waiting++;
-			}
-
-			while (https_enabled_ && https_listen_port_.load() == -1 && waiting < timeout)
-			{
-				std::this_thread::sleep_for(std::chrono::seconds(1));
-				waiting++;
-			}
+		while (https_enabled_ && https_listen_port_.load() == -1 && waiting < timeout)
+		{
+			std::this_thread::sleep_for(std::chrono::seconds(1));
+			waiting++;
 		}
 
 		if (http_enabled_)
@@ -4281,27 +4265,26 @@ public:
 		// take-off checklist complete....
 		logger_.info("start_server: listener(s) started\n");
 
-		active_.store(http::basic::server::state::active);
+		state_.store(http::basic::server::state::active);
 
-		return active_.load();
+		return state_.load();
 	}
 
 	virtual void deactivate()
 	{
-		http::basic::server::active_ = state::deactivating;
-		http::basic::server::router_.state_ = http::api::router<>::state::configured;
+		http::basic::server::state_ = state::deactivating;
 		logger_.info("deactivating:\n");
 	}
 
 	void http_connection_queue_handler()
 	{
-		while (active_ == state::activating)
+		while (state_ == state::activating)
 		{
 			// Wait until server and router is ready
 			std::this_thread::yield();
 		}
 
-		while (http_enabled_ && (active_ == state::activating || active_ == state::active))
+		while (http_enabled_ && (state_ == state::activating || state_ == state::active))
 		{
 			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 
@@ -4332,7 +4315,7 @@ public:
 
 	void https_connection_queue_handler()
 	{
-		while (https_enabled_ && (active_ == state::activating || active_ == state::active))
+		while (https_enabled_ && (state_ == state::activating || state_ == state::active))
 		{
 			std::unique_lock<std::mutex> m(https_connection_queue_mutex_);
 
@@ -4421,11 +4404,6 @@ public:
 						+ std::to_string(https_listen_port_end_) + " ]"));
 				}
 
-				while (router_.state_ != http::api::router<>::state::configured)
-				{
-					std::this_thread::sleep_for(std::chrono::seconds(1));
-				}
-
 				network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
 				ssl_context.use_certificate_chain_file(
@@ -4438,7 +4416,7 @@ public:
 				http_listen_port_.store(https_listen_port_probe);
 				configuration_.set("http_listen_port", std::to_string(http_listen_port_.load()));
 
-				while (active_ == state::active)
+				while (state_ == state::active)
 				{
 					network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
 					ec = network::error::success;
@@ -4527,17 +4505,12 @@ public:
 						+ std::to_string(http_listen_port_end_) + " ]"));
 				}
 
-				while (router_.state_ != http::api::router<>::state::configured)
-				{
-					std::this_thread::sleep_for(std::chrono::seconds(1));
-				}
-
 				acceptor_http.listen();
 
 				http_listen_port_.store(http_listen_port_probe);
 				configuration_.set("http_listen_port", std::to_string(http_listen_port_.load()));
 
-				while (active_ == state::activating || active_ == state::active)
+				while (state_ == state::activating || state_ == state::active)
 				{
 					network::tcp::socket http_socket{};
 
@@ -4658,7 +4631,7 @@ public:
 				{
 					if (parse_result == http::request_parser::result_type::good)
 					{
-						if (server_.active().load() == http::basic::server::state::active)
+						if (server_.is_active())
 						{
 							session_handler_.request().set(
 								"Remote_Addr",

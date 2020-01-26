@@ -163,9 +163,6 @@ private:
 					session.response().set("name", "value2");
 					return http::api::routing::outcome<std::int64_t>{ 0 };
 				});
-
-			// std::this_thread::sleep_for(std::chrono::seconds{ 60 });
-			S::router_.use();
 		}
 
 	private:
@@ -245,7 +242,7 @@ public:
 		test t(this->api_server_, the_test);
 		*/
 
-		while (api_server_.active() == http::basic::server::state::active)
+		while (api_server_.is_active())
 		{
 			api_server_.logger_.info("Alive!\n");
 			std::this_thread::sleep_for(std::chrono::seconds(10));
