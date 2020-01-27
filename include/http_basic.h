@@ -203,6 +203,8 @@ public:
 			redirected_ostream_.open(file, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
 			ostream_ = &redirected_ostream_;
 		}
+
+		accesslog("logger started\n");
 	}
 
 	~logger()
@@ -1453,7 +1455,9 @@ public:
 			return not_found;
 		}
 		else
+		{
 			return i->value;
+		}
 	}
 
 	inline void set(const std::string& name, const std::string& value)
@@ -4214,7 +4218,7 @@ public:
 		auto waiting = 0;
 		auto timeout = 5;
 
-		while (http_enabled_ && http_listen_port_.load() == network::tcp::socket::invalid_socket && waiting < timeout)
+		while (http_enabled_ && http_listen_port_.load() == -1 && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
@@ -4238,10 +4242,6 @@ public:
 				else
 					logger_.error("failed to start http on port: {d}\n", this->http_listen_port_begin_);
 			}
-			else
-			{
-				logger_.accesslog("http listener started on port: {d}\n", this->http_listen_port_.load());
-			}
 		}
 
 		if (https_enabled_)
@@ -4256,16 +4256,12 @@ public:
 				else
 					logger_.error("failed to start https on port: {d}\n", this->https_listen_port_begin_);
 			}
-			else
-			{
-				logger_.accesslog("https listener started on port: {d}\n", this->https_listen_port_.load());
-			}
 		}
 
-		// take-off checklist complete....
-		logger_.info("start_server: listener(s) started\n");
-
+		// before takeoff checklist complete....
 		state_.store(http::basic::server::state::active);
+		// takeoff....
+		logger_.info("server state set to active\n");
 
 		return state_.load();
 	}
@@ -4273,7 +4269,7 @@ public:
 	virtual void deactivate()
 	{
 		http::basic::server::state_ = state::deactivating;
-		logger_.info("deactivating:\n");
+		logger_.info("server state set to deactivating\n");
 	}
 
 	void http_connection_queue_handler()
@@ -4413,8 +4409,9 @@ public:
 
 				acceptor_https.listen();
 
-				http_listen_port_.store(https_listen_port_probe);
-				configuration_.set("http_listen_port", std::to_string(http_listen_port_.load()));
+				https_listen_port_.store(https_listen_port_probe);
+				configuration_.set("https_listen_port", std::to_string(https_listen_port_probe));
+				logger_.accesslog("https listener on port: {d} started\n", https_listen_port_probe);
 
 				while (state_ == state::active)
 				{
@@ -4435,6 +4432,7 @@ public:
 						https_connection_queue_has_connection_.notify_one();
 					}
 				}
+				logger_.accesslog("https listener on port: {d} stopped\n", https_listen_port_probe);
 			}
 			catch (std::runtime_error& e)
 			{
@@ -4508,7 +4506,8 @@ public:
 				acceptor_http.listen();
 
 				http_listen_port_.store(http_listen_port_probe);
-				configuration_.set("http_listen_port", std::to_string(http_listen_port_.load()));
+				configuration_.set("http_listen_port", std::to_string(http_listen_port_probe));
+				logger_.accesslog("http listener on port: {d} started\n", http_listen_port_probe);
 
 				while (state_ == state::activating || state_ == state::active)
 				{
@@ -4528,6 +4527,7 @@ public:
 						http_connection_queue_has_connection_.notify_one();
 					}
 				}
+				logger_.accesslog("http listener on port: {d} stopped\n", http_listen_port_probe);
 			}
 			catch (std::runtime_error& e)
 			{
