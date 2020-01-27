@@ -30,25 +30,27 @@ int main()
 	network::init();
 	network::ssl::init();
 
-	neolm::license_manager<http::basic::threaded::server> license_server{
-		http::configuration{ { "http_server_identification", "mir_http/8.0.01" },
-							 { "http_listen_address", "::0" },
-							 { "http_listen_port_begin", "3000" },
-							 { "http_listen_port_end", "3010" },
-							 { "https_listen_port_begin", "0" },
-							 { "https_listen_port_end", "0" },
-							 { "private_base", "/_internal" },
-							 { "log_file", "/projects/accesslog.log" },
-							 { "log_level", "accesslog" },
-							 { "upstream_node_type", "" },
-							 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },
-							 { "upstream_node_nginx-group", "bshell-workers" } },
-		"/projects/neolm_licenses/"
-	};
+	for (auto i = 0; i != 100; i++)
 
-	license_server.start_server();
+	{
+		neolm::license_manager<http::basic::threaded::server> license_server{
+			http::configuration{ { "http_server_identification", "mir_http/8.0.01" },
+								 { "http_listen_address", "::0" },
+								 { "http_listen_port_begin", "0" },
+								 { "https_enable", "false" },
+								 { "private_base", "/_internal" },
+								 { "log_file", "/projects/accesslog.log" },
+								 { "log_level", "accesslog" },
+								 { "upstream_node_type", "" },
+								 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },
+								 { "upstream_node_nginx-group", "bshell-workers" } },
+			"/projects/neolm_licenses/"
+		};
 
-	license_server.run();
+		license_server.start_server();
 
-	std::cout << "exit!\n";
+		license_server.run();
+
+		std::cout << "exit!\n";
+	}
 }

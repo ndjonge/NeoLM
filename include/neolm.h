@@ -242,10 +242,10 @@ public:
 		test t(this->api_server_, the_test);
 		*/
 
-		while (api_server_.is_active())
+		// while (api_server_.is_active())
 		{
 			api_server_.logger_.info("Alive!\n");
-			std::this_thread::sleep_for(std::chrono::seconds(10));
+			std::this_thread::sleep_for(std::chrono::seconds(2));
 		}
 	}
 
