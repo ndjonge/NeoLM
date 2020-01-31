@@ -463,7 +463,7 @@ public:
 
 	void log(const level l, const std::string& msg)
 	{
-		if (level_ == l)
+		if (level_ >= l)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
 			ostream_->write(msg.data(), msg.size()).flush();
@@ -503,6 +503,8 @@ public:
 			ostream_->write(msg.data(), msg.size()).flush();
 		}
 	}
+
+	std::ostream& as_stream() { return *ostream_; }
 
 private:
 	std::mutex lock_;
@@ -3838,15 +3840,17 @@ public:
 			curl_easy_setopt(hnd_, CURLOPT_DEBUGFUNCTION, debug_callback);
 			curl_easy_setopt(hnd_, CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
 		}
-
+		curl_easy_setopt(hnd_, CURLOPT_NOSIGNAL, 1);
 		curl_easy_setopt(hnd_, CURLOPT_WRITEFUNCTION, write_callback);
 		curl_easy_setopt(hnd_, CURLOPT_WRITEDATA, (void*)&buffer_);
-		curl_easy_setopt(hnd_, CURLOPT_HTTPHEADER, headers_);
 		curl_easy_setopt(hnd_, CURLOPT_ERRORBUFFER, error_buf_);
 		curl_easy_setopt(hnd_, CURLOPT_NOSIGNAL, 1);
 		curl_easy_setopt(hnd_, CURLOPT_HEADERFUNCTION, recv_header_callback);
 		curl_easy_setopt(hnd_, CURLOPT_HEADERDATA, (void*)this);
-		curl_easy_setopt(hnd_, CURLOPT_TIMEOUT, 5L);
+		curl_easy_setopt(hnd_, CURLOPT_TIMEOUT_MS, 3000L);
+		curl_easy_setopt(hnd_, CURLOPT_CONNECTTIMEOUT_MS, 3000L);
+		curl_easy_setopt(hnd_, CURLOPT_TCP_NODELAY, 0);
+		curl_easy_setopt(hnd_, CURLOPT_NOPROGRESS, 1L);
 		setup(verb, url, hdrs, body);
 	}
 
@@ -3866,7 +3870,7 @@ public:
 		{
 			headers_ = curl_slist_append(headers_, a.c_str());
 		}
-
+		curl_easy_setopt(hnd_, CURLOPT_HTTPHEADER, headers_);
 		curl_easy_setopt(hnd_, CURLOPT_CUSTOMREQUEST, verb.c_str());
 		curl_easy_setopt(hnd_, CURLOPT_URL, url.c_str());
 
@@ -3877,7 +3881,7 @@ public:
 	http::response_message call(std::string& error) noexcept
 	{
 		CURLcode ret = curl_easy_perform(hnd_);
-
+		curl_easy_reset(hnd_);
 		if (ret != CURLE_OK)
 		{
 			error = std::string{ curl_easy_strerror(ret) } + " when requesting " + verb_ + " on url: " + url_;
@@ -3937,10 +3941,17 @@ public:
 	void set_state(server::state s) { state_.store(s); }
 	std::atomic<state>& get_status() { return state_; }
 	bool is_active() { return state_.load() == state::active; }
+	bool is_activating() { return state_.load() == state::activating; }
 
-	virtual server::state start_server()
+	virtual server::state start()
 	{
 		state_ = state::active;
+		return state_;
+	}
+
+	virtual server::state stop()
+	{
+		state_ = state::not_active;
 		return state_;
 	}
 
@@ -4177,21 +4188,7 @@ public:
 
 	virtual ~server()
 	{
-		if (is_active()) this->deactivate();
-
-		logger_.debug("server joining connection threads\n");
-
-		if (http_connection_thread_.joinable()) http_connection_thread_.join();
-		if (https_connection_thread_.joinable()) https_connection_thread_.join();
-		if (http_connection_queue_thread_.joinable()) http_connection_queue_thread_.join();
-		if (https_connection_queue_thread_.joinable()) https_connection_queue_thread_.join();
-
-		// Wait for all connections to close:
-		while (manager_.connections_current() > 0)
-		{
-			logger_.debug("server still has connection\n");
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-		}
+		if (is_active() || is_activating()) this->stop();
 
 		logger_.debug("server deleted\n");
 	}
@@ -4203,7 +4200,7 @@ public:
 	server& operator=(const server&) = delete;
 	server& operator=(const server&&) = delete;
 
-	http::basic::server::state start_server() override
+	http::basic::server::state start() override
 	{
 		logger_.info("start_server: begin\n");
 
@@ -4266,10 +4263,26 @@ public:
 		return state_.load();
 	}
 
-	virtual void deactivate()
+	virtual http::basic::server::state stop() override
 	{
 		http::basic::server::state_ = state::deactivating;
 		logger_.info("server state set to deactivating\n");
+
+		logger_.debug("server joining connection threads\n");
+
+		if (http_connection_thread_.joinable()) http_connection_thread_.join();
+		if (https_connection_thread_.joinable()) https_connection_thread_.join();
+		if (http_connection_queue_thread_.joinable()) http_connection_queue_thread_.join();
+		if (https_connection_queue_thread_.joinable()) https_connection_queue_thread_.join();
+
+		// Wait for all connections to close:
+		while (manager_.connections_current() > 0)
+		{
+			logger_.debug("server still has connection\n");
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		}
+
+		return state::not_active;
 	}
 
 	void http_connection_queue_handler()
@@ -4409,9 +4422,9 @@ public:
 
 				acceptor_https.listen();
 
-				https_listen_port_.store(https_listen_port_probe);
 				configuration_.set("https_listen_port", std::to_string(https_listen_port_probe));
 				logger_.accesslog("https listener on port: {d} started\n", https_listen_port_probe);
+				https_listen_port_.store(https_listen_port_probe);
 
 				while (state_ == state::active)
 				{
@@ -4505,9 +4518,9 @@ public:
 
 				acceptor_http.listen();
 
-				http_listen_port_.store(http_listen_port_probe);
 				configuration_.set("http_listen_port", std::to_string(http_listen_port_probe));
 				logger_.accesslog("http listener on port: {d} started\n", http_listen_port_probe);
+				http_listen_port_.store(http_listen_port_probe);
 
 				while (state_ == state::activating || state_ == state::active)
 				{
@@ -4581,6 +4594,7 @@ public:
 					data_begin = std::begin(buffer);
 
 					int ret = network::read(client_socket_, network::buffer(&*data_begin, buffer.size()));
+					server_.logger_.debug("connection_handler > network::read returned: {d}\n", ret);
 					if (ret <= 0)
 					{
 						break;
@@ -4609,6 +4623,7 @@ public:
 					{
 						data_begin = std::begin(buffer);
 						int ret = network::read(client_socket_, network::buffer(&*data_begin, buffer.size()));
+						server_.logger_.debug("connection_handler > network::read returned: {d}\n", ret);
 
 						if (ret <= 0)
 						{

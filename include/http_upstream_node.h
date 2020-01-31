@@ -47,10 +47,9 @@ public:
 
 	result add() const noexcept
 	{
-		do
+		for (int i = 0; i != 5; i++)
 		{
 			std::string ec;
-			bool retry = false;
 			auto up_result = http::client::request<http::method::get>(
 				endpoint_base_url_
 					+ "&up=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
@@ -59,62 +58,84 @@ public:
 				{},
 				{});
 
-			if (up_result.status() == http::status::ok)
+			if (ec.empty())
 			{
-				return http::upstream::sucess;
-			}
-			else
-			{
-				auto add_result = http::client::request<http::method::get>(
-					endpoint_base_url_
-						+ "&add=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1")
-						+ ":" + server_.config().get("http_listen_port"),
-					ec,
-					{},
-					{});
-
-				if (add_result.status() == http::status::ok)
+				if (up_result.status() == http::status::ok)
 				{
 					return http::upstream::sucess;
 				}
 				else
 				{
-					if (retry == true) break;
-
-					retry = true;
+					// not found then add
+					break;
 				}
 			}
-		} while (remove() == http::upstream::sucess); // remove ourself and try again....
+		}
+
+		for (int i = 0; i != 5; i++)
+		{
+			std::string ec;
+			auto add_result = http::client::request<http::method::get>(
+				endpoint_base_url_
+					+ "&add=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
+					+ server_.config().get("http_listen_port"),
+				ec,
+				{ "Connection: close" },
+				{});
+
+			if (ec.empty())
+			{
+				if (add_result.status() == http::status::ok)
+				{
+					return http::upstream::sucess;
+				}
+			}
+		}
 
 		return http::upstream::failed;
 	}
 
 	result remove() const noexcept
 	{
-		std::string ec;
-		auto down_result = http::client::request<http::method::get>(
-			endpoint_base_url_
-				+ "&down=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
-				+ server_.config().get("http_listen_port"),
-			ec,
-			{},
-			{});
+		bool down = false;
 
-		if (down_result.status() == http::status::ok)
+		for (int i = 0; i != 5; i++)
 		{
-			auto remove_result = http::client::request<http::method::get>(
+
+			std::string ec;
+			auto down_result = http::client::request<http::method::get>(
 				endpoint_base_url_
-					+ "&remove=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
+					+ "&down=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
 					+ server_.config().get("http_listen_port"),
 				ec,
 				{},
 				{});
-			return http::upstream::sucess;
+
+			if (ec.empty())
+			{
+				down = true;
+				break;
+			}
 		}
-		else
+
+		for (int i = 0; i != 5; i++)
 		{
-			return http::upstream::failed;
+			if (down)
+			{
+				std::string ec;
+				auto remove_result = http::client::request<http::method::get>(
+					endpoint_base_url_
+						+ "&remove=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1")
+						+ ":" + server_.config().get("http_listen_port"),
+					ec,
+					{},
+					{});
+
+				if (ec.empty() && remove_result.status() == http::status::ok) return http::upstream::sucess;
+			}
 		}
+
+		return http::upstream::failed;
 	}
 
 private:

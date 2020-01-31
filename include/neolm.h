@@ -189,7 +189,7 @@ public:
 
 	void start_server()
 	{
-		this->api_server_.start_server();
+		this->api_server_.start();
 
 		if (api_server_.upstream_controller_) api_server_.upstream_controller_->add();
 	}
