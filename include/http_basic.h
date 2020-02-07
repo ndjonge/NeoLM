@@ -532,46 +532,45 @@ namespace util
 
 inline std::string escape_json(const std::string& s)
 {
-	thread_local static std::ostringstream o;
-	o.str("");
+	std::stringstream ss;
 
 	for (const auto& c : s)
 	{
 		switch (c)
 		{
 			case '"':
-				o << "\\\"";
+				ss << "\\\"";
 				break;
 			case '\\':
-				o << "\\\\";
+				ss << "\\\\";
 				break;
 			case '\b':
-				o << "\\b";
+				ss << "\\b";
 				break;
 			case '\f':
-				o << "\\f";
+				ss << "\\f";
 				break;
 			case '\n':
-				o << "\\n";
+				ss << "\\n";
 				break;
 			case '\r':
-				o << "\\r";
+				ss << "\\r";
 				break;
 			case '\t':
-				o << "\\t";
+				ss << "\\t";
 				break;
 			default:
 				if (static_cast<signed char>(c) >= 0x00 && static_cast<signed char>(c) <= 0x1f)
 				{
-					o << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)c;
+					ss << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)c;
 				}
 				else
 				{
-					o.write(&c, 1);
+					ss << c;
 				}
 		}
 	}
-	return o.str();
+	return ss.str();
 }
 
 inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
@@ -1073,7 +1072,7 @@ protected:
 	std::vector<fields::value_type> fields_;
 
 public:
-	fields() { fields_.reserve(20); };
+	fields() = default;
 
 	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list){};
 
@@ -1087,8 +1086,7 @@ public:
 
 	inline std::string to_string() const noexcept
 	{
-		thread_local static std::ostringstream ss;
-		ss.str("");
+		std::stringstream ss;
 
 		for (auto&& field : fields_)
 		{
@@ -1367,8 +1365,8 @@ public:
 
 	inline std::string to_string() const noexcept
 	{
-		thread_local static std::ostringstream ss;
-		ss.str("");
+		std::stringstream ss;
+
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		for (auto&& field : fields_)
@@ -1381,8 +1379,7 @@ public:
 
 	inline std::string to_json_string() const noexcept
 	{
-		thread_local static std::ostringstream ss;
-		ss.str("");
+		std::stringstream ss;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		for (auto field = fields_.cbegin(); field != fields_.cend(); ++field)
@@ -1543,6 +1540,26 @@ public:
 		this->fields_.clear();
 	}
 
+	std::string header_to_string() const
+	{
+		std::ostringstream ss;
+
+		if (version_nr() == 11)
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.1\r\n";
+		else
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.0\r\n";
+
+		for (auto&& field : fields_)
+		{
+			ss << field.name << ": ";
+			ss << field.value << "\r\n";
+		}
+
+		ss << "\r\n";
+
+		return ss.str();
+	}
+
 	std::string header_to_dbg_string() const
 	{
 		std::ostringstream ss;
@@ -1559,27 +1576,6 @@ public:
 		}
 
 		ss << "\n";
-
-		return ss.str();
-	}
-
-	std::string header_to_string() const
-	{
-		thread_local static std::ostringstream ss;
-		ss.str("");
-
-		if (version_nr() == 11)
-			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.1\r\n";
-		else
-			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.0\r\n";
-
-		for (auto&& field : fields_)
-		{
-			ss << field.name << ": ";
-			ss << field.value << "\r\n";
-		}
-
-		ss << "\r\n";
 
 		return ss.str();
 	}
@@ -1642,6 +1638,23 @@ public:
 		version_nr_ = 0;
 	}
 
+	std::string header_to_string() const
+	{
+		std::stringstream ss;
+
+		ss << status::to_string(status_);
+
+		for (auto&& field : fields_)
+		{
+			ss << field.name << ": ";
+			ss << field.value << "\r\n";
+		}
+
+		ss << "\r\n";
+
+		return ss.str();
+	}
+
 	std::string header_to_dbg_string() const
 	{
 		std::ostringstream ss;
@@ -1655,24 +1668,6 @@ public:
 		}
 
 		ss << "\n";
-
-		return ss.str();
-	}
-
-	std::string header_to_string() const
-	{
-		thread_local static std::ostringstream ss;
-		ss.str("");
-
-		ss << status::to_string(status_);
-
-		for (auto&& field : fields_)
-		{
-			ss << field.name << ": ";
-			ss << field.value << "\r\n";
-		}
-
-		ss << "\r\n";
 
 		return ss.str();
 	}
@@ -1885,25 +1880,24 @@ public:
 
 	static std::string to_string(const http::message<specialization>& message)
 	{
-		thread_local static std::ostringstream o;
-		o.str("");
+		std::ostringstream ss;
 
-		o << message.header_to_string();
-		o << message.body();
+		ss << message.header_to_string();
+		ss << message.body();
 
-		return o.str();
+		return ss.str();
 	}
 };
+
+template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
+{
+	return http::message<specialization>::to_string(message);
+}
 
 template <message_specializations specialization>
 std::string to_dbg_string(const http::message<specialization>& message)
 {
 	return http::message<specialization>::to_dbg_string(message);
-}
-
-template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
-{
-	return http::message<specialization>::to_string(message);
 }
 
 using request_message = http::message<request_specialization>;
@@ -2914,7 +2908,7 @@ public:
 
 	session_handler(http::configuration& configuration)
 		: configuration_(configuration)
-		, keepalive_count_(configuration.get<int>("keepalive_count", 16 * 1024))
+		, keepalive_count_(configuration.get<int>("keepalive_count", 10))
 		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
 		, t0_(std::chrono::steady_clock::now())
 	{
@@ -3235,24 +3229,24 @@ public:
 
 		std::string to_string()
 		{
-			std::ostringstream s;
+			std::ostringstream ss;
 
-			s << request_latency_.load() / 1000000.0 << "ms, " << processing_duration_.load() / 1000000.0 << "ms, "
-			  << response_latency_.load() / 1000000.0 << "ms, " << active_count_ << "x, " << hit_count_ << "x";
+			ss << request_latency_.load() / 1000000.0 << "ms, " << processing_duration_.load() / 1000000.0 << "ms, "
+			   << response_latency_.load() / 1000000.0 << "ms, " << active_count_ << "x, " << hit_count_ << "x";
 
-			return s.str();
+			return ss.str();
 		};
 
 		std::string to_json_string()
 		{
-			std::ostringstream s;
+			std::ostringstream ss;
 
-			s << "{\"request_latency\" :" << request_latency_.load() / 1000000.0
-			  << ",\"processing_duration\":" << processing_duration_.load() / 1000000.0
-			  << ",\"response_latency\":" << response_latency_.load() / 1000000.0
-			  << ",\"active_count\":" << active_count_ << ",\"hit_count\":" << hit_count_ << "}";
+			ss << "{\"request_latency\" :" << request_latency_.load() / 1000000.0
+			   << ",\"processing_duration\":" << processing_duration_.load() / 1000000.0
+			   << ",\"response_latency\":" << response_latency_.load() / 1000000.0
+			   << ",\"active_count\":" << active_count_ << ",\"hit_count\":" << hit_count_ << "}";
 
-			return s.str();
+			return ss.str();
 		};
 	};
 
@@ -3296,16 +3290,17 @@ public:
 		const endpoint_lambda& endpoint() { return endpoint_; };
 
 		std::atomic<std::uint64_t>& metric_active_count() { return metrics_.active_count_; }
+
 		void metric_request_turn_around(std::uint64_t turn_around)
 		{
 			return metrics_.response_latency_.store(turn_around);
 		}
 
 		void update_hitcount_and_timing_metrics(
-			std::chrono::high_resolution_clock::duration response_latency,
+			std::chrono::high_resolution_clock::duration request_duration,
 			std::chrono::high_resolution_clock::duration new_processing_duration_)
 		{
-			metrics_.request_latency_.store(response_latency.count());
+			metrics_.request_latency_.store(request_duration.count());
 			metrics_.processing_duration_.store(new_processing_duration_.count());
 			metrics_.hit_count_++;
 		}
@@ -3320,7 +3315,6 @@ public:
 	using middlewares = std::vector<std::pair<middleware, middleware>>;
 
 	routing(result r = http::api::router_match::no_route) : result_(r) {}
-	routing(const routing& r) : result_(r.result_), route_(r.route_), middlewares_(r.middlewares_) {}
 
 	result& match_result() { return result_; };
 	result match_result() const { return result_; };
@@ -3387,7 +3381,7 @@ public:
 			return false;
 		}
 
-		void to_string_stream_json(std::ostringstream& s, std::vector<std::string>& path)
+		void to_string_stream_json(std::stringstream& s, std::vector<std::string>& path)
 		{
 			if (endpoints_)
 			{
@@ -3418,7 +3412,7 @@ public:
 			}
 		}
 
-		void to_string_stream(std::ostringstream& s, std::vector<std::string>& path)
+		void to_string_stream(std::stringstream& s, std::vector<std::string>& path)
 		{
 			if (endpoints_)
 			{
@@ -3680,7 +3674,7 @@ public:
 
 	std::string to_json_string()
 	{
-		std::ostringstream result;
+		std::stringstream result;
 
 		std::vector<std::string> path_stack;
 
@@ -3691,7 +3685,7 @@ public:
 
 	std::string to_string()
 	{
-		std::ostringstream result;
+		std::stringstream result;
 
 		std::vector<std::string> path_stack;
 
@@ -3938,20 +3932,21 @@ public:
 		deactivating
 	};
 
-	void set_state(server::state s) { state_.store(s); }
 	std::atomic<state>& get_status() { return state_; }
+
+	void deactivate() { state_.store(state::deactivating); }
 	bool is_active() { return state_.load() == state::active; }
 	bool is_activating() { return state_.load() == state::activating; }
 
 	virtual server::state start()
 	{
-		state_ = state::active;
+		state_.store(state::active);
 		return state_;
 	}
 
 	virtual server::state stop()
 	{
-		state_ = state::not_active;
+		state_.store(state::not_active);
 		return state_;
 	}
 
@@ -4117,7 +4112,7 @@ public:
 
 		std::string to_string() const
 		{
-			std::ostringstream s;
+			std::stringstream s;
 			std::lock_guard<std::mutex> g(mutex_);
 
 			s << "Server Configuration:\n" << server_information_ << "\n";
@@ -4153,7 +4148,6 @@ protected:
 	http::api::router<> router_;
 	http::configuration configuration_;
 	lgr::logger logger_;
-
 	std::atomic<state> state_{ state::activating };
 }; // namespace basic
 
@@ -4171,14 +4165,14 @@ public:
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
 		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
-		, http_listen_port_(-1)
+		, http_listen_port_(network::tcp::socket::invalid_socket)
 		, endpoint_http_(configuration.get<std::string>("http_listen_address", "::0"), http_listen_port_begin_)
 		, https_use_portsharding_(configuration.get<bool>("https_use_portsharding", false))
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
 		, https_listen_port_begin_(configuration.get<int>(
 			  "https_listen_port_begin", configuration.get<int>("http_listen_port_begin") + 2000))
 		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
-		, https_listen_port_(-1)
+		, https_listen_port_(network::tcp::socket::invalid_socket)
 		, endpoint_https_(configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 5))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
@@ -4202,98 +4196,94 @@ public:
 
 	http::basic::server::state start() override
 	{
-		logger_.info("start_server: begin\n");
-
 		http_connection_thread_ = std::move(std::thread{ [this]() { http_listener_handler(); } });
 		http_connection_queue_thread_ = std::move(std::thread{ [this]() { http_connection_queue_handler(); } });
 
 		https_connection_thread_ = std::move(std::thread{ [this]() { https_listener_handler(); } });
 		https_connection_queue_thread_ = std::move(std::thread{ [this]() { https_connection_queue_handler(); } });
 
-		// router must be in configured state
 		// wait for listener(s to have an valid listen socket if listener is enabled)
 		auto waiting = 0;
 		auto timeout = 5;
 
-		while (http_enabled_ && http_listen_port_.load() == -1 && waiting < timeout)
+		while (http_enabled_ && http_listen_port_.load() == network::tcp::socket::invalid_socket && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
 		}
 
-		while (https_enabled_ && https_listen_port_.load() == -1 && waiting < timeout)
+		while (https_enabled_ && https_listen_port_.load() == network::tcp::socket::invalid_socket && waiting < timeout)
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 			waiting++;
 		}
 
-		if (http_enabled_)
+		if (http_enabled_ && (http_listen_port_.load() == network::tcp::socket::invalid_socket))
 		{
-			if (http_listen_port_.load() == network::tcp::socket::invalid_socket)
-			{
-				if (this->http_listen_port_end_)
-					logger_.error(
-						"failed to start http listener in ports: {d}-{d}\n",
-						this->http_listen_port_begin_,
-						this->http_listen_port_end_);
-				else
-					logger_.error("failed to start http on port: {d}\n", this->http_listen_port_begin_);
-			}
+			state_.store(http::basic::server::state::deactivating);
+
+			if (this->http_listen_port_end_)
+				logger_.error(
+					"failed to start http listener in ports: {d}-{d}\n",
+					this->http_listen_port_begin_,
+					this->http_listen_port_end_);
+			else
+				logger_.error("failed to start http on port: {d}\n", this->http_listen_port_begin_);
+
+			return state_.load();
 		}
 
-		if (https_enabled_)
+		if (https_enabled_ && (https_listen_port_.load() == network::tcp::socket::invalid_socket))
 		{
-			if (https_listen_port_.load() == network::tcp::socket::invalid_socket)
-			{
-				if (this->https_listen_port_end_)
-					logger_.error(
-						"failed to start https listener in ports: {d}-{d}\n",
-						this->https_listen_port_begin_,
-						this->https_listen_port_end_);
-				else
-					logger_.error("failed to start https on port: {d}\n", this->https_listen_port_begin_);
-			}
+			state_.store(http::basic::server::state::deactivating);
+
+			if (this->http_listen_port_end_)
+				logger_.error(
+					"failed to start https listener in ports: {d}-{d}\n",
+					this->http_listen_port_begin_,
+					this->http_listen_port_end_);
+			else
+				logger_.error("failed to start https on port: {d}\n", this->http_listen_port_begin_);
+
+			return state_.load();
 		}
 
 		// before takeoff checklist complete....
 		state_.store(http::basic::server::state::active);
 		// takeoff....
-		logger_.info("server state set to active\n");
+		logger_.info("start: state set to active\n");
 
 		return state_.load();
 	}
 
 	virtual http::basic::server::state stop() override
 	{
-		http::basic::server::state_ = state::deactivating;
-		logger_.info("server state set to deactivating\n");
-
-		logger_.debug("server joining connection threads\n");
+		http::basic::server::state_.store(state::deactivating);
+		logger_.info("stop: state set to deactivating\n");
 
 		if (http_connection_thread_.joinable()) http_connection_thread_.join();
 		if (https_connection_thread_.joinable()) https_connection_thread_.join();
 		if (http_connection_queue_thread_.joinable()) http_connection_queue_thread_.join();
 		if (https_connection_queue_thread_.joinable()) https_connection_queue_thread_.join();
 
+		logger_.debug("stop: server joined listening threads\n");
+
 		// Wait for all connections to close:
 		while (manager_.connections_current() > 0)
 		{
-			logger_.debug("server still has connection\n");
+			logger_.debug("stop: server still hass connections\n");
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
 
+		logger_.info("start: state set to not_active\n");
 		return state::not_active;
 	}
 
 	void http_connection_queue_handler()
 	{
-		while (state_ == state::activating)
-		{
-			// Wait until server and router is ready
-			std::this_thread::yield();
-		}
+		logger_.debug("http_connection_queue_handler: start\n");
 
-		while (http_enabled_ && (state_ == state::activating || state_ == state::active))
+		while (http_enabled_ && (is_activating() || is_active()))
 		{
 			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
 
@@ -4319,12 +4309,15 @@ public:
 				}
 			}
 		}
-		// logger_ << lgr::debug("https_connection_queue_handler: closed\n");
+
+		logger_.debug("http_connection_queue_handler: stop\n");
 	}
 
 	void https_connection_queue_handler()
 	{
-		while (https_enabled_ && (state_ == state::activating || state_ == state::active))
+		logger_.debug("https_connection_queue_handler: start\n");
+
+		while (https_enabled_ && (is_activating() || is_active()))
 		{
 			std::unique_lock<std::mutex> m(https_connection_queue_mutex_);
 
@@ -4351,10 +4344,13 @@ public:
 				}
 			}
 		}
+		logger_.debug("https_connection_queue_handler: stop\n");
 	}
 
 	void https_listener_handler()
 	{
+		logger_.debug("https_listener_handler: start\n");
+
 		if (https_enabled_ == true)
 		{
 			try
@@ -4423,10 +4419,10 @@ public:
 				acceptor_https.listen();
 
 				configuration_.set("https_listen_port", std::to_string(https_listen_port_probe));
-				logger_.accesslog("https listener on port: {d} started\n", https_listen_port_probe);
+				logger_.accesslog("http listener on port: {d} started\n", https_listen_port_probe);
 				https_listen_port_.store(https_listen_port_probe);
 
-				while (state_ == state::active)
+				while (is_activating() || is_active())
 				{
 					network::ssl::stream<network::tcp::socket> https_socket(ssl_context);
 					ec = network::error::success;
@@ -4449,7 +4445,7 @@ public:
 			}
 			catch (std::runtime_error& e)
 			{
-				https_listen_port_ = -1;
+				https_listen_port_ = network::tcp::socket::invalid_socket;
 				logger_.error(e.what());
 			}
 		}
@@ -4457,6 +4453,8 @@ public:
 
 	void http_listener_handler()
 	{
+		logger_.debug("http_listener_handler: start\n");
+
 		if (http_enabled_ == true)
 		{
 			try
@@ -4522,7 +4520,7 @@ public:
 				logger_.accesslog("http listener on port: {d} started\n", http_listen_port_probe);
 				http_listen_port_.store(http_listen_port_probe);
 
-				while (state_ == state::activating || state_ == state::active)
+				while (is_activating() || is_active())
 				{
 					network::tcp::socket http_socket{};
 
@@ -4544,7 +4542,7 @@ public:
 			}
 			catch (std::runtime_error& e)
 			{
-				http_listen_port_ = -1;
+				http_listen_port_ = network::tcp::socket::invalid_socket;
 				logger_.error(e.what());
 			}
 		}
@@ -4775,14 +4773,15 @@ private:
 	bool http_enabled_;
 	std::int32_t http_listen_port_begin_;
 	std::int32_t http_listen_port_end_;
-	std::atomic<std::int32_t> http_listen_port_;
+	std::atomic<network::socket_t> http_listen_port_;
 	network::tcp::v6 endpoint_http_;
 
 	bool https_use_portsharding_;
 	bool https_enabled_;
 	std::int32_t https_listen_port_begin_;
 	std::int32_t https_listen_port_end_;
-	std::atomic<std::int32_t> https_listen_port_;
+	std::atomic<network::socket_t> https_listen_port_;
+
 	network::tcp::v6 endpoint_https_;
 
 	int connection_timeout_;
@@ -4791,9 +4790,9 @@ private:
 	std::condition_variable http_connection_queue_has_connection_;
 	std::condition_variable https_connection_queue_has_connection_;
 
-	std::mutex configuration_mutex_;
 	std::mutex http_connection_queue_mutex_;
 	std::mutex https_connection_queue_mutex_;
+	std::mutex configuration_mutex_;
 
 	std::queue<network::tcp::socket> http_connection_queue_;
 	std::queue<network::ssl::stream<network::tcp::socket>> https_connection_queue_;
