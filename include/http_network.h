@@ -797,7 +797,7 @@ public:
 			ec = network::error::bad_file_descriptor;
 	}
 
-	void listen() noexcept { ::listen(endpoint_->socket().lowest_layer(), 128); }
+	void listen() noexcept { ::listen(endpoint_->socket().lowest_layer(), SOMAXCONN); }
 
 	void accept(socket& s, network::error_code& ec) noexcept
 	{
