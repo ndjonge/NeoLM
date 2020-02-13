@@ -36,10 +36,10 @@ private:
 			S::router_.on_post(
 				S::configuration_.template get<std::string>("internal_base", "") + "/log_level",
 				[this](http::session_handler& session) {
-					logger_.set_level(session.request().body());
-					auto new_level = logger_.current_level_to_string();
+                    S::logger_.set_level(session.request().body());
+					auto new_level = S::logger_.current_level_to_string();
 
-					session.response().body() = logger_.current_level_to_string();
+					session.response().body() = S::logger_.current_level_to_string();
 					http::basic::server::configuration_.set("log_level", new_level);
 
 					session.response().status(http::status::ok);
