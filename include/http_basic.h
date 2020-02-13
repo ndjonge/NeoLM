@@ -185,9 +185,9 @@ static const char debug[] = "[dbg]: ";
 
 inline std::size_t get_thread_id() noexcept
 {
+	// Generate an ID per thread using a "global" ID counter
 	static std::atomic<std::size_t> thread_idx{ 0 };
-	thread_local std::size_t id = thread_idx;
-	thread_idx++;
+	thread_local std::size_t id = thread_idx++;
 	return id;
 }
 
@@ -198,13 +198,16 @@ public:
 	{
 		set_level(level);
 
-		if (level_ != level::none && file != "std::cerr")
+		if (level_ != level::none && file != "cerr")
 		{
 			redirected_ostream_.open(file, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
 			ostream_ = &redirected_ostream_;
 		}
 
-		accesslog("logger started\n");
+		if (level_ != level::none)
+		{
+			accesslog("logger started\n");
+		}
 	}
 
 	~logger()
@@ -215,8 +218,8 @@ public:
 		}
 	}
 
-	level current_level() { return level_.load(); }
-	std::string current_level_to_string()
+	level current_level() const { return level_.load(); }
+	const std::string current_level_to_string() const
 	{
 		if (level_ == level::accesslog)
 			return "accesslog";
@@ -246,9 +249,12 @@ public:
 			level_ = level::none;
 	}
 
-	template <const char* P, typename... A> static std::string format(const std::string& msg) { return msg.c_str(); }
+	template <const char* P, typename... A> static const std::string format(const std::string& msg)
+	{
+		return msg.c_str();
+	}
 
-	template <const char* P, typename... A> static std::string format(const char* msg)
+	template <const char* P, typename... A> static const std::string format(const char* msg)
 	{
 		auto now = std::chrono::system_clock::now();
 		auto in_time_t = std::chrono::system_clock::to_time_t(now);
@@ -268,12 +274,12 @@ public:
 		return buffer;
 	} // namespace util
 
-	template <const char* P, typename... A> static std::string format(const char* format, const A&... args)
+	template <const char* P, typename... A> static const std::string format(const char* format, const A&... args)
 	{
 		class argument
 		{
 		public:
-			enum type
+			enum class type
 			{
 				size_t_,
 				int_,
@@ -293,15 +299,15 @@ public:
 			} u;
 
 		public:
-			argument(size_t value) : value_(size_t_) { u.size_t_value_ = value; }
-			argument(int value) : value_(int_) { u.int_value_ = value; }
-			argument(double value) : value_(double_) { u.dbl_value_ = value; }
-			argument(const char* value) : value_(string_)
+			argument(size_t value) : value_(type::size_t_) { u.size_t_value_ = value; }
+			argument(int value) : value_(type::int_) { u.int_value_ = value; }
+			argument(double value) : value_(type::double_) { u.dbl_value_ = value; }
+			argument(const char* value) : value_(type::string_)
 			{
 				u.string_v_.string_value_ = value;
 				u.string_v_.string_size_ = std::strlen(value);
 			}
-			argument(const std::string& value) : value_(string_)
+			argument(const std::string& value) : value_(type::string_)
 			{
 				u.string_v_.string_value_ = value.data();
 				u.string_v_.string_size_ = value.size();
@@ -461,7 +467,7 @@ public:
 
 	*/
 
-	void log(const level l, const std::string& msg)
+	inline void log(const level l, const std::string& msg) const
 	{
 		if (level_ >= l)
 		{
@@ -470,32 +476,32 @@ public:
 		}
 	}
 
-	template <typename... A> void accesslog(const char* format, const A&... args)
+	template <typename... A> void accesslog(const char* format, const A&... args) const
 	{
 		log(level::accesslog, logger::format<prefix::accesslog, A...>(format, args...));
 	}
 
-	template <typename... A> void info(const char* format, const A&... args)
+	template <typename... A> void info(const char* format, const A&... args) const
 	{
 		log(level::info, logger::format<prefix::info, A...>(format, args...));
 	}
 
-	template <typename... A> void warning(const char* format, const A&... args)
+	template <typename... A> void warning(const char* format, const A&... args) const
 	{
 		log(level::warning, logger::format<prefix::warning, A...>(format, args...));
 	}
 
-	template <typename... A> void error(const char* format, const A&... args)
+	template <typename... A> void error(const char* format, const A&... args) const
 	{
 		log(level::error, logger::format<prefix::error, A...>(format, args...));
 	}
 
-	template <typename... A> void debug(const char* format, const A&... args)
+	template <typename... A> void debug(const char* format, const A&... args) const
 	{
 		log(level::debug, logger::format<prefix::debug, A...>(format, args...));
 	}
 
-	template <typename... A> void accesslog(const std::string& msg)
+	template <typename... A> void accesslog(const std::string& msg) const
 	{
 		if (level_ >= level::accesslog)
 		{
@@ -507,7 +513,7 @@ public:
 	std::ostream& as_stream() { return *ostream_; }
 
 private:
-	std::mutex lock_;
+	mutable std::mutex lock_;
 	std::ostream* ostream_;
 	std::ofstream redirected_ostream_;
 	std::atomic<level> level_;
@@ -3291,9 +3297,9 @@ public:
 
 		std::atomic<std::uint64_t>& metric_active_count() { return metrics_.active_count_; }
 
-		void metric_request_turn_around(std::uint64_t turn_around)
+		void metric_response_latency(std::uint64_t response_latency)
 		{
-			return metrics_.response_latency_.store(turn_around);
+			return metrics_.response_latency_.store(response_latency);
 		}
 
 		void update_hitcount_and_timing_metrics(
@@ -4002,7 +4008,7 @@ public:
 			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_) / 1000000.0;
 
 			std::string msg = lgr::logger::format<lgr::prefix::accesslog>(
-				"'{s}' - '{s}' - '{s}' - '{d}' - '{u}' - '{u}' - '{f}'",
+				"{s} - '{s} {s}' - {d} - {u} - {u} - {f}",
 				session.request().get("Remote_Addr", std::string{}),
 				http::method::to_string(session.request().method()),
 				session.request().url_requested(),
@@ -4041,103 +4047,103 @@ public:
 
 		std::string to_json_string(json_status_options options, bool main_object = true) const
 		{
-			std::ostringstream s;
-			std::lock_guard<std::mutex> g(mutex_);
+			std::ostringstream ss;
+			std::unique_lock<std::mutex> g(mutex_);
 
-			if (main_object) s << "{";
+			if (main_object) ss << "{";
 
 			switch (options)
 			{
 				case json_status_options::full:
 				{
-					mutex_.unlock();
-					s << to_json_string(json_status_options::config, false) << ", "
-					  << to_json_string(json_status_options::server_stats, false) << ", "
-					  << to_json_string(json_status_options::router, false) << ","
-					  << to_json_string(json_status_options::accesslog, false);
-					mutex_.lock();
+					g.unlock();
+					ss << to_json_string(json_status_options::config, false) << ", "
+					   << to_json_string(json_status_options::server_stats, false) << ", "
+					   << to_json_string(json_status_options::router, false) << ","
+					   << to_json_string(json_status_options::accesslog, false);
+					g.lock();
 					break;
 				}
 				case json_status_options::config:
 				{
-					s << "\"configuration\":"
-					  << "{" << server_information_ << "}";
+					ss << "\"configuration\":"
+					   << "{" << server_information_ << "}";
 					break;
 				}
 				case json_status_options::server_stats:
 				{
 
-					s << "\"stats\": "
-					  << "{\"connections_current\":" << connections_current_ << ","
-					  << "\"connections_accepted\":" << connections_accepted_ << ","
-					  << "\"connections_highest\":" << connections_highest_ << ","
-					  << "\"requests_handled\" : " << requests_handled_ << ","
-					  << "\"requests_current\" : " << requests_current_ << ","
-					  << "\"idle_time\" : "
-					  << (std::chrono::duration<std::int64_t, std::ratio<1, 1>>(
-							  std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
-							  .count())
-							 / 1000000000
-					  << "}";
+					ss << "\"stats\": "
+					   << "{\"connections_current\":" << connections_current_ << ","
+					   << "\"connections_accepted\":" << connections_accepted_ << ","
+					   << "\"connections_highest\":" << connections_highest_ << ","
+					   << "\"requests_handled\" : " << requests_handled_ << ","
+					   << "\"requests_current\" : " << requests_current_ << ","
+					   << "\"idle_time\" : "
+					   << (std::chrono::duration<std::int64_t, std::ratio<1, 1>>(
+							   std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
+							   .count())
+							  / 1000000000
+					   << "}";
 					break;
 				}
 				case json_status_options::router:
 				{
-					s << "\"router\": {" << router_information_ << "}";
+					ss << "\"router\": {" << router_information_ << "}";
 					break;
 				}
 				case json_status_options::accesslog:
 				{
-					s << "\"access_log\": [";
+					ss << "\"access_log\": [";
 					for (auto access_log_entry = access_log_.cbegin(); access_log_entry != access_log_.cend();
 						 ++access_log_entry)
 					{
-						s << "\"";
-						s << util::escape_json(*access_log_entry);
+						ss << "\"";
+						ss << util::escape_json(*access_log_entry);
 
 						if (access_log_entry + 1 != access_log_.cend())
-							s << "\",";
+							ss << "\",";
 						else
-							s << "\"";
+							ss << "\"";
 					}
-					s << "]";
+					ss << "]";
 					break;
 				}
 			}
 
-			if (main_object) s << "}";
+			if (main_object) ss << "}";
 
-			return s.str();
+			return ss.str();
 		}
 
 		std::string to_string() const
 		{
-			std::stringstream s;
+			std::stringstream ss;
 			std::lock_guard<std::mutex> g(mutex_);
 
-			s << "Server Configuration:\n" << server_information_ << "\n";
+			ss << "Server Configuration:\n" << server_information_ << "\n";
 
-			s << "\nStatistics:\n";
-			s << "connections_accepted: " << connections_accepted_ << "\n";
-			s << "connections_highest: " << connections_highest_ << "\n";
-			s << "connections_current: " << connections_current_ << "\n";
-			s << "requests_handled: " << requests_handled_ << "\n";
-			s << "requests_current: " << requests_current_ << "\n";
-			s << "idle_time: "
-			  << (std::chrono::duration<std::int64_t, std::nano>(
-					  std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
-					  .count())
-					 / 1000000000
-			  << "s\n";
+			ss << "\nStatistics:\n";
+			ss << "connections_accepted: " << connections_accepted_ << "\n";
+			ss << "connections_highest: " << connections_highest_ << "\n";
+			ss << "connections_current: " << connections_current_ << "\n";
+			ss << "requests_handled: " << requests_handled_ << "\n";
+			ss << "requests_current: " << requests_current_ << "\n";
+			ss << "idle_time: "
+			   << (std::chrono::duration<std::int64_t, std::nano>(
+					   std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
+					   .count())
+					  / 1000000000
+			   << "s\n";
 
-			s << "\nEndPoints:\n" << router_information_ << "\n";
+			ss << "\nEndPoints:\n" << router_information_ << "\n";
 
-			s << "\nAccess Log:\n";
+			ss << "\nAccess Log:\n";
 
 			for (auto& access_log_entry : access_log_)
-				s << access_log_entry << "\n";
+				ss << access_log_entry << "\n";
 
-			return s.str();
+			return ss.str();
 		}
 	};
 
@@ -4684,7 +4690,7 @@ public:
 
 							if (routing.match_result() == http::api::router_match::match_found)
 							{
-								routing.the_route().metric_request_turn_around(
+								routing.the_route().metric_response_latency(
 									std::chrono::duration<std::uint64_t, std::nano>(
 										std::chrono::steady_clock::now() - t0)
 										.count());

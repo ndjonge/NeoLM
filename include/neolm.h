@@ -198,55 +198,14 @@ public:
 
 	void run()
 	{
-		/*struct test
-		{
-			test(neolm::license_manager<S>::api_server& api_server_,
-		std::function<void(http::session_handler&, const http::api::params&)>& test_function)
-			{
-				int x = 0;
-
-				std::stringstream s;
-
-				for (auto n = 0; n != 10; n++)
-					for (auto i = 0; i != 10; i++)
-						for (auto k = 0; k != 10; k++)
-							for (auto f = 0; f != 100; f++)
-							{
-								std::stringstream route;
-
-								route << "/v-" << std::to_string(n) << "/service-" <<
-		std::to_string(i) <<
-		"/subservice-" << std::to_string(k) << "/route/test-"
-									  << std::to_string(x++) << "/{test}/aap";
-
-								api_server_.router_.on_get(std::move(route.str()),
-		std::move(test_function));
-							}
-			}
-		};
-
-		std::function<void(http::session_handler&, const http::api::params&)> the_test =
-		[](http::session_handler& session) { const auto& test = session.params().get("test");
-
-			if (test.empty())
-			{
-				session.response().status(http::status::bad_request);
-			}
-			else
-			{
-				session.response().body() = "test:" + test;
-				session.response().status(http::status::ok);
-			}
-		};
-
-		test t(this->api_server_, the_test);
-		*/
 
 		// while (api_server_.is_active())
 		{
 			api_server_.logger_.info("Alive!\n");
 			std::this_thread::sleep_for(std::chrono::seconds(2));
 		}
+
+		std::this_thread::sleep_for(std::chrono::seconds(2));
 	}
 
 private:

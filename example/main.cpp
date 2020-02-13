@@ -20,13 +20,6 @@ using json = nlohmann::json;
 
 int main()
 {
-	// std::array<char, 255> buf;
-	// std::ofstream ofs("/projects/access.log", std::ofstream::out);
-
-	// ofs.rdbuf()->pubsetbuf(&(*buf.begin()), buf.size());
-
-	// lgr::logger log_output{ ofs, lgr::level::accesslog };
-
 	network::init();
 	network::ssl::init();
 
@@ -36,10 +29,10 @@ int main()
 		neolm::license_manager<http::basic::threaded::server> license_server{
 			http::configuration{ { "http_server_identification", "mir_http/8.0.01" },
 								 { "http_listen_address", "::0" },
-								 { "http_listen_port_begin", "0" },
+								 { "http_listen_port_begin", "3000" },
 								 { "https_enable", "false" },
 								 { "private_base", "/_internal" },
-								 { "log_file", "/projects/accesslog.log" },
+								 { "log_file", "cerr" },
 								 { "log_level", "accesslog" },
 								 { "upstream_node_type", "" },
 								 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },
