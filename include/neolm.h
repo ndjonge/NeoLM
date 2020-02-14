@@ -214,7 +214,7 @@ public:
 
 			std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
 
-			for (int i = 0; i != 4096; i++)
+			for (int i = 0; i != 8192; i++)
 			{
 				std::string ec;
 				auto response = http::client::request<http::method::get>(
@@ -227,7 +227,7 @@ public:
 						   / 1000000000.0;
 
 			std::cout << lgr::logger::format<lgr::prefix::none>(
-				"4K req. took : {f}sec, {f}req/sec\n", elapsed, 4096 / elapsed);
+				"8K req. took : {f}sec, {f}req/sec\n", elapsed, 8192 / elapsed);
 		}
 
 		std::this_thread::sleep_for(std::chrono::seconds(1));
