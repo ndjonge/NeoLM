@@ -33,7 +33,7 @@ int main()
 								 { "https_enable", "false" },
 								 { "private_base", "/_internal" },
 								 { "log_file", "accesslog.txt" },
-								 { "log_level", "debug" },
+								 { "log_level", "none" },
 								 { "upstream_node_type", "" },
 								 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },
 								 { "upstream_node_nginx-group", "bshell-workers" } },

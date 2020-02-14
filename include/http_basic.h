@@ -2944,7 +2944,7 @@ public:
 
 	template <typename router_t> typename router_t::request_result_type handle_request(router_t& router_)
 	{
-		static thread_local std::string server_id{ configuration_.get<std::string>("server", "http/server/0") };
+		std::string server_id{ configuration_.get<std::string>("server", "http/server/0") };
 
 		response_.status(http::status::bad_request);
 		response_.type("text");
