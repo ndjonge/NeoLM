@@ -145,6 +145,7 @@ class const_buffer
 {
 public:
 	const_buffer(const char* data, size_t size) : data_(data), size_(size) {}
+	const_buffer(const std::string& s) : data_(s.data()), size_(s.size()) {}
 
 	const char* data() const { return data_; }
 	size_t size() const { return size_; }

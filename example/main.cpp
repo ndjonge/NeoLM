@@ -33,7 +33,7 @@ int main()
 								 { "https_enable", "false" },
 								 { "private_base", "/_internal" },
 								 { "log_file", "cerr" },
-								 { "log_level", "accesslog" },
+								 { "log_level", "none" },
 								 { "upstream_node_type", "" },
 								 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },
 								 { "upstream_node_nginx-group", "bshell-workers" } },
@@ -43,7 +43,5 @@ int main()
 		license_server.start_server();
 
 		license_server.run();
-
-		std::cout << "exit!\n";
 	}
 }

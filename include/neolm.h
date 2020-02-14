@@ -33,10 +33,17 @@ private:
 		api_server(license_manager& license_manager, http::configuration& configuration)
 			: S(configuration), http::upstream::enable_server_as_upstream(this), license_manager_(license_manager)
 		{
+			S::router_.on_get(
+				S::configuration_.template get<std::string>("internal_base", "") + "/health",
+				[this](http::session_handler& session) {
+					session.response().body() = "OK";
+					session.response().status(http::status::ok);
+				});
+
 			S::router_.on_post(
 				S::configuration_.template get<std::string>("internal_base", "") + "/log_level",
 				[this](http::session_handler& session) {
-                    S::logger_.set_level(session.request().body());
+					S::logger_.set_level(session.request().body());
 					auto new_level = S::logger_.current_level_to_string();
 
 					session.response().body() = S::logger_.current_level_to_string();
@@ -202,10 +209,28 @@ public:
 		// while (api_server_.is_active())
 		{
 			api_server_.logger_.info("Alive!\n");
-			std::this_thread::sleep_for(std::chrono::seconds(2));
+
+			http::client::scoped_session session;
+
+			std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+
+			for (int i = 0; i != 4096; i++)
+			{
+				std::string ec;
+				auto response = http::client::request<http::method::get>(
+					session, "http://localhost:3000/health", ec, {}, {}); //, std::cerr, true);
+
+				if (!ec.empty()) throw std::runtime_error{ ec };
+			}
+
+			auto elapsed = std::chrono::duration<std::int64_t, std::nano>(std::chrono::steady_clock::now() - t0).count()
+						   / 1000000000.0;
+
+			std::cout << lgr::logger::format<lgr::prefix::none>(
+				"4K req. took : {f}sec, {f}req/sec\n", elapsed, 4096 / elapsed);
 		}
 
-		std::this_thread::sleep_for(std::chrono::seconds(2));
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
 
 private:

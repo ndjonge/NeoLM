@@ -289,7 +289,7 @@ public:
 			type value_;
 			union {
 				size_t size_t_value_;
-				int int_value_;
+				std::int64_t int_value_;
 				double dbl_value_;
 				struct
 				{
@@ -301,6 +301,7 @@ public:
 		public:
 			argument(size_t value) : value_(type::size_t_) { u.size_t_value_ = value; }
 			argument(int value) : value_(type::int_) { u.int_value_ = value; }
+			argument(std::int64_t value) : value_(type::int_) { u.int_value_ = value; }
 			argument(double value) : value_(type::double_) { u.dbl_value_ = value; }
 			argument(const char* value) : value_(type::string_)
 			{
@@ -399,7 +400,7 @@ public:
 				case 'd':
 					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 					{
-						auto s = snprintf(&tmp[0], tmp.size(), "%d", argument_array[argument_index++].u.int_value_);
+						auto s = snprintf(&tmp[0], tmp.size(), "%lld", argument_array[argument_index++].u.int_value_);
 						buffer.append(&tmp[0], s);
 						expect = format_state::end;
 					}
@@ -411,7 +412,7 @@ public:
 				case 'x':
 					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 					{
-						auto s = snprintf(&tmp[0], tmp.size(), "%x", argument_array[argument_index++].u.int_value_);
+						auto s = snprintf(&tmp[0], tmp.size(), "%llx", argument_array[argument_index++].u.int_value_);
 						buffer.append(&tmp[0], s);
 						expect = format_state::end;
 					}
@@ -423,7 +424,7 @@ public:
 				case 'X':
 					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 					{
-						auto s = snprintf(&tmp[0], tmp.size(), "%X", argument_array[argument_index++].u.int_value_);
+						auto s = snprintf(&tmp[0], tmp.size(), "%llX", argument_array[argument_index++].u.int_value_);
 						buffer.append(&tmp[0], s);
 						expect = format_state::end;
 					}
@@ -538,7 +539,7 @@ namespace util
 
 inline std::string escape_json(const std::string& s)
 {
-	std::stringstream ss;
+	std::ostringstream ss;
 
 	for (const auto& c : s)
 	{
@@ -841,7 +842,7 @@ inline status_t to_status(std::uint32_t status_nr)
 		return http::status::internal_server_error;
 }
 
-inline const char* to_string(status_t s)
+inline std::string to_string(status_t s)
 {
 	switch (s)
 	{
@@ -1092,7 +1093,7 @@ public:
 
 	inline std::string to_string() const noexcept
 	{
-		std::stringstream ss;
+		std::ostringstream ss;
 
 		for (auto&& field : fields_)
 		{
@@ -1371,7 +1372,7 @@ public:
 
 	inline std::string to_string() const noexcept
 	{
-		std::stringstream ss;
+		std::ostringstream ss;
 
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
@@ -1385,7 +1386,7 @@ public:
 
 	inline std::string to_json_string() const noexcept
 	{
-		std::stringstream ss;
+		std::ostringstream ss;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		for (auto field = fields_.cbegin(); field != fields_.cend(); ++field)
@@ -1546,24 +1547,27 @@ public:
 		this->fields_.clear();
 	}
 
-	std::string header_to_string() const
+	inline std::string header_to_string() const
 	{
-		std::ostringstream ss;
+		std::string s;
+		s.reserve(1024 * 2);
 
 		if (version_nr() == 11)
-			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.1\r\n";
+			s += http::method::to_string(method_) + " " + target_ + " HTTP/1.1\r\n";
 		else
-			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.0\r\n";
+			s += http::method::to_string(method_) + " " + target_ + " HTTP/1.1\r\n";
 
 		for (auto&& field : fields_)
 		{
-			ss << field.name << ": ";
-			ss << field.value << "\r\n";
+			s += field.name;
+			s += ": ";
+			s += field.value;
+			s += "\r\n";
 		}
 
-		ss << "\r\n";
+		s += "\r\n";
 
-		return ss.str();
+		return s;
 	}
 
 	std::string header_to_dbg_string() const
@@ -1646,36 +1650,42 @@ public:
 
 	std::string header_to_string() const
 	{
-		std::stringstream ss;
+		std::string s;
+		s.reserve(1024 * 2);
 
-		ss << status::to_string(status_);
+		s += status::to_string(status_);
 
 		for (auto&& field : fields_)
 		{
-			ss << field.name << ": ";
-			ss << field.value << "\r\n";
+			s += field.name;
+			s += ": ";
+			s += field.value;
+			s += "\r\n";
 		}
 
-		ss << "\r\n";
+		s += "\r\n";
 
-		return ss.str();
+		return s;
 	}
 
 	std::string header_to_dbg_string() const
 	{
-		std::ostringstream ss;
+		std::string s;
+		s.reserve(1024 * 2);
 
-		ss << status::to_string(status_);
+		s += status::to_string(status_);
 
 		for (auto&& field : fields_)
 		{
-			ss << field.name << ": ";
-			ss << field.value << "\n";
+			s += field.name;
+			s += ": ";
+			s += field.value;
+			s += "\n";
 		}
 
-		ss << "\n";
+		s += "\n";
 
-		return ss.str();
+		return s;
 	}
 };
 
@@ -1878,20 +1888,24 @@ public:
 
 	static std::string to_dbg_string(const http::message<specialization>& message)
 	{
-		std::string ret = message.header_to_dbg_string();
-		ret += message.body();
+		std::string s;
+		s.reserve(message.body().size() + 1024);
 
-		return ret;
+		s += message.header_to_string();
+		s += message.body();
+
+		return s;
 	}
 
 	static std::string to_string(const http::message<specialization>& message)
 	{
-		std::ostringstream ss;
+		std::string s;
+		s.reserve(message.body().size() + 1024);
 
-		ss << message.header_to_string();
-		ss << message.body();
+		s += message.header_to_string();
+		s += message.body();
 
-		return ss.str();
+		return s;
 	}
 };
 
@@ -2914,7 +2928,7 @@ public:
 
 	session_handler(http::configuration& configuration)
 		: configuration_(configuration)
-		, keepalive_count_(configuration.get<int>("keepalive_count", 10))
+		, keepalive_count_(configuration.get<int>("keepalive_count", 1024 * 8))
 		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
 		, t0_(std::chrono::steady_clock::now())
 	{
@@ -3749,9 +3763,25 @@ namespace basic
 namespace client
 {
 
+class curl_session
+{
+public:
+	curl_session() : hnd_(curl_easy_init()) {}
+	~curl_session()
+	{
+		curl_easy_cleanup(hnd_);
+		hnd_ = nullptr;
+	}
+
+	CURL* as_handle() const { return hnd_; }
+
+private:
+	CURL* hnd_;
+};
+
 class curl
 {
-	CURL* hnd_;
+	const curl_session& session_;
 	std::ostringstream buffer_;
 	char error_buf_[CURL_ERROR_SIZE];
 	curl_slist* headers_;
@@ -3824,41 +3854,38 @@ class curl
 
 public:
 	curl(
+		const curl_session& session,
 		const std::string& verb,
 		const std::string& url,
 		std::initializer_list<std::string> hdrs,
 		const std::string& body,
 		bool verbose = false,
 		std::ostream& verbose_output_stream = std::clog)
-		: hnd_(curl_easy_init()), buffer_(), headers_(nullptr), verb_(verb), url_(url)
+		: session_(session), buffer_(), headers_(nullptr), verb_(verb), url_(url)
 	{
 		strcpy(error_buf_, "");
 
 		if (verbose)
 		{
-			curl_easy_setopt(hnd_, CURLOPT_VERBOSE, 1);
-			curl_easy_setopt(hnd_, CURLOPT_DEBUGFUNCTION, debug_callback);
-			curl_easy_setopt(hnd_, CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
+			curl_easy_setopt(session_.as_handle(), CURLOPT_VERBOSE, 1);
+			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGFUNCTION, debug_callback);
+			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
 		}
-		curl_easy_setopt(hnd_, CURLOPT_NOSIGNAL, 1);
-		curl_easy_setopt(hnd_, CURLOPT_WRITEFUNCTION, write_callback);
-		curl_easy_setopt(hnd_, CURLOPT_WRITEDATA, (void*)&buffer_);
-		curl_easy_setopt(hnd_, CURLOPT_ERRORBUFFER, error_buf_);
-		curl_easy_setopt(hnd_, CURLOPT_NOSIGNAL, 1);
-		curl_easy_setopt(hnd_, CURLOPT_HEADERFUNCTION, recv_header_callback);
-		curl_easy_setopt(hnd_, CURLOPT_HEADERDATA, (void*)this);
-		curl_easy_setopt(hnd_, CURLOPT_TIMEOUT_MS, 3000L);
-		curl_easy_setopt(hnd_, CURLOPT_CONNECTTIMEOUT_MS, 3000L);
-		curl_easy_setopt(hnd_, CURLOPT_TCP_NODELAY, 0);
-		curl_easy_setopt(hnd_, CURLOPT_NOPROGRESS, 1L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEFUNCTION, write_callback);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEDATA, (void*)&buffer_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_ERRORBUFFER, error_buf_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 3000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 3000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 1);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
 		setup(verb, url, hdrs, body);
 	}
 
-	~curl()
-	{
-		curl_slist_free_all(headers_);
-		curl_easy_cleanup(hnd_);
-	}
+	~curl() { curl_slist_free_all(headers_); }
 
 	void setup(
 		const std::string& verb,
@@ -3870,18 +3897,18 @@ public:
 		{
 			headers_ = curl_slist_append(headers_, a.c_str());
 		}
-		curl_easy_setopt(hnd_, CURLOPT_HTTPHEADER, headers_);
-		curl_easy_setopt(hnd_, CURLOPT_CUSTOMREQUEST, verb.c_str());
-		curl_easy_setopt(hnd_, CURLOPT_URL, url.c_str());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb.c_str());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url.c_str());
 
 		data_str_ = data.c_str();
-		curl_easy_setopt(hnd_, CURLOPT_POSTFIELDS, data_str_.c_str());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, data_str_.c_str());
 	}
 
 	http::response_message call(std::string& error) noexcept
 	{
-		CURLcode ret = curl_easy_perform(hnd_);
-		curl_easy_reset(hnd_);
+		CURLcode ret = curl_easy_perform(session_.as_handle());
+		curl_easy_reset(session_.as_handle());
 		if (ret != CURLE_OK)
 		{
 			error = std::string{ curl_easy_strerror(ret) } + " when requesting " + verb_ + " on url: " + url_;
@@ -3896,7 +3923,7 @@ public:
 
 	http::response_message call()
 	{
-		CURLcode ret = curl_easy_perform(hnd_);
+		CURLcode ret = curl_easy_perform(session_.as_handle());
 
 		if (ret != CURLE_OK)
 		{
@@ -4819,50 +4846,32 @@ using middleware = http::api::router<>::middleware_type;
 namespace client
 {
 
-template <http::method::method_t method>
-http::response_message request(const std::string& url, std::ostream& s = std::clog, bool verbose = false)
+// http::client::request{}
+
+class scoped_session
 {
-	http::basic::client::curl curl{ http::method::to_string(method), url, {}, {}, verbose, s };
+public:
+	scoped_session() = default;
 
-	return curl.call(); // RVO
-}
+	const http::basic::client::curl_session& as_session() const { return session_; }
 
-template <http::method::method_t method>
-http::response_message
-request(const std::string& url, const std::string& body, std::ostream& s = std::clog, bool verbose = false)
-{
-	http::basic::client::curl curl{ http::method::to_string(method), url, {}, body, verbose, s };
-
-	return curl.call(); // RVO
-}
+private:
+	const http::basic::client::curl_session session_;
+};
 
 template <http::method::method_t method>
 http::response_message request(
+	const http::client::scoped_session& session,
 	const std::string& url,
-	std::initializer_list<std::string> hdrs,
-	const std::string& body,
+	std::string& ec,
+	std::initializer_list<std::string> hdrs = {},
+	const std::string& body = std::string{},
 	std::ostream& s = std::clog,
 	bool verbose = false)
 {
-	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body, verbose, s };
-
-	return curl.call(); // RVO
-}
-
-template <http::method::method_t method>
-http::response_message
-request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bool verbose = false)
-{
-	http::basic::client::curl curl{ http::method::to_string(method), url, {}, {}, verbose, s };
-
-	return curl.call(ec); // RVO
-}
-
-template <http::method::method_t method>
-http::response_message request(
-	const std::string& url, std::string& ec, const std::string& body, std::ostream& s = std::clog, bool verbose = false)
-{
-	http::basic::client::curl curl{ http::method::to_string(method), url, {}, body, verbose, s };
+	http::basic::client::curl curl{
+		session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s
+	};
 
 	return curl.call(ec); // RVO
 }
@@ -4871,12 +4880,15 @@ template <http::method::method_t method>
 http::response_message request(
 	const std::string& url,
 	std::string& ec,
-	std::initializer_list<std::string> hdrs,
-	const std::string& body,
+	std::initializer_list<std::string> hdrs = {},
+	const std::string& body = std::string{},
 	std::ostream& s = std::clog,
 	bool verbose = false)
 {
-	http::basic::client::curl curl{ http::method::to_string(method), url, hdrs, body, verbose, s };
+	http::client::scoped_session session;
+	http::basic::client::curl curl{
+		session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s
+	};
 
 	return curl.call(ec); // RVO
 }
