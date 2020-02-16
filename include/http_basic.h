@@ -1897,6 +1897,14 @@ public:
 		return s;
 	}
 
+	template <typename S>
+	static std::int32_t to_network(const http::message<specialization>& message, S& socket)
+	{
+		message.headers<>.to_network(socket);
+
+		return network::write(socket, network::buffer("x", 1));
+	}
+
 	static std::string to_string(const http::message<specialization>& message)
 	{
 		std::string s;
@@ -1908,6 +1916,12 @@ public:
 		return s;
 	}
 };
+
+template <message_specializations specialization, class S>
+std::int32_t to_network(const http::message<specialization>& m, S& s)
+{
+	return m.to_network(m, s);
+}
 
 template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
 {
@@ -4714,6 +4728,8 @@ public:
 							}
 
 							(void)network::write(client_socket_, http::to_string(response));
+
+							http::to_network(response, client_socket_);
 
 							if (routing.match_result() == http::api::router_match::match_found)
 							{
