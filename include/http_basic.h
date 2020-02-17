@@ -1648,6 +1648,26 @@ public:
 		version_nr_ = 0;
 	}
 
+
+	template<class S> 
+	std::int32_t to_network(const S& socket) const
+	{
+		std::int32_t ret = 0;
+		ret += network::write(socket, network::buffer(status::to_string(status_)));
+
+		for (auto&& field : fields_)
+		{
+			ret += network::write(socket, network::buffer(field.name));
+			ret += network::write(socket, network::buffer(": ", 2));
+			ret += network::write(socket, network::buffer(field.value));
+			ret += network::write(socket, network::buffer("\r\n"));
+		}
+
+		ret += network::write(socket, network::buffer("\r\n"));
+
+		return ret;
+	}
+
 	std::string header_to_string() const
 	{
 		std::string s;
@@ -1897,6 +1917,17 @@ public:
 		return s;
 	}
 
+	template <typename S>
+	std::int32_t to_network(const http::message<specialization>& message, const S& socket) const
+	{
+		auto ret = header<specialization>::to_network(socket);
+
+
+		ret += network::write(socket, network::buffer{ message.body(), 1 });
+
+		return ret;
+	}
+
 	static std::string to_string(const http::message<specialization>& message)
 	{
 		std::string s;
@@ -1908,6 +1939,12 @@ public:
 		return s;
 	}
 };
+
+template <message_specializations specialization, class S>
+std::int32_t to_network(const http::message<specialization>& m, const S& socket)
+{
+	return m.to_network(m, socket);
+}
 
 template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
 {
@@ -4714,6 +4751,8 @@ public:
 							}
 
 							(void)network::write(client_socket_, http::to_string(response));
+
+							http::to_network(response, client_socket_);
 
 							if (routing.match_result() == http::api::router_match::match_found)
 							{
