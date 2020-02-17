@@ -4930,6 +4930,29 @@ http::response_message request(
 	return curl.call(ec); // RVO
 }
 
+template <http::method::method_t method>
+http::response_message request(
+	const http::client::scoped_session& session,
+	const std::string& url,
+	std::string& ec,
+	std::ostream& s = std::clog,
+	bool verbose = false)
+{
+	http::basic::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
+
+	return curl.call(ec); // RVO
+}
+
+template <http::method::method_t method>
+http::response_message
+request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bool verbose = false)
+{
+	http::client::scoped_session session;
+	http::basic::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
+
+	return curl.call(ec); // RVO
+}
+
 } // namespace client
 
 } // namespace http
