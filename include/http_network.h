@@ -146,6 +146,7 @@ class const_buffer
 public:
 	const_buffer(const char* data, size_t size) : data_(data), size_(size) {}
 	const_buffer(const std::string& s) : data_(s.data()), size_(s.size()) {}
+	const_buffer(const std::vector<char>& v) : data_(v.data()), size_(v.size()) {}
 
 	const char* data() const { return data_; }
 	size_t size() const { return size_; }
@@ -916,6 +917,11 @@ inline std::int32_t write(const network::tcp::socket& s, const std::string& str)
 	return ::send(s.lowest_layer(), str.data(), static_cast<int>(str.size()), 0);
 }
 
+inline std::int32_t write(const network::tcp::socket& s, const const_buffer& b) noexcept
+{
+	return ::send(s.lowest_layer(), b.data(), static_cast<int>(b.size()), 0);
+}
+
 inline std::int32_t read(ssl::stream<tcp::socket>& s, const buffer& b) noexcept
 {
 	return SSL_read(s.native(), b.data(), static_cast<int>(b.size()));
@@ -940,7 +946,6 @@ inline std::int32_t write_(const ssl::stream<tcp::socket>& s, const const_buffer
 {
 	return SSL_write(s.native(), const_cast<char*>(b.data()), static_cast<int>(b.size()));
 }
-
 
 inline std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_socket)
 {
@@ -970,13 +975,13 @@ inline std::string get_client_info(const network::tcp::socket& client_socket)
 
 inline int tcp_nodelay(network::tcp::socket& s, int value)
 {
-	int reuseaddr = value;
+	int tcp_nodelay = value;
 	return ::setsockopt(
 		s.lowest_layer(),
 		IPPROTO_TCP,
 		TCP_NODELAY,
-		reinterpret_cast<char*>(&reuseaddr),
-		sizeof(reuseaddr)); // NOLINT
+		reinterpret_cast<char*>(&tcp_nodelay),
+		sizeof(tcp_nodelay)); // NOLINT
 }
 
 inline int reuse_address(network::tcp::socket& s, std::int32_t value)

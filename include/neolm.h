@@ -227,10 +227,41 @@ public:
 						   / 1000000000.0;
 
 			std::cout << lgr::logger::format<lgr::prefix::none>(
-				"8K req. took : {f}sec, {f}req/sec\n", elapsed, 8192 / elapsed);
+				"8K health req. took : {f}sec, {f}req/sec\n", elapsed, 8192 / elapsed);
+
+			/*
+			for (int i = 0; i != 100; i++)
+			{
+				std::string ec;
+				auto response = http::client::request<http::method::get>(
+					session, "http://localhost:3000/health", ec, { "Connection: close" }, {}); //, std::cerr, true);
+
+				if (!ec.empty()) throw std::runtime_error{ ec };
+			}
+
+			elapsed = std::chrono::duration<std::int64_t, std::nano>(std::chrono::steady_clock::now() - t0).count()
+					  / 1000000000.0;
+
+			std::cout << lgr::logger::format<lgr::prefix::none>(
+				"100 connections took : {f}sec, {f}req/sec\n", elapsed, 100 / elapsed);*/
+
+			for (int i = 0; i != 8192; i++)
+			{
+				std::string ec;
+				auto response = http::client::request<http::method::get>(
+					session, "http://localhost:3000/status/access_log", ec, {}, {}); //, std::cerr, true);
+
+				if (!ec.empty()) throw std::runtime_error{ ec };
+			}
+
+			elapsed = std::chrono::duration<std::int64_t, std::nano>(std::chrono::steady_clock::now() - t0).count()
+					  / 1000000000.0;
+
+			std::cout << lgr::logger::format<lgr::prefix::none>(
+				"8K accesslog req. took : {f}sec, {f}req/sec\n", elapsed, 8192 / elapsed);
 		}
 
-		std::this_thread::sleep_for(std::chrono::seconds(1));
+		// std::this_thread::sleep_for(std::chrono::seconds(0));
 	}
 
 private:

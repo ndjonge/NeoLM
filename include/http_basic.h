@@ -842,7 +842,7 @@ inline status_t to_status(std::uint32_t status_nr)
 		return http::status::internal_server_error;
 }
 
-inline std::string to_string(status_t s)
+inline const char* to_string(status_t s)
 {
 	switch (s)
 	{
@@ -1648,24 +1648,22 @@ public:
 		version_nr_ = 0;
 	}
 
-
-	template<class S> 
-	std::int32_t to_network(const S& socket) const
+	template <class B = std::string> void to_buffer(B& buffer) const
 	{
-		std::int32_t ret = 0;
-		ret += network::write(socket, network::buffer(status::to_string(status_)));
+		static const std::array<char, 2> field_seperator{ ':', ' ' };
+		static const std::array<char, 2> fields_seperator{ '\r', '\n' };
+
+		buffer.append(status::to_string(status_));
 
 		for (auto&& field : fields_)
 		{
-			ret += network::write(socket, network::buffer(field.name));
-			ret += network::write(socket, network::buffer(": ", 2));
-			ret += network::write(socket, network::buffer(field.value));
-			ret += network::write(socket, network::buffer("\r\n"));
+			buffer.append(field.name.cbegin(), field.name.cend());
+			buffer.append(field_seperator.cbegin(), field_seperator.cend());
+			buffer.append(field.value.cbegin(), field.value.cend());
+			buffer.append(fields_seperator.cbegin(), fields_seperator.cend());
 		}
 
-		ret += network::write(socket, network::buffer("\r\n"));
-
-		return ret;
+		buffer.append(fields_seperator.cbegin(), fields_seperator.cend());
 	}
 
 	std::string header_to_string() const
@@ -1917,15 +1915,10 @@ public:
 		return s;
 	}
 
-	template <typename S>
-	std::int32_t to_network(const http::message<specialization>& message, const S& socket) const
+	template <typename B = std::string> void to_buffer(B& buffer) const
 	{
-		auto ret = header<specialization>::to_network(socket);
-
-
-		ret += network::write(socket, network::buffer{ message.body(), 1 });
-
-		return ret;
+		header<specialization>::to_buffer(buffer);
+		buffer.insert(buffer.end(), body().begin(), body().end());
 	}
 
 	static std::string to_string(const http::message<specialization>& message)
@@ -1940,10 +1933,13 @@ public:
 	}
 };
 
-template <message_specializations specialization, class S>
-std::int32_t to_network(const http::message<specialization>& m, const S& socket)
+template <message_specializations specialization, class B = std::string>
+B to_buffer(const http::message<specialization>& m)
 {
-	return m.to_network(m, socket);
+	B buffer;
+	buffer.reserve(2048 + m.body().size());
+	m.to_buffer(buffer);
+	return buffer;
 }
 
 template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
@@ -3675,8 +3671,8 @@ public:
 				{
 					l = it->link_.begin();
 
-					// /url/* matching is work in progress. If no other route exists with the same prefix it seems to
-					// work.
+					// /url/* matching is work in progress. If no other route exists with the same prefix it seems
+					// to work.
 					if (l->first == "*")
 					{
 						std::string url_remainder{};
@@ -4503,6 +4499,7 @@ public:
 
 					network::timeout(https_socket.lowest_layer(), connection_timeout_);
 					https_socket.handshake(network::ssl::stream_base::server);
+					network::tcp_nodelay(https_socket.lowest_layer(), 1);
 
 					if (https_socket.lowest_layer().lowest_layer() > network::tcp::socket::invalid_socket)
 					{
@@ -4600,6 +4597,7 @@ public:
 					if (ec == network::error::operation_would_block) continue;
 
 					network::timeout(http_socket, connection_timeout_);
+					network::tcp_nodelay(http_socket, 1);
 
 					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
 					{
@@ -4739,8 +4737,8 @@ public:
 							// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the
 							// word "gzip".
 							// TODO: "Accept-Encoding: gzip;q=0" means *no* gzip
-							// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip is
-							// good
+							// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip
+							// is good
 							if ((gzip_min_length_ < response.body().size())
 								&& (session_handler_.request().get("Accept-Encoding", std::string{}).find("gzip")
 									!= std::string::npos))
@@ -4750,9 +4748,9 @@ public:
 								response.set("Content-Length", std::to_string(response.body().size()));
 							}
 
-							(void)network::write(client_socket_, http::to_string(response));
+							//(void)network::write(client_socket_, http::to_string(response));
 
-							http::to_network(response, client_socket_);
+							(void)network::write(client_socket_, network::const_buffer(http::to_buffer(response)));
 
 							if (routing.match_result() == http::api::router_match::match_found)
 							{
