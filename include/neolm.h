@@ -282,7 +282,7 @@ public:
 
 			while (api_server_.is_active())
 			{
-				auto nr_of_testers = 8;
+				auto nr_of_testers = 1;
 
 				std::vector<std::thread> testers{};
 
@@ -296,7 +296,7 @@ public:
 					testers[t].join();
 				}
 
-				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+				std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 			}
 		}
 	}
