@@ -32,7 +32,7 @@ int main()
 								 { "http_listen_port_begin", "3000" },
 								 { "https_enable", "false" },
 								 { "private_base", "/_internal" },
-								 { "log_file", "accesslog.txt" },
+								 { "log_file", "cerr" },
 								 { "log_level", "none" },
 								 { "upstream_node_type", "" },
 								 { "upstream_node_nginx-endpoint", "nlbavlflex01.infor.com:7777" },

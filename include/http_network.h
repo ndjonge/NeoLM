@@ -1049,14 +1049,23 @@ inline int timeout(network::tcp::socket& s, int value)
 	return ret;
 }
 
-inline void closesocket(const socket_t& client_socket) { ::closesocket(client_socket); }
+inline void closesocket(socket_t& client_socket)
+{
+	::closesocket(client_socket);
+	client_socket = network::tcp::socket::invalid_socket;
+}
 
-inline void closesocket(network::tcp::socket& client_socket) { ::closesocket(client_socket.lowest_layer()); }
+inline void closesocket(network::tcp::socket& client_socket)
+{
+	::closesocket(client_socket.lowest_layer());
+	client_socket.assign(network::tcp::socket::invalid_socket);
+}
 
 inline void closesocket(network::ssl::stream<network::tcp::socket>& client_socket)
 {
 	client_socket.close();
 	::closesocket(client_socket.lowest_layer().lowest_layer());
+	client_socket.lowest_layer().assign(network::tcp::socket::invalid_socket);
 }
 
 inline void shutdown(network::tcp::socket& client_socket, int how) { ::shutdown(client_socket.lowest_layer(), how); }

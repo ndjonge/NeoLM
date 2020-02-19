@@ -203,15 +203,19 @@ public:
 
 	void stop_server() { this->api_server_.deactivate(); }
 
-	void run()
+	enum class benchmark_type
 	{
+		simple,
+		status,
+		connection
+	};
 
-		while (api_server_.is_active())
+	void benchmark(benchmark_type type)
+	{
+		http::client::scoped_session session;
+
+		if (type == benchmark_type::simple)
 		{
-			api_server_.logger_.info("Alive!\n");
-
-			http::client::scoped_session session;
-
 			std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
 
 			for (int i = 0; i != 8192; i++)
@@ -228,6 +232,11 @@ public:
 
 			std::cout << lgr::logger::format<lgr::prefix::none>(
 				"8K health req. took : {f}sec, {f}req/sec\n", elapsed, 8192 / elapsed);
+		}
+
+		if (type == benchmark_type::connection)
+		{
+			std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
 
 			for (int i = 0; i != 100; i++)
 			{
@@ -238,11 +247,16 @@ public:
 				if (!ec.empty()) std::cerr << ec;
 			}
 
-			elapsed = std::chrono::duration<std::int64_t, std::nano>(std::chrono::steady_clock::now() - t0).count()
-					  / 1000000000.0;
+			auto elapsed = std::chrono::duration<std::int64_t, std::nano>(std::chrono::steady_clock::now() - t0).count()
+						   / 1000000000.0;
 
 			std::cout << lgr::logger::format<lgr::prefix::none>(
 				"100 connections took : {f}sec, {f}req/sec\n", elapsed, 100 / elapsed);
+		}
+
+		if (type == benchmark_type::status)
+		{
+			std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
 
 			for (int i = 0; i != 8192; i++)
 			{
@@ -252,15 +266,39 @@ public:
 
 				if (!ec.empty()) std::cerr << ec;
 			}
-
-			elapsed = std::chrono::duration<std::int64_t, std::nano>(std::chrono::steady_clock::now() - t0).count()
-					  / 1000000000.0;
+			auto elapsed = std::chrono::duration<std::int64_t, std::nano>(std::chrono::steady_clock::now() - t0).count()
+						   / 1000000000.0;
 
 			std::cout << lgr::logger::format<lgr::prefix::none>(
 				"8K accesslog req. took : {f}sec, {f}req/sec\n", elapsed, 8192 / elapsed);
 		}
+	}
 
-		// std::this_thread::sleep_for(std::chrono::seconds(0));
+	void run()
+	{
+		while (api_server_.is_active())
+		{
+			api_server_.logger_.info("Alive!\n");
+
+			while (api_server_.is_active())
+			{
+				auto nr_of_testers = 8;
+
+				std::vector<std::thread> testers{};
+
+				for (int t = 0; t != nr_of_testers; t++)
+				{
+					testers.push_back(std::thread{ [&]() { benchmark(benchmark_type::connection); } });
+				}
+
+				for (int t = 0; t != nr_of_testers; t++)
+				{
+					testers[t].join();
+				}
+
+				std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			}
+		}
 	}
 
 private:

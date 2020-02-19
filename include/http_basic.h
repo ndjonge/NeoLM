@@ -1076,7 +1076,7 @@ public:
 	using value_type = http::field<T>;
 
 protected:
-	std::vector<fields::value_type> fields_;
+	std::vector<fields::value_type> fields_{};
 
 public:
 	fields() = default;
@@ -4263,10 +4263,10 @@ public:
 	http::basic::server::state start() override
 	{
 		http_connection_thread_ = std::move(std::thread{ [this]() { http_listener_handler(); } });
-		http_connection_queue_thread_ = std::move(std::thread{ [this]() { http_connection_queue_handler(); } });
+		// http_connection_queue_thread_ = std::move(std::thread{ [this]() { http_connection_queue_handler(); } });
 
 		https_connection_thread_ = std::move(std::thread{ [this]() { https_listener_handler(); } });
-		https_connection_queue_thread_ = std::move(std::thread{ [this]() { https_connection_queue_handler(); } });
+		// https_connection_queue_thread_ = std::move(std::thread{ [this]() { https_connection_queue_handler(); } });
 
 		// wait for listener(s to have an valid listen socket if listener is enabled)
 		auto waiting = 0;
@@ -4329,8 +4329,8 @@ public:
 
 		if (http_connection_thread_.joinable()) http_connection_thread_.join();
 		if (https_connection_thread_.joinable()) https_connection_thread_.join();
-		if (http_connection_queue_thread_.joinable()) http_connection_queue_thread_.join();
-		if (https_connection_queue_thread_.joinable()) https_connection_queue_thread_.join();
+		// if (http_connection_queue_thread_.joinable()) http_connection_queue_thread_.join();
+		// if (https_connection_queue_thread_.joinable()) https_connection_queue_thread_.join();
 
 		logger_.debug("stop: server joined listening threads\n");
 
@@ -4345,7 +4345,7 @@ public:
 		return state::not_active;
 	}
 
-	void http_connection_queue_handler()
+	/*void http_connection_queue_handler()
 	{
 		logger_.debug("http_connection_queue_handler: start\n");
 
@@ -4372,41 +4372,7 @@ public:
 		}
 
 		logger_.debug("http_connection_queue_handler: stop\n");
-	}
-
-	void https_connection_queue_handler()
-	{
-		logger_.debug("https_connection_queue_handler: start\n");
-
-		while (https_enabled_ && (is_activating() || is_active()))
-		{
-			std::unique_lock<std::mutex> m(https_connection_queue_mutex_);
-
-			https_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
-
-			if (https_connection_queue_.empty())
-			{
-				std::this_thread::yield();
-			}
-			else
-			{
-				while (!https_connection_queue_.empty())
-				{
-					auto new_connection_handler
-						= std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
-							*this, std::move(https_connection_queue_.front()), connection_timeout_, gzip_min_length_);
-
-					std::thread connection_thread([new_connection_handler]() { new_connection_handler->proceed(); });
-					connection_thread.detach();
-					https_connection_queue_.pop();
-
-					++manager_.connections_accepted();
-					++manager_.connections_current();
-				}
-			}
-		}
-		logger_.debug("https_connection_queue_handler: stop\n");
-	}
+	}*/
 
 	void https_listener_handler()
 	{
@@ -4498,9 +4464,16 @@ public:
 
 					if (https_socket.lowest_layer().lowest_layer() > network::tcp::socket::invalid_socket)
 					{
-						std::lock_guard<std::mutex> m(https_connection_queue_mutex_);
-						https_connection_queue_.push(std::move(https_socket));
-						https_connection_queue_has_connection_.notify_one();
+						auto new_connection_handler
+							= std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
+								*this, std::move(https_socket), connection_timeout_, gzip_min_length_);
+
+						std::thread connection_thread(
+							[new_connection_handler]() { new_connection_handler->proceed(); });
+						connection_thread.detach();
+
+						++manager_.connections_accepted();
+						++manager_.connections_current();
 					}
 				}
 				logger_.accesslog("https listener on port: {d} stopped\n", https_listen_port_probe);
@@ -4588,17 +4561,27 @@ public:
 
 					acceptor_http.accept(http_socket, ec, 5);
 
-					if (ec == network::error::interrupted) break;
-					if (ec == network::error::operation_would_block) continue;
+					if (ec == network::error::interrupted)
+						break;
+					else if (ec == network::error::operation_would_block)
+						continue;
+					else if (ec != network::error::success)
+						throw std::runtime_error("stop stop stop");
 
 					network::timeout(http_socket, connection_timeout_);
 					network::tcp_nodelay(http_socket, 1);
 
 					if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
 					{
-						std::lock_guard<std::mutex> m(http_connection_queue_mutex_);
-						http_connection_queue_.push(std::move(http_socket));
-						http_connection_queue_has_connection_.notify_one();
+						auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
+							*this, std::move(http_socket), connection_timeout_, gzip_min_length_);
+
+						std::thread connection_thread(
+							[new_connection_handler]() { new_connection_handler->proceed(); });
+						connection_thread.detach();
+
+						++manager_.connections_accepted();
+						++manager_.connections_current();
 					}
 				}
 				logger_.accesslog("http listener on port: {d} stopped\n", http_listen_port_probe);
@@ -4622,13 +4605,14 @@ public:
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
 		{
+			server_.logger_.debug("connection_handler: created\n");
 		}
 
 		~connection_handler()
 		{
 			network::shutdown(client_socket_, network::shutdown_send);
-			network::closesocket(client_socket_);
 			--server_.manager().connections_current();
+			server_.logger_.debug("connection_handler: destructed \n");
 		}
 
 		connection_handler(const connection_handler&) = delete;
@@ -4658,6 +4642,12 @@ public:
 					server_.logger_.debug("connection_handler > network::read returned: {d}\n", ret);
 					if (ret <= 0)
 					{
+						if (data_end == data_begin)
+						{
+							server_.logger_.info(
+								"connection_handler > network::read has never red any bytes: {d}\n", ret);
+						}
+
 						break;
 					}
 
@@ -4820,7 +4810,7 @@ public:
 					continue;
 				}
 			}
-			server_.logger_.info("connection_handler: stop\n");
+			server_.logger_.info("connection_handler: stop {u}\n", buffer.size());
 		}
 
 	protected:
@@ -4829,7 +4819,6 @@ public:
 		http::session_handler session_handler_;
 		int connection_timeout_;
 		size_t gzip_min_length_;
-
 		void reset_session() { session_handler_.reset(); }
 	};
 
@@ -4858,9 +4847,6 @@ private:
 	std::mutex http_connection_queue_mutex_;
 	std::mutex https_connection_queue_mutex_;
 	std::mutex configuration_mutex_;
-
-	std::queue<network::tcp::socket> http_connection_queue_;
-	std::queue<network::ssl::stream<network::tcp::socket>> https_connection_queue_;
 
 	std::thread http_connection_thread_;
 	std::thread https_connection_thread_;
