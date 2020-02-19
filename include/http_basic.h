@@ -3913,7 +3913,7 @@ public:
 		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 3000L);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 3000L);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 1);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
 		setup(verb, url, hdrs, body);
 	}
@@ -4352,14 +4352,9 @@ public:
 		while (http_enabled_ && (is_activating() || is_active()))
 		{
 			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
+			http_connection_queue_has_connection_.wait_for(m, std::chrono::milliseconds(1000));
 
-			http_connection_queue_has_connection_.wait_for(m, std::chrono::seconds(1));
-
-			if (http_connection_queue_.empty())
-			{
-				std::this_thread::yield();
-			}
-			else
+			if (!http_connection_queue_.empty())
 			{
 				while (!http_connection_queue_.empty())
 				{
