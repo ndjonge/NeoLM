@@ -288,7 +288,7 @@ public:
 
 				for (int t = 0; t != nr_of_testers; t++)
 				{
-					testers.push_back(std::thread{ [&]() { benchmark(benchmark_type::connection); } });
+					testers.push_back(std::thread{ [&]() { benchmark(benchmark_type::simple); } });
 				}
 
 				for (int t = 0; t != nr_of_testers; t++)

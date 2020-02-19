@@ -400,7 +400,7 @@ public:
 				case 'd':
 					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 					{
-						auto s = snprintf(&tmp[0], tmp.size(), "%lld", argument_array[argument_index++].u.int_value_);
+						auto s = snprintf(&tmp[0], tmp.size(), "%ld", argument_array[argument_index++].u.int_value_);
 						buffer.append(&tmp[0], s);
 						expect = format_state::end;
 					}
@@ -412,7 +412,7 @@ public:
 				case 'x':
 					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 					{
-						auto s = snprintf(&tmp[0], tmp.size(), "%llx", argument_array[argument_index++].u.int_value_);
+						auto s = snprintf(&tmp[0], tmp.size(), "%lx", argument_array[argument_index++].u.int_value_);
 						buffer.append(&tmp[0], s);
 						expect = format_state::end;
 					}
@@ -424,7 +424,7 @@ public:
 				case 'X':
 					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 					{
-						auto s = snprintf(&tmp[0], tmp.size(), "%llX", argument_array[argument_index++].u.int_value_);
+						auto s = snprintf(&tmp[0], tmp.size(), "%lX", argument_array[argument_index++].u.int_value_);
 						buffer.append(&tmp[0], s);
 						expect = format_state::end;
 					}
