@@ -282,21 +282,24 @@ public:
 
 			while (api_server_.is_active())
 			{
-				auto nr_of_testers = 1;
-
-				std::vector<std::thread> testers{};
-
-				for (int t = 0; t != nr_of_testers; t++)
+				while (1)
 				{
-					testers.push_back(std::thread{ [&]() { benchmark(benchmark_type::simple); } });
-				}
+					auto nr_of_testers = 1;
 
-				for (int t = 0; t != nr_of_testers; t++)
-				{
-					testers[t].join();
-				}
+					std::vector<std::thread> testers{};
 
-				std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+					for (int t = 0; t != nr_of_testers; t++)
+					{
+						testers.push_back(std::thread{ [&]() { benchmark(benchmark_type::simple); } });
+					}
+
+					for (int t = 0; t != nr_of_testers; t++)
+					{
+						testers[t].join();
+					}
+
+					std::this_thread::sleep_for(std::chrono::milliseconds(100));
+				}
 			}
 		}
 	}
