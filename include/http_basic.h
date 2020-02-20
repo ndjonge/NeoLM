@@ -301,7 +301,7 @@ public:
 		public:
 			argument(size_t value) : value_(type::size_t_) { u.size_t_value_ = value; }
 			argument(int value) : value_(type::int_) { u.int_value_ = value; }
-			// argument(std::int64_t value) : value_(type::int_) { u.int_value_ = value; }
+			argument(std::int64_t value) : value_(type::int_) { u.int_value_ = value; }
 			argument(double value) : value_(type::double_) { u.dbl_value_ = value; }
 			argument(const char* value) : value_(type::string_)
 			{
@@ -400,7 +400,11 @@ public:
 				case 'd':
 					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 					{
-						auto s = snprintf(&tmp[0], tmp.size(), "%lld", static_cast<long long>(argument_array[argument_index++].u.int_value_));
+						auto s = snprintf(
+							&tmp[0],
+							tmp.size(),
+							"%lld",
+							static_cast<long long>(argument_array[argument_index++].u.int_value_));
 						buffer.append(&tmp[0], s);
 						expect = format_state::end;
 					}
@@ -412,7 +416,11 @@ public:
 				case 'x':
 					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 					{
-						auto s = snprintf(&tmp[0], tmp.size(), "%llx", static_cast<long long>(argument_array[argument_index++].u.int_value_));
+						auto s = snprintf(
+							&tmp[0],
+							tmp.size(),
+							"%llx",
+							static_cast<long long>(argument_array[argument_index++].u.int_value_));
 						buffer.append(&tmp[0], s);
 						expect = format_state::end;
 					}
@@ -424,7 +432,11 @@ public:
 				case 'X':
 					if (expect == format_state::type && argument_array[argument_index].value_ == argument::type::int_)
 					{
-						auto s = snprintf(&tmp[0], tmp.size(), "%llX", static_cast<long long>(argument_array[argument_index++].u.int_value_));
+						auto s = snprintf(
+							&tmp[0],
+							tmp.size(),
+							"%llX",
+							static_cast<long long>(argument_array[argument_index++].u.int_value_));
 						buffer.append(&tmp[0], s);
 						expect = format_state::end;
 					}
@@ -1076,7 +1088,7 @@ public:
 	using value_type = http::field<T>;
 
 protected:
-	std::vector<fields::value_type> fields_{};
+	std::vector<fields::value_type> fields_;
 
 public:
 	fields() = default;
@@ -1547,27 +1559,24 @@ public:
 		this->fields_.clear();
 	}
 
-	inline std::string header_to_string() const
+	std::string header_to_string() const
 	{
-		std::string s;
-		s.reserve(1024 * 2);
+		std::ostringstream ss;
 
 		if (version_nr() == 11)
-			s += http::method::to_string(method_) + " " + target_ + " HTTP/1.1\r\n";
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.1\r\n";
 		else
-			s += http::method::to_string(method_) + " " + target_ + " HTTP/1.1\r\n";
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.0\r\n";
 
 		for (auto&& field : fields_)
 		{
-			s += field.name;
-			s += ": ";
-			s += field.value;
-			s += "\r\n";
+			ss << field.name << ": ";
+			ss << field.value << "\r\n";
 		}
 
-		s += "\r\n";
+		ss << "\r\n";
 
-		return s;
+		return ss.str();
 	}
 
 	std::string header_to_dbg_string() const
@@ -1648,62 +1657,38 @@ public:
 		version_nr_ = 0;
 	}
 
-	template <class B = std::string> void to_buffer(B& buffer) const
-	{
-		static const std::array<char, 2> field_seperator{ ':', ' ' };
-		static const std::array<char, 2> fields_seperator{ '\r', '\n' };
-
-		buffer.append(status::to_string(status_));
-
-		for (auto&& field : fields_)
-		{
-			buffer.append(field.name.cbegin(), field.name.cend());
-			buffer.append(field_seperator.cbegin(), field_seperator.cend());
-			buffer.append(field.value.cbegin(), field.value.cend());
-			buffer.append(fields_seperator.cbegin(), fields_seperator.cend());
-		}
-
-		buffer.append(fields_seperator.cbegin(), fields_seperator.cend());
-	}
-
 	std::string header_to_string() const
 	{
-		std::string s;
-		s.reserve(1024 * 2);
+		std::ostringstream ss;
 
-		s += status::to_string(status_);
+		ss << status::to_string(status_);
 
 		for (auto&& field : fields_)
 		{
-			s += field.name;
-			s += ": ";
-			s += field.value;
-			s += "\r\n";
+			ss << field.name << ": ";
+			ss << field.value << "\r\n";
 		}
 
-		s += "\r\n";
+		ss << "\r\n";
 
-		return s;
+		return ss.str();
 	}
 
 	std::string header_to_dbg_string() const
 	{
-		std::string s;
-		s.reserve(1024 * 2);
+		std::ostringstream ss;
 
-		s += status::to_string(status_);
+		ss << status::to_string(status_);
 
 		for (auto&& field : fields_)
 		{
-			s += field.name;
-			s += ": ";
-			s += field.value;
-			s += "\n";
+			ss << field.name << ": ";
+			ss << field.value << "\n";
 		}
 
-		s += "\n";
+		ss << "\n";
 
-		return s;
+		return ss.str();
 	}
 };
 
@@ -1906,41 +1891,22 @@ public:
 
 	static std::string to_dbg_string(const http::message<specialization>& message)
 	{
-		std::string s;
-		s.reserve(message.body().size() + 1024);
+		std::string ret = message.header_to_dbg_string();
+		ret += message.body();
 
-		s += message.header_to_string();
-		s += message.body();
-
-		return s;
-	}
-
-	template <typename B = std::string> void to_buffer(B& buffer) const
-	{
-		header<specialization>::to_buffer(buffer);
-		buffer.insert(buffer.end(), body().begin(), body().end());
+		return ret;
 	}
 
 	static std::string to_string(const http::message<specialization>& message)
 	{
-		std::string s;
-		s.reserve(message.body().size() + 1024);
+		std::ostringstream ss;
 
-		s += message.header_to_string();
-		s += message.body();
+		ss << message.header_to_string();
+		ss << message.body();
 
-		return s;
+		return ss.str();
 	}
 };
-
-template <message_specializations specialization, class B = std::string>
-B to_buffer(const http::message<specialization>& m)
-{
-	B buffer;
-	buffer.reserve(2048 + m.body().size());
-	m.to_buffer(buffer);
-	return buffer;
-}
 
 template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
 {
@@ -3786,7 +3752,7 @@ public:
 		}
 		return route_context;
 	}
-}; // namespace api
+};
 
 } // namespace api
 
@@ -4178,7 +4144,7 @@ public:
 
 		std::string to_string() const
 		{
-			std::stringstream ss;
+			std::ostringstream ss;
 			std::lock_guard<std::mutex> g(mutex_);
 
 			ss << "Server Configuration:\n" << server_information_ << "\n";
@@ -4263,10 +4229,7 @@ public:
 	http::basic::server::state start() override
 	{
 		http_connection_thread_ = std::move(std::thread{ [this]() { http_listener_handler(); } });
-		// http_connection_queue_thread_ = std::move(std::thread{ [this]() { http_connection_queue_handler(); } });
-
 		https_connection_thread_ = std::move(std::thread{ [this]() { https_listener_handler(); } });
-		// https_connection_queue_thread_ = std::move(std::thread{ [this]() { https_connection_queue_handler(); } });
 
 		// wait for listener(s to have an valid listen socket if listener is enabled)
 		auto waiting = 0;
@@ -4329,8 +4292,6 @@ public:
 
 		if (http_connection_thread_.joinable()) http_connection_thread_.join();
 		if (https_connection_thread_.joinable()) https_connection_thread_.join();
-		// if (http_connection_queue_thread_.joinable()) http_connection_queue_thread_.join();
-		// if (https_connection_queue_thread_.joinable()) https_connection_queue_thread_.join();
 
 		logger_.debug("stop: server joined listening threads\n");
 
@@ -4344,35 +4305,6 @@ public:
 		logger_.info("start: state set to not_active\n");
 		return state::not_active;
 	}
-
-	/*void http_connection_queue_handler()
-	{
-		logger_.debug("http_connection_queue_handler: start\n");
-
-		while (http_enabled_ && (is_activating() || is_active()))
-		{
-			std::unique_lock<std::mutex> m(http_connection_queue_mutex_);
-			http_connection_queue_has_connection_.wait_for(m, std::chrono::milliseconds(1000));
-
-			if (!http_connection_queue_.empty())
-			{
-				while (!http_connection_queue_.empty())
-				{
-					auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
-						*this, std::move(http_connection_queue_.front()), connection_timeout_, gzip_min_length_);
-
-					std::thread connection_thread([new_connection_handler]() { new_connection_handler->proceed(); });
-					connection_thread.detach();
-					http_connection_queue_.pop();
-
-					++manager_.connections_accepted();
-					++manager_.connections_current();
-				}
-			}
-		}
-
-		logger_.debug("http_connection_queue_handler: stop\n");
-	}*/
 
 	void https_listener_handler()
 	{
@@ -4642,12 +4574,6 @@ public:
 					server_.logger_.debug("connection_handler > network::read returned: {d}\n", ret);
 					if (ret <= 0)
 					{
-						if (data_end == data_begin)
-						{
-							server_.logger_.info(
-								"connection_handler > network::read has never red any bytes: {d}\n", ret);
-						}
-
 						break;
 					}
 
@@ -4733,9 +4659,7 @@ public:
 								response.set("Content-Length", std::to_string(response.body().size()));
 							}
 
-							//(void)network::write(client_socket_, http::to_string(response));
-
-							(void)network::write(client_socket_, network::const_buffer(http::to_buffer(response)));
+							(void)network::write(client_socket_, http::to_string(response));
 
 							if (routing.match_result() == http::api::router_match::match_found)
 							{
@@ -4810,7 +4734,7 @@ public:
 					continue;
 				}
 			}
-			server_.logger_.info("connection_handler: stop {u}\n", buffer.size());
+			server_.logger_.info("connection_handler: stop\n");
 		}
 
 	protected:
@@ -4863,8 +4787,6 @@ using middleware = http::api::router<>::middleware_type;
 
 namespace client
 {
-
-// http::client::request{}
 
 class scoped_session
 {
