@@ -1074,7 +1074,9 @@ public:
 
 	field() = default;
 
-	field(std::string name, T value = T{}) : name(std::move(name)), value(std::move(value)){};
+	field(const char* name, T value = T{}) : name(name), value(std::move(value)){};
+	field(std::string name, T value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
+	field(std::string&& name, T&& value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
 
 	std::string name;
 	T value;
