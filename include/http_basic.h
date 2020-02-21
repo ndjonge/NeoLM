@@ -1090,7 +1090,7 @@ public:
 	using value_type = http::field<T>;
 
 protected:
-	std::vector<fields::value_type> fields_;
+	std::vector<fields::value_type> fields_{10};
 
 public:
 	fields() = default;
