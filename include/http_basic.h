@@ -4499,8 +4499,6 @@ public:
 						break;
 					else if (ec == network::error::operation_would_block)
 						continue;
-					else if (ec != network::error::success)
-						throw std::runtime_error("stop stop stop");
 
 					network::timeout(http_socket, connection_timeout_);
 					network::tcp_nodelay(http_socket, 1);
@@ -4767,18 +4765,10 @@ private:
 	int connection_timeout_;
 	size_t gzip_min_length_;
 
-	std::condition_variable http_connection_queue_has_connection_;
-	std::condition_variable https_connection_queue_has_connection_;
-
-	std::mutex http_connection_queue_mutex_;
-	std::mutex https_connection_queue_mutex_;
 	std::mutex configuration_mutex_;
 
 	std::thread http_connection_thread_;
 	std::thread https_connection_thread_;
-
-	std::thread http_connection_queue_thread_;
-	std::thread https_connection_queue_thread_;
 };
 
 } // namespace threaded
@@ -4790,10 +4780,10 @@ using middleware = http::api::router<>::middleware_type;
 namespace client
 {
 
-class scoped_session
+class session
 {
 public:
-	scoped_session() = default;
+	session() = default;
 
 	const http::basic::client::curl_session& as_session() const { return session_; }
 
@@ -4803,7 +4793,7 @@ private:
 
 template <http::method::method_t method>
 http::response_message request(
-	const http::client::scoped_session& session,
+	const http::client::session& session,
 	const std::string& url,
 	std::string& ec,
 	std::initializer_list<std::string> hdrs = {},
@@ -4827,7 +4817,7 @@ http::response_message request(
 	std::ostream& s = std::clog,
 	bool verbose = false)
 {
-	http::client::scoped_session session;
+	http::client::session session;
 	http::basic::client::curl curl{
 		session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s
 	};
@@ -4837,7 +4827,7 @@ http::response_message request(
 
 template <http::method::method_t method>
 http::response_message request(
-	const http::client::scoped_session& session,
+	const http::client::session& session,
 	const std::string& url,
 	std::string& ec,
 	std::ostream& s = std::clog,
@@ -4852,7 +4842,7 @@ template <http::method::method_t method>
 http::response_message
 request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bool verbose = false)
 {
-	http::client::scoped_session session;
+	http::client::session session;
 	http::basic::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
 
 	return curl.call(ec); // RVO

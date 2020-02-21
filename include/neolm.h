@@ -212,7 +212,7 @@ public:
 
 	void benchmark(benchmark_type type)
 	{
-		http::client::scoped_session session;
+		http::client::session session;
 
 		if (type == benchmark_type::simple)
 		{

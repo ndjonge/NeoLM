@@ -887,7 +887,7 @@ inline std::int32_t read(const socket_t& s, const buffer& b) noexcept
 	return ::recv(s, b.data(), static_cast<int>(b.size()), 0);
 }
 
-inline std::int32_t write_(const socket_t& s, const const_buffer& b) noexcept
+inline std::int32_t write(const socket_t& s, const const_buffer& b) noexcept
 {
 	return ::send(s, b.data(), static_cast<int>(b.size()), 0);
 }
@@ -938,11 +938,6 @@ inline std::int32_t write(ssl::stream<tcp::socket>& s, const std::string& str) n
 } // NOLINT
 
 inline std::int32_t write(const ssl::stream<tcp::socket>& s, const const_buffer& b) noexcept
-{
-	return SSL_write(s.native(), const_cast<char*>(b.data()), static_cast<int>(b.size()));
-}
-
-inline std::int32_t write_(const ssl::stream<tcp::socket>& s, const const_buffer& b) noexcept
 {
 	return SSL_write(s.native(), const_cast<char*>(b.data()), static_cast<int>(b.size()));
 }
