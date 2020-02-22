@@ -16,10 +16,73 @@
 
 #include <vector>
 
+namespace nstd
+{
+template <typename T> class inline_vector_impl
+{
+private:
+	T* begin_;
+	T* end_;
+	size_t capacity_;
+
+public:
+	inline_vector_impl(T* begin, T* end, size_t capacity) : begin_(begin), end_(end), capacity_(capacity){};
+};
+
+template <class T, std::int16_t S> class inline_vector : public inline_vector_impl<T>
+{
+private:
+	typename std::aligned_storage<sizeof(T), alignof(T)>::type buffer_[S];
+	size_t size_;
+
+public:
+	inline_vector() : inline_vector_impl(reinterpret_cast<T*>(&buffer_), reinterpret_cast<T*>(&buffer_[S]), S) 
+	{
+	}
+
+	// Delete objects from aligned storage
+	~inline_vector()
+	{
+		for (std::size_t pos = 0; pos < size_; ++pos)
+		{
+			// note: needs std::launder as of C++17
+			reinterpret_cast<T*>(&buffer_[pos])->~T();
+		}
+	}
+
+
+	// Create an object in aligned storage
+	template <typename... Args> void emplace_back(Args&&... args)
+	{
+		if (size_ >= S) // possible error handling
+			throw std::bad_alloc{};
+
+		// construct value in memory of aligned storage
+		// using inplace operator new
+		new (&buffer_[size_]) T(std::forward<Args>(args)...);
+		++size_;
+	}
+
+	// Access an object in aligned storage
+	const T& operator[](std::size_t pos) const
+	{
+		// note: needs std::launder as of C++17
+		return *reinterpret_cast<const T*>(&buffer_[pos]);
+	}
+};
+
+} // namespace nstd
 using json = nlohmann::json;
 
 int main()
 {
+	nstd::inline_vector<size_t, 10> v;
+
+	for (int x =0; x!=9; x++)
+		v.emplace_back(x);
+
+
+
 	network::init();
 	network::ssl::init();
 
