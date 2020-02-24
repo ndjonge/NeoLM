@@ -2945,7 +2945,8 @@ class session_handler
 public:
 	using result_type = http::request_parser::result_type;
 
-	session_handler() = default;
+	session_handler(const std::string server_id, std::int16_t keepalive_max, std::int16_t keepalive_count)
+		: server_id_(server_id), keepalive_count_(keepalive_count), keepalive_max_(keepalive_max){};
 	session_handler(const session_handler&) = default;
 	session_handler(session_handler&&) = delete;
 	session_handler& operator=(const session_handler&) = delete;
@@ -2963,12 +2964,10 @@ public:
 
 	template <typename router_t> typename router_t::request_result_type handle_request(router_t& router_)
 	{
-		std::string server_id{ "x" };
-
 		response_.status(http::status::bad_request);
 		response_.type("text");
 
-		response_.set("Server", server_id);
+		response_.set("Server", server_id_);
 		response_.set("Date", util::return_current_time_and_date());
 
 		std::string request_path;
@@ -3115,8 +3114,9 @@ private:
 	http::api::routing* routing_{ nullptr };
 	http::api::params* params_{ nullptr };
 
-	int keepalive_count_{ 8192 };
-	int keepalive_max_{ 5 };
+	const std::string& server_id_;
+	int keepalive_count_;
+	int keepalive_max_;
 
 	std::chrono::steady_clock::time_point t0_{ std::chrono::steady_clock::now() };
 	std::chrono::steady_clock::time_point t1_{ std::chrono::steady_clock::now() };
@@ -4548,6 +4548,7 @@ public:
 			http::basic::threaded::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
 			, client_socket_(std::move(client_socket))
+			, session_handler_(server_.id(), server_.keepalive_max(), server_.keepalive_count())
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
 		{
