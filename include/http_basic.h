@@ -27,6 +27,8 @@
 #include <vector>
 #include <zlib.h>
 
+#include "hyb_vector.h"
+
 #if !defined(ASSERT)
 #include <cassert>
 #define ASSERT(X) assert(X)
@@ -491,27 +493,42 @@ public:
 
 	template <typename... A> void accesslog(const char* format, const A&... args) const
 	{
-		log(level::accesslog, logger::format<prefix::accesslog, A...>(format, args...));
+		if (level_ >= level::accesslog)
+		{
+			log(level::accesslog, logger::format<prefix::accesslog, A...>(format, args...));
+		}
 	}
 
 	template <typename... A> void info(const char* format, const A&... args) const
 	{
-		log(level::info, logger::format<prefix::info, A...>(format, args...));
+		if (level_ >= level::info)
+		{
+			log(level::info, logger::format<prefix::info, A...>(format, args...));
+		}
 	}
 
 	template <typename... A> void warning(const char* format, const A&... args) const
 	{
-		log(level::warning, logger::format<prefix::warning, A...>(format, args...));
+		if (level_ >= level::warning)
+		{
+			log(level::warning, logger::format<prefix::warning, A...>(format, args...));
+		}
 	}
 
 	template <typename... A> void error(const char* format, const A&... args) const
 	{
-		log(level::error, logger::format<prefix::error, A...>(format, args...));
+		if (level_ >= level::error)
+		{
+			log(level::error, logger::format<prefix::error, A...>(format, args...));
+		}
 	}
 
 	template <typename... A> void debug(const char* format, const A&... args) const
 	{
-		log(level::debug, logger::format<prefix::debug, A...>(format, args...));
+		if (level_ >= level::debug)
+		{
+			log(level::debug, logger::format<prefix::debug, A...>(format, args...));
+		}
 	}
 
 	template <typename... A> void accesslog(const std::string& msg) const
@@ -590,6 +607,12 @@ inline std::string escape_json(const std::string& s)
 		}
 	}
 	return ss.str();
+}
+
+inline bool case_insensitive_equal(const std::string& str1, const char* str2) noexcept
+{
+	return str1.size() == std::strlen(str2)
+		   && std::equal(str1.begin(), str1.end(), str2, [](char a, char b) { return tolower(a) == tolower(b); });
 }
 
 inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
@@ -1086,11 +1109,14 @@ template <typename T> class fields
 {
 
 public:
-	using iterator = typename std::vector<http::field<T>>::iterator;
 	using value_type = http::field<T>;
+	using container = hyb::vector<fields::value_type, 10>;
+	using iterator = typename container::iterator;
+	using reverse_iterator = typename container::reverse_iterator;
 
 protected:
-	std::vector<fields::value_type> fields_{10};
+	// std::vector<fields::value_type> fields_{ 10 };
+	hyb::vector<fields::value_type, 10> fields_{};
 
 public:
 	fields() = default;
@@ -1119,7 +1145,7 @@ public:
 
 	inline bool fields_empty() const { return this->fields_.empty(); };
 
-	inline typename std::vector<fields::value_type>::reverse_iterator new_field()
+	inline typename reverse_iterator new_field()
 	{
 		fields_.emplace_back(field<T>{});
 		return fields_.rbegin();
@@ -1238,7 +1264,7 @@ public:
 		return returnvalue;
 	}
 
-	inline typename std::vector<fields::value_type>::reverse_iterator last_new_field() { return fields_.rbegin(); }
+	inline typename reverse_iterator last_new_field() { return fields_.rbegin(); }
 
 	inline const T get(const char* name) const
 	{
@@ -2919,21 +2945,13 @@ class session_handler
 public:
 	using result_type = http::request_parser::result_type;
 
-	session_handler() = delete;
+	session_handler() = default;
 	session_handler(const session_handler&) = default;
 	session_handler(session_handler&&) = delete;
 	session_handler& operator=(const session_handler&) = delete;
 	session_handler& operator=(session_handler&&) = delete;
 
 	~session_handler() = default;
-
-	session_handler(http::configuration& configuration)
-		: configuration_(configuration)
-		, keepalive_count_(configuration.get<int>("keepalive_count", 1024 * 8))
-		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
-		, t0_(std::chrono::steady_clock::now())
-	{
-	}
 
 	template <typename InputIterator>
 	std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end)
@@ -2945,7 +2963,7 @@ public:
 
 	template <typename router_t> typename router_t::request_result_type handle_request(router_t& router_)
 	{
-		std::string server_id{ configuration_.get<std::string>("server", "http/server/0") };
+		std::string server_id{ "x" };
 
 		response_.status(http::status::bad_request);
 		response_.type("text");
@@ -3094,15 +3112,14 @@ private:
 	http::request_message request_{ *this };
 	http::response_message response_{ *this };
 	http::request_parser request_parser_;
-	http::configuration& configuration_;
 	http::api::routing* routing_{ nullptr };
 	http::api::params* params_{ nullptr };
 
-	int keepalive_count_;
-	int keepalive_max_;
+	int keepalive_count_{ 8192 };
+	int keepalive_max_{ 5 };
 
-	std::chrono::steady_clock::time_point t0_;
-	std::chrono::steady_clock::time_point t1_;
+	std::chrono::steady_clock::time_point t0_{ std::chrono::steady_clock::now() };
+	std::chrono::steady_clock::time_point t1_{ std::chrono::steady_clock::now() };
 };
 
 namespace api
@@ -3913,13 +3930,12 @@ public:
 		if (ret != CURLE_OK)
 		{
 			error = std::string{ curl_easy_strerror(ret) } + " when requesting " + verb_ + " on url: " + url_;
-			return response_message_;
 		}
 		else
 		{
 			response_message_.body() = buffer_.str();
-			return response_message_;
 		}
+		return response_message_;
 	}
 
 	http::response_message call()
@@ -3933,8 +3949,8 @@ public:
 		else
 		{
 			response_message_.body() = buffer_.str();
-			return response_message_;
 		}
+		return response_message_;
 	}
 };
 
@@ -4000,17 +4016,14 @@ public:
 
 		std::atomic<std::int64_t> idle_since_;
 
-		std::vector<std::string> access_log_;
+		hyb::vector<std::string, 32> access_log_;
 		mutable std::mutex mutex_;
 
 	public:
 		server_manager() noexcept
 			: server_information_("")
 			, router_information_("")
-			, idle_since_(std::chrono::steady_clock::now().time_since_epoch().count())
-		{
-			access_log_.reserve(32);
-		};
+			, idle_since_(std::chrono::steady_clock::now().time_since_epoch().count()){};
 
 		std::atomic<size_t>& requests_handled() { return requests_handled_; }
 		std::atomic<size_t>& connections_accepted() { return connections_accepted_; }
@@ -4183,6 +4196,8 @@ protected:
 	http::configuration configuration_;
 	lgr::logger logger_;
 	std::atomic<state> state_{ state::activating };
+	int keepalive_count_;
+	int keepalive_max_;
 }; // namespace basic
 
 namespace threaded
@@ -4533,7 +4548,6 @@ public:
 			http::basic::threaded::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
 			, client_socket_(std::move(client_socket))
-			, session_handler_(server.configuration_)
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
 		{

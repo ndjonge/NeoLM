@@ -274,7 +274,7 @@ public:
 		}
 	}
 
-	void run()
+	void run_benchmark()
 	{
 		while (api_server_.is_active())
 		{
@@ -301,6 +301,16 @@ public:
 					std::this_thread::sleep_for(std::chrono::milliseconds(100));
 				}
 			}
+		}
+	}
+
+	void run()
+	{
+		while (api_server_.is_active())
+		{
+			std::cerr << "Alive!\n";
+			api_server_.logger_.info("Alive!\n");
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
 	}
 
