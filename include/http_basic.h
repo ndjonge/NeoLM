@@ -2945,7 +2945,7 @@ class session_handler
 public:
 	using result_type = http::request_parser::result_type;
 
-	session_handler(const std::string server_id, std::int16_t keepalive_max, std::int16_t keepalive_count)
+	session_handler(const std::string& server_id, std::int16_t keepalive_max, std::int16_t keepalive_count)
 		: server_id_(server_id), keepalive_count_(keepalive_count), keepalive_max_(keepalive_max){};
 	session_handler(const session_handler&) = default;
 	session_handler(session_handler&&) = delete;
@@ -4225,6 +4225,10 @@ public:
 		, endpoint_https_(configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 5))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
+		, id_(configuration.get<std::string>("http_server_identification", "server 1/1/1"))
+		, keepalive_count_(8192)
+		, keepalive_max_(5)
+
 	{
 		logger_.debug("server created\n");
 	}
@@ -4242,6 +4246,10 @@ public:
 
 	server& operator=(const server&) = delete;
 	server& operator=(const server&&) = delete;
+
+	const std::string& id() const { return id_; }
+	std::int16_t keepalive_max() const { return keepalive_max_; }
+	std::int16_t keepalive_count() const { return keepalive_count_; }
 
 	http::basic::server::state start() override
 	{
@@ -4784,6 +4792,10 @@ private:
 
 	std::thread http_connection_thread_;
 	std::thread https_connection_thread_;
+
+	std::string id_;
+	std::int16_t keepalive_max_;
+	std::int16_t keepalive_count_;
 };
 
 } // namespace threaded
