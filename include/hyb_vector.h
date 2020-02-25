@@ -30,31 +30,38 @@ private:
 
 	struct _data
 	{
-		union {
+		union _u_ {
 			pointer pointer_;
 			T inline_store_[S];
+
+			~_u_(){};
 		};
+
+		_u_ u_;
+
+		_data() = default;
+		~_data(){};
 	};
 
 	_data data_{};
 
 public:
-	vector() : begin_(reinterpret_cast<pointer>(&data_.inline_store_[0])), capacity_(S), size_(0) {}
+	vector() : begin_(reinterpret_cast<pointer>(&data_.u_.inline_store_[0])), capacity_(S), size_(0) {}
 
 	vector(const vector& rhs)
-		: begin_(reinterpret_cast<pointer>(&data_.inline_store_[0])), capacity_(S), size_(0), inline_used_(true)
+		: begin_(reinterpret_cast<pointer>(&data_.u_.inline_store_[0])), capacity_(S), size_(0), inline_used_(true)
 	{
 		assign(rhs.begin(), rhs.end());
 	}
 
 	vector(vector&& rhs)
-		: begin_(reinterpret_cast<pointer>(&data_.inline_store_[0])), capacity_(S), size_(0), inline_used_(true)
+		: begin_(reinterpret_cast<pointer>(&data_.u_.inline_store_[0])), capacity_(S), size_(0), inline_used_(true)
 	{
 		assign(rhs.begin(), rhs.end());
 	}
 
 	vector(std::initializer_list<T> list)
-		: begin_(reinterpret_cast<pointer>(&data_.inline_store_[0])), capacity_(S), size_(0), inline_used_(true)
+		: begin_(reinterpret_cast<pointer>(&data_.u_.inline_store_[0])), capacity_(S), size_(0), inline_used_(true)
 	{
 		assign(list.begin(), list.end());
 	}
@@ -75,7 +82,7 @@ public:
 
 			// if (!inline_used_) delete data_.pointer_;
 
-			begin_ = reinterpret_cast<pointer>(&data_.inline_store_[0]);
+			begin_ = reinterpret_cast<pointer>(&data_.u_.inline_store_[0]);
 			capacity_ = S;
 			size_ = 0;
 			inline_used_ = true;
@@ -93,13 +100,13 @@ public:
 			std::uninitialized_copy(
 				std::make_move_iterator(begin()),
 				std::make_move_iterator(end()),
-				reinterpret_cast<T*>(&data_.inline_store_));
+				reinterpret_cast<T*>(&data_.u_.inline_store_));
 
 			for (std::size_t pos = 0; pos < size(); ++pos)
 			{
 				reinterpret_cast<T*>(&begin()[pos])->~T();
 			}
-			begin_ = reinterpret_cast<T*>(&data_.inline_store_);
+			begin_ = reinterpret_cast<T*>(&data_.u_.inline_store_);
 			capacity_ = S;
 			inline_used_ = true;
 		}
@@ -115,7 +122,7 @@ public:
 				reinterpret_cast<T*>(&begin()[pos])->~T();
 			}
 			begin_ = new_storage;
-			data_.pointer_ = new_storage;
+			data_.u_.pointer_ = new_storage;
 			inline_used_ = false;
 			capacity_ = s;
 		}
