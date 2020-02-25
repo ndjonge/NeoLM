@@ -55,7 +55,7 @@ private:
 			S::router_.on_get(
 				S::configuration_.template get<std::string>("internal_base", "") + "/status",
 				[this](http::session_handler& session) {
-					const auto format{ session.request().get("Accept", "application/json") };
+					const auto& format = session.request().get("Accept", "application/json") ;
 
 					if (format.find("application/json") != std::string::npos)
 					{

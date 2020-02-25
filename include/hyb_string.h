@@ -194,13 +194,15 @@ public:
 			if (c1 == *(str.begin()))
 			{
 				ret = i;
+				size_type j = 0;
 				for (auto c2 : str)
 				{
+					c1 = *(begin() + j);
+
 					if (c1 == c2)
-						continue;
+						break;
 					else
 						ret = npos;
-					break;
 				}
 			}
 		}
@@ -208,13 +210,56 @@ public:
 		return ret;
 	} // TODO
 
-	constexpr size_type find_last_not_of(char c, size_type pos = npos) const { return 0; } // TODO
+	constexpr size_type find_last_not_of(char c, size_type pos = npos) const
+	{
+		size_type ret = npos;
+		for (size_type i = (pos == !npos ? pos : size()); i >= 0; --i)
+		{
+			if (*(begin() + i) == c)
+			{
+				ret = i;
+				break;
+			}
+		}
 
-	constexpr size_type find_last_not_of(const char* str, size_type pos = npos) const { return npos; } // TODO
+		return ret;
+	} // TODO
 
-	constexpr size_type find_last_of(const char* str, size_type pos = npos) const { return 0; } // TODO
+	constexpr size_type find_last_not_of(const char* str, size_type pos = npos) const
+	{
+		size_type ret = npos;
+		for (size_type i = (pos == !npos ? pos : size()-1); i != 0; --i)
+		{
 
-	basic_string substr(size_t first, size_t last) const { return {}; } // TODO
+			size_type j = 0;
+			char c = *(begin() + i);
+
+			for (; str[j] != 0; j++)
+			{
+				if (c == str[j])
+				{
+					break;
+				}
+			}
+
+			if (str[j] == 0)
+			{
+				ret = i+1;
+				break;
+			}
+		}
+
+		return ret;
+	}
+
+	constexpr size_type find_last_of(const char* str, size_type pos = npos) const { return 0; }
+
+	basic_string substr(size_t first, size_t last) const
+	{
+		basic_string ret{};
+		ret.assign(begin() + first, begin() + last);
+		return ret;
+	} // TODO
 
 	const basic_string& operator=(const basic_string& rhs)
 	{
@@ -266,7 +311,7 @@ public:
 	{
 		if (size() >= this->capacity()) resize(size() << 2);
 
-		::new ((void*)this->end()) T(value);
+		::new (begin() + size()) T(value);
 
 		this->set_size(this->size() + 1);
 	}

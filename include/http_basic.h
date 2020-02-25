@@ -1119,10 +1119,18 @@ public:
 
 	field(const char* name, T value = T{}) : name(name), value(std::move(value)){};
 	field(K name, T value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
-	field(K&& name, T&& value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
+
+
+	field(const field& rhs ) noexcept : 
+		name(rhs.name),
+		value(rhs.value)
+	{
+		std::cout << this->name << " " << this->value << std::endl;
+	};
 
 	K name;
 	T value;
+
 };
 
 template <typename K, typename T> class fields

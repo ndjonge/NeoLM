@@ -114,11 +114,11 @@ public:
 		{
 			// increase space
 			auto new_storage = static_cast<T*>(std::malloc(s * sizeof(value_type)));
-			std::uninitialized_copy(std::make_move_iterator(begin()), std::make_move_iterator(end()), new_storage);
 
 			for (std::size_t pos = 0; pos < size(); ++pos)
 			{
-				// note: needs std::launder as of C++17
+				auto tmp = T{ *(begin() + pos) };
+				new (new_storage + pos) T{ tmp };
 				reinterpret_cast<T*>(&begin()[pos])->~T();
 			}
 			begin_ = new_storage;
@@ -193,7 +193,7 @@ public:
 	{
 		if (size() >= this->capacity()) resize(size << 2);
 
-		::new ((void*)this->end()) T(value);
+		::new (begin() + size()) T(value);
 
 		this->set_size(this->size() + 1);
 	}
@@ -202,7 +202,7 @@ public:
 	{
 		if (size() >= capacity()) resize(size() << 2);
 
-		::new ((void*)this->end()) T(::std::move(value));
+		::new (begin() + size()) T(::std::move(value));
 
 		this->set_size(this->size() + 1);
 	}

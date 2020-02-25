@@ -43,18 +43,18 @@ void operator delete(void* ptr) noexcept
 
 int main()
 {
-	hyb::string s1 = "aap";
-	hyb::string s2 = s1;
-	hyb::string s3{ s2 };
-	hyb::string s4{ s1 + s2 };
+	//hyb::string s1 = "aap";
+	//hyb::string s2 = s1;
+	//hyb::string s3{ s2 };
+	//hyb::string s4{ s1 + s2 };
 
-	std::stringstream ss;
+	//std::stringstream ss;
 
-	ss << s4;
+	//ss << s4;
 
-	bool s5 = (s1 == s2);
-	bool s6 = (s1 != s1);
-	bool s7 = (ss.str() == s4);
+	////bool s5 = (s1 == s2);
+	////bool s6 = (s1 != s1);
+	////bool s7 = (ss.str() == s4);
 
 	//{
 
@@ -82,6 +82,22 @@ int main()
 	// auto x = v5.data();
 
 	// std::cout << *x << std::endl;
+
+
+	//hyb::string str("Please, erase trailing white-spaces   \n");
+	//hyb::string whitespaces(" \t\f\v\n\r");
+
+	//std::size_t found = str.find_last_not_of(whitespaces.data());
+	//if (found != hyb::string::npos)
+	//	str[found + 1] = 0;
+	//else
+	//	str.clear(); // str is all whitespace
+
+	//std::cout << '[' << str << "]\n";
+
+	//return 0;
+
+
 
 	network::init();
 	network::ssl::init();
