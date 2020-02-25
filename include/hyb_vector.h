@@ -32,7 +32,7 @@ private:
 	{
 		union {
 			pointer pointer_;
-			typename std::aligned_storage<sizeof(value_type), alignof(value_type)>::type inline_store_[S];
+			T inline_store_[S];
 		};
 	};
 

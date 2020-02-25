@@ -33,7 +33,7 @@ private:
 	{
 		union {
 			pointer pointer_;
-			typename std::aligned_storage<sizeof(value_type), alignof(value_type)>::type inline_store_[S];
+			T inline_store_[S];
 		};
 	};
 
@@ -210,11 +210,11 @@ public:
 
 	constexpr size_type find_last_not_of(char c, size_type pos = npos) const { return 0; } // TODO
 
-	constexpr size_type find_last_not_of(const char* str, size_type pos = npos) const { return 0; } // TODO
+	constexpr size_type find_last_not_of(const char* str, size_type pos = npos) const { return npos; } // TODO
 
 	constexpr size_type find_last_of(const char* str, size_type pos = npos) const { return 0; } // TODO
 
-	basic_string substr(size_t first, size_t last) const { return {}; }
+	basic_string substr(size_t first, size_t last) const { return {}; } // TODO
 
 	const basic_string& operator=(const basic_string& rhs)
 	{
