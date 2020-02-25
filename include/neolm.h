@@ -55,7 +55,7 @@ private:
 			S::router_.on_get(
 				S::configuration_.template get<std::string>("internal_base", "") + "/status",
 				[this](http::session_handler& session) {
-					const auto& format = session.request().get("Accept", "application/json");
+					const auto format{ session.request().get("Accept", "application/json") };
 
 					if (format.find("application/json") != std::string::npos)
 					{
@@ -310,7 +310,7 @@ public:
 		{
 			std::cerr << "Alive!\n";
 			api_server_.logger_.info("Alive!\n");
-			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 		}
 	}
 

@@ -14,7 +14,9 @@
 
 #include "process_utils.h"
 
+#include "hyb_string.h"
 #include "hyb_vector.h"
+
 #include <vector>
 
 using json = nlohmann::json;
@@ -41,6 +43,19 @@ void operator delete(void* ptr) noexcept
 
 int main()
 {
+	hyb::string s1 = "aap";
+	hyb::string s2 = s1;
+	hyb::string s3{ s2 };
+	hyb::string s4{ s1 + s2 };
+
+	std::stringstream ss;
+
+	ss << s4;
+
+	bool s5 = (s1 == s2);
+	bool s6 = (s1 != s1);
+	bool s7 = (ss.str() == s4);
+
 	//{
 
 	//	hyb::vector<std::int16_t, 10> v1;

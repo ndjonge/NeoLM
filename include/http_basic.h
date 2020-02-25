@@ -27,6 +27,7 @@
 #include <vector>
 #include <zlib.h>
 
+#include "hyb_string.h"
 #include "hyb_vector.h"
 
 #if !defined(ASSERT)
@@ -311,6 +312,11 @@ public:
 				u.string_v_.string_size_ = std::strlen(value);
 			}
 			argument(const std::string& value) : value_(type::string_)
+			{
+				u.string_v_.string_value_ = value.data();
+				u.string_v_.string_size_ = value.size();
+			}
+			argument(const hyb::string& value) : value_(type::string_)
 			{
 				u.string_v_.string_value_ = value.data();
 				u.string_v_.string_size_ = value.size();
@@ -607,6 +613,19 @@ inline std::string escape_json(const std::string& s)
 		}
 	}
 	return ss.str();
+}
+
+inline bool case_insensitive_equal(const hyb::string& str1, const char* str2) noexcept
+{
+	return str1.size() == std::strlen(str2)
+		   && std::equal(str1.begin(), str1.end(), str2, [](char a, char b) { return tolower(a) == tolower(b); });
+}
+
+inline bool case_insensitive_equal(const hyb::string& str1, const hyb::string& str2) noexcept
+{
+	return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) {
+			   return tolower(a) == tolower(b);
+		   });
 }
 
 inline bool case_insensitive_equal(const std::string& str1, const char* str2) noexcept
@@ -1090,26 +1109,27 @@ const char name_value_separator[] = { ':', ' ' };
 const char crlf[] = { '\r', '\n' };
 } // namespace misc_strings
 
-template <typename T> class field
+template <typename K, typename T> class field
 {
 public:
+	using key_type = K;
 	using value_type = T;
 
 	field() = default;
 
 	field(const char* name, T value = T{}) : name(name), value(std::move(value)){};
-	field(std::string name, T value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
-	field(std::string&& name, T&& value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
+	field(K name, T value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
+	field(K&& name, T&& value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
 
-	std::string name;
+	K name;
 	T value;
 };
 
-template <typename T> class fields
+template <typename K, typename T> class fields
 {
 
 public:
-	using value_type = http::field<T>;
+	using value_type = http::field<K, T>;
 	using container = hyb::vector<fields::value_type, 10>;
 	using iterator = typename container::iterator;
 	using reverse_iterator = typename container::reverse_iterator;
@@ -1123,11 +1143,11 @@ public:
 
 	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list){};
 
-	fields(const http::fields<T>& f) = default;
-	fields(http::fields<T>&& f) noexcept = default;
+	fields(const http::fields<K, T>& f) = default;
+	fields(http::fields<K, T>&& f) noexcept = default;
 
-	fields<T>& operator=(const http::fields<T>&) = default;
-	fields<T>& operator=(http::fields<T>&&) noexcept = default;
+	fields<K, T>& operator=(const http::fields<K, T>&) = default;
+	fields<K, T>& operator=(http::fields<K, T>&&) noexcept = default;
 
 	~fields() = default;
 
@@ -1147,16 +1167,16 @@ public:
 
 	inline typename reverse_iterator new_field()
 	{
-		fields_.emplace_back(field<T>{});
+		fields_.emplace_back(field<K, T>{});
 		return fields_.rbegin();
 	}
 
 	template <typename P>
-	typename std::enable_if<std::is_same<P, bool>::value, bool>::type get(const std::string& name, const P value) const
+	typename std::enable_if<std::is_same<P, bool>::value, bool>::type get(const K& name, const P value) const
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
 			if (http::util::case_insensitive_equal(f.name, name))
 				return true;
 			else
@@ -1181,6 +1201,23 @@ public:
 		});
 
 		if (i != std::end(fields_)) returnvalue = static_cast<P>(i->value);
+
+		return static_cast<P>(returnvalue);
+	}
+
+	template <typename P>
+	typename std::enable_if<
+		std::is_integral<P>::value && (!std::is_same<P, bool>::value && std::is_same<T, hyb::string>::value),
+		P>::type
+	get(const hyb::string& name, const P value) const
+	{
+		P returnvalue = value;
+
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
+
+		if (i != std::end(fields_)) returnvalue = static_cast<P>(std::stoi(i->value));
 
 		return static_cast<P>(returnvalue);
 	}
@@ -1284,7 +1321,7 @@ public:
 	{
 		T returnvalue = default_value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
@@ -1300,16 +1337,16 @@ public:
 
 	inline bool has(const char* name) const
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
 			return (http::util::case_insensitive_equal(f.name, name));
 		});
 
 		return i != std::end(fields_);
 	}
 
-	inline void set(const std::string& name, const T& value)
+	inline void set(const K& name, const T& value)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
@@ -1319,14 +1356,14 @@ public:
 		}
 		else
 		{
-			http::field<T> field_(name, value);
+			http::field<K, T> field_(name, value);
 			fields_.emplace_back(std::move(field_));
 		}
 	}
 
 	inline void reset_if_exists(const std::string& name)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
@@ -1338,7 +1375,7 @@ public:
 
 	inline void reset(const std::string& name)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
@@ -1363,8 +1400,9 @@ public:
 class configuration
 {
 public:
-	using iterator = std::vector<http::field<std::string>>::iterator;
-	using value_type = http::field<std::string>;
+	using value_type = http::field<std::string, std::string>;
+	using container = std::vector<value_type>;
+	using iterator = container::iterator;
 
 public:
 	configuration() = default;
@@ -1446,9 +1484,10 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return http::util::case_insensitive_equal(f.name, name);
-		});
+		auto i = std::find_if(
+			std::begin(fields_), std::end(fields_), [name](const http::field<std::string, std::string>& f) {
+				return http::util::case_insensitive_equal(f.name, name);
+			});
 
 		if (i != std::end(fields_)) returnvalue = i->value == "true";
 
@@ -1462,9 +1501,10 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return (http::util::case_insensitive_equal(f.name, name));
-		});
+		auto i = std::find_if(
+			std::begin(fields_), std::end(fields_), [name](const http::field<std::string, std::string>& f) {
+				return (http::util::case_insensitive_equal(f.name, name));
+			});
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value); // TODO klopt dit nog? T is_integral
 
@@ -1478,9 +1518,10 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return (http::util::case_insensitive_equal(f.name, name));
-		});
+		auto i = std::find_if(
+			std::begin(fields_), std::end(fields_), [name](const http::field<std::string, std::string>& f) {
+				return (http::util::case_insensitive_equal(f.name, name));
+			});
 
 		if (i != std::end(fields_)) returnvalue = i->value;
 
@@ -1532,7 +1573,7 @@ public:
 	}
 
 private:
-	std::vector<http::field<std::string>> fields_;
+	std::vector<http::field<std::string, std::string>> fields_;
 	mutable std::mutex configuration_mutex_;
 };
 
@@ -1544,9 +1585,9 @@ enum message_specializations
 
 template <message_specializations> class header;
 
-template <> class header<request_specialization> : public fields<std::string>
+template <> class header<request_specialization> : public fields<hyb::string, hyb::string>
 {
-	using query_params = http::fields<std::string>;
+	using query_params = http::fields<std::string, std::string>;
 	friend class session_handler;
 	friend class request_parser;
 
@@ -1653,7 +1694,7 @@ public:
 	}
 };
 
-template <> class header<response_specialization> : public fields<std::string>
+template <> class header<response_specialization> : public fields<hyb::string, hyb::string>
 {
 private:
 	std::string reason_;
@@ -1755,8 +1796,10 @@ static std::string extension_to_type(const std::string& extension)
 template <message_specializations specialization> class message : public header<specialization>
 {
 public:
-	using attributes = http::fields<std::uintptr_t>;
+	using attributes = http::fields<std::string, std::uintptr_t>;
 	attributes attributes_;
+
+	using field_type = http::fields<hyb::string, hyb::string>;
 
 private:
 	std::string body_;
@@ -1823,13 +1866,13 @@ public:
 	};
 
 	// TODO use std::enable_if for better performance?
-	template <typename T> std::vector<field<T>> attributes_as_vector() const
+	template <typename T> std::vector<field<std::string, T>> attributes_as_vector() const
 	{
-		std::vector<field<T>> vec;
+		std::vector<field<std::string, T>> vec;
 
 		for (const auto& attribute : attributes_.as_vector())
 		{
-			vec.emplace_back(attribute.name, get_attribute<T>(attribute.name));
+			vec.emplace_back(attribute.name, get_attribute<std::string, T>(attribute.name));
 		}
 
 		return vec;
@@ -1841,8 +1884,8 @@ public:
 
 	void target(const std::string& target) { header<specialization>::target_ = target; }
 
-	const std::vector<http::field<std::string>>& headers() const { return header<specialization>::fields_; }
-	std::vector<http::field<std::string>>& headers() { return header<specialization>::fields_; }
+	const typename header<specialization>::container& headers() const { return header<specialization>::fields_; }
+	typename header<specialization>::container& headers() { return header<specialization>::fields_; }
 
 	void reset()
 	{
@@ -1857,19 +1900,19 @@ public:
 
 	const std::string& body() const { return body_; }
 
-	bool chunked() const { return (http::fields<std::string>::get("Transfer-Encoding", std::string{}) == "chunked"); }
+	bool chunked() const { return (field_type::get("Transfer-Encoding", hyb::string{}) == "chunked"); }
 
 	void chunked(bool value)
 	{
 		if (value)
-			http::fields<std::string>::set("Transfer-Encoding", "chunked");
+			field_type::set("Transfer-Encoding", "chunked");
 		else
-			http::fields<std::string>::set("Transfer-Encoding", "none");
+			field_type::set("Transfer-Encoding", "none");
 	}
 
 	bool has_content_length() const
 	{
-		if (http::fields<std::string>::get("Content-Length", std::string{}).empty())
+		if (field_type::get("Content-Length", hyb::string{}).empty())
 			return false;
 		else
 			return true;
@@ -1877,32 +1920,29 @@ public:
 
 	void type(const std::string& content_type)
 	{
-		http::fields<std::string>::set("Content-Type", mime_types::extension_to_type(content_type));
+		field_type::set("Content-Type", mime_types::extension_to_type(content_type));
 	}
 
 	void status(http::status::status_t status) { http::header<specialization>::status(status); }
 	http::status::status_t status() const { return http::header<specialization>::status(); }
 
-	void content_length(uint64_t const& length)
-	{
-		http::fields<std::string>::set("Content-Length", std::to_string(length));
-	}
+	void content_length(uint64_t const& length) { field_type::set("Content-Length", std::to_string(length)); }
 
 	uint64_t content_length() const
 	{
-		auto content_length_ = http::fields<std::string>::get("Content-Length", std::string{});
+		auto content_length_ = header<specialization>::get("Content-Length", hyb::string{});
 
 		if (content_length_.empty())
 			return 0;
 		else
-			return std::stoul(content_length_);
+			return std::stoul(content_length_.data());
 	}
 
 	bool http_version11() const { return http::header<request_specialization>::version_nr() == 11; }
 
 	bool connection_close() const
 	{
-		if (http::util::case_insensitive_equal(http::fields<std::string>::get("Connection", std::string{}), "close"))
+		if (http::util::case_insensitive_equal(field_type::get("Connection", hyb::string{}), "close"))
 			return true;
 		else
 			return false;
@@ -1910,8 +1950,7 @@ public:
 
 	bool connection_keep_alive() const
 	{
-		if (http::util::case_insensitive_equal(
-				http::fields<std::string>::get("Connection", std::string{}), "Keep-Alive"))
+		if (http::util::case_insensitive_equal(field_type::get("Connection", hyb::string{}), "Keep-Alive"))
 			return true;
 		else
 			return false;
@@ -3015,7 +3054,7 @@ public:
 			}
 		}
 
-		if (request_.get("Content-Encoding", std::string{}) == "gzip")
+		if (request_.get("Content-Encoding", hyb::string{}) == "gzip")
 		{
 			request_.body() = gzip::decompress(request_.body().c_str(), request_.content_length());
 		}
@@ -4050,7 +4089,7 @@ public:
 
 			std::string msg = lgr::logger::format<lgr::prefix::accesslog>(
 				"{s} - '{s} {s}' - {d} - {u} - {u} - {f}",
-				session.request().get("Remote_Addr", std::string{}),
+				session.request().get("Remote_Addr", hyb::string{}),
 				http::method::to_string(session.request().method()),
 				session.request().url_requested(),
 				http::status::to_int(session.response().status()),
@@ -4651,7 +4690,7 @@ public:
 							session_handler_.request().set(
 								"Remote_Addr",
 								session_handler_.request().get(
-									"X-Forwarded-For", network::get_client_info(client_socket_)));
+									"X-Forwarded-For", hyb::string{ network::get_client_info(client_socket_) }));
 
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
@@ -4674,7 +4713,7 @@ public:
 							// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip
 							// is good
 							if ((gzip_min_length_ < response.body().size())
-								&& (session_handler_.request().get("Accept-Encoding", std::string{}).find("gzip")
+								&& (session_handler_.request().get("Accept-Encoding", hyb::string{}).find("gzip")
 									!= std::string::npos))
 							{
 								response.body() = gzip::compress(response.body().c_str(), response.body().size());
