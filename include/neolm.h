@@ -55,7 +55,7 @@ private:
 			S::router_.on_get(
 				S::configuration_.template get<std::string>("internal_base", "") + "/status",
 				[this](http::session_handler& session) {
-					const auto& format = session.request().get("Accept", "application/json") ;
+					const auto& format = session.request().get("Accept", "application/json");
 
 					if (format.find("application/json") != std::string::npos)
 					{
@@ -217,12 +217,13 @@ public:
 		if (type == benchmark_type::simple)
 		{
 			std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+			std::string url = "http://localhost:3000/health";
 
 			for (int i = 0; i != 8192; i++)
 			{
 				std::string ec;
-				auto response = http::client::request<http::method::get>(
-					session, "http://localhost:3000/health", ec, {}, {}); //, std::cerr, true);
+				auto response
+					= http::client::request<http::method::get>(session, url, ec, {}, {}); //, std::cerr, true);
 
 				if (!ec.empty()) std::cerr << ec;
 			}
@@ -278,7 +279,7 @@ public:
 	{
 		while (api_server_.is_active())
 		{
-			api_server_.logger_.info("Alive!\n");
+			api_server_.logger_.info("Benchmark Alive!\n");
 
 			while (api_server_.is_active())
 			{

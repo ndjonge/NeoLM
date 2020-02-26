@@ -119,22 +119,26 @@ public:
 			begin_ = reinterpret_cast<T*>(&data_.inline_store_);
 			capacity_ = S;
 			inline_used_ = true;
+			begin()[this->size()] = char{ 0 };
 		}
 		else
 		{
 			// increase space
-			auto new_storage = static_cast<T*>(std::malloc(s * sizeof(value_type)));
-			std::uninitialized_copy(std::make_move_iterator(begin()), std::make_move_iterator(end()), new_storage);
+			auto new_storage = static_cast<T*>(std::malloc(sizeof(value_type) + (s * sizeof(value_type))));
 
 			for (std::size_t pos = 0; pos < size(); ++pos)
 			{
-				// note: needs std::launder as of C++17
+				auto tmp = T{ *(begin() + pos) };
+				new (new_storage + pos) T{ tmp };
+
 				reinterpret_cast<T*>(&begin()[pos])->~T();
 			}
+
 			begin_ = new_storage;
 			data_.pointer_ = new_storage;
 			inline_used_ = false;
 			capacity_ = s;
+			begin()[this->size()] = char{ 0 };
 		}
 	}
 
@@ -151,6 +155,7 @@ public:
 
 		std::uninitialized_copy(in_start, in_end, this->end());
 		this->set_size(this->size() + num_inputs);
+		begin()[this->size()] = char{ 0 };
 	}
 
 	/// Append \p NumInputs copies of \p Elt to the end.
@@ -160,6 +165,7 @@ public:
 
 		std::uninitialized_fill_n(this->end(), NumInputs, Elt);
 		this->set_size(this->size() + NumInputs);
+		begin()[this->size()] = char{ 0 };
 	}
 
 	/// Append \p NumInputs copies of \p Elt to the end.
@@ -169,6 +175,7 @@ public:
 
 		std::uninitialized_copy(str, str + length, begin());
 		this->set_size(this->size() + length);
+		begin()[this->size()] = char{ 0 };
 	}
 
 	/// Append \p NumInputs copies of \p Elt to the end.
@@ -179,35 +186,31 @@ public:
 		std::uninitialized_copy(s.cbegin(), s.cend(), end());
 
 		this->set_size(this->size() + s.size());
+		begin()[this->size()] = char{ 0 };
 	}
 
 	static const size_type npos = std::string::npos;
 
-	size_type find(const basic_string& str, size_type pos = 0) const
+	size_type find(const basic_string& str, size_type pos = 0) const noexcept
 	{
-		size_type ret = npos;
+		auto ret = std::strstr(this->data() + pos, str.data());
 
-		for (size_type i = pos; i < size(); ++i)
-		{
-			auto c1 = *(begin() + i);
+		if (ret == nullptr)
+			return npos;
+		else
+			return ret - (this->data() + pos);
 
-			if (c1 == *(str.begin()))
-			{
-				ret = i;
-				size_type j = 0;
-				for (auto c2 : str)
-				{
-					c1 = *(begin() + j);
+	} // TODO
 
-					if (c1 == c2)
-						break;
-					else
-						ret = npos;
-				}
-			}
-		}
+	size_type find(char c, size_type pos = 0) const noexcept
+	{
+		auto ret = std::strchr(this->data() + pos, c);
 
-		return ret;
+		if (ret == nullptr)
+			return npos;
+		else
+			return ret - (this->data() + pos);
+
 	} // TODO
 
 	constexpr size_type find_last_not_of(char c, size_type pos = npos) const
@@ -228,7 +231,7 @@ public:
 	constexpr size_type find_last_not_of(const char* str, size_type pos = npos) const
 	{
 		size_type ret = npos;
-		for (size_type i = (pos == !npos ? pos : size()-1); i != 0; --i)
+		for (size_type i = (pos == !npos ? pos : size() - 1); i != 0; --i)
 		{
 
 			size_type j = 0;
@@ -244,7 +247,7 @@ public:
 
 			if (str[j] == 0)
 			{
-				ret = i+1;
+				ret = i + 1;
 				break;
 			}
 		}
@@ -252,14 +255,19 @@ public:
 		return ret;
 	}
 
-	constexpr size_type find_last_of(const char* str, size_type pos = npos) const { return 0; }
+	constexpr size_type find_last_of(const char* str, size_type pos = npos) const { return 0; } // TODO
 
-	basic_string substr(size_t first, size_t last) const
+	basic_string substr(size_t first = 0, size_t last = npos) const
 	{
 		basic_string ret{};
-		ret.assign(begin() + first, begin() + last);
+
+		if (last == npos)
+			ret.assign(begin() + first, end());
+		else
+			ret.assign(begin() + first, begin() + last);
+
 		return ret;
-	} // TODO
+	}
 
 	const basic_string& operator=(const basic_string& rhs)
 	{
@@ -271,6 +279,14 @@ public:
 	void append(const char* str) { append(str, std::strlen(str)); }
 
 	void append(std::initializer_list<T> IL) { append(IL.begin(), IL.end()); }
+
+	void assign(const T* value, size_t count)
+	{
+		clear();
+		if (this->capacity() < count) this->resize(count);
+		this->set_size(count);
+		std::uninitialized_copy(value, value + count, begin());
+	}
 
 	void assign(size_type count, const T& value)
 	{
@@ -427,6 +443,14 @@ public:
 protected:
 	void set_size(size_type s) { size_ = s; }
 };
+
+template <class T, std::int8_t S> basic_string<T, S> operator+(const T* lhs, const basic_string<T, S>& rhs)
+{
+	basic_string<T, S> ret{ lhs };
+	ret.append(rhs.begin(), rhs.end());
+
+	return ret;
+}
 
 template <class T, std::int8_t S>
 basic_string<T, S> operator+(const basic_string<T, S>& lhs, const basic_string<T, S>& rhs)

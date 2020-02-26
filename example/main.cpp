@@ -21,6 +21,18 @@
 
 using json = nlohmann::json;
 
+void print(hyb::string::size_type n, hyb::string const& s)
+{
+	if (n == hyb::string::npos)
+	{
+		std::cout << "not found\n";
+	}
+	else
+	{
+		std::cout << "found: " << s.substr(n) << '\n';
+	}
+}
+
 void* operator new(std::size_t sz)
 {
 	if (sz == 32)
@@ -43,14 +55,14 @@ void operator delete(void* ptr) noexcept
 
 int main()
 {
-	//hyb::string s1 = "aap";
-	//hyb::string s2 = s1;
-	//hyb::string s3{ s2 };
-	//hyb::string s4{ s1 + s2 };
+	// hyb::string s1 = "aap";
+	// hyb::string s2 = s1;
+	// hyb::string s3{ s2 };
+	// hyb::string s4{ s1 + s2 };
 
-	//std::stringstream ss;
+	// std::stringstream ss;
 
-	//ss << s4;
+	// ss << s4;
 
 	////bool s5 = (s1 == s2);
 	////bool s6 = (s1 != s1);
@@ -83,21 +95,38 @@ int main()
 
 	// std::cout << *x << std::endl;
 
+	// hyb::string str("Please, erase trailing white-spaces   \n");
+	// hyb::string whitespaces(" \t\f\v\n\r");
 
-	//hyb::string str("Please, erase trailing white-spaces   \n");
-	//hyb::string whitespaces(" \t\f\v\n\r");
-
-	//std::size_t found = str.find_last_not_of(whitespaces.data());
-	//if (found != hyb::string::npos)
+	// std::size_t found = str.find_last_not_of(whitespaces.data());
+	// if (found != hyb::string::npos)
 	//	str[found + 1] = 0;
-	//else
+	// else
 	//	str.clear(); // str is all whitespace
 
-	//std::cout << '[' << str << "]\n";
+	// std::cout << '[' << str << "]\n";
 
-	//return 0;
+	// return 0;
 
+	hyb::string::size_type n;
+	hyb::string const s = "This is a loooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong string";
+	std::string const s2 = "This is a loooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong string";
 
+	// search from beginning of string
+	n = s.find("is");
+	print(n, s);
+
+	// search from position 5
+	n = s.find("is", 5);
+	print(n, s);
+
+	// find a single character
+	n = s.find('a');
+	print(n, s);
+
+	// find a single character
+	n = s.find('q');
+	print(n, s);
 
 	network::init();
 	network::ssl::init();
@@ -121,7 +150,7 @@ int main()
 
 		license_server.start_server();
 
-		// license_server.run_benchmark();
-		license_server.run();
+		license_server.run_benchmark();
+		// license_server.run();
 	}
 }

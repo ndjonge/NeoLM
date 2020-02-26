@@ -52,7 +52,7 @@ public:
 			std::string ec;
 			auto up_result = http::client::request<http::method::get>(
 				endpoint_base_url_
-					+ "&up=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
+					+ "&up=&server=" + server_.config().get<hyb::string>("upstream_node_this_ip", "127.0.0.1") + ":"
 					+ server_.config().get("http_listen_port"),
 				ec,
 				{},
@@ -139,8 +139,8 @@ public:
 	}
 
 private:
-	std::string endpoint_base_url_;
-	std::string my_endpoint_;
+	hyb::string endpoint_base_url_;
+	hyb::string my_endpoint_;
 };
 
 class upstream_controller_haproxy : public upstream_controller_base

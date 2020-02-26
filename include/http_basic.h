@@ -572,7 +572,7 @@ class params;
 namespace util
 {
 
-inline std::string escape_json(const std::string& s)
+template <class S> inline std::string escape_json(const S& s)
 {
 	std::ostringstream ss;
 
@@ -641,9 +641,9 @@ inline bool case_insensitive_equal(const std::string& str1, const std::string& s
 		   });
 }
 
-inline std::string return_current_time_and_date()
+inline hyb::string return_current_time_and_date()
 {
-	std::string result;
+	hyb::string result;
 	auto now = std::chrono::system_clock::now();
 	auto in_time_t = std::chrono::system_clock::to_time_t(now);
 	auto tmp_tm = std::tm{};
@@ -697,10 +697,10 @@ enum split_options
 	stop_on_first_delimiter_found
 };
 
-inline std::vector<std::string>
-split(const std::string& str, const std::string& delimiters, split_options options = split_options::all_tokens)
+inline hyb::vector<hyb::string, 2>
+split(const hyb::string& str, const hyb::string& delimiters, split_options options = split_options::all_tokens)
 {
-	std::vector<std::string> output;
+	hyb::vector<hyb::string, 2> output;
 
 	// output.reserve(str.size() / 2);
 
@@ -1120,17 +1120,10 @@ public:
 	field(const char* name, T value = T{}) : name(name), value(std::move(value)){};
 	field(K name, T value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
 
-
-	field(const field& rhs ) noexcept : 
-		name(rhs.name),
-		value(rhs.value)
-	{
-		std::cout << this->name << " " << this->value << std::endl;
-	};
+	// field(const field& rhs) noexcept : name(rhs.name), value(rhs.value){};
 
 	K name;
 	T value;
-
 };
 
 template <typename K, typename T> class fields
@@ -1408,14 +1401,15 @@ public:
 class configuration
 {
 public:
-	using value_type = http::field<std::string, std::string>;
+	using string_type = hyb::string;
+	using value_type = http::field<string_type, string_type>;
 	using container = std::vector<value_type>;
 	using iterator = container::iterator;
 
 public:
 	configuration() = default;
 
-	configuration(std::initializer_list<configuration::value_type> init_list, const std::string& string_options = "")
+	configuration(std::initializer_list<configuration::value_type> init_list, const string_type& string_options = "")
 		: fields_(init_list)
 	{
 		const auto& split_string_options = http::util::split(string_options, ",");
@@ -1536,7 +1530,7 @@ public:
 		return returnvalue;
 	}
 
-	inline const std::string get(const char* name) const
+	inline const string_type get(const char* name) const
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		static const std::string not_found = "";
@@ -1555,7 +1549,7 @@ public:
 		}
 	}
 
-	inline void set(const std::string& name, const std::string& value)
+	inline void set(const string_type& name, const string_type& value)
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
@@ -1581,7 +1575,7 @@ public:
 	}
 
 private:
-	std::vector<http::field<std::string, std::string>> fields_;
+	container fields_;
 	mutable std::mutex configuration_mutex_;
 };
 
@@ -1804,7 +1798,7 @@ static std::string extension_to_type(const std::string& extension)
 template <message_specializations specialization> class message : public header<specialization>
 {
 public:
-	using attributes = http::fields<std::string, std::uintptr_t>;
+	using attributes = http::fields<hyb::string, std::uintptr_t>;
 	attributes attributes_;
 
 	using field_type = http::fields<hyb::string, hyb::string>;
@@ -3869,7 +3863,7 @@ class curl
 
 	static size_t recv_header_callback(char* buffer, size_t size, size_t nmemb, void* userp)
 	{
-		std::string headerline(buffer);
+		// hyb::string headerline(buffer);
 		char* c = nullptr;
 		auto this_curl = static_cast<curl*>(userp);
 
