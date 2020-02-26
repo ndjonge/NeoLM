@@ -1905,10 +1905,10 @@ public:
 	{
 		std::ostringstream ss;
 
-		if (header<specialization>::version_nr() == 11)
-			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.1\r\n";
+		if (message.version_nr() == 11)
+			ss << http::method::to_string(message.method()) << " " << message.target() << " HTTP/1.1\r\n";
 		else
-			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.0\r\n";
+			ss << http::method::to_string(message.method()) << " " << message.target() << " HTTP/1.0\r\n";
 
 		std::string tmp;
 		tmp.reserve(128);
