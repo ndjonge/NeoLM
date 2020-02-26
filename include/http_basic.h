@@ -1115,11 +1115,10 @@ public:
 	using reverse_iterator = typename container::reverse_iterator;
 
 protected:
-	// std::vector<fields::value_type> fields_{ 10 };
-	std::vector<fields::value_type> fields_{ 15 };
+	std::vector<fields::value_type> fields_{};
 
 public:
-	fields() = default;
+	fields() { fields_.reserve(20); };
 
 	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list){};
 
@@ -1134,10 +1133,17 @@ public:
 	inline std::string to_string() const noexcept
 	{
 		std::ostringstream ss;
+		std::string tmp;
+		tmp.reserve(128);
 
 		for (auto&& field : fields_)
 		{
-			ss << field.name << ": " << field.value << "\r\n";
+			tmp.clear();
+			tmp.append(field.name);
+			tmp.append("\r\n", 2);
+			tmp.append(field.value);
+
+			ss.write(tmp);
 		}
 
 		return ss.str();
