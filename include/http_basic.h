@@ -1099,8 +1099,6 @@ public:
 	field(const char* name, T value = T{}) : name(name), value(std::move(value)){};
 	field(K name, T value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
 
-	// field(const field& rhs) noexcept : name(rhs.name), value(rhs.value){};
-
 	K name;
 	T value;
 };
@@ -1129,25 +1127,6 @@ public:
 	fields<K, T>& operator=(http::fields<K, T>&&) noexcept = default;
 
 	~fields() = default;
-
-	inline std::string to_string() const noexcept
-	{
-		std::ostringstream ss;
-		std::string tmp;
-		tmp.reserve(128);
-
-		for (auto&& field : fields_)
-		{
-			tmp.clear();
-			tmp.append(field.name);
-			tmp.append("\r\n", 2);
-			tmp.append(field.value);
-
-			ss.write(tmp);
-		}
-
-		return ss.str();
-	}
 
 	inline bool fields_empty() const { return this->fields_.empty(); };
 
@@ -1597,26 +1576,6 @@ public:
 		this->fields_.clear();
 	}
 
-	std::string header_to_string() const
-	{
-		std::ostringstream ss;
-
-		if (version_nr() == 11)
-			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.1\r\n";
-		else
-			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.0\r\n";
-
-		for (auto&& field : fields_)
-		{
-			ss << field.name << ": ";
-			ss << field.value << "\r\n";
-		}
-
-		ss << "\r\n";
-
-		return ss.str();
-	}
-
 	std::string header_to_dbg_string() const
 	{
 		std::ostringstream ss;
@@ -1933,11 +1892,37 @@ public:
 		return ret;
 	}
 
-	static std::string to_string(const http::message<specialization>& message)
+	static std::string to_string(const http::message<request_specialization>& message)
+	{
+		std::ostringstream ss;
+		ss << headers_to_string();
+		ss << message.body();
+
+		return ss.str();
+	}
+
+	static std::string to_string(const http::message<response_specialization>& message)
 	{
 		std::ostringstream ss;
 
-		ss << message.header_to_string();
+		if (header<specialization>::version_nr() == 11)
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.1\r\n";
+		else
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.0\r\n";
+
+		std::string tmp;
+		tmp.reserve(128);
+
+		for (auto&& field : fields_)
+		{
+			tmp.clear();
+			tmp.append(field.name);
+			tmp.append("\r\n", 2);
+			tmp.append(field.value);
+			ss << tmp;
+		}
+
+		ss << "\r\n";
 		ss << message.body();
 
 		return ss.str();
