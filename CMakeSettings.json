@@ -23,7 +23,13 @@
       "buildCommandArgs": "-v",
       "ctestCommandArgs": "",
       "inheritEnvironments": [ "msvc_x64" ],
-      "variables": [],
+      "variables": [
+        {
+          "name": "CMAKE_BUILD_TYPE",
+          "value": "RelWithDebInfo",
+          "type": "STRING"
+        }
+      ],
       "cmakeToolchain": "C:/Projects/vcpkg/scripts/buildsystems/vcpkg.cmake"
     }
   ]

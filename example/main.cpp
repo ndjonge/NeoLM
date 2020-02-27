@@ -61,7 +61,7 @@ int main()
 
 		license_server.start_server();
 
-		license_server.run_benchmark();
+		license_server.run_benchmark(1);
 		license_server.run();
 	}
 }

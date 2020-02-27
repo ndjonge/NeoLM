@@ -36,7 +36,12 @@ private:
 			S::router_.on_get(
 				S::configuration_.template get<std::string>("internal_base", "") + "/health",
 				[this](http::session_handler& session) {
-					session.response().body() = "OK";
+					std::string msg{};
+					msg.resize(1023 * 10);
+					std::fill(msg.begin(), msg.end(), 'o');
+					msg.push_back('k');
+					session.response().body() = msg;
+
 					session.response().status(http::status::ok);
 				});
 
@@ -158,18 +163,18 @@ private:
 				session.response().status(http::status::internal_server_error);
 			});
 
-			S::router_.use_middleware("/status", "type", "varken::knor_pre", "varken::knor_post");
+			/*			S::router_.use_middleware("/status", "type", "varken::knor_pre", "varken::knor_post");
 
-			S::router_.use_middleware(
-				"/status",
-				[this](http::api::middleware_lambda_context&, http::session_handler& session) {
-					session.response().set("name", "value2");
-					return http::api::routing::outcome<std::int64_t>{ 0 };
-				},
-				[this](http::api::middleware_lambda_context&, http::session_handler& session) {
-					session.response().set("name", "value2");
-					return http::api::routing::outcome<std::int64_t>{ 0 };
-				});
+						S::router_.use_middleware(
+							"/status",
+							[this](http::api::middleware_lambda_context&, http::session_handler& session) {
+								session.response().set("name", "value2");
+								return http::api::routing::outcome<std::int64_t>{ 0 };
+							},
+							[this](http::api::middleware_lambda_context&, http::session_handler& session) {
+								session.response().set("name", "value2");
+								return http::api::routing::outcome<std::int64_t>{ 0 };
+							});*/
 		}
 
 	private:
@@ -275,7 +280,7 @@ public:
 		}
 	}
 
-	void run_benchmark()
+	void run_benchmark(std::int16_t threads)
 	{
 		for (int i = 0; i != 10; i++)
 		{
@@ -285,7 +290,7 @@ public:
 			{
 				while (1)
 				{
-					auto nr_of_testers = 1;
+					auto nr_of_testers = threads;
 
 					std::vector<std::thread> testers{};
 

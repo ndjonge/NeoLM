@@ -3998,8 +3998,9 @@ public:
 			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_) / 1000000.0;
 
 			std::string msg = lgr::logger::format<lgr::prefix::accesslog>(
-				"{s} - '{s} {s}' - {d} - {u} - {u} - {f}",
+				"{s} - {s} - '{s} {s}' - {d} - {u} - {u} - {f}",
 				session.request().get("Remote_Addr", std::string{}),
+				session.request().get("X-Request-ID", std::string{ "no-request-id" }),
 				http::method::to_string(session.request().method()),
 				session.request().url_requested(),
 				http::status::to_int(session.response().status()),
@@ -4011,7 +4012,7 @@ public:
 
 			if (access_log_.size() >= 32) access_log_.erase(access_log_.begin());
 
-			return msg;
+			 return msg;
 		}
 
 		void server_information(std::string info)
