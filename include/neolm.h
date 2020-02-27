@@ -277,7 +277,7 @@ public:
 
 	void run_benchmark()
 	{
-		while (api_server_.is_active())
+		for (int i = 0; i != 10; i++)
 		{
 			api_server_.logger_.info("Benchmark Alive!\n");
 

@@ -555,6 +555,12 @@ class request_parser;
 class response_parser;
 class session_handler;
 
+namespace line_ends
+{
+const std::string dbg = "\n";
+const std::string http = "\r\n";
+} // namespace line_ends
+
 namespace api
 {
 class routing;
@@ -867,7 +873,7 @@ enum status_t
 	network_connect_timeout_error = 599
 };
 
-inline status_t to_status(std::uint32_t status_nr)
+constexpr inline status_t to_status(std::uint32_t status_nr)
 {
 	if (status_nr >= 100 && status_nr <= 599)
 		return static_cast<status_t>(status_nr);
@@ -875,7 +881,7 @@ inline status_t to_status(std::uint32_t status_nr)
 		return http::status::internal_server_error;
 }
 
-inline const char* to_string(status_t s)
+constexpr inline const char* to_string(status_t s)
 {
 	switch (s)
 	{
@@ -980,7 +986,7 @@ inline const char* to_string(status_t s)
 	}
 }
 
-inline std::int32_t to_int(status_t s)
+constexpr inline std::int32_t to_int(status_t s)
 {
 	switch (s)
 	{
@@ -1639,53 +1645,10 @@ public:
 	void status(http::status::status_t status) { status_ = status; }
 	http::status::status_t status() const { return status_; }
 
-	const std::string version() const
-	{
-		std::string ret = "HTTP/1.1";
-
-		if (version_nr_ == 10) ret = "HTTP/1.0";
-
-		return ret;
-	}
-
 	void clear()
 	{
 		this->fields_.clear();
 		version_nr_ = 0;
-	}
-
-	std::string header_to_string() const
-	{
-		std::ostringstream ss;
-
-		ss << status::to_string(status_);
-
-		for (auto&& field : fields_)
-		{
-			ss << field.name << ": ";
-			ss << field.value << "\r\n";
-		}
-
-		ss << "\r\n";
-
-		return ss.str();
-	}
-
-	std::string header_to_dbg_string() const
-	{
-		std::ostringstream ss;
-
-		ss << status::to_string(status_);
-
-		for (auto&& field : fields_)
-		{
-			ss << field.name << ": ";
-			ss << field.value << "\n";
-		}
-
-		ss << "\n";
-
-		return ss.str();
 	}
 };
 
@@ -1884,60 +1847,53 @@ public:
 			return false;
 	}
 
-	static std::string to_dbg_string(const http::message<specialization>& message)
+	static std::string to_string(
+		const http::message<request_specialization>& message, const std::string& line_ends = http::line_ends::http)
 	{
-		std::string ret = message.header_to_dbg_string();
-		ret += message.body();
-
-		return ret;
-	}
-
-	static std::string to_string(const http::message<request_specialization>& message)
-	{
-		std::ostringstream ss;
-		ss << headers_to_string();
-		ss << message.body();
-
-		return ss.str();
-	}
-
-	static std::string to_string(const http::message<response_specialization>& message)
-	{
-		std::ostringstream ss;
+		std::string tmp;
+		tmp.reserve(1024);
 
 		if (message.version_nr() == 11)
-			ss << http::method::to_string(message.method()) << " " << message.target() << " HTTP/1.1\r\n";
+			tmp.append(http::method::to_string(message.method())).append(" ").append(" HTTP/1.1").append(line_ends);
 		else
-			ss << http::method::to_string(message.method()) << " " << message.target() << " HTTP/1.0\r\n";
+			tmp.append(http::method::to_string(message.method())).append(" ").append(" HTTP/1.0").append(line_ends);
 
-		std::string tmp;
-		tmp.reserve(128);
-
-		for (auto&& field : fields_)
+		for (auto&& field : message.fields_)
 		{
-			tmp.clear();
-			tmp.append(field.name);
-			tmp.append("\r\n", 2);
-			tmp.append(field.value);
-			ss << tmp;
+			tmp.append(field.name).append(": ").append(field.value).append(line_ends);
 		}
 
-		ss << "\r\n";
-		ss << message.body();
+		tmp.append(line_ends);
+		tmp.append(message.body());
 
-		return ss.str();
+		return tmp;
+	}
+
+	static std::string to_string(
+		const http::message<response_specialization>& message, const std::string& line_ends = http::line_ends::http)
+	{
+		std::string tmp;
+		tmp.reserve(1024);
+
+		tmp.append(http::status::to_string(message.status()));
+
+		for (auto&& field : message.fields_)
+		{
+			tmp.append(field.name).append(": ").append(field.value).append(line_ends);
+		}
+
+		tmp.append(line_ends);
+		tmp.append(message.body());
+
+		return tmp;
 	}
 };
 
-template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
-{
-	return http::message<specialization>::to_string(message);
-}
-
 template <message_specializations specialization>
-std::string to_dbg_string(const http::message<specialization>& message)
+std::string
+to_string(const http::message<specialization>& message, const std::string& line_ends = http::line_ends::http)
 {
-	return http::message<specialization>::to_dbg_string(message);
+	return http::message<specialization>::to_string(message, line_ends);
 }
 
 using request_message = http::message<request_specialization>;
@@ -4650,7 +4606,8 @@ public:
 
 							if (server_.logger_.current_level() == lgr::level::debug)
 							{
-								server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(request));
+								server_.logger_.debug(
+									"request:\n{s}\n", http::to_string(request, http::line_ends::dbg));
 							}
 
 							++server_.manager().requests_current(private_base_request);
@@ -4675,10 +4632,10 @@ public:
 								response.set("Content-Length", std::to_string(response.body().size()));
 							}
 
-							(void)network::write(client_socket_, http::to_string(response));
-
 							if (routing.match_result() == http::api::router_match::match_found)
 							{
+								(void)network::write(client_socket_, http::to_string(response));
+
 								routing.the_route().metric_response_latency(
 									std::chrono::duration<std::uint64_t, std::nano>(
 										std::chrono::steady_clock::now() - t0)
@@ -4701,7 +4658,8 @@ public:
 
 							if (server_.logger_.current_level() == lgr::level::debug)
 							{
-								server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(response));
+								server_.logger_.debug(
+									"response:\n{s}\n", http::to_string(response, http::line_ends::dbg));
 							}
 						}
 						else
