@@ -63,5 +63,7 @@ int main()
 
 		license_server.run_benchmark(1);
 		license_server.run();
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 	}
 }

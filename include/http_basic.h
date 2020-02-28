@@ -2228,12 +2228,12 @@ private:
 	}
 
 	/// Check if a byte is an HTTP character.
-	static bool is_char(int c) { return c >= 0 && c <= 127; }
+	inline static bool is_char(int c) { return c >= 0 && c <= 127; }
 
 	/// Check if a byte is an HTTP control character.
-	static bool is_ctl(int c) { return (c >= 0 && c <= 31) || (c == 127); }
+	inline static bool is_ctl(int c) { return (c >= 0 && c <= 31) || (c == 127); }
 	/// Check if a byte is defined as an HTTP tspecial character.
-	static bool is_tspecial(int c)
+	inline static bool is_tspecial(int c)
 	{
 		switch (c)
 		{
@@ -2263,7 +2263,7 @@ private:
 	}
 
 	/// Check if a byte is a digit.
-	static bool is_digit(int c) { return c >= '0' && c <= '9'; }
+	inline static bool is_digit(int c) { return c >= '0' && c <= '9'; }
 
 	/// The current state of the parser.
 	enum state
@@ -4012,7 +4012,7 @@ public:
 
 			if (access_log_.size() >= 32) access_log_.erase(access_log_.begin());
 
-			 return msg;
+			return msg.append("\n");
 		}
 
 		void server_information(std::string info)
@@ -4642,11 +4642,8 @@ public:
 										std::chrono::steady_clock::now() - t0)
 										.count());
 
-								auto log_msg = server_.manager().log_access(
-												   session_handler_, routing.the_route().route_metrics())
-											   + "\n";
-
-								server_.logger_.accesslog(log_msg);
+								server_.logger_.accesslog(server_.manager().log_access(
+									session_handler_, routing.the_route().route_metrics()));
 							}
 							else
 							{
