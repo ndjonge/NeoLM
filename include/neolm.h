@@ -286,27 +286,21 @@ public:
 		{
 			api_server_.logger_.info("Benchmark Alive!\n");
 
-			while (api_server_.is_active())
+			auto nr_of_testers = threads;
+
+			std::vector<std::thread> testers{};
+
+			for (int t = 0; t != nr_of_testers; t++)
 			{
-				while (1)
-				{
-					auto nr_of_testers = threads;
-
-					std::vector<std::thread> testers{};
-
-					for (int t = 0; t != nr_of_testers; t++)
-					{
-						testers.push_back(std::thread{ [&]() { benchmark(benchmark_type::simple); } });
-					}
-
-					for (int t = 0; t != nr_of_testers; t++)
-					{
-						testers[t].join();
-					}
-
-					std::this_thread::sleep_for(std::chrono::milliseconds(100));
-				}
+				testers.push_back(std::thread{ [&]() { benchmark(benchmark_type::simple); } });
 			}
+
+			for (int t = 0; t != nr_of_testers; t++)
+			{
+				testers[t].join();
+			}
+
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
 	}
 
