@@ -45,6 +45,7 @@ public:
 			  + server.config().get<std::string>("upstream_node_nginx_group", "bshell-workers") + "-zone";
 	};
 
+
 	result add() const noexcept
 	{
 		for (int i = 0; i != 5; i++)

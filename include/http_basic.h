@@ -167,8 +167,9 @@ enum class level
 {
 	none = 0,
 	error,
-	accesslog,
 	warning,
+	accesslog,
+	api,
 	info,
 	debug
 };
@@ -177,8 +178,9 @@ namespace prefix
 {
 static const char none[] = "";
 static const char error[] = "[err]: ";
-static const char accesslog[] = "[acc]: ";
 static const char warning[] = "[war]: ";
+static const char accesslog[] = "[acc]: ";
+static const char api[] = "[api]: ";
 static const char info[] = "[inf]: ";
 static const char debug[] = "[dbg]: ";
 } // namespace prefix
@@ -225,6 +227,10 @@ public:
 			return "accesslog";
 		else if (level_ == level::error)
 			return "error";
+		else if (level_ == level::warning)
+			return "warning";
+		else if (level_ == level::api)
+			return "api";
 		else if (level_ == level::info)
 			return "info";
 		else if (level_ == level::debug)
@@ -239,6 +245,10 @@ public:
 	{
 		if (level == "accesslog")
 			level_ = level::accesslog;
+		else if (level == "api")
+			level_ = level::api;
+		else if (level == "warning")
+			level_ = level::warning;
 		else if (level == "error")
 			level_ = level::error;
 		else if (level == "info")
@@ -491,42 +501,32 @@ public:
 
 	template <typename... A> void accesslog(const char* format, const A&... args) const
 	{
-		if (level_ >= level::accesslog)
-		{
-			log(level::accesslog, logger::format<prefix::accesslog, A...>(format, args...));
-		}
+		log(level::accesslog, logger::format<prefix::accesslog, A...>(format, args...));
+	}
+
+	template <typename... A> void api(const char* format, const A&... args) const
+	{
+		log(level::api, logger::format<prefix::api, A...>(format, args...));
 	}
 
 	template <typename... A> void info(const char* format, const A&... args) const
 	{
-		if (level_ >= level::info)
-		{
-			log(level::info, logger::format<prefix::info, A...>(format, args...));
-		}
+		log(level::info, logger::format<prefix::info, A...>(format, args...));
 	}
 
 	template <typename... A> void warning(const char* format, const A&... args) const
 	{
-		if (level_ >= level::warning)
-		{
-			log(level::warning, logger::format<prefix::warning, A...>(format, args...));
-		}
+		log(level::warning, logger::format<prefix::warning, A...>(format, args...));
 	}
 
 	template <typename... A> void error(const char* format, const A&... args) const
 	{
-		if (level_ >= level::error)
-		{
-			log(level::error, logger::format<prefix::error, A...>(format, args...));
-		}
+		log(level::error, logger::format<prefix::error, A...>(format, args...));
 	}
 
 	template <typename... A> void debug(const char* format, const A&... args) const
 	{
-		if (level_ >= level::debug)
-		{
-			log(level::debug, logger::format<prefix::debug, A...>(format, args...));
-		}
+		log(level::debug, logger::format<prefix::debug, A...>(format, args...));
 	}
 
 	template <typename... A> void accesslog(const std::string& msg) const
@@ -555,12 +555,6 @@ class request_parser;
 class response_parser;
 class session_handler;
 
-namespace line_ends
-{
-const std::string dbg = "\n";
-const std::string http = "\r\n";
-} // namespace line_ends
-
 namespace api
 {
 class routing;
@@ -570,7 +564,7 @@ class params;
 namespace util
 {
 
-template <class S> inline std::string escape_json(const S& s)
+inline std::string escape_json(const std::string& s)
 {
 	std::ostringstream ss;
 
@@ -611,12 +605,6 @@ template <class S> inline std::string escape_json(const S& s)
 		}
 	}
 	return ss.str();
-}
-
-inline bool case_insensitive_equal(const std::string& str1, const char* str2) noexcept
-{
-	return str1.size() == std::strlen(str2)
-		   && std::equal(str1.begin(), str1.end(), str2, [](char a, char b) { return tolower(a) == tolower(b); });
 }
 
 inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
@@ -873,7 +861,7 @@ enum status_t
 	network_connect_timeout_error = 599
 };
 
-constexpr inline status_t to_status(std::uint32_t status_nr)
+inline status_t to_status(std::uint32_t status_nr)
 {
 	if (status_nr >= 100 && status_nr <= 599)
 		return static_cast<status_t>(status_nr);
@@ -881,7 +869,7 @@ constexpr inline status_t to_status(std::uint32_t status_nr)
 		return http::status::internal_server_error;
 }
 
-constexpr inline const char* to_string(status_t s)
+inline const char* to_string(status_t s)
 {
 	switch (s)
 	{
@@ -986,7 +974,7 @@ constexpr inline const char* to_string(status_t s)
 	}
 }
 
-constexpr inline std::int32_t to_int(status_t s)
+inline std::int32_t to_int(status_t s)
 {
 	switch (s)
 	{
@@ -1094,60 +1082,70 @@ const char name_value_separator[] = { ':', ' ' };
 const char crlf[] = { '\r', '\n' };
 } // namespace misc_strings
 
-template <typename K, typename T> class field
+template <typename T> class field
 {
 public:
-	using key_type = K;
 	using value_type = T;
 
 	field() = default;
 
 	field(const char* name, T value = T{}) : name(name), value(std::move(value)){};
-	field(K name, T value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
+	field(std::string name, T value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
+	field(std::string&& name, T&& value = T{}) noexcept : name(std::move(name)), value(std::move(value)){};
 
-	K name;
+	std::string name;
 	T value;
 };
 
-template <typename K, typename T> class fields
+template <typename T> class fields
 {
 
 public:
-	using value_type = http::field<K, T>;
-	using container = std::vector<fields::value_type>;
-	using iterator = typename container::iterator;
-	using reverse_iterator = typename container::reverse_iterator;
+	using iterator = typename std::vector<http::field<T>>::iterator;
+	using value_type = http::field<T>;
 
 protected:
-	std::vector<fields::value_type> fields_{};
+	std::vector<fields::value_type> fields_;
 
 public:
-	fields() { fields_.reserve(20); };
+	fields() = default;
 
 	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list){};
 
-	fields(const http::fields<K, T>& f) = default;
-	fields(http::fields<K, T>&& f) noexcept = default;
+	fields(const http::fields<T>& f) = default;
+	fields(http::fields<T>&& f) noexcept = default;
 
-	fields<K, T>& operator=(const http::fields<K, T>&) = default;
-	fields<K, T>& operator=(http::fields<K, T>&&) noexcept = default;
+	fields<T>& operator=(const http::fields<T>&) = default;
+	fields<T>& operator=(http::fields<T>&&) noexcept = default;
 
 	~fields() = default;
 
+	inline std::string to_string() const noexcept
+	{
+		std::ostringstream ss;
+
+		for (auto&& field : fields_)
+		{
+			ss << field.name << ": " << field.value << "\r\n";
+		}
+
+		return ss.str();
+	}
+
 	inline bool fields_empty() const { return this->fields_.empty(); };
 
-	inline typename reverse_iterator new_field()
+	inline typename std::vector<fields::value_type>::reverse_iterator new_field()
 	{
-		fields_.emplace_back(field<K, T>{});
+		fields_.emplace_back(field<T>{});
 		return fields_.rbegin();
 	}
 
 	template <typename P>
-	typename std::enable_if<std::is_same<P, bool>::value, bool>::type get(const K& name, const P value) const
+	typename std::enable_if<std::is_same<P, bool>::value, bool>::type get(const std::string& name, const P value) const
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
 			if (http::util::case_insensitive_equal(f.name, name))
 				return true;
 			else
@@ -1184,7 +1182,7 @@ public:
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
@@ -1194,9 +1192,10 @@ public:
 	}
 
 	template <typename P>
-	typename std::
-		enable_if<std::is_integral<P>::value && (!std::is_same<P, bool>::value && !std::is_same<T, K>::value), P>::type
-		get(const std::string& name) const
+	typename std::enable_if<
+		std::is_integral<P>::value && (!std::is_same<P, bool>::value && !std::is_same<T, std::string>::value),
+		P>::type
+	get(const std::string& name) const
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
@@ -1254,7 +1253,7 @@ public:
 		return returnvalue;
 	}
 
-	inline typename reverse_iterator last_new_field() { return fields_.rbegin(); }
+	inline typename std::vector<fields::value_type>::reverse_iterator last_new_field() { return fields_.rbegin(); }
 
 	inline const T get(const char* name) const
 	{
@@ -1274,7 +1273,7 @@ public:
 	{
 		T returnvalue = default_value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
@@ -1290,16 +1289,16 @@ public:
 
 	inline bool has(const char* name) const
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
 			return (http::util::case_insensitive_equal(f.name, name));
 		});
 
 		return i != std::end(fields_);
 	}
 
-	inline void set(const K& name, const T& value)
+	inline void set(const std::string& name, const T& value)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
@@ -1309,14 +1308,14 @@ public:
 		}
 		else
 		{
-			http::field<K, T> field_(name, value);
+			http::field<T> field_(name, value);
 			fields_.emplace_back(std::move(field_));
 		}
 	}
 
 	inline void reset_if_exists(const std::string& name)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
@@ -1328,7 +1327,7 @@ public:
 
 	inline void reset(const std::string& name)
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<K, T>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
@@ -1353,15 +1352,13 @@ public:
 class configuration
 {
 public:
-	using string_type = std::string;
-	using value_type = http::field<string_type, string_type>;
-	using container = std::vector<value_type>;
-	using iterator = container::iterator;
+	using iterator = std::vector<http::field<std::string>>::iterator;
+	using value_type = http::field<std::string>;
 
 public:
 	configuration() = default;
 
-	configuration(std::initializer_list<configuration::value_type> init_list, const string_type& string_options = "")
+	configuration(std::initializer_list<configuration::value_type> init_list, const std::string& string_options = "")
 		: fields_(init_list)
 	{
 		const auto& split_string_options = http::util::split(string_options, ",");
@@ -1438,10 +1435,9 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(
-			std::begin(fields_), std::end(fields_), [name](const http::field<std::string, std::string>& f) {
-				return http::util::case_insensitive_equal(f.name, name);
-			});
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+			return http::util::case_insensitive_equal(f.name, name);
+		});
 
 		if (i != std::end(fields_)) returnvalue = i->value == "true";
 
@@ -1455,10 +1451,9 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(
-			std::begin(fields_), std::end(fields_), [name](const http::field<std::string, std::string>& f) {
-				return (http::util::case_insensitive_equal(f.name, name));
-			});
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+			return (http::util::case_insensitive_equal(f.name, name));
+		});
 
 		if (i != std::end(fields_)) returnvalue = std::stoi(i->value); // TODO klopt dit nog? T is_integral
 
@@ -1472,17 +1467,16 @@ public:
 		T returnvalue = value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
-		auto i = std::find_if(
-			std::begin(fields_), std::end(fields_), [name](const http::field<std::string, std::string>& f) {
-				return (http::util::case_insensitive_equal(f.name, name));
-			});
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+			return (http::util::case_insensitive_equal(f.name, name));
+		});
 
 		if (i != std::end(fields_)) returnvalue = i->value;
 
 		return returnvalue;
 	}
 
-	inline const string_type get(const char* name) const
+	inline const std::string get(const char* name) const
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		static const std::string not_found = "";
@@ -1501,7 +1495,7 @@ public:
 		}
 	}
 
-	inline void set(const string_type& name, const string_type& value)
+	inline void set(const std::string& name, const std::string& value)
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
@@ -1527,7 +1521,7 @@ public:
 	}
 
 private:
-	container fields_;
+	std::vector<http::field<std::string>> fields_;
 	mutable std::mutex configuration_mutex_;
 };
 
@@ -1539,9 +1533,9 @@ enum message_specializations
 
 template <message_specializations> class header;
 
-template <> class header<request_specialization> : public fields<std::string, std::string>
+template <> class header<request_specialization> : public fields<std::string>
 {
-	using query_params = http::fields<std::string, std::string>;
+	using query_params = http::fields<std::string>;
 	friend class session_handler;
 	friend class request_parser;
 
@@ -1580,6 +1574,26 @@ public:
 		this->params_.clear();
 
 		this->fields_.clear();
+	}
+
+	std::string header_to_string() const
+	{
+		std::ostringstream ss;
+
+		if (version_nr() == 11)
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.1\r\n";
+		else
+			ss << http::method::to_string(method_) << " " << target_ << " HTTP/1.0\r\n";
+
+		for (auto&& field : fields_)
+		{
+			ss << field.name << ": ";
+			ss << field.value << "\r\n";
+		}
+
+		ss << "\r\n";
+
+		return ss.str();
 	}
 
 	std::string header_to_dbg_string() const
@@ -1628,7 +1642,7 @@ public:
 	}
 };
 
-template <> class header<response_specialization> : public fields<std::string, std::string>
+template <> class header<response_specialization> : public fields<std::string>
 {
 private:
 	std::string reason_;
@@ -1645,10 +1659,53 @@ public:
 	void status(http::status::status_t status) { status_ = status; }
 	http::status::status_t status() const { return status_; }
 
+	const std::string version() const
+	{
+		std::string ret = "HTTP/1.1";
+
+		if (version_nr_ == 10) ret = "HTTP/1.0";
+
+		return ret;
+	}
+
 	void clear()
 	{
 		this->fields_.clear();
 		version_nr_ = 0;
+	}
+
+	std::string header_to_string() const
+	{
+		std::ostringstream ss;
+
+		ss << status::to_string(status_);
+
+		for (auto&& field : fields_)
+		{
+			ss << field.name << ": ";
+			ss << field.value << "\r\n";
+		}
+
+		ss << "\r\n";
+
+		return ss.str();
+	}
+
+	std::string header_to_dbg_string() const
+	{
+		std::ostringstream ss;
+
+		ss << status::to_string(status_);
+
+		for (auto&& field : fields_)
+		{
+			ss << field.name << ": ";
+			ss << field.value << "\n";
+		}
+
+		ss << "\n";
+
+		return ss.str();
 	}
 };
 
@@ -1687,10 +1744,8 @@ static std::string extension_to_type(const std::string& extension)
 template <message_specializations specialization> class message : public header<specialization>
 {
 public:
-	using attributes = http::fields<std::string, std::uintptr_t>;
+	using attributes = http::fields<std::uintptr_t>;
 	attributes attributes_;
-
-	using field_type = http::fields<std::string, std::string>;
 
 private:
 	std::string body_;
@@ -1757,13 +1812,13 @@ public:
 	};
 
 	// TODO use std::enable_if for better performance?
-	template <typename T> std::vector<field<std::string, T>> attributes_as_vector() const
+	template <typename T> std::vector<field<T>> attributes_as_vector() const
 	{
-		std::vector<field<std::string, T>> vec;
+		std::vector<field<T>> vec;
 
 		for (const auto& attribute : attributes_.as_vector())
 		{
-			vec.emplace_back(attribute.name, get_attribute<std::string, T>(attribute.name));
+			vec.emplace_back(attribute.name, get_attribute<T>(attribute.name));
 		}
 
 		return vec;
@@ -1775,8 +1830,8 @@ public:
 
 	void target(const std::string& target) { header<specialization>::target_ = target; }
 
-	const typename header<specialization>::container& headers() const { return header<specialization>::fields_; }
-	typename header<specialization>::container& headers() { return header<specialization>::fields_; }
+	const std::vector<http::field<std::string>>& headers() const { return header<specialization>::fields_; }
+	std::vector<http::field<std::string>>& headers() { return header<specialization>::fields_; }
 
 	void reset()
 	{
@@ -1791,19 +1846,19 @@ public:
 
 	const std::string& body() const { return body_; }
 
-	bool chunked() const { return (field_type::get("Transfer-Encoding", std::string{}) == "chunked"); }
+	bool chunked() const { return (http::fields<std::string>::get("Transfer-Encoding", std::string{}) == "chunked"); }
 
 	void chunked(bool value)
 	{
 		if (value)
-			field_type::set("Transfer-Encoding", "chunked");
+			http::fields<std::string>::set("Transfer-Encoding", "chunked");
 		else
-			field_type::set("Transfer-Encoding", "none");
+			http::fields<std::string>::set("Transfer-Encoding", "none");
 	}
 
 	bool has_content_length() const
 	{
-		if (field_type::get("Content-Length", std::string{}).empty())
+		if (http::fields<std::string>::get("Content-Length", std::string{}).empty())
 			return false;
 		else
 			return true;
@@ -1811,29 +1866,32 @@ public:
 
 	void type(const std::string& content_type)
 	{
-		field_type::set("Content-Type", mime_types::extension_to_type(content_type));
+		http::fields<std::string>::set("Content-Type", mime_types::extension_to_type(content_type));
 	}
 
 	void status(http::status::status_t status) { http::header<specialization>::status(status); }
 	http::status::status_t status() const { return http::header<specialization>::status(); }
 
-	void content_length(uint64_t const& length) { field_type::set("Content-Length", std::to_string(length)); }
+	void content_length(uint64_t const& length)
+	{
+		http::fields<std::string>::set("Content-Length", std::to_string(length));
+	}
 
 	uint64_t content_length() const
 	{
-		auto content_length_ = header<specialization>::get("Content-Length", std::string{});
+		auto content_length_ = http::fields<std::string>::get("Content-Length", std::string{});
 
 		if (content_length_.empty())
 			return 0;
 		else
-			return std::stoul(content_length_.data());
+			return std::stoul(content_length_);
 	}
 
 	bool http_version11() const { return http::header<request_specialization>::version_nr() == 11; }
 
 	bool connection_close() const
 	{
-		if (http::util::case_insensitive_equal(field_type::get("Connection", std::string{}), "close"))
+		if (http::util::case_insensitive_equal(http::fields<std::string>::get("Connection", std::string{}), "close"))
 			return true;
 		else
 			return false;
@@ -1841,59 +1899,41 @@ public:
 
 	bool connection_keep_alive() const
 	{
-		if (http::util::case_insensitive_equal(field_type::get("Connection", std::string{}), "Keep-Alive"))
+		if (http::util::case_insensitive_equal(
+				http::fields<std::string>::get("Connection", std::string{}), "Keep-Alive"))
 			return true;
 		else
 			return false;
 	}
 
-	static std::string to_string(
-		const http::message<request_specialization>& message, const std::string& line_ends = http::line_ends::http)
+	static std::string to_dbg_string(const http::message<specialization>& message)
 	{
-		std::string tmp;
-		tmp.reserve(1024);
+		std::string ret = message.header_to_dbg_string();
+		ret += message.body();
 
-		if (message.version_nr() == 11)
-			tmp.append(http::method::to_string(message.method())).append(" ").append(" HTTP/1.1").append(line_ends);
-		else
-			tmp.append(http::method::to_string(message.method())).append(" ").append(" HTTP/1.0").append(line_ends);
-
-		for (auto&& field : message.fields_)
-		{
-			tmp.append(field.name).append(": ").append(field.value).append(line_ends);
-		}
-
-		tmp.append(line_ends);
-		tmp.append(message.body());
-
-		return tmp;
+		return ret;
 	}
 
-	static std::string to_string(
-		const http::message<response_specialization>& message, const std::string& line_ends = http::line_ends::http)
+	static std::string to_string(const http::message<specialization>& message)
 	{
-		std::string tmp;
-		tmp.reserve(1024);
+		std::ostringstream ss;
 
-		tmp.append(http::status::to_string(message.status()));
+		ss << message.header_to_string();
+		ss << message.body();
 
-		for (auto&& field : message.fields_)
-		{
-			tmp.append(field.name).append(": ").append(field.value).append(line_ends);
-		}
-
-		tmp.append(line_ends);
-		tmp.append(message.body());
-
-		return tmp;
+		return ss.str();
 	}
 };
 
-template <message_specializations specialization>
-std::string
-to_string(const http::message<specialization>& message, const std::string& line_ends = http::line_ends::http)
+template <message_specializations specialization> std::string to_string(const http::message<specialization>& message)
 {
-	return http::message<specialization>::to_string(message, line_ends);
+	return http::message<specialization>::to_string(message);
+}
+
+template <message_specializations specialization>
+std::string to_dbg_string(const http::message<specialization>& message)
+{
+	return http::message<specialization>::to_dbg_string(message);
 }
 
 using request_message = http::message<request_specialization>;
@@ -2228,12 +2268,12 @@ private:
 	}
 
 	/// Check if a byte is an HTTP character.
-	inline static bool is_char(int c) { return c >= 0 && c <= 127; }
+	static bool is_char(int c) { return c >= 0 && c <= 127; }
 
 	/// Check if a byte is an HTTP control character.
-	inline static bool is_ctl(int c) { return (c >= 0 && c <= 31) || (c == 127); }
+	static bool is_ctl(int c) { return (c >= 0 && c <= 31) || (c == 127); }
 	/// Check if a byte is defined as an HTTP tspecial character.
-	inline static bool is_tspecial(int c)
+	static bool is_tspecial(int c)
 	{
 		switch (c)
 		{
@@ -2263,7 +2303,7 @@ private:
 	}
 
 	/// Check if a byte is a digit.
-	inline static bool is_digit(int c) { return c >= '0' && c <= '9'; }
+	static bool is_digit(int c) { return c >= '0' && c <= '9'; }
 
 	/// The current state of the parser.
 	enum state
@@ -2894,14 +2934,21 @@ class session_handler
 public:
 	using result_type = http::request_parser::result_type;
 
-	session_handler(const std::string& server_id, std::int16_t keepalive_max, std::int16_t keepalive_count)
-		: server_id_(server_id), keepalive_count_(keepalive_count), keepalive_max_(keepalive_max){};
+	session_handler() = delete;
 	session_handler(const session_handler&) = default;
 	session_handler(session_handler&&) = delete;
 	session_handler& operator=(const session_handler&) = delete;
 	session_handler& operator=(session_handler&&) = delete;
 
 	~session_handler() = default;
+
+	session_handler(http::configuration& configuration)
+		: configuration_(configuration)
+		, keepalive_count_(configuration.get<int>("keepalive_count", 1024 * 8))
+		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
+		, t0_(std::chrono::steady_clock::now())
+	{
+	}
 
 	template <typename InputIterator>
 	std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end)
@@ -2913,10 +2960,12 @@ public:
 
 	template <typename router_t> typename router_t::request_result_type handle_request(router_t& router_)
 	{
+		std::string server_id{ configuration_.get<std::string>("server", "http/server/0") };
+
 		response_.status(http::status::bad_request);
 		response_.type("text");
 
-		response_.set("Server", server_id_);
+		response_.set("Server", server_id);
 		response_.set("Date", util::return_current_time_and_date());
 
 		std::string request_path;
@@ -3060,15 +3109,15 @@ private:
 	http::request_message request_{ *this };
 	http::response_message response_{ *this };
 	http::request_parser request_parser_;
+	http::configuration& configuration_;
 	http::api::routing* routing_{ nullptr };
 	http::api::params* params_{ nullptr };
 
-	const std::string& server_id_;
 	int keepalive_count_;
 	int keepalive_max_;
 
-	std::chrono::steady_clock::time_point t0_{ std::chrono::steady_clock::now() };
-	std::chrono::steady_clock::time_point t1_{ std::chrono::steady_clock::now() };
+	std::chrono::steady_clock::time_point t0_;
+	std::chrono::steady_clock::time_point t1_;
 };
 
 namespace api
@@ -3425,6 +3474,7 @@ public:
 public:
 	std::unique_ptr<route_part> root_;
 	E internal_error_method_;
+	std::function<bool()> idle_method_;
 	std::string private_base_;
 
 public:
@@ -3478,6 +3528,8 @@ public:
 
 		on_middleware(path, middleware_pair);
 	}
+
+	void on_idle(std::function<bool()>&& idle_method) { idle_method_ = std::move(idle_method); }
 
 	void on_internal_error(E&& internal_error_method) { internal_error_method_ = std::move(internal_error_method); }
 
@@ -3771,7 +3823,7 @@ class curl
 
 	static size_t recv_header_callback(char* buffer, size_t size, size_t nmemb, void* userp)
 	{
-		// std::string headerline(buffer);
+		std::string headerline(buffer);
 		char* c = nullptr;
 		auto this_curl = static_cast<curl*>(userp);
 
@@ -3879,12 +3931,13 @@ public:
 		if (ret != CURLE_OK)
 		{
 			error = std::string{ curl_easy_strerror(ret) } + " when requesting " + verb_ + " on url: " + url_;
+			return response_message_;
 		}
 		else
 		{
 			response_message_.body() = buffer_.str();
+			return response_message_;
 		}
-		return response_message_;
 	}
 
 	http::response_message call()
@@ -3898,8 +3951,8 @@ public:
 		else
 		{
 			response_message_.body() = buffer_.str();
+			return response_message_;
 		}
-		return response_message_;
 	}
 };
 
@@ -3963,7 +4016,7 @@ public:
 		std::atomic<size_t> connections_current_{ 0 };
 		std::atomic<size_t> connections_highest_{ 0 };
 
-		std::atomic<std::int64_t> idle_since_;
+		std::atomic<std::int64_t> idle_since_{0};
 
 		std::vector<std::string> access_log_;
 		mutable std::mutex mutex_;
@@ -3972,8 +4025,16 @@ public:
 		server_manager() noexcept
 			: server_information_("")
 			, router_information_("")
-			, idle_since_(std::chrono::steady_clock::now().time_since_epoch().count()){};
+			, idle_since_(std::chrono::steady_clock::now().time_since_epoch().count())
+		{
+			access_log_.reserve(32);
+		};
 
+		std::int64_t idle_time() {return (std::chrono::duration<std::int64_t, std::nano>(
+					   std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
+					   .count())
+					  / 1000000000;
+		}
 		std::atomic<size_t>& requests_handled() { return requests_handled_; }
 		std::atomic<size_t>& connections_accepted() { return connections_accepted_; }
 		std::atomic<size_t>& connections_current()
@@ -3998,9 +4059,8 @@ public:
 			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_) / 1000000.0;
 
 			std::string msg = lgr::logger::format<lgr::prefix::accesslog>(
-				"{s} - {s} - '{s} {s}' - {d} - {u} - {u} - {f}",
+				"{s} - '{s} {s}' - {d} - {u} - {u} - {f}",
 				session.request().get("Remote_Addr", std::string{}),
-				session.request().get("X-Request-ID", std::string{ "no-request-id" }),
 				http::method::to_string(session.request().method()),
 				session.request().url_requested(),
 				http::status::to_int(session.response().status()),
@@ -4012,7 +4072,7 @@ public:
 
 			if (access_log_.size() >= 32) access_log_.erase(access_log_.begin());
 
-			return msg.append("\n");
+			return msg;
 		}
 
 		void server_information(std::string info)
@@ -4031,7 +4091,7 @@ public:
 		{
 			full,
 			config,
-			server_stats,
+			server_metrics,
 			router,
 			accesslog
 		};
@@ -4049,7 +4109,7 @@ public:
 				{
 					g.unlock();
 					ss << to_json_string(json_status_options::config, false) << ", "
-					   << to_json_string(json_status_options::server_stats, false) << ", "
+					   << to_json_string(json_status_options::server_metrics, false) << ", "
 					   << to_json_string(json_status_options::router, false) << ","
 					   << to_json_string(json_status_options::accesslog, false);
 					g.lock();
@@ -4061,10 +4121,10 @@ public:
 					   << "{" << server_information_ << "}";
 					break;
 				}
-				case json_status_options::server_stats:
+				case json_status_options::server_metrics:
 				{
 
-					ss << "\"stats\": "
+					ss << "\"metrics\": "
 					   << "{\"connections_current\":" << connections_current_ << ","
 					   << "\"connections_accepted\":" << connections_accepted_ << ","
 					   << "\"connections_highest\":" << connections_highest_ << ","
@@ -4139,6 +4199,7 @@ public:
 	};
 
 	server_manager& manager() { return manager_; }
+	lgr::logger& logger() { return logger_;}
 
 protected:
 	server_manager manager_;
@@ -4146,8 +4207,6 @@ protected:
 	http::configuration configuration_;
 	lgr::logger logger_;
 	std::atomic<state> state_{ state::activating };
-	int keepalive_count_;
-	int keepalive_max_;
 }; // namespace basic
 
 namespace threaded
@@ -4160,6 +4219,7 @@ class server : public http::basic::server
 public:
 	server(const http::configuration& configuration)
 		: http::basic::server{ configuration }
+		, http_close_on_nr_of_seconds_idle_(configuration.get<std::int32_t>("http_close_on_nr_of_seconds_idle", 0))
 		, http_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
@@ -4175,10 +4235,6 @@ public:
 		, endpoint_https_(configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 5))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
-		, id_(configuration.get<std::string>("http_server_identification", "server 1/1/1"))
-		, keepalive_count_(8192)
-		, keepalive_max_(5)
-
 	{
 		logger_.debug("server created\n");
 	}
@@ -4196,10 +4252,6 @@ public:
 
 	server& operator=(const server&) = delete;
 	server& operator=(const server&&) = delete;
-
-	const std::string& id() const { return id_; }
-	std::int16_t keepalive_max() const { return keepalive_max_; }
-	std::int16_t keepalive_count() const { return keepalive_count_; }
 
 	http::basic::server::state start() override
 	{
@@ -4251,6 +4303,8 @@ public:
 
 			return state_.load();
 		}
+
+		logger_.info("routes: \n{s}", router_.to_string());
 
 		// before takeoff checklist complete....
 		state_.store(http::basic::server::state::active);
@@ -4466,6 +4520,14 @@ public:
 				{
 					network::tcp::socket http_socket{};
 
+					auto idle_since = this->manager_.idle_time();
+
+					if (http_close_on_nr_of_seconds_idle_ > 0 && idle_since > http_close_on_nr_of_seconds_idle_)
+					{
+						if (router_.idle_method_ && router_.idle_method_())
+							logger_.accesslog("http listener is idle for {d} seconds and 'http_close_on_nr_of_seconds_idle' is set to {d}. deactivating server\n", idle_since, http_close_on_nr_of_seconds_idle_);
+					}
+
 					acceptor_http.accept(http_socket, ec, 5);
 
 					if (ec == network::error::interrupted)
@@ -4506,7 +4568,7 @@ public:
 			http::basic::threaded::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
 			, client_socket_(std::move(client_socket))
-			, session_handler_(server_.id(), server_.keepalive_max(), server_.keepalive_count())
+			, session_handler_(server.configuration_)
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
 		{
@@ -4601,14 +4663,13 @@ public:
 							session_handler_.request().set(
 								"Remote_Addr",
 								session_handler_.request().get(
-									"X-Forwarded-For", std::string{ network::get_client_info(client_socket_) }));
+									"X-Forwarded-For", network::get_client_info(client_socket_)));
 
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
 							if (server_.logger_.current_level() == lgr::level::debug)
 							{
-								server_.logger_.debug(
-									"request:\n{s}\n", http::to_string(request, http::line_ends::dbg));
+								server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(request));
 							}
 
 							++server_.manager().requests_current(private_base_request);
@@ -4633,17 +4694,20 @@ public:
 								response.set("Content-Length", std::to_string(response.body().size()));
 							}
 
+							(void)network::write(client_socket_, http::to_string(response));
+
 							if (routing.match_result() == http::api::router_match::match_found)
 							{
-								(void)network::write(client_socket_, http::to_string(response));
-
 								routing.the_route().metric_response_latency(
 									std::chrono::duration<std::uint64_t, std::nano>(
 										std::chrono::steady_clock::now() - t0)
 										.count());
 
-								server_.logger_.accesslog(server_.manager().log_access(
-									session_handler_, routing.the_route().route_metrics()));
+								auto log_msg = server_.manager().log_access(
+												   session_handler_, routing.the_route().route_metrics())
+											   + "\n";
+
+								server_.logger_.accesslog(log_msg);
 							}
 							else
 							{
@@ -4656,8 +4720,7 @@ public:
 
 							if (server_.logger_.current_level() == lgr::level::debug)
 							{
-								server_.logger_.debug(
-									"response:\n{s}\n", http::to_string(response, http::line_ends::dbg));
+								server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(response));
 							}
 						}
 						else
@@ -4719,6 +4782,7 @@ public:
 	};
 
 private:
+	std::int32_t http_close_on_nr_of_seconds_idle_;
 	bool http_use_portsharding_;
 	bool http_enabled_;
 	std::int32_t http_listen_port_begin_;
@@ -4741,10 +4805,6 @@ private:
 
 	std::thread http_connection_thread_;
 	std::thread https_connection_thread_;
-
-	std::string id_;
-	std::int16_t keepalive_max_;
-	std::int16_t keepalive_count_;
 };
 
 } // namespace threaded
