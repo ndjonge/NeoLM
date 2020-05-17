@@ -22,9 +22,7 @@
 #include <sys/types.h>
 #endif
 
-#include "openssl/err.h"
-#include "openssl/evp.h"
-#include "openssl/ssl.h"
+#include "infor_ssl.h"
 
 namespace network
 {

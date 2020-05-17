@@ -4016,7 +4016,7 @@ public:
 		std::atomic<size_t> connections_current_{ 0 };
 		std::atomic<size_t> connections_highest_{ 0 };
 
-		std::atomic<std::int64_t> idle_since_{0};
+		std::atomic<std::int64_t> idle_since_{ 0 };
 
 		std::vector<std::string> access_log_;
 		mutable std::mutex mutex_;
@@ -4030,10 +4030,12 @@ public:
 			access_log_.reserve(32);
 		};
 
-		std::int64_t idle_time() {return (std::chrono::duration<std::int64_t, std::nano>(
-					   std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
-					   .count())
-					  / 1000000000;
+		std::int64_t idle_time()
+		{
+			return (std::chrono::duration<std::int64_t, std::nano>(
+						std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
+						.count())
+				   / 1000000000;
 		}
 		std::atomic<size_t>& requests_handled() { return requests_handled_; }
 		std::atomic<size_t>& connections_accepted() { return connections_accepted_; }
@@ -4199,7 +4201,7 @@ public:
 	};
 
 	server_manager& manager() { return manager_; }
-	lgr::logger& logger() { return logger_;}
+	lgr::logger& logger() { return logger_; }
 
 protected:
 	server_manager manager_;
@@ -4525,7 +4527,11 @@ public:
 					if (http_close_on_nr_of_seconds_idle_ > 0 && idle_since > http_close_on_nr_of_seconds_idle_)
 					{
 						if (router_.idle_method_ && router_.idle_method_())
-							logger_.accesslog("http listener is idle for {d} seconds and 'http_close_on_nr_of_seconds_idle' is set to {d}. deactivating server\n", idle_since, http_close_on_nr_of_seconds_idle_);
+							logger_.accesslog(
+								"http listener is idle for {d} seconds and 'http_close_on_nr_of_seconds_idle' is set "
+								"to {d}. deactivating server\n",
+								idle_since,
+								http_close_on_nr_of_seconds_idle_);
 					}
 
 					acceptor_http.accept(http_socket, ec, 5);

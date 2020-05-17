@@ -13,7 +13,7 @@ namespace upstream
 enum result
 {
 	failed,
-	sucess
+	success
 };
 
 class upstream_controller_base
@@ -34,10 +34,10 @@ protected:
 namespace implementations
 {
 
-class upstream_controller_nginx_v1 : public upstream_controller_base
+class upstream_controller_nginx : public upstream_controller_base
 {
 public:
-	upstream_controller_nginx_v1(const http::basic::server& server) : upstream_controller_base(server)
+	upstream_controller_nginx(const http::basic::server& server) : upstream_controller_base(server)
 	{
 		endpoint_base_url_
 			= server.config().get<std::string>("upstream_node_nginx_endpoint", "http://localhost:7777") + "/"
@@ -45,9 +45,10 @@ public:
 			  + server.config().get<std::string>("upstream_node_nginx_group", "bshell-workers") + "-zone";
 	};
 
-
 	result add() const noexcept
 	{
+		// Retry 5 time until success: On linux we encounter a strange issue with TCP connections. Sometimes the kernel
+		// sends a RST for unkown reason at tis time.
 		for (int i = 0; i != 5; i++)
 		{
 			std::string ec;
@@ -63,7 +64,7 @@ public:
 			{
 				if (up_result.status() == http::status::ok)
 				{
-					return http::upstream::sucess;
+					return http::upstream::success;
 				}
 				else
 				{
@@ -88,7 +89,7 @@ public:
 			{
 				if (add_result.status() == http::status::ok)
 				{
-					return http::upstream::sucess;
+					return http::upstream::success;
 				}
 			}
 		}
@@ -100,6 +101,8 @@ public:
 	{
 		bool down = false;
 
+		// Retry 5 time until success: On linux we encounter a strange issue with TCP connections. Sometimes the kernel
+		// sends a RST for unkown reason at tis time.
 		for (int i = 0; i != 5; i++)
 		{
 
@@ -132,7 +135,7 @@ public:
 					{},
 					{});
 
-				if (ec.empty() && remove_result.status() == http::status::ok) return http::upstream::sucess;
+				if (ec.empty() && remove_result.status() == http::status::ok) return http::upstream::success;
 			}
 		}
 
@@ -143,116 +146,6 @@ private:
 	std::string endpoint_base_url_;
 	std::string my_endpoint_;
 };
-
-class upstream_controller_nginx_v2 : public upstream_controller_base
-{
-public:
-	upstream_controller_nginx_v2(const http::basic::server& server) : upstream_controller_base(server)
-	{
-		endpoint_base_url_
-			= server.config().get<std::string>("upstream_node_nginx_endpoint", "http://localhost:7777") + "/"
-			  + server.config().get<std::string>("upstream_node_nginx_group", "bshell-workers") + "?upstream="
-			  + server.config().get<std::string>("upstream_node_nginx_group", "bshell-workers") + "-zone";
-	};
-
-	result add() const noexcept
-	{
-		for (int i = 0; i != 5; i++)
-		{
-			std::string ec;
-			auto up_result = http::client::request<http::method::get>(
-				endpoint_base_url_
-					+ "&up=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
-					+ server_.config().get("http_listen_port"),
-				ec,
-				{},
-				{});
-
-			if (ec.empty())
-			{
-				if (up_result.status() == http::status::ok)
-				{
-					return http::upstream::sucess;
-				}
-				else
-				{
-					// not found then add
-					break;
-				}
-			}
-		}
-
-		for (int i = 0; i != 5; i++)
-		{
-			std::string ec;
-			auto add_result = http::client::request<http::method::get>(
-				endpoint_base_url_
-					+ "&add=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
-					+ server_.config().get("http_listen_port"),
-				ec,
-				{ "Connection: close" },
-				{});
-
-			if (ec.empty())
-			{
-				if (add_result.status() == http::status::ok)
-				{
-					return http::upstream::sucess;
-				}
-			}
-		}
-
-		return http::upstream::failed;
-	}
-
-	result remove() const noexcept
-	{
-		bool down = false;
-
-		for (int i = 0; i != 5; i++)
-		{
-
-			std::string ec;
-			auto down_result = http::client::request<http::method::get>(
-				endpoint_base_url_
-					+ "&down=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1") + ":"
-					+ server_.config().get("http_listen_port"),
-				ec,
-				{},
-				{});
-
-			if (ec.empty())
-			{
-				down = true;
-				break;
-			}
-		}
-
-		for (int i = 0; i != 5; i++)
-		{
-			if (down)
-			{
-				std::string ec;
-				auto remove_result = http::client::request<http::method::get>(
-					endpoint_base_url_
-						+ "&remove=&server=" + server_.config().get<std::string>("upstream_node_this_ip", "127.0.0.1")
-						+ ":" + server_.config().get("http_listen_port"),
-					ec,
-					{},
-					{});
-
-				if (ec.empty() && remove_result.status() == http::status::ok) return http::upstream::sucess;
-			}
-		}
-
-		return http::upstream::failed;
-	}
-
-private:
-	std::string endpoint_base_url_;
-	std::string my_endpoint_;
-};
-
 
 class upstream_controller_haproxy : public upstream_controller_base
 {
@@ -300,7 +193,7 @@ public:
 				network::write(s.socket(), cmd);
 				network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
 
-				ret = http::upstream::sucess;
+				ret = http::upstream::success;
 			}
 		}
 
@@ -334,7 +227,7 @@ public:
 
 			network::write(s.socket(), cmd);
 			network::read(s.socket(), network::buffer(buffer, sizeof(buffer)));
-			ret = http::upstream::sucess;
+			ret = http::upstream::success;
 		}
 
 		return ret;
@@ -363,21 +256,15 @@ protected:
 
 std::unique_ptr<upstream_controller_base> make_upstream_controler_from_configuration(const http::basic::server& server)
 {
-	if (server.config().get("upstream_node_type") == "nginx-v1")
+	if (server.config().get("upstream_node_type") == "nginx")
 	{
-		return std::move(std::unique_ptr<http::upstream::implementations::upstream_controller_nginx_v1>(
-			new http::upstream::implementations::upstream_controller_nginx_v1{ server }));
-	}
-	if (server.config().get("upstream_node_type") == "nginx-v2")
-	{
-		return std::move(std::unique_ptr<http::upstream::implementations::upstream_controller_nginx_v2>(
-			new http::upstream::implementations::upstream_controller_nginx_v2{server
-	}));
+		return std::move(std::unique_ptr<http::upstream::implementations::upstream_controller_nginx>(
+			new http::upstream::implementations::upstream_controller_nginx(server)));
 	}
 	else if (server.config().get("upstream_node_type") == "haproxy")
 	{
 		return std::move(std::unique_ptr<http::upstream::implementations::upstream_controller_haproxy>(
-			new http::upstream::implementations::upstream_controller_haproxy{ server }));
+			new http::upstream::implementations::upstream_controller_haproxy(server)));
 	}
 
 	return {};
