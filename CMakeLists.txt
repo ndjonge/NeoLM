@@ -4,7 +4,7 @@ project("mir_http_example" VERSION 0.0.1 LANGUAGES CXX)
 
 include_directories("include")
 
-add_executable(${PROJECT_NAME} example/main.cpp)
+add_executable(${PROJECT_NAME} example/main.cpp "include/prog_args.h")
 
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)

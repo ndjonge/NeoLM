@@ -93,7 +93,7 @@ private:
 
 					if (section == "statistics")
 					{
-						section_option = http::basic::server::server_manager::json_status_options::server_stats;
+						section_option = http::basic::server::server_manager::json_status_options::server_metrics;
 					}
 					else if (section == "configuration")
 					{
@@ -131,7 +131,7 @@ private:
 
 					if (section == "statistics")
 					{
-						section_option = http::basic::server::server_manager::json_status_options::server_stats;
+						section_option = http::basic::server::server_manager::json_status_options::server_metrics;
 					}
 					else if (section == "configuration")
 					{

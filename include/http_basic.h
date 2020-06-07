@@ -297,7 +297,8 @@ public:
 				double_
 			};
 			type value_;
-			union {
+			union
+			{
 				size_t size_t_value_;
 				std::int64_t int_value_;
 				double dbl_value_;
@@ -4030,6 +4031,8 @@ public:
 			access_log_.reserve(32);
 		};
 
+		void idle_time_reset() { idle_since_ = std::chrono::steady_clock::now().time_since_epoch().count(); }
+
 		std::int64_t idle_time()
 		{
 			return (std::chrono::duration<std::int64_t, std::nano>(
@@ -4221,7 +4224,7 @@ class server : public http::basic::server
 public:
 	server(const http::configuration& configuration)
 		: http::basic::server{ configuration }
-		, http_close_on_nr_of_seconds_idle_(configuration.get<std::int32_t>("http_close_on_nr_of_seconds_idle", 0))
+		, http_watchdog_timeout_(configuration.get<std::int32_t>("http_watchdog_timeout", 0))
 		, http_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
@@ -4524,14 +4527,14 @@ public:
 
 					auto idle_since = this->manager_.idle_time();
 
-					if (http_close_on_nr_of_seconds_idle_ > 0 && idle_since > http_close_on_nr_of_seconds_idle_)
+					if (http_watchdog_timeout_ > 0 && idle_since > http_watchdog_timeout_)
 					{
 						if (router_.idle_method_ && router_.idle_method_())
 							logger_.accesslog(
-								"http listener is idle for {d} seconds and 'http_close_on_nr_of_seconds_idle' is set "
-								"to {d}. deactivating server\n",
+								"http listener is idle for {d} seconds and 'http_watchdog_timeout' is set to {d}. "
+								"deactivating server\n",
 								idle_since,
-								http_close_on_nr_of_seconds_idle_);
+								http_watchdog_timeout_);
 					}
 
 					acceptor_http.accept(http_socket, ec, 5);
@@ -4788,7 +4791,7 @@ public:
 	};
 
 private:
-	std::int32_t http_close_on_nr_of_seconds_idle_;
+	std::int32_t http_watchdog_timeout_;
 	bool http_use_portsharding_;
 	bool http_enabled_;
 	std::int32_t http_listen_port_begin_;

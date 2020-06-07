@@ -22,7 +22,13 @@
 #include <sys/types.h>
 #endif
 
+#ifdef USE_WOLFSSL
 #include "infor_ssl.h"
+#else
+#include "openssl/err.h"
+#include "openssl/evp.h"
+#include "openssl/ssl.h"
+#endif
 
 namespace network
 {
