@@ -4,7 +4,7 @@ project("mir_http_example" VERSION 0.0.1 LANGUAGES CXX)
 
 include_directories("include")
 
-add_executable(${PROJECT_NAME} example/main.cpp "include/prog_args.h")
+add_executable(${PROJECT_NAME} example/main.cpp "include/prog_args.h" "include/cld_worker_instance.h")
 
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -54,10 +54,10 @@ target_link_libraries( ${PROJECT_NAME} ZLIB::ZLIB)
 target_link_libraries( ${PROJECT_NAME} ${CURL_LIBRARIES} OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB) 
 
 if(WIN32)
-  target_link_libraries( ${PROJECT_NAME} wsock32 ws2_32)
+    add_definitions(-DLOCAL_TESTING)
 else()
     #add_definitions(-std=c++11 -Wreorder -g -fno-omit-frame-pointer) 
-    add_definitions(-std=c++11 -Wreorder -g -fsanitize=undefined -fno-omit-frame-pointer) 
+    add_definitions(-DLOCAL_TESTING -std=c++11 -Wreorder -g -fsanitize=undefined -fno-omit-frame-pointer) 
     #add_definitions(-std=c++11 -Wreorder -g -fsanitize=thread -fno-omit-frame-pointer) 
     #add_definitions(-std=c++11 -Wreorder -g -fsanitize=address -fno-omit-frame-pointer) 
     #target_link_libraries( ${PROJECT_NAME} pthread -fno-omit-frame-pointer) 

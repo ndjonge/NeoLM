@@ -3,13 +3,12 @@
 #include <iostream>
 #include <string>
 
-
-
 #define CURL_STATICLIB
-#ifdef INFOR
-#include "nlohmann_json.hpp"
+
+#ifndef LOCAL_TESTING
 #include "baanlogin.h"
 #include "bdaemon.h"
+#include "nlohmann_json.hpp"
 #include <curl/curl.h>
 
 #ifdef _WIN32
@@ -28,12 +27,39 @@
 #include <nlohmann/json.hpp>
 #endif
 
-
 #include "http_basic.h"
 #include "http_network.h"
 #include "prog_args.h"
 
 using json = nlohmann::json;
+
+#ifdef LOCAL_TESTING
+
+namespace
+{
+using SCK_t = network::socket_t;
+
+int CheckUserInfo(
+	const char* ,
+	const char* ,
+	const char* ,
+	SCK_t ,
+	char* ,
+#ifdef _WIN32
+	size_t ,
+	HANDLE* aUserToken
+#else
+	size_t errorStringBufSize
+#endif
+)
+{
+#ifdef _WIN32
+	aUserToken = nullptr;
+#endif
+	return 0;
+}
+}
+#endif
 
 namespace bse_utils
 {
@@ -46,25 +72,23 @@ static bool create_bse_process_as_user(
 	const std::string& password,
 	const std::string& command,
 	std::uint32_t& pid,
-	std::string& ec,
-	bool verbose = false,
-	std::ostream& logger = std::clog)
+	std::string& ec)
 {
 	bool result = false;
 #ifndef _WIN32
 	auto user_ok = CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0);
 #else
-	HANDLE userToken = NULL;
-	auto user_ok = CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0, &userToken);
+	HANDLE requested_user_token = 0;
+	auto user_ok = CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0, &requested_user_token);
 
 	if (!user_ok)
 	{
 		// TODO more info about failure.
 		ec = "login as user: " + user + " failed";
+		result = false;
 	}
 	else
 	{
-
 		char desktop[MAX_PATH];
 		const char* required_environment_vars[]
 			= { "ALLUSERSPROFILE", "CLASSPATH",	 "CLASSPATH", "SLMHOME", "SLM_RUNTIME",
@@ -74,6 +98,8 @@ static bool create_bse_process_as_user(
 		std::stringstream ss;
 
 		ss << "BSE=" << bse << char{ 0 };
+		ss << "BSE_BIN=" << bse_bin << char{ 0 };
+		ss << "TENAND_ID=" << tenand_id << char{ 0 };
 
 		for (auto var : required_environment_vars)
 		{
@@ -88,8 +114,6 @@ static bool create_bse_process_as_user(
 		STARTUPINFO siStartInfo{ 0 };
 		siStartInfo.cb = sizeof(STARTUPINFO);
 
-		LONG lError = 0;
-
 		snprintf(desktop, sizeof(desktop), "%s\\%s", BAAN_WINSTATION_NAME, BAAN_DESKTOP_NAME);
 
 		siStartInfo.lpDesktop = desktop;
@@ -97,7 +121,7 @@ static bool create_bse_process_as_user(
 
 		error = 0;
 		result = CreateProcessAsUser(
-			userToken, /* Handle to logged-on user */
+			requested_user_token, /* Handle to logged-on user */
 			NULL, /* module name */
 			const_cast<LPSTR>(command.data()), /* command line */
 			NULL, /* process security attributes */
@@ -127,9 +151,9 @@ static bool create_bse_process_as_user(
 		if (result) pid = piProcInfo.dwProcessId;
 
 		CloseHandle(piProcInfo.hThread);
-		// CloseHandle( piProcInfo.hProcess );
+		CloseHandle(piProcInfo.hProcess);
 		RevertToSelf();
-		CloseHandle(userToken);
+		CloseHandle(requested_user_token);
 	}
 #endif
 
@@ -142,8 +166,6 @@ static bool create_bse_process_as_user(
 	}
 	else
 	{
-		char sysshlibpath[1024];
-
 		auto argv = split_string(command.data());
 		const char* required_environment_vars[] = { "PATH",		 "CLASSPATH",	 "CLASSPATH", "SLMHOME", "SLM_RUNTIME",
 													"SLM_DEBUG", "SLM_DEBUFILE", "HOSTNAME",  "TMP",	 "TEMP" };
@@ -244,8 +266,8 @@ public:
 
 private:
 	std::string base_url_{};
-	std::int32_t process_id_;
 	std::string version_{};
+	std::int32_t process_id_;
 	status status_{ status::initial };
 	json instance_metrics_{};
 
@@ -256,7 +278,15 @@ public:
 	{
 	}
 
-	virtual ~worker_instance(){};
+	worker_instance(const worker_instance& worker_instance)
+		: base_url_(worker_instance.base_url_)
+		, version_(worker_instance.version_)
+		, process_id_(worker_instance.process_id_)
+		, status_(worker_instance.status_)
+	{
+	}
+
+	virtual ~worker_instance() { instance_metrics_.clear(); };
 
 	const std::string& get_base_url() const { return base_url_; };
 	int get_process_id() const { return process_id_; };
@@ -299,7 +329,7 @@ public:
 	}
 
 	json get_instance_metrics(void) { return instance_metrics_; }
-	void set_instance_metrics(const json& j) { instance_metrics_ = j; }
+	void set_instance_metrics(json& j) { instance_metrics_ = std::move(j); }
 };
 
 //
@@ -313,7 +343,9 @@ public:
 	using iterator = container_type::iterator;
 	using const_iterator = container_type::const_iterator;
 
-	workgroups(const std::string& workspace_id, const std::string& type) : workspace_id_(workspace_id), type_(type){};
+	workgroups(const std::string& workspace_id, const std::string& type)
+		: workspace_id_(workspace_id), type_(type), tenant_(){};
+	virtual ~workgroups() = default;
 
 	iterator begin() { return worker_instances_.begin(); }
 	iterator end() { return worker_instances_.end(); }
@@ -403,7 +435,7 @@ public:
 		// TODO instances....
 	}
 
-	virtual void to_json(json& j, const std::string& instance_id = "") const
+	virtual void to_json(json& j) const
 	{
 		j["name"] = name_;
 		j["type"] = type_;
@@ -428,9 +460,7 @@ public:
 		const std::string& worker_type,
 		const std::string& worker_name,
 		std::uint32_t& pid,
-		std::string& ec,
-		bool verbose = false,
-		std::ostream& logger = std::clog)
+		std::string& ec)
 		= 0;
 
 	void remove_instance(worker_instance& worker_instance)
@@ -530,16 +560,37 @@ public:
 		void instances_min(size_t value) { instances_min_ = value; }
 		void instances_max(size_t value) { instances_max_ = value; }
 
-		void from_json(const json& j, const std::string& limit_name = "")
+		enum class from_json_operation
 		{
-			if (limit_name.empty() || limit_name == "instances_required")
-				instances_required_ = j.value("instances_required", instances_min_);
+			add,
+			set
+		};
 
-			if (limit_name.empty() || limit_name == "instances_min") instances_min_ = j.value("instances_min", 0);
+		void from_json(
+			const json& j, const std::string& limit_name = "", from_json_operation method = from_json_operation::set)
+		{
+			if (method == from_json_operation::set)
+			{
+				if (limit_name.empty() || limit_name == "instances_required")
+					instances_required_ = j.value("instances_required", instances_min_);
 
-			if (limit_name.empty() || limit_name == "instances_max")
-				instances_max_ = j.value("instances_max", instances_min_);
+				if (limit_name.empty() || limit_name == "instances_min") instances_min_ = j.value("instances_min", 0);
 
+				if (limit_name.empty() || limit_name == "instances_max")
+					instances_max_ = j.value("instances_max", instances_min_);
+			}
+			else
+			{
+				if (limit_name.empty() || limit_name == "instances_required")
+					instances_required_ += j.value("instances_required", 0);
+
+				if (limit_name.empty() || limit_name == "instances_min") instances_min_ += j.value("instances_min", 0);
+
+				if (limit_name.empty() || limit_name == "instances_max") instances_max_ += j.value("instances_max", 0);
+			}
+
+			if (instances_min_ > instances_max_) instances_min_ = instances_max_;
+			if (instances_max_ < instances_min_) instances_max_ = instances_min_;
 			if (instances_required_ > instances_max_) instances_required_ = instances_max_;
 			if (instances_required_ < instances_min_) instances_required_ = instances_min_;
 		}
@@ -576,8 +627,8 @@ public:
 
 protected:
 	std::string name_;
-	std::string type_;
 	std::string workspace_id_;
+	std::string type_;
 	std::string tenant_;
 
 	limits limits_;
@@ -619,10 +670,10 @@ public:
 			auto nr_of_new_instances_required = limits_.instances_required() - worker_instances_.size();
 			lock.unlock();
 
-			for (int n = 0; n < nr_of_new_instances_required; n++)
+			for (size_t n = 0; n < nr_of_new_instances_required; n++)
 			{
 				std::uint32_t pid = 0;
-				bool success = create_instance(workspace_id_, type_, name_, pid, ec, true, logger.as_stream());
+				bool success = create_instance(workspace_id_, type_, name_, pid, ec);
 
 				if (!success) // todo
 				{
@@ -655,6 +706,7 @@ public:
 		else if (limits_.instances_actual() > limits_.instances_required())
 		{
 			// todo: scale down.
+			// for now let the idle watchdog handle it.
 		}
 		else
 		{
@@ -675,7 +727,7 @@ public:
 
 				if (ec.empty() && response.get("Content-type").find("json") != std::string::npos)
 				{
-					json ret = json::parse(response.body());
+					json ret = std::move(json::parse(response.body()));
 					std::string link_to_status;
 					worker_instance->second.set_instance_metrics(ret);
 					logger.info(
@@ -689,6 +741,7 @@ public:
 					if (instances_ok < limits_.instances_min())
 					{
 						ec.clear();
+						response.clear();
 						response = http::client::request<http::method::post>(
 							worker_instance->second.get_base_url() + "/private/infra/worker/status/watchdog", ec, {});
 
@@ -761,7 +814,7 @@ public:
 		j["details"].at("http_options").get_to(http_options_);
 	}
 
-	void to_json(json& j, const std::string& instance_id = "") const override
+	void to_json(json& j) const override
 	{
 		workgroups::to_json(j);
 		j["details"].emplace("bse", bse_);
@@ -781,22 +834,13 @@ public:
 		const std::string& worker_type,
 		const std::string& worker_name,
 		std::uint32_t& pid,
-		std::string& ec,
-		bool verbose = false,
-		std::ostream& logger = std::clog)
+		std::string& ec)
 	{
-		int new_count = 1;
-
-		static bool once;
-		if (once) return true;
-
-		once = false;
-
 		std::string tenant_id_ = "";
 		std::stringstream parameters;
 
-		parameters << "-httpserver_options cld_manager_workspace:" << workspace_id
-				   << ",cld_manager_workgroup:" << worker_name << "/" << worker_type;
+		parameters << "-httpserver_options cld_workgroup_instance_type:workgroup_instance,cld_manager_workspace:"
+				   << workspace_id << ",cld_manager_workgroup:" << worker_name << "/" << worker_type;
 
 		if (!http_options_.empty())
 			parameters << "," << http_options_ << " ";
@@ -813,9 +857,7 @@ public:
 			os_password_,
 			bse_bin_ + "/" + program_ + std::string{ " " } + parameters.str(),
 			pid,
-			ec,
-			verbose,
-			logger);
+			ec);
 	}
 };
 
@@ -846,16 +888,14 @@ public:
 		j["details"].emplace("PythonRoot", rootdir);
 	}
 
-	virtual void direct_instaces(lgr::logger& logger) override{};
+	virtual void direct_instaces(lgr::logger&) override{};
 
 	virtual bool create_instance(
-		const std::string& workspace_id,
-		const std::string& worker_type,
-		const std::string& worker_name,
-		std::uint32_t& pid,
-		std::string& ec,
-		bool verbose = false,
-		std::ostream& logger = std::clog)
+		const std::string&, // workspace_id,
+		const std::string&, // worker_type,
+		const std::string&, // worker_name,
+		std::uint32_t&, // pid,
+		std::string&) // ec)
 	{
 		return false;
 	};
@@ -937,8 +977,6 @@ public:
 
 		for (auto& named_worker : workgroups_)
 		{
-			const std::string& name = named_worker.first.first;
-
 			json named_worker_json = json::object();
 
 			named_worker.second->to_json(named_worker_json);
@@ -1045,9 +1083,11 @@ public:
 	using container_type = std::map<const std::string, value_type>;
 	using iterator = container_type::iterator;
 	using const_iterator = container_type::const_iterator;
+	using mutex_type = std::mutex;
 
 private:
 	container_type workspaces_;
+	mutable mutex_type workspaces_mutex_;
 
 	std::string port;
 	std::string base_path;
@@ -1059,15 +1099,33 @@ public:
 	const_iterator cend() const { return workspaces_.cend(); }
 	const_iterator cbegin() const { return workspaces_.cbegin(); }
 
+	void direct_workspaces(lgr::logger& logger)
+	{
+		auto t0 = std::chrono::steady_clock::now();
+		for (auto& workspace : workspaces_)
+		{
+
+			std::unique_lock<mutex_type> l{ workspaces_mutex_ };
+			for (auto& workgroup : *workspace.second)
+				workgroup.second->direct_instaces(logger);
+		}
+		auto t1 = std::chrono::steady_clock::now();
+
+		auto elapsed = t1 - t0;
+		logger.api("directing {u} workspaces took {d}msec\n", workspaces_.size(), elapsed.count() / 1000000);
+	}
+
 public:
 	bool add_workspace(const std::string id, const json::value_type& j)
 	{
+		std::unique_lock<mutex_type> l{ workspaces_mutex_ };
+
 		auto i = workspaces_.find(id);
 
 		if (i == workspaces_.end())
 		{
 			workspaces_.insert(container_type::value_type{
-				id, new workspace{ id, "http://localhost:" + port, base_path, manager_workspace, j } });
+				id, new workspace{ id, "http://127.0.0.1:" + port, base_path, manager_workspace, j } });
 			return true;
 		}
 		else
@@ -1078,6 +1136,7 @@ public:
 
 	bool delete_workspace(const std::string id)
 	{
+		std::unique_lock<mutex_type> l{ workspaces_mutex_ };
 		auto i = workspaces_.find(id);
 
 		if (i == workspaces_.end())
@@ -1097,6 +1156,8 @@ public:
 
 	void to_json(json& j) const
 	{
+		std::unique_lock<mutex_type> l{ workspaces_mutex_ };
+
 		for (auto& workspace : workspaces_)
 		{
 			auto workspace_json = json{};
@@ -1130,11 +1191,11 @@ private:
 public:
 	application(){};
 	~application(){};
-	application(const application& a){
+	application(const application&){
 
 	};
 
-	application& operator=(const application& a) { return *this; };
+	application& operator=(const application&) { return *this; };
 
 	application(application&&) = delete;
 	application& operator=(application&&) = delete;
@@ -1159,7 +1220,7 @@ public:
 	using container_type = std::map<const std::string, std::unique_ptr<application>>;
 
 public:
-	void from_json(const json& a)
+	void from_json(const json&)
 	{
 
 		// json startup;
@@ -1190,9 +1251,9 @@ private:
 	container_type apps_;
 };
 
-inline void to_json(json& j, const applications& as) {}
+inline void to_json(json&, const applications&) {}
 
-inline void from_json(const json& j, applications& as) {}
+inline void from_json(const json&, applications&) {}
 
 class manager : public http::basic::threaded::server
 {
@@ -1209,9 +1270,16 @@ public:
 	manager(http::configuration& http_configuration, json& manager_configuration)
 		: http::basic::threaded::server(http_configuration), shutdown_promise(), shutdown_future()
 	{
-		applications_.from_json(manager_configuration.at("applications"));
-		workspaces_.from_json(manager_configuration.at("workspaces"));
+		try
+		{
 
+			applications_.from_json(manager_configuration.at("applications"));
+			workspaces_.from_json(manager_configuration.at("workspaces"));
+		}
+		catch (json::exception& e)
+		{
+			logger_.api("config error: {s}", e.what());
+		}
 		//#ifdef REST_ENABLED_LOGIC_SERVICE
 		//				router_.on_post("/private/infra/logicservice/debug",
 		//					[this](http::session_handler& session) {
@@ -1791,6 +1859,16 @@ public:
 						auto& instance_id = session.params().get("instance_id");
 						json ii;
 
+						json instance_json = json::parse(session.request().body());
+
+						if (instance_json.contains("limits") == true)
+						{
+							size_t instances_required_update = instance_json["limits"]["instances_required"];
+
+							i->second->workgroups_limits().instances_required(
+								i->second->workgroups_limits().instances_required() + instances_required_update);
+						}
+
 						if (i->second->delete_instance(instance_id) == false)
 						{
 							session.response().status(http::status::not_found);
@@ -1887,7 +1965,6 @@ public:
 				{
 					auto& name = session.params().get("name");
 					auto& type = session.params().get("type");
-					auto& limit_name = session.params().get("limit_name");
 
 					auto workgroups = workspace->second->find_workgroups(name, type);
 
@@ -1944,6 +2021,42 @@ public:
 				}
 			});
 
+		router_.on_patch(
+			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
+			[this](http::session_handler& session) {
+				auto& workspace_id = session.params().get("workspace_id");
+				auto workspace = workspaces_.get_workspace(workspace_id);
+
+				if (workspace != workspaces_.end())
+				{
+					auto& name = session.params().get("name");
+					auto& type = session.params().get("type");
+					auto& limit_name = session.params().get("limit_name");
+
+					auto workgroups = workspace->second->find_workgroups(name, type);
+
+					if (workgroups != workspace->second->end())
+					{
+
+						json result;
+						json limits = json::parse(session.request().body());
+
+						workgroups->second->workgroups_limits().from_json(
+							limits["limits"], limit_name, workgroups::limits::from_json_operation::add);
+						workgroups->second->workgroups_limits().to_json(limits["limits"], limit_name);
+						result = limits;
+						send_json_response(session, http::status::ok, result);
+					}
+					else
+					{
+					}
+				}
+				else
+				{
+					send_illegal_workspace_response(session, workspace_id);
+				}
+			});
+
 		router_.on_internal_error([this](http::session_handler& session, std::exception& e) {
 			logger().accesslog(
 				"api-error with requested url: \"{s}\", error: \"{s}\", and request body:\n \"{s}\"",
@@ -1979,18 +2092,12 @@ private:
 		{
 			if (is_active())
 			{
-				for (auto& workspace : workspaces_)
-				{
-					for (auto& workgroup : *workspace.second)
-						workgroup.second->direct_instaces(logger_);
-				}
+				workspaces_.direct_workspaces(logger_);
 			}
 
-			std::this_thread::sleep_for(std::chrono::seconds(1));
+			std::this_thread::sleep_for(std::chrono::seconds(10));
 		}
 	}
-
-	void setup_workspaces(const std::string& base_path) {}
 
 public:
 	virtual void set_error_response(
@@ -2134,7 +2241,6 @@ inline int start_rest_server(int argc, const char** argv)
 	}
 
 	std::string server_version = std::string{ "Platform Manager/" } + get_version_ex(PORT_SET, NULL);
-	int port = std::stoi(cmd_args.get_val("port"));
 
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", cmd_args.get_val("http_port") },

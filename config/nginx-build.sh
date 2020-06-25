@@ -26,7 +26,7 @@ echo $PWD &&
 --lock-path=/var/run/nginx.lock \
 --user=nginx \
 --group=nginx \
---build=RHEL77_NDJ_NGINX_${NGINX_VERSION}_OPENSSL_${OPENSSL_VERSION} \
+--build=SUSE15_NDJ_NGINX_${NGINX_VERSION}_OPENSSL_${OPENSSL_VERSION} \
 --http-log-path=/var/log/nginx/access.log \
 --http-client-body-temp-path=/var/cache/nginx/client_temp \
 --http-proxy-temp-path=/var/cache/nginx/proxy_temp \

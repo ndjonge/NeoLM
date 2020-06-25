@@ -30,7 +30,6 @@ int main()
 #endif
 	start_rest_server(4, rest_argv);
 
-
 	while (1)
 	{
 	}

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <deque>
 #include <fstream>
 #include <functional>
@@ -26,11 +27,6 @@
 #include <utility>
 #include <vector>
 #include <zlib.h>
-
-#if !defined(ASSERT)
-#include <cassert>
-#define ASSERT(X) assert(X)
-#endif
 
 #define CURL_STATICLIB
 #include <curl/curl.h>
@@ -540,6 +536,7 @@ public:
 	}
 
 	std::ostream& as_stream() { return *ostream_; }
+	const std::ostream& as_stream() const { return *ostream_; }
 
 private:
 	mutable std::mutex lock_;
@@ -624,7 +621,7 @@ inline std::string return_current_time_and_date()
 	(void)gmtime_r(&in_time_t, &tmp_tm);
 	std::array<char, 32> tmp{ char{ 0 } };
 	auto size = strftime(&tmp[0], sizeof(tmp), "%a, %d %b %Y %H:%M:%S GMT", &tmp_tm);
-	ASSERT(size <= tmp.size());
+	assert(size <= tmp.size());
 	result.assign(&tmp[0], size);
 
 	return result;
@@ -3195,12 +3192,12 @@ public:
 		bool success() const { return status_ == outcome_status::success; }
 		const std::string& error() const
 		{
-			ASSERT(status_ != outcome_status::success);
+			assert(status_ != outcome_status::success);
 			return error_;
 		}
 		const T& value() const
 		{
-			ASSERT(status_ == outcome_status::success);
+			assert(status_ == outcome_status::success);
 			return value_;
 		}
 
@@ -3476,6 +3473,8 @@ public:
 	std::unique_ptr<route_part> root_;
 	E internal_error_method_;
 	std::function<bool()> idle_method_;
+	std::function<bool()> busy_method_;
+
 	std::string private_base_;
 
 public:
@@ -3531,6 +3530,8 @@ public:
 	}
 
 	void on_idle(std::function<bool()>&& idle_method) { idle_method_ = std::move(idle_method); }
+
+	void on_busy(std::function<bool()>&& busy_method) { busy_method_ = std::move(busy_method); }
 
 	void on_internal_error(E&& internal_error_method) { internal_error_method_ = std::move(internal_error_method); }
 
@@ -4014,8 +4015,8 @@ public:
 		std::atomic<size_t> requests_handled_{ 0 };
 		std::atomic<size_t> connections_accepted_{ 0 };
 		std::atomic<size_t> requests_current_{ 0 };
-		std::atomic<size_t> connections_current_{ 0 };
-		std::atomic<size_t> connections_highest_{ 0 };
+		std::atomic<std::int16_t> connections_current_{ 0 };
+		std::atomic<std::int16_t> connections_highest_{ 0 };
 
 		std::atomic<std::int64_t> idle_since_{ 0 };
 
@@ -4041,8 +4042,8 @@ public:
 				   / 1000000000;
 		}
 		std::atomic<size_t>& requests_handled() { return requests_handled_; }
-		std::atomic<size_t>& connections_accepted() { return connections_accepted_; }
-		std::atomic<size_t>& connections_current()
+		std::atomic<std::size_t>& connections_accepted() { return connections_accepted_; }
+		std::atomic<std::int16_t>& connections_current()
 		{
 			if (connections_current_ > connections_highest_) connections_highest_.store(connections_current_.load());
 			return connections_current_;
@@ -4205,6 +4206,7 @@ public:
 
 	server_manager& manager() { return manager_; }
 	lgr::logger& logger() { return logger_; }
+	const lgr::logger& logger() const { return logger_; }
 
 protected:
 	server_manager manager_;
@@ -4224,7 +4226,8 @@ class server : public http::basic::server
 public:
 	server(const http::configuration& configuration)
 		: http::basic::server{ configuration }
-		, http_watchdog_timeout_(configuration.get<std::int32_t>("http_watchdog_timeout", 0))
+		, http_watchdog_idle_timeout_(configuration.get<std::int32_t>("http_watchdog_idle_timeout", 0))
+		, http_watchdog_max_connections_(configuration.get<std::int32_t>("http_watchdog_max_connections", 0))
 		, http_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
@@ -4527,14 +4530,14 @@ public:
 
 					auto idle_since = this->manager_.idle_time();
 
-					if (http_watchdog_timeout_ > 0 && idle_since > http_watchdog_timeout_)
+					if (http_watchdog_idle_timeout_ > 0 && idle_since > http_watchdog_idle_timeout_)
 					{
 						if (router_.idle_method_ && router_.idle_method_())
 							logger_.accesslog(
-								"http listener is idle for {d} seconds and 'http_watchdog_timeout' is set to {d}. "
-								"deactivating server\n",
+								"http listener is idle for {d} seconds and 'http_watchdog_idle_timeout_' is set to "
+								"{d}. deactivating server\n",
 								idle_since,
-								http_watchdog_timeout_);
+								http_watchdog_idle_timeout_);
 					}
 
 					acceptor_http.accept(http_socket, ec, 5);
@@ -4558,6 +4561,13 @@ public:
 
 						++manager_.connections_accepted();
 						++manager_.connections_current();
+
+						if (http_watchdog_max_connections_ > 0
+							&& manager_.connections_current() > http_watchdog_max_connections_)
+						{
+							if (router_.busy_method_ && router_.busy_method_())
+								logger_.accesslog("http listener is busy, spawn new workers\n");
+						}
 					}
 				}
 				logger_.accesslog("http listener on port: {d} stopped\n", http_listen_port_probe);
@@ -4609,7 +4619,7 @@ public:
 
 			while (true)
 			{
-				ASSERT(data_begin <= data_end);
+				assert(data_begin <= data_end);
 				if (data_begin == data_end)
 				{
 					data_begin = std::begin(buffer);
@@ -4630,7 +4640,7 @@ public:
 				auto& request = session_handler_.request();
 
 				std::tie(parse_result, data_begin) = session_handler_.parse_request(data_begin, data_end);
-				ASSERT(data_begin <= data_end);
+				assert(data_begin <= data_end);
 
 				if ((parse_result == http::request_parser::result_type::good) && (request.has_content_length()))
 				{
@@ -4791,7 +4801,9 @@ public:
 	};
 
 private:
-	std::int32_t http_watchdog_timeout_;
+	std::int32_t http_watchdog_idle_timeout_;
+	std::int32_t http_watchdog_max_connections_;
+
 	bool http_use_portsharding_;
 	bool http_enabled_;
 	std::int32_t http_listen_port_begin_;
