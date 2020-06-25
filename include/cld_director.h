@@ -16,6 +16,8 @@
 #include <direct.h>
 #include <process.h>
 #define HOST_NAME_MAX 256
+#else
+#include <unistd.h>
 #endif
 
 #else
@@ -38,6 +40,16 @@ using json = nlohmann::json;
 namespace
 {
 using SCK_t = network::socket_t;
+
+char* const* split_string(std::string)
+{
+    return nullptr; 
+}
+
+int ImpersonateUser(std::string, void*, int, void*)
+{
+    return 0;
+}
 
 int CheckUserInfo(
 	const char* ,
@@ -801,7 +813,7 @@ public:
 		}
 	};
 
-	void from_json(const json& j)
+	void from_json(const json& j) override
 	{
 		workgroups::from_json(j);
 		j["details"].at("bse").get_to(bse_);
@@ -834,7 +846,7 @@ public:
 		const std::string& worker_type,
 		const std::string& worker_name,
 		std::uint32_t& pid,
-		std::string& ec)
+		std::string& ec) override
 	{
 		std::string tenant_id_ = "";
 		std::stringstream parameters;
@@ -875,14 +887,14 @@ public:
 
 	virtual ~python_workgroups(){};
 
-	void from_json(const json& j)
+	void from_json(const json& j) override
 	{
 		workgroups::from_json(j);
 		json d(j.at("details"));
 		d.at("PythonRoot").get_to(rootdir);
 	}
 
-	void to_json(json& j) const
+	void to_json(json& j) const override
 	{
 		workgroups::to_json(j);
 		j["details"].emplace("PythonRoot", rootdir);
@@ -895,7 +907,7 @@ public:
 		const std::string&, // worker_type,
 		const std::string&, // worker_name,
 		std::uint32_t&, // pid,
-		std::string&) // ec)
+		std::string&) override
 	{
 		return false;
 	};
@@ -1278,7 +1290,7 @@ public:
 		}
 		catch (json::exception& e)
 		{
-			logger_.api("config error: {s}", e.what());
+			logger_.api("config error: {s}\n", e.what());
 		}
 		//#ifdef REST_ENABLED_LOGIC_SERVICE
 		//				router_.on_post("/private/infra/logicservice/debug",
