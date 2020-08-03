@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -25,10 +26,25 @@ public:
 
 	virtual result add() const noexcept = 0;
 
+	virtual result sync() const noexcept
+	{
+		auto elapsed = std::chrono::steady_clock::duration(std::chrono::steady_clock::now() - last_synced_);
+
+		if (std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() > 10)
+		{
+			return add();
+		}
+		else
+		{
+			return success;
+		}
+	}
+
 	virtual result remove() const noexcept = 0;
 
 protected:
 	const http::basic::server& server_;
+	mutable std::chrono::steady_clock::time_point last_synced_;
 };
 
 namespace implementations
@@ -64,6 +80,7 @@ public:
 			{
 				if (up_result.status() == http::status::ok)
 				{
+					last_synced_ = std::chrono::steady_clock::now();
 					return http::upstream::success;
 				}
 				else
@@ -74,7 +91,7 @@ public:
 			}
 			else
 			{
-				server_.logger().debug("adding server to upstream failed with: {s}", ec);
+				server_.logger().debug("adding server to upstream failed with: {s}\n", ec);
 			}
 		}
 
@@ -93,12 +110,13 @@ public:
 			{
 				if (add_result.status() == http::status::ok)
 				{
+					last_synced_ = std::chrono::steady_clock::now();
 					return http::upstream::success;
 				}
 			}
 			else
 			{
-				server_.logger().debug("adding server to upstream failed with: {s}", ec);
+				server_.logger().debug("adding server to upstream failed with: {s}\n", ec);
 			}
 		}
 
@@ -143,7 +161,11 @@ public:
 					{},
 					{});
 
-				if (ec.empty() && remove_result.status() == http::status::ok) return http::upstream::success;
+				if (ec.empty() && remove_result.status() == http::status::ok)
+				{
+					last_synced_ = std::chrono::steady_clock::now();
+					return http::upstream::success;
+				}
 			}
 		}
 

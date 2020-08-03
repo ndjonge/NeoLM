@@ -23,14 +23,15 @@ int main()
 
 #ifdef _WIN32
 	const char* rest_argv[]
-		= { "appname", "-configfile", "C:/tmp/pm_root/config.json", "-http_port", "4000", "-curldebug" };
+		= { "appname", "-config", "C:/tmp/pm_root/config.json", "-http_listen_port", "4000" };
 #else
 	const char* rest_argv[]
-		= { "appname", "-configfile", "/home/ndjonge/config.json", "-http_port", "4000", "-curldebug" };
+		= { "appname", "-config", "/home/ndjonge/config.json", "-http_port", "4000" };
 #endif
 	start_rest_server(4, rest_argv);
 
 	while (1)
 	{
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
 }

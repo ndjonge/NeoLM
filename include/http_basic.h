@@ -42,7 +42,6 @@ namespace gzip
 
 class compressor
 {
-	std::size_t max_{ 0 };
 	int level_;
 
 public:
@@ -204,7 +203,7 @@ public:
 
 		if (level_ != level::none)
 		{
-			accesslog("logger started\n");
+			info("logger started\n");
 		}
 	}
 
@@ -212,7 +211,7 @@ public:
 	{
 		if (level_ != level::none)
 		{
-			accesslog("logger stopped\n");
+			info("logger stopped\n");
 		}
 	}
 
@@ -608,7 +607,7 @@ inline std::string escape_json(const std::string& s)
 inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
 {
 	return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) {
-			   return tolower(a) == tolower(b);
+			   return ((a > 96) && (a < 123) ? a ^= 0x20 : a) == ((b > 96) && (b < 123) ? b ^= 0x20 : b);
 		   });
 }
 
@@ -3472,8 +3471,9 @@ public:
 public:
 	std::unique_ptr<route_part> root_;
 	E internal_error_method_;
-	std::function<bool()> idle_method_;
-	std::function<bool()> busy_method_;
+	std::function<bool()> server_started_method_;
+	std::function<void(bool)> idle_method_;
+	std::function<void()> busy_method_;
 
 	std::string private_base_;
 
@@ -3528,10 +3528,14 @@ public:
 
 		on_middleware(path, middleware_pair);
 	}
+	void on_server_started(std::function<bool()>&& server_started_method)
+	{
+		server_started_method_ = std::move(server_started_method);
+	}
 
-	void on_idle(std::function<bool()>&& idle_method) { idle_method_ = std::move(idle_method); }
+	void on_idle(std::function<void(bool)>&& idle_method) { idle_method_ = std::move(idle_method); }
 
-	void on_busy(std::function<bool()>&& busy_method) { busy_method_ = std::move(busy_method); }
+	void on_busy(std::function<void()>&& busy_method) { busy_method_ = std::move(busy_method); }
 
 	void on_internal_error(E&& internal_error_method) { internal_error_method_ = std::move(internal_error_method); }
 
@@ -4014,7 +4018,7 @@ public:
 
 		std::atomic<size_t> requests_handled_{ 0 };
 		std::atomic<size_t> connections_accepted_{ 0 };
-		std::atomic<size_t> requests_current_{ 0 };
+		std::atomic<std::int16_t> requests_current_{ 0 };
 		std::atomic<std::int16_t> connections_current_{ 0 };
 		std::atomic<std::int16_t> connections_highest_{ 0 };
 
@@ -4049,7 +4053,7 @@ public:
 			return connections_current_;
 		}
 
-		std::atomic<size_t>& requests_current(bool internal_route = false)
+		std::atomic<std::int16_t>& requests_current(bool internal_route = false)
 		{
 			if (!internal_route && requests_current_.load() > 0)
 			{
@@ -4065,14 +4069,15 @@ public:
 			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_) / 1000000.0;
 
 			std::string msg = lgr::logger::format<lgr::prefix::accesslog>(
-				"{s} - '{s} {s}' - {d} - {u} - {u} - {f}",
+				"{s} - {s} - '{s} {s}' - {d} - {u} - {u} - {f}",
 				session.request().get("Remote_Addr", std::string{}),
+				session.request().get("X-Request-ID", std::string{}),
 				http::method::to_string(session.request().method()),
 				session.request().url_requested(),
 				http::status::to_int(session.response().status()),
 				session.request().content_length(),
 				session.response().content_length(),
-				response_time);
+				(static_cast<std::int16_t>(response_time * 1000) / 1000.0));
 
 			access_log_.emplace_back(msg);
 
@@ -4226,14 +4231,15 @@ class server : public http::basic::server
 public:
 	server(const http::configuration& configuration)
 		: http::basic::server{ configuration }
-		, http_watchdog_idle_timeout_(configuration.get<std::int32_t>("http_watchdog_idle_timeout", 0))
-		, http_watchdog_max_connections_(configuration.get<std::int32_t>("http_watchdog_max_connections", 0))
+		, http_watchdog_idle_timeout_(configuration.get<std::int16_t>("http_watchdog_idle_timeout", 0))
+		, http_watchdog_max_requests_concurrent_(
+			  configuration.get<std::int16_t>("http_watchdog_max_requests_concurrent", 0))
 		, http_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
 		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
 		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
 		, http_listen_port_(network::tcp::socket::invalid_socket)
-		, endpoint_http_(configuration.get<std::string>("http_listen_address", "::0"), http_listen_port_begin_)
+		, http_listen_address_(configuration.get<std::string>("http_listen_address", "::0"), http_listen_port_begin_)
 		, https_use_portsharding_(configuration.get<bool>("https_use_portsharding", false))
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
 		, https_listen_port_begin_(configuration.get<int>(
@@ -4263,8 +4269,8 @@ public:
 
 	http::basic::server::state start() override
 	{
-		http_connection_thread_ = std::move(std::thread{ [this]() { http_listener_handler(); } });
-		https_connection_thread_ = std::move(std::thread{ [this]() { https_listener_handler(); } });
+		http_connection_thread_ = std::thread{ [this]() { http_listener_handler(); } };
+		https_connection_thread_ = std::thread{ [this]() { https_listener_handler(); } };
 
 		// wait for listener(s to have an valid listen socket if listener is enabled)
 		auto waiting = 0;
@@ -4340,7 +4346,8 @@ public:
 		}
 
 		logger_.info("start: state set to not_active\n");
-		return state::not_active;
+		state_.store(state::not_active);
+		return state_;
 	}
 
 	void https_listener_handler()
@@ -4415,7 +4422,7 @@ public:
 				acceptor_https.listen();
 
 				configuration_.set("https_listen_port", std::to_string(https_listen_port_probe));
-				logger_.accesslog("http listener on port: {d} started\n", https_listen_port_probe);
+				logger_.info("http listener on port: {d} started\n", https_listen_port_probe);
 				https_listen_port_.store(https_listen_port_probe);
 
 				while (is_activating() || is_active())
@@ -4445,7 +4452,7 @@ public:
 						++manager_.connections_current();
 					}
 				}
-				logger_.accesslog("https listener on port: {d} stopped\n", https_listen_port_probe);
+				logger_.info("https listener on port: {d} stopped\n", https_listen_port_probe);
 			}
 			catch (std::runtime_error& e)
 			{
@@ -4468,17 +4475,17 @@ public:
 				acceptor_http.open(endpoint_https_.protocol());
 
 				if (http_listen_port_begin_ == http_listen_port_end_)
-					network::reuse_address(endpoint_http_.socket(), 1);
+					network::reuse_address(http_listen_address_.socket(), 1);
 				else
-					network::reuse_address(endpoint_http_.socket(), 0);
+					network::reuse_address(http_listen_address_.socket(), 0);
 
-				network::ipv6only(endpoint_http_.socket(), 0);
+				network::ipv6only(http_listen_address_.socket(), 0);
 
 				if ((http_use_portsharding_ == true) && (http_listen_port_begin_ != 0)
 					&& (http_listen_port_begin_ == http_listen_port_end_))
-					network::use_portsharding(endpoint_http_.socket(), 1);
+					network::use_portsharding(http_listen_address_.socket(), 1);
 				else
-					network::use_portsharding(endpoint_http_.socket(), 0);
+					network::use_portsharding(http_listen_address_.socket(), 0);
 
 				network::error_code ec = network::error::success;
 
@@ -4486,9 +4493,9 @@ public:
 
 				for (; http_listen_port_probe <= http_listen_port_end_; http_listen_port_probe++)
 				{
-					endpoint_http_.port(http_listen_port_probe);
+					http_listen_address_.port(http_listen_port_probe);
 
-					acceptor_http.bind(endpoint_http_, ec);
+					acceptor_http.bind(http_listen_address_, ec);
 
 					if (ec == network::error::success)
 					{
@@ -4521,31 +4528,40 @@ public:
 				acceptor_http.listen();
 
 				configuration_.set("http_listen_port", std::to_string(http_listen_port_probe));
-				logger_.accesslog("http listener on port: {d} started\n", http_listen_port_probe);
+
+				if (configuration_.get<std::string>("http_listen_address", "::0") == "::0")
+					configuration_.set(
+						"http_this_server_base_url",
+						"http://" + network::hostname() + ":" + configuration_.get<std::string>("http_listen_port"));
+				else
+					configuration_.set(
+						"http_this_server_base_url",
+						"http://localhost:" + configuration_.get<std::string>("http_listen_port"));
+
+				logger_.info("http listener on port: {d} started\n", http_listen_port_probe);
 				http_listen_port_.store(http_listen_port_probe);
+
+				if (router_.server_started_method_) router_.server_started_method_();
 
 				while (is_activating() || is_active())
 				{
 					network::tcp::socket http_socket{};
-
-					auto idle_since = this->manager_.idle_time();
-
-					if (http_watchdog_idle_timeout_ > 0 && idle_since > http_watchdog_idle_timeout_)
-					{
-						if (router_.idle_method_ && router_.idle_method_())
-							logger_.accesslog(
-								"http listener is idle for {d} seconds and 'http_watchdog_idle_timeout_' is set to "
-								"{d}. deactivating server\n",
-								idle_since,
-								http_watchdog_idle_timeout_);
-					}
 
 					acceptor_http.accept(http_socket, ec, 5);
 
 					if (ec == network::error::interrupted)
 						break;
 					else if (ec == network::error::operation_would_block)
+					{
+						auto idle_since = this->manager_.idle_time();
+
+						if (router_.idle_method_)
+						{
+							router_.idle_method_(
+								http_watchdog_idle_timeout_ > 0 && idle_since > http_watchdog_idle_timeout_);
+						}
 						continue;
+					}
 
 					network::timeout(http_socket, connection_timeout_);
 					network::tcp_nodelay(http_socket, 1);
@@ -4562,15 +4578,14 @@ public:
 						++manager_.connections_accepted();
 						++manager_.connections_current();
 
-						if (http_watchdog_max_connections_ > 0
-							&& manager_.connections_current() > http_watchdog_max_connections_)
+						if ((router_.busy_method_) && (http_watchdog_max_requests_concurrent_ > 0)
+							&& (manager_.requests_current() >= http_watchdog_max_requests_concurrent_))
 						{
-							if (router_.busy_method_ && router_.busy_method_())
-								logger_.accesslog("http listener is busy, spawn new workers\n");
+							router_.busy_method_();
 						}
 					}
 				}
-				logger_.accesslog("http listener on port: {d} stopped\n", http_listen_port_probe);
+				logger_.info("http listener on port: {d} stopped\n", http_listen_port_probe);
 			}
 			catch (std::runtime_error& e)
 			{
@@ -4691,13 +4706,22 @@ public:
 								server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(request));
 							}
 
-							++server_.manager().requests_current(private_base_request);
+							if (private_base_request == false)
+								++server_.manager().requests_current(private_base_request);
+							else
+								server_.manager().requests_current(private_base_request);
+
 							http::api::router<>::request_result_type routing
 								= session_handler_.handle_request(server_.router_);
 							t0 = std::chrono::steady_clock::now();
 
-							--server_.manager().requests_current(private_base_request);
-							++server_.manager().requests_handled();
+							if (private_base_request == false)
+							{
+								--server_.manager().requests_current(private_base_request);
+								++server_.manager().requests_handled();
+							}
+							else
+								server_.manager().requests_current(private_base_request);
 
 							// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the
 							// word "gzip".
@@ -4722,11 +4746,14 @@ public:
 										std::chrono::steady_clock::now() - t0)
 										.count());
 
-								auto log_msg = server_.manager().log_access(
-												   session_handler_, routing.the_route().route_metrics())
-											   + "\n";
+								if (server_.logger_.current_level() >= lgr::level::accesslog)
+								{
+									auto log_msg = server_.manager().log_access(
+													   session_handler_, routing.the_route().route_metrics())
+												   + "\n";
 
-								server_.logger_.accesslog(log_msg);
+									server_.logger_.accesslog(log_msg);
+								}
 							}
 							else
 							{
@@ -4801,15 +4828,15 @@ public:
 	};
 
 private:
-	std::int32_t http_watchdog_idle_timeout_;
-	std::int32_t http_watchdog_max_connections_;
+	std::int16_t http_watchdog_idle_timeout_;
+	std::int16_t http_watchdog_max_requests_concurrent_;
 
 	bool http_use_portsharding_;
 	bool http_enabled_;
 	std::int32_t http_listen_port_begin_;
 	std::int32_t http_listen_port_end_;
 	std::atomic<network::socket_t> http_listen_port_;
-	network::tcp::v6 endpoint_http_;
+	network::tcp::v6 http_listen_address_;
 
 	bool https_use_portsharding_;
 	bool https_enabled_;

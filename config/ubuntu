@@ -4,3 +4,7 @@ sudp apt install arc-theme
 sudo apt install papirus-icon-theme
 sudo apt install gnome-tweaks
 
+
+sudo apt install -y zsh
+usermod -s $(which zsh) ndjonge
+ubuntu2004 config --default-user ndjonge

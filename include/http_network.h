@@ -631,7 +631,8 @@ protected:
 	protocol protocol_{ protocol::stream };
 
 protected:
-	union data_union {
+	union data_union
+	{
 		sockaddr base;
 		sockaddr_in v4;
 		sockaddr_in6 v6;
@@ -708,7 +709,7 @@ public:
 
 	resolver_results& resolve(const std::string& hostname, const std::string& service)
 	{
-		addrinfo hints = { 0 };
+		addrinfo hints {};
 		addrinfo* adresses = nullptr;
 		addrinfo* item = nullptr;
 
@@ -812,7 +813,7 @@ public:
 		auto client_socket = ::accept(endpoint_->socket().lowest_layer(), endpoint_->addr(), &len);
 		s.assign(client_socket);
 
-		if (client_socket == -1)
+		if (client_socket == static_cast<decltype(client_socket)>(-1))
 		{
 			ec = network::error::interrupted;
 		}
@@ -842,10 +843,13 @@ public:
 
 		rv = select(static_cast<int>(endpoint_->socket().lowest_layer()) + 1, &set, nullptr, nullptr, &t);
 
-		if (rv == -1)
+		if (rv == -1 && errno != EINTR)
 		{
-			perror("select"); /* an error accured */
-			return;
+			if (errno != EINTR)
+			{
+				perror("select"); /* an error accured */
+				return;
+			}
 		}
 		else if (rv == 0)
 		{
@@ -857,7 +861,7 @@ public:
 			s.assign(client_socket);
 			ec = network::error::success;
 
-			if (client_socket == -1)
+			if (client_socket == static_cast<decltype(client_socket)>(-1))
 			{
 				ec = network::error::interrupted;
 			}
@@ -948,7 +952,7 @@ inline std::int32_t write(const ssl::stream<tcp::socket>& s, const const_buffer&
 
 inline std::string get_client_info(network::ssl::stream<network::tcp::socket>& client_socket)
 {
-	sockaddr_in6 sa = { 0 };
+	sockaddr_in6 sa = {};
 	socklen_t sl = sizeof(sa);
 	char c[INET6_ADDRSTRLEN];
 
@@ -961,7 +965,7 @@ inline std::string get_client_info(network::ssl::stream<network::tcp::socket>& c
 
 inline std::string get_client_info(const network::tcp::socket& client_socket)
 {
-	sockaddr_in6 sa = { 0 };
+	sockaddr_in6 sa = {};
 	socklen_t sl = sizeof(sa);
 	char c[INET6_ADDRSTRLEN];
 
@@ -1079,6 +1083,17 @@ enum shutdown_type
 inline void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, shutdown_type how)
 {
 	::shutdown(client_socket.lowest_layer().lowest_layer(), static_cast<int>(how));
+}
+
+inline std::string hostname()
+{
+	std::array<char, 256> hostname_buffer;
+	::gethostname(&hostname_buffer[0], sizeof(hostname_buffer));
+
+	std::transform(hostname_buffer.begin(), hostname_buffer.end(), hostname_buffer.begin(), [](char c) {
+		return static_cast<char>(std::toupper(c));
+	});
+	return std::string{ hostname_buffer.data() };
 }
 
 } // namespace network
