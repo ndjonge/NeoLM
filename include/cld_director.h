@@ -30,6 +30,7 @@
 #endif
 
 #include "http_basic.h"
+#include "http_asio.h"
 #include "http_network.h"
 #include "prog_args.h"
 
@@ -285,6 +286,8 @@ private:
 	status status_{ status::initial };
 	json worker_metrics_{};
 
+	//std::vector<http::client::session> sessions_to_worker_;
+
 public:
 	worker() = default;
 	worker(const std::string& base_url, std::string version, std::int32_t process_id)
@@ -359,7 +362,10 @@ public:
 	using const_iterator = container_type::const_iterator;
 
 	workgroups(const std::string& workspace_id, const std::string& tenant_id, const std::string& type)
-		: workspace_id_(workspace_id), type_(type), tenant_id_(tenant_id){};
+		: workspace_id_(workspace_id), type_(type), tenant_id_(tenant_id)
+	{
+	}
+
 	virtual ~workgroups() = default;
 
 	iterator begin() { return workers_.begin(); }
@@ -368,6 +374,43 @@ public:
 	const_iterator cend() const { return workers_.cend(); }
 
 	void cleanup(){};
+
+	std::atomic<std::int16_t> next_available_session{ 0 };
+	std::mutex upstream_sessions_initialise_mutex;
+	std::vector<http::basic::async::client::session> upstream_sessions_;
+
+	void proxy_pass(asio::io_service& io_service, http::session_handler& downstream_session_handler, lgr::logger& l) 
+	{ 
+		{
+			std::lock_guard<std::mutex> g{ upstream_sessions_initialise_mutex };
+
+			if (upstream_sessions_.size() == 0)
+			{
+				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
+				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
+				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
+				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
+				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
+				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
+				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
+				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
+			}
+		}
+
+		// Select one of the workers and make a connection
+		auto& upstream_session = upstream_sessions_[next_available_session++ % upstream_sessions_.size()];
+
+		std::string ec;
+
+		http::basic::async::client::forward_request(
+			upstream_session, downstream_session_handler, ec, false, l.as_stream());
+
+		if (ec.empty())
+		{
+			if (downstream_session_handler.response().status() != http::status::ok) 
+				ec = "test";
+		}
+	}
 
 	iterator find_worker(const std::string& worker_id)
 	{
@@ -565,6 +608,7 @@ public:
 				in++;
 		}
 	}
+
 
 	class limits
 	{
@@ -1383,9 +1427,10 @@ private:
 inline void to_json(json&, const applications&) {}
 inline void from_json(const json&, applications&) {}
 
-class manager : public http::basic::threaded::server
+template <typename S> class manager : public S
 {
-public:
+protected:
+	using server_base = S;
 private:
 	workspaces workspaces_;
 	applications applications_;
@@ -1397,7 +1442,7 @@ private:
 
 public:
 	manager(http::configuration& http_configuration, const std::string& configuration_file)
-		: http::basic::threaded::server(http_configuration)
+		: http::basic::async::server(http_configuration)
 		, shutdown_promise()
 		, shutdown_future()
 		, configuration_file_(configuration_file)
@@ -1412,13 +1457,14 @@ public:
 		}
 		catch (json::exception& e)
 		{
-			logger_.api("error when reading configuration ({s}) : {s}\n", configuration_file_, e.what());
+			server_base::logger_.api(
+				"error when reading configuration ({s}) : {s}\n", configuration_file_, e.what());
 			std::cout << "error when reading configuration (" << configuration_file_ << ") : " << e.what() << std::endl;
 			exit(-1);
 		}
 
 		//#ifdef REST_ENABLED_LOGIC_SERVICE
-		//				router_.on_post("/private/infra/logicservice/debug",
+		//				server_base::router_.on_post("/private/infra/logicservice/debug",
 		//					[this](http::session_handler& session) {
 		//
 		//						EnableDebugLogging(session.request().body() == "debug");
@@ -1426,13 +1472,14 @@ public:
 		//						session.response().status(http::status::ok);
 		//					});
 		//#endif
-		router_.on_get("/private/infra/manager/healthcheck", [](http::session_handler& session) {
+		server_base::router_.on_get("/private/infra/manager/healthcheck", [](http::session_handler& session) {
 			session.response().status(http::status::ok);
 			session.response().type("text");
 			session.response().body() = std::string("Ok") + session.request().body();
 		});
 
-		router_.on_put("/private/infra/manager/shutdown/{secs}", [this](http::session_handler& session) {
+		server_base::router_.on_put(
+			"/private/infra/manager/shutdown/{secs}", [this](http::session_handler& session) {
 			auto& ID = session.params().get("secs");
 
 			int shutdown = std::stoi(ID);
@@ -1441,21 +1488,20 @@ public:
 			shutdown_promise.set_value(shutdown);
 		});
 
-		router_.on_post("/private/infra/manager/log_level", [this](http::session_handler& session) {
-			logger_.set_level(session.request().body());
-			auto new_level = logger_.current_level_to_string();
+		server_base::router_.on_post("/private/infra/manager/log_level", [this](http::session_handler& session) {
+			server_base::logger_.set_level(session.request().body());
+			auto new_level = server_base::logger_.current_level_to_string();
 			http::basic::server::configuration_.set("log_level", new_level);
-			session.response().body() = logger_.current_level_to_string();
+			session.response().body() = server_base::logger_.current_level_to_string();
 			session.response().status(http::status::ok);
 		});
 
-		router_.on_get("/private/infra/manager/log_level", [this](http::session_handler& session) {
-			session.response().body() = logger_.current_level_to_string();
+		server_base::router_.on_get("/private/infra/manager/log_level", [this](http::session_handler& session) {
+			session.response().body() = server_base::logger_.current_level_to_string();
 			session.response().status(http::status::ok);
 		});
 
-#ifdef INFOR
-		router_.on_get("/private/infra/manager/version", [this](http::session_handler& session) {
+		server_base::router_.on_get("/private/infra/manager/version", [](http::session_handler& session) {
 			std::string version = std::string{ "logic service " } + get_version_ex(PORT_SET, NULL) + std::string{ "/" }
 								  + get_version_ex(PORT_NO, NULL);
 
@@ -1474,32 +1520,32 @@ public:
 
 			session.response().status(http::status::ok);
 		});
-#endif
-		router_.on_get("/private/infra/manager/status", [this](http::session_handler& session) {
+
+		server_base::router_.on_get("/private/infra/manager/status", [this](http::session_handler& session) {
 			const auto& format = session.request().get<std::string>("Accept", "application/json");
 
 			if (format.find("application/json") != std::string::npos)
 			{
-				http::basic::threaded::server::manager().server_information(configuration_.to_json_string());
-				http::basic::threaded::server::manager().router_information(router_.to_json_string());
-				session.response().body() = http::basic::threaded::server::manager().to_json_string(
+				server_base::manager().server_information(http::basic::server::configuration_.to_json_string());
+				server_base::manager().router_information(server_base::router_.to_json_string());
+				session.response().body() = server_base::manager().to_json_string(
 					http::basic::server::server_manager::json_status_options::full);
 				session.response().type("json");
 			}
 			else
 			{
-				http::basic::threaded::server::manager().server_information(configuration_.to_string());
-				http::basic::threaded::server::manager().router_information(router_.to_string());
-				session.response().body() = http::basic::threaded::server::manager().to_string();
+				server_base::manager().server_information(http::basic::server::configuration_.to_string());
+				server_base::manager().router_information(server_base::router_.to_string());
+				session.response().body() = server_base::manager().to_string();
 				session.response().type("text");
 			}
 
 			session.response().status(http::status::ok);
 		});
 
-		router_.on_get("/private/infra/manager/status/{section}", [this](http::session_handler& session) {
-			http::basic::threaded::server::manager().server_information(configuration_.to_json_string());
-			http::basic::threaded::server::manager().router_information(router_.to_json_string());
+		server_base::router_.on_get("/private/infra/manager/status/{section}", [this](http::session_handler& session) {
+			server_base::manager().server_information(http::basic::server::configuration_.to_json_string());
+				server_base::manager().router_information(server_base::router_.to_json_string());
 
 			auto section_option = http::basic::server::server_manager::json_status_options::full;
 
@@ -1527,12 +1573,12 @@ public:
 				return;
 			}
 
-			session.response().body() = http::basic::threaded::server::manager().to_json_string(section_option);
+			session.response().body() = server_base::manager().to_json_string(section_option);
 			session.response().type("json");
 			session.response().status(http::status::ok);
 		});
 
-		router_.on_get("/private/infra/workspaces", [this](http::session_handler& session) {
+		server_base::router_.on_get("/private/infra/workspaces", [this](http::session_handler& session) {
 			json workspaces_json{};
 			workspaces_.to_json(workspaces_json);
 
@@ -1542,7 +1588,7 @@ public:
 			send_json_response(session, http::status::ok, result_json);
 		});
 
-		router_.on_get("/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
+		server_base::router_.on_get("/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
 			auto& id = session.params().get("workspace_id");
 			auto w = workspaces_.get_workspace(id);
 
@@ -1559,7 +1605,7 @@ public:
 			}
 		});
 
-		router_.on_post("/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
+		server_base::router_.on_post("/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
 			auto& workspace_id = session.params().get("workspace_id");
 			auto workspace = workspaces_.get_workspace(workspace_id);
 
@@ -1580,7 +1626,7 @@ public:
 			send_response(session, http::status::ok);
 		});
 
-		router_.on_delete("/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
+		server_base::router_.on_delete("/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
 			auto& id = session.params().get("workspace_id");
 			if (workspaces_.delete_workspace(id))
 			{
@@ -1592,7 +1638,7 @@ public:
 			}
 		});
 
-		router_.on_get("/private/infra/workspaces/{workspace_id}/workgroups", [this](http::session_handler& session) {
+		server_base::router_.on_get("/private/infra/workspaces/{workspace_id}/workgroups", [this](http::session_handler& session) {
 			auto& workspace_id = session.params().get("workspace_id");
 			auto w = workspaces_.get_workspace(workspace_id);
 
@@ -1617,7 +1663,7 @@ public:
 			}
 		});
 
-		router_.on_get(
+		server_base::router_.on_get(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -1644,7 +1690,7 @@ public:
 				}
 			});
 
-		router_.on_post(
+		server_base::router_.on_post(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 
@@ -1674,7 +1720,7 @@ public:
 				}
 			});
 
-		router_.on_delete(
+		server_base::router_.on_delete(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 
@@ -1706,7 +1752,7 @@ public:
 				}
 			});
 
-		router_.on_get(
+		server_base::router_.on_get(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -1736,7 +1782,7 @@ public:
 				}
 			});
 
-		router_.on_post(
+		server_base::router_.on_post(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -1768,7 +1814,7 @@ public:
 				}
 			});
 
-		router_.on_delete(
+		server_base::router_.on_delete(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -1804,7 +1850,7 @@ public:
 			});
 
 		// get info for specific worker id for a worker with {name} and {type} in workspace {workspace_id}
-		router_.on_get(
+		server_base::router_.on_get(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -1841,7 +1887,7 @@ public:
 			});
 
 		// get info for specific worker {TYPE} in workspace {workspace_id}
-		router_.on_get(
+		server_base::router_.on_get(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -1880,7 +1926,7 @@ public:
 			});
 
 		// put specific worker {worker_id} of worker {name} and {type} in workspace {workspace_id}
-		router_.on_put(
+		server_base::router_.on_put(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -1922,7 +1968,7 @@ public:
 			});
 
 		// remove specific worker {worker_id} of worker {type} in workspace {workspace_id}
-		router_.on_delete(
+		server_base::router_.on_delete(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -1955,7 +2001,7 @@ public:
 			});
 
 		// remove specific worker {worker_id} of worker {type} in workspace {workspace_id}
-		router_.on_delete(
+		server_base::router_.on_delete(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -2005,7 +2051,7 @@ public:
 				}
 			});
 
-		router_.on_get(
+		server_base::router_.on_get(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/limits",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -2036,7 +2082,7 @@ public:
 				}
 			});
 
-		router_.on_get(
+		server_base::router_.on_get(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -2069,7 +2115,7 @@ public:
 				}
 			});
 
-		router_.on_put(
+		server_base::router_.on_put(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/limits",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -2101,7 +2147,7 @@ public:
 			});
 
 		// get info for specific worker id for a worker with {name} and {type} in workspace {workspace_id}
-		router_.on_put(
+		server_base::router_.on_put(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -2122,7 +2168,10 @@ public:
 						json limits = json::parse(session.request().body());
 						// TODO split function below:
 						workgroups->second->direct_workers(
-							logger_, limit_name, limits, workgroups::limits::from_json_operation::set);
+							server_base::logger_,
+							limit_name,
+							limits,
+							workgroups::limits::from_json_operation::set);
 						workgroups->second->workgroups_limits().to_json(limits["limits"]);
 
 						result["limits"] = limits;
@@ -2138,7 +2187,7 @@ public:
 				}
 			});
 
-		router_.on_patch(
+		server_base::router_.on_patch(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -2159,7 +2208,10 @@ public:
 						json limits = json::parse(session.request().body());
 
 						workgroups->second->direct_workers(
-							logger_, limit_name, limits, workgroups::limits::from_json_operation::add);
+							server_base::logger_,
+							limit_name,
+							limits,
+							workgroups::limits::from_json_operation::add);
 
 						workgroups->second->workgroups_limits().to_json(limits["limits"]);
 
@@ -2176,8 +2228,26 @@ public:
 				}
 			});
 
-		router_.on_internal_error([this](http::session_handler& session, std::exception& e) {
-			logger().accesslog(
+		server_base::router_.on_proxy_pass("/api", [this](http::session_handler& session) {
+			auto workspace_id = session.request().get<std::string>("X-Workspace-ID", "workspace_000");
+			auto workgroup_name = session.request().get<std::string>("X-WorkGroup-Name", "untitled");
+			auto workgroup_type = session.request().get<std::string>("X-WorkGroup-Type", "bshells");
+
+			auto workspace = workspaces_.get_workspace(workspace_id);
+
+			if (workspace != workspaces_.end())
+			{
+				auto workgroup = workspace->second->find_workgroups(workgroup_name, workgroup_type);
+				if (workgroup != workspace->second->end())
+				{
+					// reverse proxy the call to the least connected worker....
+					workgroup->second->proxy_pass(get_io_service(), session, server_base::logger_);
+				}
+			}
+		});
+	
+		server_base::router_.on_internal_error([this](http::session_handler& session, std::exception& e) {
+			server_base::logger().accesslog(
 				"api-error with requested url: \"{s}\", error: \"{s}\", and request body:\n \"{s}\"",
 				session.request().url_requested(),
 				e.what(),
@@ -2192,7 +2262,7 @@ public:
 
 	http::basic::server::state start() override
 	{
-		auto ret = http::basic::threaded::server::start();
+		auto ret = server_base::start();
 
 		director_thread_ = std::thread{ [this]() { director_handler(); } };
 
@@ -2215,16 +2285,16 @@ public:
 private:
 	void director_handler()
 	{
-		while (!is_active() && !is_activating())
+		while (!server_base::is_active() && !server_base::is_activating())
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
 
-		while (is_active() || is_activating())
+		while (server_base::is_active() || server_base::is_activating())
 		{
-			if (is_active())
+			if (server_base::is_active())
 			{
-				workspaces_.direct_workspaces(logger_);
+				workspaces_.direct_workspaces(server_base::logger_);
 
 				json manager_json = json::object();
 				to_json(manager_json);
@@ -2260,7 +2330,7 @@ public:
 		error["error"].emplace_back(json{ { "code", code }, { "message", message } });
 
 		session.response().body() = error.dump();
-		logger().error(
+		server_base::logger().error(
 			"set_error_response: {s}, json{s}", session.request().url_requested(), session.response().body());
 	}
 
@@ -2310,7 +2380,7 @@ public:
 		shutdown_future = shutdown_promise.get_future();
 		int shutdown = shutdown_future.get();
 		std::this_thread::sleep_for(std::chrono::seconds(shutdown));
-		deactivate();
+		server_base::deactivate();
 	}
 
 	virtual void send_illegal_workspace_response(
@@ -2322,7 +2392,7 @@ public:
 	}
 };
 
-static std::unique_ptr<manager> cpm_server_;
+static std::unique_ptr<manager<http::basic::async::server>> cpm_server_;
 } // namespace platform
 } // namespace cloud
 
@@ -2370,8 +2440,8 @@ inline int start_rest_server(int argc, const char** argv)
 											  { "https_enabled", "false" },
 											  { "http_use_portsharding", "false" } } };
 
-	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager>(
-		new cloud::platform::manager(http_configuration, cmd_args.get_val("config")));
+	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager<http::basic::async::server>>(
+		new cloud::platform::manager<http::basic::async::server>(http_configuration, cmd_args.get_val("config")));
 
 	cloud::platform::cpm_server_->start();
 

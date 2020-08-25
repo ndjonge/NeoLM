@@ -737,7 +737,8 @@ enum method_t
 	options,
 	trace,
 	patch,
-	purge
+	purge,
+	proxy_pass
 };
 
 inline method_t to_method(const std::string& v) noexcept
@@ -3068,6 +3069,7 @@ public:
 		}
 		else
 		{
+			response_.reset_if_exists("Transfer-Encoding");
 			response_.content_length(response_.body().length());
 		}
 
@@ -3559,6 +3561,11 @@ public:
 		on_http_method(method::options, route, std::move(api_method));
 	}
 
+	void on_proxy_pass(std::string&& route, R&& api_method) 
+	{
+		on_http_method(method::proxy_pass, route, std::move(api_method));
+	}
+
 	void on_middleware(const T& route, const std::pair<routing::middleware, routing::middleware>& middleware_pair)
 	{
 		auto it = root_.get();
@@ -3658,7 +3665,28 @@ public:
 			if (l == std::end(it->link_))
 			{
 				if (!it->match_param(part, params))
-					return routing(http::api::router_match::no_route);
+				{
+					if (it->endpoints_)
+					{
+						auto endpoint = std::find_if(
+							it->endpoints_->cbegin(),
+							it->endpoints_->cend(),
+							[](const std::pair<M, std::unique_ptr<routing::route>>& e) {
+								return (e.first == http::method::proxy_pass);
+							});
+
+						if (endpoint != it->endpoints_->cend())
+						{
+							result.match_result() = http::api::router_match::match_found;
+							result.set_route(endpoint->second.get());
+							return result;
+						}
+						else
+							return routing(http::api::router_match::no_route);
+					}
+					else
+						return routing(http::api::router_match::no_route);
+				}
 				else
 				{
 					l = it->link_.begin();
@@ -3810,7 +3838,6 @@ class curl
 	std::ostringstream buffer_;
 	char error_buf_[CURL_ERROR_SIZE];
 	curl_slist* headers_;
-	std::string data_str_; // must remain alive during cURL transfer
 	http::response_message response_message_;
 	http::response_parser response_message_parser_;
 	http::response_parser::result_type response_message_parser_result_;
@@ -3878,6 +3905,7 @@ class curl
 	}
 
 public:
+
 	curl(
 		const curl_session& session,
 		const std::string& verb,
@@ -3907,17 +3935,7 @@ public:
 		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 3000L);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
-		setup(verb, url, hdrs, body);
-	}
 
-	~curl() { curl_slist_free_all(headers_); }
-
-	void setup(
-		const std::string& verb,
-		const std::string& url,
-		std::initializer_list<std::string> hdrs,
-		const std::string& data)
-	{
 		for (const auto& a : hdrs)
 		{
 			headers_ = curl_slist_append(headers_, a.c_str());
@@ -3926,9 +3944,51 @@ public:
 		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb.c_str());
 		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url.c_str());
 
-		data_str_ = data.c_str();
-		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, data_str_.c_str());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, body.data());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDSIZE, body.size());
 	}
+
+	curl(
+		const curl_session& session,
+		const std::string host,
+		const http::request_message& request,
+		bool verbose = false,
+		std::ostream& verbose_output_stream = std::clog)
+		: session_(session), buffer_(), headers_(nullptr), verb_(http::method::to_string(request.method())), url_(host + request.url_requested())
+	{
+		strcpy(error_buf_, "");
+
+		if (verbose)
+		{
+			curl_easy_setopt(session_.as_handle(), CURLOPT_VERBOSE, 1);
+			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGFUNCTION, debug_callback);
+			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
+		}
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEFUNCTION, write_callback);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEDATA, (void*)&buffer_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_ERRORBUFFER, error_buf_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 3000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 3000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_MAXCONNECTS, 32L);
+
+		for (const auto& header : request.headers())
+		{
+			headers_ = curl_slist_append(headers_, std::string{ header.name + ": " + header.value }.c_str());
+		}
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb_.c_str());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url_.c_str());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, request.body().data());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDSIZE, request.body().size());
+	}
+
+	~curl() { curl_slist_free_all(headers_); }
 
 	http::response_message call(std::string& error) noexcept
 	{
@@ -4066,10 +4126,10 @@ public:
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 
-			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_) / 1000000.0;
+			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_) / 1000;
 
 			std::string msg = lgr::logger::format<lgr::prefix::accesslog>(
-				"{s} - {s} - '{s} {s}' - {d} - {u} - {u} - {f}",
+				"{s} - {s} - '{s} {s}' - {d} - {u} - {u} - {u}",
 				session.request().get("Remote_Addr", std::string{}),
 				session.request().get("X-Request-ID", std::string{}),
 				http::method::to_string(session.request().method()),
@@ -4077,7 +4137,7 @@ public:
 				http::status::to_int(session.response().status()),
 				session.request().content_length(),
 				session.response().content_length(),
-				(static_cast<std::int16_t>(response_time * 1000) / 1000.0));
+				response_time);
 
 			access_log_.emplace_back(msg);
 
@@ -4874,6 +4934,20 @@ public:
 private:
 	const http::basic::client::curl_session session_;
 };
+
+http::response_message forward_request(
+	http::client::session& upstream_session,
+	const std::string& url,
+	http::session_handler& downstream_session,
+	std::string& ec,
+	bool verbose, 
+	std::ostream& output_stream)
+{
+	http::basic::client::curl curl{
+		upstream_session.as_session(), url, downstream_session.request(), verbose, output_stream
+	};
+	return curl.call(ec); // RVO
+}
 
 template <http::method::method_t method>
 http::response_message request(
