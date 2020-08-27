@@ -20,7 +20,7 @@
 		},
 		{
 			"isGenerated" : true,
-			"path" : "out/build/x64-Clang-Release/CMakeFiles/3.17.20032601-MSVC_2/CMakeSystem.cmake"
+			"path" : "out/build/x64-Release/CMakeFiles/3.17.20032601-MSVC_2/CMakeSystem.cmake"
 		},
 		{
 			"isExternal" : true,
@@ -234,16 +234,11 @@
 		{
 			"isCMake" : true,
 			"isExternal" : true,
-			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/Compiler/Clang-FindBinUtils.cmake"
-		},
-		{
-			"isCMake" : true,
-			"isExternal" : true,
 			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/CMakeCXXCompiler.cmake.in"
 		},
 		{
 			"isGenerated" : true,
-			"path" : "out/build/x64-Clang-Release/CMakeFiles/3.17.20032601-MSVC_2/CMakeCXXCompiler.cmake"
+			"path" : "out/build/x64-Release/CMakeFiles/3.17.20032601-MSVC_2/CMakeCXXCompiler.cmake"
 		},
 		{
 			"isCMake" : true,
@@ -283,12 +278,7 @@
 		{
 			"isCMake" : true,
 			"isExternal" : true,
-			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/Compiler/Clang-CXX.cmake"
-		},
-		{
-			"isCMake" : true,
-			"isExternal" : true,
-			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/Compiler/Clang.cmake"
+			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/Compiler/MSVC-CXX.cmake"
 		},
 		{
 			"isCMake" : true,
@@ -298,12 +288,7 @@
 		{
 			"isCMake" : true,
 			"isExternal" : true,
-			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/Platform/Windows-Clang-CXX.cmake"
-		},
-		{
-			"isCMake" : true,
-			"isExternal" : true,
-			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/Platform/Windows-Clang.cmake"
+			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/Platform/Windows-MSVC-CXX.cmake"
 		},
 		{
 			"isCMake" : true,
@@ -322,7 +307,7 @@
 		},
 		{
 			"isGenerated" : true,
-			"path" : "out/build/x64-Clang-Release/CMakeFiles/3.17.20032601-MSVC_2/CMakeRCCompiler.cmake"
+			"path" : "out/build/x64-Release/CMakeFiles/3.17.20032601-MSVC_2/CMakeRCCompiler.cmake"
 		},
 		{
 			"isCMake" : true,
@@ -387,39 +372,11 @@
 		{
 			"isCMake" : true,
 			"isExternal" : true,
-			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/Compiler/Clang-CXX-FeatureTests.cmake"
-		},
-		{
-			"isCMake" : true,
-			"isExternal" : true,
-			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/Compiler/Clang-CXX-TestableFeatures.cmake"
-		},
-		{
-			"isGenerated" : true,
-			"path" : "out/build/x64-Clang-Release/CMakeFiles/feature_tests.cxx"
-		},
-		{
-			"isCMake" : true,
-			"isExternal" : true,
-			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/Compiler/Clang-CXX-FeatureTests.cmake"
-		},
-		{
-			"isCMake" : true,
-			"isExternal" : true,
-			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/Compiler/Clang-CXX-TestableFeatures.cmake"
-		},
-		{
-			"isGenerated" : true,
-			"path" : "out/build/x64-Clang-Release/CMakeFiles/feature_tests.cxx"
-		},
-		{
-			"isCMake" : true,
-			"isExternal" : true,
 			"path" : "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.17/Modules/CMakeCXXCompiler.cmake.in"
 		},
 		{
 			"isGenerated" : true,
-			"path" : "out/build/x64-Clang-Release/CMakeFiles/3.17.20032601-MSVC_2/CMakeCXXCompiler.cmake"
+			"path" : "out/build/x64-Release/CMakeFiles/3.17.20032601-MSVC_2/CMakeCXXCompiler.cmake"
 		},
 		{
 			"isExternal" : true,
@@ -536,7 +493,7 @@
 	"kind" : "cmakeFiles",
 	"paths" : 
 	{
-		"build" : "C:/Users/ndejo/source/repos/mir_http/out/build/x64-Clang-Release",
+		"build" : "C:/Users/ndejo/source/repos/mir_http/out/build/x64-Release",
 		"source" : "C:/Users/ndejo/source/repos/mir_http"
 	},
 	"version" : 

@@ -382,34 +382,55 @@ public:
 	void proxy_pass(asio::io_service& io_service, http::session_handler& downstream_session_handler, lgr::logger& l) 
 	{ 
 		{
-			std::lock_guard<std::mutex> g{ upstream_sessions_initialise_mutex };
+			const size_t workers = 32;
 
+			std::lock_guard<std::mutex> g{ upstream_sessions_initialise_mutex };
 			if (upstream_sessions_.size() == 0)
 			{
-				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
-				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
-				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
-				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
-				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
-				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
-				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
-				upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
+				upstream_sessions_.reserve(workers);
+				for (int i = 0; i != workers; i++)
+				{
+					upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
+				}
+			}
+		}
+		bool found = false;
+		for (auto& upstream_session : upstream_sessions_)
+		{
+			auto expected_state = http::basic::async::client::session::state::idle;
+			
+			if (upstream_session.get_state().compare_exchange_strong(expected_state, http::basic::async::client::session::state::waiting) == true)
+			{
+				std::string ec;
+
+//				l.accesslog("session {u} waiting\n", upstream_session.id());
+
+				http::basic::async::client::forward_request(
+					upstream_session, downstream_session_handler, ec, false, l.as_stream());
+
+				upstream_session.get_state().store(http::basic::async::client::session::state::idle);
+
+//				l.accesslog("session {u} idle\n", upstream_session.id());
+
+				if (ec.empty())
+				{
+					if (downstream_session_handler.response().status() != http::status::ok)
+					{
+						ec = "test";
+					}
+
+					found = true;
+				}
+
+				break;
 			}
 		}
 
-		// Select one of the workers and make a connection
-		auto& upstream_session = upstream_sessions_[next_available_session++ % upstream_sessions_.size()];
-
-		std::string ec;
-
-		http::basic::async::client::forward_request(
-			upstream_session, downstream_session_handler, ec, false, l.as_stream());
-
-		if (ec.empty())
+		if (found == false)
 		{
-			if (downstream_session_handler.response().status() != http::status::ok) 
-				ec = "test";
+			std::cout << "not found a idle session\n";
 		}
+
 	}
 
 	iterator find_worker(const std::string& worker_id)

@@ -30,31 +30,71 @@ namespace client
 class session
 {
 public:
+	enum class state
+	{
+		waiting,
+		idle
+	};
+
 	session(asio::io_service& io_service, const std::string& host, const std::string& port)
-		: host_(host), port_(port)
+		: io_service_(io_service)
+		, host_(host)
+		, port_(port)
 		, resolver_(io_service)
 		, socket_(io_service)
+		, id_(session::instances__++)
+	{
+		recieve_buffer.reserve(1500);
+		reopen();
+	};
+
+	session(const session& s)
+		: io_service_(s.io_service_), host_(s.host_), port_(s.port_), resolver_(s.io_service_), socket_(s.io_service_)
 	{
 		reopen();
 	};
 
 	void reopen() 
 	{
+		if (socket_.is_open())
+		{
+			socket_.close();
+		}
+
 		asio::ip::tcp::resolver::query query(host_, port_);
 		auto resolved_endpoints = resolver_.resolve(query);
-		asio::connect(socket_, resolved_endpoints.cbegin(), resolved_endpoints.cend());
+		asio::error_code error;
+
+		asio::connect(socket_, resolved_endpoints.cbegin(), resolved_endpoints.cend(), error);
+
+		if (error)
+		{
+			std::cout << "not open\n";
+		}
 	}
 
 	asio::ip::tcp::socket& socket() { return socket_; }
+	std::atomic<state>& get_state() { return state_; }
+
+	std::size_t id() { return id_; };
+	static std::size_t instances__;
+
+	std::string recieve_buffer;
 
 private:
+
+	asio::io_service& io_service_;
 	std::string host_;
 	std::string port_;
 
 	asio::ip::tcp::resolver resolver_;
 	asio::ip::tcp::socket socket_;
+	std::atomic<session::state> state_{ state::idle };
+	std::size_t id_{0};
 
 };
+
+std::size_t session::instances__{ 0 };
 
 void forward_request(
 
@@ -65,17 +105,16 @@ void forward_request(
 	std::ostream& output_stream)
 {
 	downstream_session_handler.response().clear();
-	downstream_session_handler.request().reset_if_exists("Accept-Encoding");
-	downstream_session_handler.request().set("Accept-Encoding", "identity");
 	std::string request = http::to_string(downstream_session_handler.request());
 
 	asio::error_code error;
-	auto ret = asio::write(upstream_client_session.socket(), asio::buffer(request.data(), request.size()), error);
+	auto bytes_written = asio::write(upstream_client_session.socket(), asio::buffer(request.data(), request.size()), error);
 
 	if (error)
 	{
 		upstream_client_session.reopen();
-		ret = asio::write(upstream_client_session.socket(), asio::buffer(request.data(), request.size()), error);
+		bytes_written
+			= asio::write(upstream_client_session.socket(), asio::buffer(request.data(), request.size()), error);
 		if (error)
 		{
 			downstream_session_handler.response().status(http::status::bad_gateway);
@@ -83,12 +122,11 @@ void forward_request(
 		}
 	}
 
-	std::string recieve_buffer;
-	recieve_buffer.reserve(1500);
-
-	ret = asio::read_until(
+	error.clear();
+	upstream_client_session.recieve_buffer.clear();
+	auto bytes_red = asio::read_until(
 		upstream_client_session.socket(),
-		asio::dynamic_buffer(recieve_buffer, recieve_buffer.capacity()),
+		asio::dynamic_buffer(upstream_client_session.recieve_buffer, upstream_client_session.recieve_buffer.capacity()),
 		"\r\n\r\n",
 		error);
 
@@ -104,7 +142,9 @@ void forward_request(
 	const char* c = nullptr;
 
 	std::tie(result, c) = response_parser.parse(
-		downstream_session_handler.response(), recieve_buffer.data(), recieve_buffer.data() + ret);
+		downstream_session_handler.response(),
+		upstream_client_session.recieve_buffer.data(),
+		upstream_client_session.recieve_buffer.data() + bytes_red);
 
 	if (result == http::response_parser::result_type::good)
 	{
@@ -112,7 +152,7 @@ void forward_request(
 		if (content_length)
 		{
 			downstream_session_handler.response().body().reserve(content_length);
-			downstream_session_handler.response().body().assign(c, ret - (c - recieve_buffer.data()));
+			downstream_session_handler.response().body().assign(c, content_length);
 
 			// read more?
 		}
@@ -126,8 +166,10 @@ void forward_request(
 		}
 
 		if (downstream_session_handler.response().connection_close() == true) 
-			upstream_client_session.reopen();
-
+		{
+			std::cout << std::to_string(upstream_client_session.id()) + " : closed \n";
+			upstream_client_session.reopen();	
+		}
 	}
 
 	return;
@@ -387,6 +429,7 @@ private:
 		void start()
 		{
 			set_timeout();
+			socket_.set_option(asio::ip::tcp::no_delay(true));
 			do_read_header();
 		}
 
@@ -440,7 +483,7 @@ private:
 public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
-		, thread_count_(configuration.get<int>("thread_count", 8))
+		, thread_count_(configuration.get<int>("thread_count", 16))
 		, http_watchdog_idle_timeout_(configuration.get<std::int16_t>("http_watchdog_idle_timeout", 0))
 		, http_watchdog_max_requests_concurrent_(
 			  configuration.get<std::int16_t>("http_watchdog_max_requests_concurrent", 0))
