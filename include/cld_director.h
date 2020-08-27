@@ -379,7 +379,7 @@ public:
 	std::mutex upstream_sessions_initialise_mutex;
 	std::vector<http::basic::async::client::session> upstream_sessions_;
 
-	void proxy_pass(asio::io_service& io_service, http::session_handler& downstream_session_handler, lgr::logger& l) 
+	void proxy_pass(asio::io_context& io_context, http::session_handler& downstream_session_handler, lgr::logger& l) 
 	{ 
 		{
 			const size_t workers = 32;
@@ -390,7 +390,7 @@ public:
 				upstream_sessions_.reserve(workers);
 				for (int i = 0; i != workers; i++)
 				{
-					upstream_sessions_.emplace_back(io_service, "127.0.0.1", "8888");
+					upstream_sessions_.emplace_back(io_context, "127.0.0.1", "8888");
 				}
 			}
 		}
@@ -2262,7 +2262,7 @@ public:
 				if (workgroup != workspace->second->end())
 				{
 					// reverse proxy the call to the least connected worker....
-					workgroup->second->proxy_pass(get_io_service(), session, server_base::logger_);
+					workgroup->second->proxy_pass(get_io_context(), session, server_base::logger_);
 				}
 			}
 		});
