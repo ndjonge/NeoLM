@@ -42,9 +42,9 @@ namespace
 {
 using SCK_t = network::socket_t;
 
-//char* const* split_string(std::string) { return nullptr; }
+char* const* split_string(std::string) { return nullptr; }
 
-//int ImpersonateUser(std::string, void*, int, void*) { return 0; }
+int ImpersonateUser(std::string, void*, int, void*) { return 0; }
 
 int CheckUserInfo(
 	const char*,
@@ -2262,7 +2262,7 @@ public:
 				if (workgroup != workspace->second->end())
 				{
 					// reverse proxy the call to the least connected worker....
-					workgroup->second->proxy_pass(get_io_context(), session, server_base::logger_);
+					workgroup->second->proxy_pass(server_base::get_io_context(), session, server_base::logger_);
 				}
 			}
 		});
@@ -2279,7 +2279,7 @@ public:
 
 	virtual ~manager() {}
 
-	const http::configuration& configuration() { return configuration_; }
+	//const http::configuration& configuration() { return configuration_; }
 
 	http::basic::server::state start() override
 	{
