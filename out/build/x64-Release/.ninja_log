@@ -41,3 +41,7 @@
 8909	9657	620585238	mir_http_example.exe	ad357895c1050184
 2	8746	620585278	CMakeFiles/mir_http_example.dir/example/main.cpp.obj	4e119f1bedca2528
 8747	9412	620585278	mir_http_example.exe	ad357895c1050184
+1	603	620585842	build.ninja	6fe0e9d4e7e014cd
+0	10	0	clean	eeac665b4a503401
+3	9222	620585855	CMakeFiles/mir_http_example.dir/example/main.cpp.obj	4e119f1bedca2528
+9223	9980	620585856	mir_http_example.exe	ad357895c1050184

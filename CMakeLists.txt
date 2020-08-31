@@ -6,7 +6,7 @@ include_directories("include")
 
 add_executable(${PROJECT_NAME} example/main.cpp "include/prog_args.h" "include/cld_worker_instance.h")
 
-set (CMAKE_CXX_STANDARD 14)
+set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 set (CMAKE_CXX_EXTENSIONS OFF)
 

@@ -42,9 +42,10 @@ namespace
 {
 using SCK_t = network::socket_t;
 
+#ifndef _WIN32
 char* const* split_string(std::string) { return nullptr; }
-
 int ImpersonateUser(std::string, void*, int, void*) { return 0; }
+#endif
 
 int CheckUserInfo(
 	const char*,
@@ -388,7 +389,7 @@ public:
 			if (upstream_sessions_.size() == 0)
 			{
 				upstream_sessions_.reserve(workers);
-				for (int i = 0; i < workers; i++)
+				for (size_t i = 0; i < workers; i++)
 				{
 					upstream_sessions_.emplace_back(
 						new http::basic::async::client::session{ io_context, "127.0.0.1", std::to_string(8000 + i) });

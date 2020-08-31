@@ -37,8 +37,7 @@ public:
 	};
 
 	session(asio::io_context& io_context, const std::string& host, const std::string& port)
-		: io_context_(io_context)
-		, host_(host)
+		: host_(host)
 		, port_(port)
 		, resolver_(io_context)
 		, socket_(io_context)
@@ -82,8 +81,7 @@ public:
 	std::string recieve_buffer;
 
 private:
-
-	asio::io_context& io_context_;
+//	asio::io_context& io_context_;
 	std::string host_;
 	std::string port_;
 
@@ -226,7 +224,7 @@ private:
 		{
 			steady_timer_.expires_from_now(std::chrono::seconds(session_handler_.keepalive_max()));
 			
-			auto me = shared_from_this();
+			auto me = this->shared_from_this();
 			steady_timer_.async_wait([me](asio::error_code const& ec) {
 				if (!ec) me->stop();
 			});
@@ -688,10 +686,10 @@ private:
 	class io_context_pool
 	{
 	public:
-		io_context_pool(size_t thread_count)
+		io_context_pool(std::uint8_t thread_count)
 			: thread_count_(thread_count), selected_io_context_(0)
 		{
-			for (auto i = 0; i < thread_count_; ++i)
+			for (std::uint8_t i = 0; i < thread_count_; ++i)
 			{
 				io_contexts_.emplace_back(std::make_unique<asio::io_context>());
 				work_guards_for_io_contexts_.emplace_back(asio::make_work_guard(*io_contexts_[i]));
@@ -702,7 +700,7 @@ private:
 
 		void run() 
 		{
-			for (auto i = 0; i < thread_count_; ++i)
+			for (std::uint8_t i = 0; i < thread_count_; ++i)
 			{
 				thread_pool_.emplace_back([this, i] { io_contexts_[i]->run(); });
 			}
@@ -710,7 +708,7 @@ private:
 
 		void stop() 
 		{
-			for (auto i = 0; i < thread_count_; ++i)
+			for (std::uint8_t i = 0; i < thread_count_; ++i)
 			{
 				io_contexts_[i]->stop();
 				thread_pool_[i].join();
