@@ -32,8 +32,15 @@
 *.app
 mir_http
 
+*.pdb
+
 /.vs
 /.vscode
+/.cmake
+*.ninja*
+out/
+build/
 /build
 /CMakefiles
-
+/CMakeFiles
+CMakeCache.txt

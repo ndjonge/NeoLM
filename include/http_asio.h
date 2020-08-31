@@ -97,14 +97,10 @@ private:
 std::size_t session::instances__{ 0 };
 
 void forward_request(
-
 	http::basic::async::client::session& upstream_client_session,
 	http::session_handler& downstream_session_handler,
-	std::string& ec,
-	bool verbose,
-	std::ostream& output_stream)
+	std::string& ec)
 {
-	downstream_session_handler.response().clear();
 	std::string request = http::to_string(downstream_session_handler.request());
 
 	asio::error_code error;
@@ -118,6 +114,9 @@ void forward_request(
 		if (error)
 		{
 			downstream_session_handler.response().status(http::status::bad_gateway);
+			ec = error.message();
+			upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
+
 			return;
 		}
 	}
@@ -134,6 +133,8 @@ void forward_request(
 	{
 		downstream_session_handler.response().status(http::status::bad_gateway);
 		downstream_session_handler.response().body() = error.message();
+		ec = error.message();
+		upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
 		return;
 	}
 
@@ -167,11 +168,12 @@ void forward_request(
 
 		if (downstream_session_handler.response().connection_close() == true) 
 		{
-			std::cout << std::to_string(upstream_client_session.id()) + " : closed \n";
+			//std::cout << std::to_string(upstream_client_session.id()) + " : closed \n";
 			upstream_client_session.reopen();	
 		}
 	}
 
+	upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
 	return;
 }
 
@@ -278,10 +280,7 @@ private:
 					}
 					else
 					{
-						auto result = session_handler_.handle_request(server_.router_);
-						++server_.manager().requests_handled();
-
-						do_write_header();
+						do_read_body_done(asio::error_code{}, 0);
 					}
 				}
 				else if (result == http::request_parser::bad)
@@ -347,7 +346,7 @@ private:
 			}
 		}
 
-		void do_read_body_done(asio::error_code const& ec, std::size_t bytes_transferred)
+		void do_read_body_done(asio::error_code const& ec, std::size_t)
 		{
 			if (!ec)
 			{
@@ -376,7 +375,7 @@ private:
 			asio::async_write(
 				socket_base(),
 				asio::buffer(this->write_buffer_.front()),
-				write_strand_.wrap([me = this->shared_from_this()](asio::error_code ec, std::size_t) {
+				write_strand_.wrap([me = this->shared_from_this()](asio::error_code, std::size_t) {
 					me->write_buffer_.pop_front();
 
 					me->do_write_body();
@@ -489,16 +488,16 @@ public:
 			  configuration.get<std::int16_t>("http_watchdog_max_requests_concurrent", 0))
 		, http_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
-		, http_listen_port_begin_(configuration.get<int>("http_listen_port_begin", 3000))
-		, http_listen_port_end_(configuration.get<int>("http_listen_port_end", http_listen_port_begin_))
+		, http_listen_port_begin_(configuration.get<std::int16_t>("http_listen_port_begin", 3000))
+		, http_listen_port_end_(configuration.get<int16_t>("http_listen_port_end", http_listen_port_begin_))
 		, http_listen_port_(network::tcp::socket::invalid_socket)
 		//			, http_listen_address_(
 		//				  configuration.get<std::string>("http_listen_address", "::0"), http_listen_port_begin_)
 		, https_use_portsharding_(configuration.get<bool>("https_use_portsharding", false))
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
-		, https_listen_port_begin_(configuration.get<int>(
-			  "https_listen_port_begin", configuration.get<int>("http_listen_port_begin") + 2000))
-		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
+		, https_listen_port_begin_(configuration.get<std::int16_t>(
+			  "https_listen_port_begin", configuration.get<int16_t>("http_listen_port_begin") + 2000))
+		, https_listen_port_end_(configuration.get<int16_t>("https_listen_port_end", http_listen_port_begin_))
 		, https_listen_port_(network::tcp::socket::invalid_socket)
 		//			, https_listen_address_(
 		//				  configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
@@ -642,14 +641,14 @@ private:
 
 	bool http_use_portsharding_;
 	bool http_enabled_;
-	std::int32_t http_listen_port_begin_;
-	std::int32_t http_listen_port_end_;
+	std::int16_t http_listen_port_begin_;
+	std::int16_t http_listen_port_end_;
 	std::atomic<network::socket_t> http_listen_port_;
 
 	bool https_use_portsharding_;
 	bool https_enabled_;
-	std::int32_t https_listen_port_begin_;
-	std::int32_t https_listen_port_end_;
+	std::int16_t https_listen_port_begin_;
+	std::int16_t https_listen_port_end_;
 	std::atomic<network::socket_t> https_listen_port_;
 
 	size_t gzip_min_length_;

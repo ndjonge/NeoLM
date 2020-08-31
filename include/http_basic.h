@@ -1453,7 +1453,7 @@ public:
 			return (http::util::case_insensitive_equal(f.name, name));
 		});
 
-		if (i != std::end(fields_)) returnvalue = std::stoi(i->value); // TODO klopt dit nog? T is_integral
+		if (i != std::end(fields_)) returnvalue = static_cast<T>(std::stoi(i->value)); // TODO klopt dit nog? T is_integral
 
 		return static_cast<T>(returnvalue);
 	}
@@ -2658,6 +2658,99 @@ private:
 				{
 					return bad;
 				}
+			case header_name:
+				if (input == ':')
+				{
+					state_ = opt_ws_before_header_value;
+					return indeterminate;
+				}
+				else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
+				{
+					return bad;
+				}
+				else
+				{
+					res.last_new_field()->name.push_back(input);
+					return indeterminate;
+				}
+			case opt_ws_before_header_value: // Skip leading white space, see RFC 7230
+											 // (https://tools.ietf.org/html/rfc7230#section-3.2).
+				if (input == ' ' || input == '\t')
+				{
+					return indeterminate;
+				}
+				else
+				{
+					state_ = header_value;
+					// intentional fallthrough to case header_value
+				}
+				// fallthrough
+			case header_value: // warning: fallthrough from state opt_ws_before_header_value
+				if (input == '\r') // optional line folding
+				{
+					state_ = opt_ws_after_header_value;
+					// intentional fallthrough to case opt_ws_after_header_value
+				}
+				else if (input == '\t') // RFC 7230: field-content  = field-vchar [ 1*( SP / HTAB ) field-vchar ]
+				{
+					res.last_new_field()->value.push_back(input);
+					return indeterminate;
+				}
+				else if (is_ctl(input))
+				{
+					return bad;
+				}
+				else
+				{
+					res.last_new_field()->value.push_back(input);
+					return indeterminate;
+				}
+				// fallthrough
+			case opt_ws_after_header_value: // warning: fallthrough from case header_value
+				if (input == '\r') // optional line folding is handled by successive states expecting_newline_2,
+								   // header_line_start, header_lws, header_value
+				{
+					state_ = expecting_newline_2;
+
+					// Trailing whitespace is not part of the value, see RFC 7230
+					// (https://tools.ietf.org/html/rfc7230#section-3.2). To allow whitespace within the value, we
+					// accepted the trailing whitespace in state header_value. Strip here.
+
+					auto& last_new_field_value = res.last_new_field()->value;
+
+					auto last_non_whitespace = last_new_field_value.find_last_not_of(" \t");
+					if (last_non_whitespace != std::string::npos)
+					{
+						if (last_non_whitespace != last_new_field_value.size())
+						{
+							last_new_field_value = last_new_field_value.substr(0, last_non_whitespace + 1);
+						}
+					}
+					else
+					{
+						last_new_field_value = "";
+					}
+					//res.merge_new_header();
+					return indeterminate;
+				}
+				else if (input == ' ' || input == '\t')
+				{
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case expecting_newline_2:
+				if (input == '\n')
+				{
+					state_ = header_line_start;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
 			case header_line_start:
 				if (input == '\r') // end of headers, expecting \r\n
 				{
@@ -2700,57 +2793,6 @@ private:
 					state_ = header_value; // line folding
 					res.last_new_field()->value.push_back(input);
 					return indeterminate;
-				}
-			case header_name:
-				if (input == ':')
-				{
-					state_ = space_before_header_value;
-					return indeterminate;
-				}
-				else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
-				{
-					return bad;
-				}
-				else
-				{
-					res.last_new_field()->name.push_back(input);
-					return indeterminate;
-				}
-			case space_before_header_value: // TODO response parsing has not been modified to handle optional
-											// leading/trailing whitespace
-				if (input == ' ')
-				{
-					state_ = header_value;
-					return indeterminate;
-				}
-				else
-				{
-					return bad;
-				}
-			case header_value:
-				if (input == '\r')
-				{
-					state_ = expecting_newline_2;
-					return indeterminate;
-				}
-				else if (is_ctl(input))
-				{
-					return bad;
-				}
-				else
-				{
-					res.last_new_field()->value.push_back(input);
-					return indeterminate;
-				}
-			case expecting_newline_2:
-				if (input == '\n')
-				{
-					state_ = header_line_start;
-					return indeterminate;
-				}
-				else
-				{
-					return bad;
 				}
 			case expecting_newline_3:
 				return (input == '\n') ? good : bad;
@@ -2823,6 +2865,8 @@ private:
 		header_lws,
 		header_name,
 		space_before_header_value,
+		opt_ws_before_header_value,
+		opt_ws_after_header_value,
 		header_value,
 		expecting_newline_2,
 		expecting_newline_3,
@@ -2962,7 +3006,6 @@ public:
 
 		response_.status(http::status::bad_request);
 		response_.type("text");
-
 		response_.set("Server", server_id);
 		response_.set("Date", util::return_current_time_and_date());
 

@@ -379,21 +379,22 @@ public:
 	std::mutex upstream_sessions_initialise_mutex;
 	std::vector<http::basic::async::client::session> upstream_sessions_;
 
-	void proxy_pass(asio::io_context& io_context, http::session_handler& downstream_session_handler, lgr::logger& l) 
+	void proxy_pass(asio::io_context& io_context, http::session_handler& downstream_session_handler) 
 	{ 
 		{
-			const size_t workers = 32;
+			const size_t workers = 16;
 
 			std::lock_guard<std::mutex> g{ upstream_sessions_initialise_mutex };
 			if (upstream_sessions_.size() == 0)
 			{
 				upstream_sessions_.reserve(workers);
-				for (int i = 0; i != workers; i++)
+				for (int i = 0; i < workers; i++)
 				{
-					upstream_sessions_.emplace_back(io_context, "127.0.0.1", "8888");
+					upstream_sessions_.emplace_back(io_context, "127.0.0.1", std::to_string(8000+i));
 				}
 			}
 		}
+
 		bool found = false;
 		for (auto& upstream_session : upstream_sessions_)
 		{
@@ -406,9 +407,7 @@ public:
 //				l.accesslog("session {u} waiting\n", upstream_session.id());
 
 				http::basic::async::client::forward_request(
-					upstream_session, downstream_session_handler, ec, false, l.as_stream());
-
-				upstream_session.get_state().store(http::basic::async::client::session::state::idle);
+					upstream_session, downstream_session_handler, ec);
 
 //				l.accesslog("session {u} idle\n", upstream_session.id());
 
@@ -718,7 +717,8 @@ public:
 				if (limit_name.empty() || limit_name == "workers_required")
 					workers_required_ = j.value("workers_required", workers_min_);
 
-				if (limit_name.empty() || limit_name == "workers_min") workers_min_ = j.value("workers_min", 0);
+				if (limit_name.empty() || limit_name == "workers_min")
+					workers_min_ = j.value("workers_min", std::int16_t{ 0 });
 
 				if (limit_name.empty() || limit_name == "workers_max")
 					workers_max_ = j.value("workers_max", workers_min_);
@@ -726,11 +726,13 @@ public:
 			else
 			{
 				if (limit_name.empty() || limit_name == "workers_required")
-					workers_required_ += j.value("workers_required", 0);
+					workers_required_ += j.value("workers_required", std::int16_t{ 0 });
 
-				if (limit_name.empty() || limit_name == "workers_min") workers_min_ += j.value("workers_min", 0);
+				if (limit_name.empty() || limit_name == "workers_min")
+					workers_min_ += j.value("workers_min", std::int16_t{ 0 });
 
-				if (limit_name.empty() || limit_name == "workers_max") workers_max_ += j.value("workers_max", 0);
+				if (limit_name.empty() || limit_name == "workers_max")
+					workers_max_ += j.value("workers_max", std::int16_t{ 0 });
 			}
 
 			if (workers_min_ > workers_max_) workers_min_ = workers_max_;
@@ -1032,7 +1034,6 @@ public:
 		std::uint32_t& pid,
 		std::string& ec) override
 	{
-		std::string tenant_id_ = "";
 		std::stringstream parameters;
 
 		parameters << "-httpserver_options cld_workgroup_membership_type:worker,cld_manager_workspace:" << workspace_id
@@ -2262,7 +2263,7 @@ public:
 				if (workgroup != workspace->second->end())
 				{
 					// reverse proxy the call to the least connected worker....
-					workgroup->second->proxy_pass(server_base::get_io_context(), session, server_base::logger_);
+					workgroup->second->proxy_pass(server_base::get_io_context(), session);
 				}
 			}
 		});
