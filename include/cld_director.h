@@ -377,7 +377,7 @@ public:
 
 	std::atomic<std::int16_t> next_available_session{ 0 };
 	std::mutex upstream_sessions_initialise_mutex;
-	std::vector<http::basic::async::client::session> upstream_sessions_;
+	std::vector<std::unique_ptr<http::basic::async::client::session>> upstream_sessions_;
 
 	void proxy_pass(asio::io_context& io_context, http::session_handler& downstream_session_handler) 
 	{ 
@@ -390,7 +390,8 @@ public:
 				upstream_sessions_.reserve(workers);
 				for (int i = 0; i < workers; i++)
 				{
-					upstream_sessions_.emplace_back(io_context, "127.0.0.1", std::to_string(8000+i));
+					upstream_sessions_.emplace_back(
+						new http::basic::async::client::session{ io_context, "127.0.0.1", std::to_string(8000 + i) });
 				}
 			}
 		}
@@ -400,14 +401,14 @@ public:
 		{
 			auto expected_state = http::basic::async::client::session::state::idle;
 			
-			if (upstream_session.get_state().compare_exchange_strong(expected_state, http::basic::async::client::session::state::waiting) == true)
+			if (upstream_session->get_state().compare_exchange_strong(expected_state, http::basic::async::client::session::state::waiting) == true)
 			{
 				std::string ec;
 
 //				l.accesslog("session {u} waiting\n", upstream_session.id());
 
 				http::basic::async::client::forward_request(
-					upstream_session, downstream_session_handler, ec);
+					*upstream_session, downstream_session_handler, ec);
 
 //				l.accesslog("session {u} idle\n", upstream_session.id());
 
@@ -2250,7 +2251,7 @@ public:
 				}
 			});
 
-		server_base::router_.on_proxy_pass("/api", [this](http::session_handler& session) {
+		server_base::router_.on_proxy_pass("/", [this](http::session_handler& session) {
 			auto workspace_id = session.request().get<std::string>("X-Workspace-ID", "workspace_000");
 			auto workgroup_name = session.request().get<std::string>("X-WorkGroup-Name", "untitled");
 			auto workgroup_type = session.request().get<std::string>("X-WorkGroup-Type", "bshells");

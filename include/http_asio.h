@@ -48,11 +48,11 @@ public:
 		reopen();
 	};
 
-	session(const session& s)
-		: io_context_(s.io_context_), host_(s.host_), port_(s.port_), resolver_(s.io_context_), socket_(s.io_context_)
-	{
-		reopen();
-	};
+	session(const session& s) = delete;
+	session(session&& s) = delete;
+
+	session& operator=(const session& s) = delete;
+	session& operator=(session&& s) = delete;
 
 	void reopen() 
 	{
@@ -225,8 +225,9 @@ private:
 		void set_timeout()
 		{
 			steady_timer_.expires_from_now(std::chrono::seconds(session_handler_.keepalive_max()));
-
-			steady_timer_.async_wait([me = this->shared_from_this()](asio::error_code const& ec) {
+			
+			auto me = shared_from_this();
+			steady_timer_.async_wait([me](asio::error_code const& ec) {
 				if (!ec) me->stop();
 			});
 		}
@@ -240,11 +241,12 @@ private:
 		void do_read_header()
 		{
 			// Header
+			auto me = this->shared_from_this();
 			asio::async_read_until(
 				this->socket_base(),
 				in_packet_,
 				"\r\n\r\n",
-				[me = this->shared_from_this()](asio::error_code const& ec, std::size_t bytes_xfer) {
+				[me](asio::error_code const& ec, std::size_t bytes_xfer) {
 					me->do_read_header_done(ec, bytes_xfer);
 				});
 		}
@@ -305,11 +307,12 @@ private:
 		{
 			if (this->session_handler_.request().body().size() < this->session_handler_.request().content_length())
 			{
+				auto me = this->shared_from_this(); 
 				asio::async_read(
 					this->socket_base(),
 					in_packet_,
 					asio::transfer_at_least(1),
-					[me = this->shared_from_this()](asio::error_code const& ec, std::size_t bytes_xfer) {
+					[me](asio::error_code const& ec, std::size_t bytes_xfer) {
 						auto content_length = me->session_handler_.request().content_length();
 						auto body_size = me->session_handler_.request().body().length();
 
@@ -350,9 +353,37 @@ private:
 		{
 			if (!ec)
 			{
-				auto result = session_handler_.handle_request(server_.router_);
+				auto routing = session_handler_.handle_request(server_.router_);
 				++server_.manager().requests_handled();
+				std::chrono::steady_clock::time_point t0{};
+
+				t0 = std::chrono::steady_clock::now();
+
 				do_write_header();
+
+
+				if (routing.match_result() == http::api::router_match::match_found)
+				{
+					routing.the_route().metric_response_latency(
+						std::chrono::duration<std::uint64_t, std::nano>(std::chrono::steady_clock::now() - t0).count());
+
+					if (server_.logger_.current_level() >= lgr::level::accesslog)
+					{
+						auto log_msg
+							= server_.manager().log_access(session_handler_, routing.the_route().route_metrics())
+							  + "\n";
+
+						server_.logger_.accesslog(log_msg);
+					}
+				}
+				else
+				{
+					std::string log_msg
+						= server_.manager().log_access(session_handler_, http::api::routing::metrics{}) + "\n";
+
+					server_.logger_.accesslog(log_msg);
+				}
+
 			}
 		}
 
@@ -370,12 +401,13 @@ private:
 
 		void do_write_header()
 		{
+			auto me = this->shared_from_this();
 			write_buffer_.emplace_back(session_handler_.response().header_to_string());
 
 			asio::async_write(
 				socket_base(),
 				asio::buffer(this->write_buffer_.front()),
-				write_strand_.wrap([me = this->shared_from_this()](asio::error_code, std::size_t) {
+				write_strand_.wrap([me](asio::error_code, std::size_t) {
 					me->write_buffer_.pop_front();
 
 					me->do_write_body();
@@ -458,9 +490,9 @@ private:
 
 		void start()
 		{
-
+			auto me = shared_from_this();
 			socket_.async_handshake(
-				asio::ssl::stream_base::server, [me = this->shared_from_this()](asio::error_code const& ec) {
+				asio::ssl::stream_base::server, [me](asio::error_code const& ec) {
 					if (ec)
 					{
 					}

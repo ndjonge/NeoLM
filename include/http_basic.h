@@ -2658,6 +2658,30 @@ private:
 				{
 					return bad;
 				}
+			case header_line_start:
+				if (input == '\r') // end of headers, expecting \r\n
+				{
+					state_ = expecting_newline_3;
+					return indeterminate;
+				}
+				else if (!res.fields_empty() && (input == ' ' || input == '\t')) // optional line folding
+				{
+					// RFC 7230: Either reject with 400, or replace obs-fold with one or more spaces.
+					// We opt for reject.
+					//error_reason_ = "obsolete line folding is unacceptable";
+					return bad;
+				}
+				else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
+				{
+					return bad;
+				}
+				else
+				{
+					auto i = res.new_field();
+					i->name.push_back(input);
+					state_ = header_name;
+					return indeterminate;
+				}
 			case header_name:
 				if (input == ':')
 				{
@@ -2730,7 +2754,6 @@ private:
 					{
 						last_new_field_value = "";
 					}
-					//res.merge_new_header();
 					return indeterminate;
 				}
 				else if (input == ' ' || input == '\t')
@@ -2750,29 +2773,6 @@ private:
 				else
 				{
 					return bad;
-				}
-			case header_line_start:
-				if (input == '\r') // end of headers, expecting \r\n
-				{
-					state_ = expecting_newline_3;
-					return indeterminate;
-				}
-				else if (!res.fields_empty() && (input == ' ' || input == '\t')) // line folding (continuation of
-																				 // previous header-value)
-				{
-					state_ = header_lws;
-					return indeterminate;
-				}
-				else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
-				{
-					return bad;
-				}
-				else
-				{
-					auto i = res.new_field();
-					i->name.push_back(input);
-					state_ = header_name;
-					return indeterminate;
 				}
 			case header_lws:
 				if (input == '\r')
@@ -3005,21 +3005,19 @@ public:
 		std::string server_id{ configuration_.get<std::string>("server", "http/server/0") };
 
 		response_.status(http::status::bad_request);
-		response_.type("text");
-		response_.set("Server", server_id);
-		response_.set("Date", util::return_current_time_and_date());
 
 		std::string request_path;
 
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
+			response_.type("text");
 			response_.status(http::status::bad_request);
-
 			return typename router_t::request_result_type{};
 		}
 
 		if (request_path.empty() || request_path[0] != '/' || request_path.find("..") != std::string::npos)
 		{
+			response_.type("text");
 			response_.status(http::status::bad_request);
 			return typename router_t::request_result_type{};
 		}
@@ -3066,6 +3064,13 @@ public:
 		t1_ = t0_;
 
 		auto route_result = router_.call_route(*this);
+
+		response_.set("Server", server_id);
+		response_.set("Date", util::return_current_time_and_date());
+		
+		if (response_.get("Content-Type", std::string{}).empty())
+			response_.type("text");
+
 		switch (route_result.match_result())
 		{
 			case http::api::router_match::match_found:
@@ -4816,6 +4821,7 @@ public:
 
 							http::api::router<>::request_result_type routing
 								= session_handler_.handle_request(server_.router_);
+
 							t0 = std::chrono::steady_clock::now();
 
 							if (private_base_request == false)
