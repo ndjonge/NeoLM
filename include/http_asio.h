@@ -57,6 +57,7 @@ public:
 	{
 		if (socket_.is_open())
 		{
+			socket_.shutdown(asio::socket_base::shutdown_send);
 			socket_.close();
 		}
 
@@ -102,21 +103,27 @@ void forward_request(
 	std::string request = http::to_string(downstream_session_handler.request());
 
 	asio::error_code error;
-	auto bytes_written = asio::write(upstream_client_session.socket(), asio::buffer(request.data(), request.size()), error);
 
-	if (error)
+	char peek_buffer[1];
+	upstream_client_session.socket().non_blocking(true);
+	upstream_client_session.socket().receive(
+		asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
+	upstream_client_session.socket().non_blocking(false);
+
+	if (error != asio::error::would_block)
 	{
 		upstream_client_session.reopen();
-		bytes_written
-			= asio::write(upstream_client_session.socket(), asio::buffer(request.data(), request.size()), error);
-		if (error)
-		{
-			downstream_session_handler.response().status(http::status::bad_gateway);
-			ec = error.message();
-			upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
+	}
 
-			return;
-		}
+	auto bytes_written = asio::write(upstream_client_session.socket(), asio::buffer(request.data(), request.size()), error);
+
+	if (error || bytes_written != request.size())
+	{
+		downstream_session_handler.response().status(http::status::bad_gateway);
+		ec = error.message();
+		upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
+
+		return;
 	}
 
 	error.clear();
@@ -150,9 +157,10 @@ void forward_request(
 		auto content_length = downstream_session_handler.response().content_length();
 		if (content_length)
 		{
+			downstream_session_handler.request().set("X-Request-ID", std::to_string(upstream_client_session.id()));
+
 			downstream_session_handler.response().body().reserve(content_length);
 			downstream_session_handler.response().body().assign(c, content_length);
-
 			// read more?
 		}
 		else if (downstream_session_handler.response().chunked())
@@ -205,7 +213,7 @@ private:
 			server_.logger_.info("connection_handler: start\n");
 		}
 
-		virtual ~connection_handler_base() { server_.logger_.info("connection_handler: stop\n"); }
+		virtual ~connection_handler_base() { server_.logger_.info("connection_handler: stop\n");  }
 
 		connection_handler_base(connection_handler_base const&) = delete;
 		void operator==(connection_handler_base const&) = delete;
@@ -218,7 +226,10 @@ private:
 		socket_t& socket_base() { return static_cast<connection_handler_derived*>(this)->socket(); };
 		std::string remote_address_base() { return static_cast<connection_handler_derived*>(this)->remote_address(); };
 
-		void stop() {}
+		void stop() 
+		{
+			--server_.manager().connections_current();
+		}
 
 		void set_timeout()
 		{
@@ -462,7 +473,10 @@ private:
 			do_read_header();
 		}
 
-		void stop() { this->socket_.close(); }
+		void stop() { 
+			this->socket_.shutdown(asio::socket_base::shutdown_send);
+			this->socket_.close(); 
+		}
 
 	private:
 		asio::ip::tcp::socket socket_;
@@ -512,7 +526,7 @@ private:
 public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
-		, thread_count_(configuration.get<int>("thread_count", std::thread::hardware_concurrency()))
+		, thread_count_(configuration.get<std::uint8_t>("thread_count", static_cast<std::uint8_t>(std::thread::hardware_concurrency())))
 		, http_watchdog_idle_timeout_(configuration.get<std::int16_t>("http_watchdog_idle_timeout", 0))
 		, http_watchdog_max_requests_concurrent_(
 			  configuration.get<std::int16_t>("http_watchdog_max_requests_concurrent", 0))
@@ -665,7 +679,7 @@ private:
 		});
 	}
 
-	int thread_count_;
+	std::uint8_t thread_count_;
 	std::int16_t http_watchdog_idle_timeout_;
 	std::int16_t http_watchdog_max_requests_concurrent_;
 

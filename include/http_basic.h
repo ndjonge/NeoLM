@@ -797,6 +797,8 @@ inline std::string to_string(method_t method) noexcept
 			return "PATCH";
 		case method::purge:
 			return "PURGE";
+		case method::proxy_pass:
+			return "PROXY_PASS";
 		default:
 			return "<unknown>";
 	}
@@ -3501,6 +3503,9 @@ public:
 			{
 				for (const auto& endpoint : *(endpoints_))
 				{
+					if (path.size() == 0) 
+						s << "/";
+
 					for (auto& element : path)
 						s << "/" << element;
 

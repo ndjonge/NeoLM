@@ -3,6 +3,8 @@
 #include <iostream>
 #include <string>
 
+// wireshark:
+// portrange 8000-8032 or port 4000
 
 #define CURL_STATICLIB
 
@@ -2459,7 +2461,7 @@ inline int start_rest_server(int argc, const char** argv)
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", cmd_args.get_val("http_listen_port") },
 											  { "private_base", "/private/infra/manager" },
-											  { "log_file", "cerr" },
+											  { "log_file", "cld.log" },
 											  { "log_level", "api" },
 											  { "https_enabled", "false" },
 											  { "http_use_portsharding", "false" } } };
