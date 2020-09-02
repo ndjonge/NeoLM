@@ -474,8 +474,12 @@ private:
 		}
 
 		void stop() { 
-			this->socket_.shutdown(asio::socket_base::shutdown_send);
-			this->socket_.close(); 
+			if (socket_.is_open())
+			{
+				asio::error_code error;
+				this->socket_.shutdown(asio::socket_base::shutdown_send, error);
+				this->socket_.close();
+			}	
 		}
 
 	private:
@@ -613,7 +617,7 @@ public:
 		logger_.info("http listener on port: {d} started\n", http_listen_port_probe);
 		http_listen_port_.store(http_listen_port_probe);
 
-		acceptor_.async_accept(http_handler->socket(), [this, http_handler](auto error) {
+		acceptor_.async_accept(http_handler->socket(), [this, http_handler](const asio::error_code error) {
 			this->handle_new_connection(http_handler, error);
 		});
 
@@ -621,7 +625,7 @@ public:
 
 
 		/*ssl_acceptor_.async_accept(
-			https_handler->socket().lowest_layer(), [this, https_handler](auto error) {
+			https_handler->socket().lowest_layer(), [this, https_handler](const asio::error_code error) {
 		   this->handle_new_https_connection(https_handler, error); });
 		*/
 
@@ -656,7 +660,7 @@ private:
 		auto new_handler = std::make_shared<server::connection_handler_http>(
 			io_context_pool_.get_io_context(), *this, configuration_);
 
-		acceptor_.async_accept(new_handler->socket(), [this, new_handler](auto error) {
+		acceptor_.async_accept(new_handler->socket(), [this, new_handler](const asio::error_code error) {
 			this->handle_new_connection(new_handler, error);
 		});
 	}
@@ -674,7 +678,7 @@ private:
 		auto new_handler = std::make_shared<server::connection_handler_https>(
 			io_context_pool_.get_io_context(), *this, configuration_, ssl_context);
 
-		ssl_acceptor_.async_accept(new_handler->socket().lowest_layer(), [this, new_handler](auto error) {
+		ssl_acceptor_.async_accept(new_handler->socket().lowest_layer(), [this, new_handler](const asio::error_code error) {
 			this->handle_new_https_connection(new_handler, error);
 		});
 	}
@@ -705,7 +709,7 @@ private:
 		{
 			for (std::uint8_t i = 0; i < thread_count_; ++i)
 			{
-				io_contexts_.emplace_back(std::make_unique<asio::io_context>());
+				io_contexts_.emplace_back(new asio::io_context{});
 				work_guards_for_io_contexts_.emplace_back(asio::make_work_guard(*io_contexts_[i]));
 			}
 		}
