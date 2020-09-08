@@ -38,42 +38,63 @@
 
 using json = nlohmann::json;
 
-#ifdef LOCAL_TESTING
-
-namespace
-{
-using SCK_t = network::socket_t;
-
-#ifndef _WIN32
-char* const* split_string(std::string) { return nullptr; }
-int ImpersonateUser(std::string, void*, int, void*) { return 0; }
-#endif
-
-int CheckUserInfo(
-	const char*,
-	const char*,
-	const char*,
-	SCK_t,
-	char*,
-#ifdef _WIN32
-	size_t,
-	HANDLE* aUserToken
-#else
-	size_t errorStringBufSize
-#endif
-)
-{
-#ifdef _WIN32
-	aUserToken = nullptr;
-#endif
-	return 0;
-}
-} // namespace
-#endif
 
 namespace bse_utils
 {
+#ifdef LOCAL_TESTING
 
+static bool create_bse_process_as_user(
+	const std::string& ,
+	const std::string& ,
+	const std::string& ,
+	const std::string& ,
+	const std::string& ,
+	const std::string& ,
+	std::uint32_t& pid,
+	std::string& ec)
+{
+	bool result = true;
+
+	static std::uint32_t pids = 8000;
+
+	pid = pids++;
+
+	ec = "";
+
+	std::thread([pid]() {
+		json put_new_instance_json = json::object();
+		std::string ec;
+		put_new_instance_json["process_id"] = pid;
+		put_new_instance_json["base_url"] = "http://wsl2:" + std::to_string(pid);
+		put_new_instance_json["version"] = "test_bshell";
+
+		auto response = http::client::request<http::method::put>(
+			"http://nlbanndjonge02:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/workers/"
+				+ std::to_string(pid),
+			ec,
+			{},
+			put_new_instance_json.dump());//,std::cerr, true);
+
+		if (ec.empty())
+		{
+			if (response.status() != http::status::ok && response.status() != http::status::created
+				&& response.status() != http::status::no_content)
+			{
+				throw std::runtime_error{ "error sending \"worker\" registration" };
+			}
+			//else
+			//	std::cout << "http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/"
+			//				 "workers/ send\n";
+		}
+		else
+			throw std::runtime_error{ "error sending \"worker\" registration" };
+
+	}).detach();
+
+	return result;
+}
+
+#else
 static bool create_bse_process_as_user(
 	const std::string& bse,
 	const std::string& bse_bin,
@@ -241,6 +262,7 @@ static bool create_bse_process_as_user(
 #endif
 	return result;
 }
+#endif
 
 } // namespace bse_utils
 
@@ -337,7 +359,7 @@ public:
 			worker_json["base_url"] = base_url_;
 			worker_json["version"] = version_;
 
-			if (worker_metrics_.is_null() == false)
+			if (worker_metrics_.is_null() == false && worker_metrics_.size())
 				for (auto metric = std::begin(worker_metrics_["metrics"]);
 					 metric != std::end(worker_metrics_["metrics"]);
 					 metric++)
@@ -378,64 +400,8 @@ public:
 
 	void cleanup(){};
 
-	std::atomic<std::int16_t> next_available_session{ 0 };
-	std::mutex upstream_sessions_initialise_mutex;
-	std::vector<std::unique_ptr<http::basic::async::client::session>> upstream_sessions_;
-
-	void proxy_pass(asio::io_context& io_context, http::session_handler& downstream_session_handler) 
-	{ 
-		{
-			const size_t workers = 16;
-
-			std::lock_guard<std::mutex> g{ upstream_sessions_initialise_mutex };
-			if (upstream_sessions_.size() == 0)
-			{
-				upstream_sessions_.reserve(workers);
-				for (size_t i = 0; i < workers; i++)
-				{
-					upstream_sessions_.emplace_back(
-						new http::basic::async::client::session{ io_context, "127.0.0.1", std::to_string(8000 + i) });
-				}
-			}
-		}
-
-		bool found = false;
-		for (auto& upstream_session : upstream_sessions_)
-		{
-			auto expected_state = http::basic::async::client::session::state::idle;
-			
-			if (upstream_session->get_state().compare_exchange_strong(expected_state, http::basic::async::client::session::state::waiting) == true)
-			{
-				std::string ec;
-
-//				l.accesslog("session {u} waiting\n", upstream_session.id());
-
-				http::basic::async::client::forward_request(
-					*upstream_session, downstream_session_handler, ec);
-
-//				l.accesslog("session {u} idle\n", upstream_session.id());
-
-				if (ec.empty())
-				{
-					if (downstream_session_handler.response().status() != http::status::ok)
-					{
-						ec = "test";
-					}
-
-					found = true;
-				}
-
-				break;
-			}
-		}
-
-		if (found == false)
-		{
-			std::cout << "not found a idle session\n";
-		}
-
-	}
-
+	http::basic::async::client::upstream_sessions_pool upstream_sessions_pool_;
+	
 	iterator find_worker(const std::string& worker_id)
 	{
 		std::lock_guard<std::mutex> g{ workers_mutex_ };
@@ -448,7 +414,7 @@ public:
 		limits_.workers_pending_upd(1);
 	}
 
-	void add_worker(const json& j)
+	void add_worker(const json& j, asio::io_context& io_context)
 	{
 		std::lock_guard<std::mutex> g{ workers_mutex_ };
 		std::int32_t process_id;
@@ -465,6 +431,7 @@ public:
 		if (base_url.empty() == false)
 		{
 			limits_.workers_actual_upd(1);
+			upstream_sessions_pool_.make_session(io_context, base_url);
 		}
 	}
 
@@ -479,6 +446,7 @@ public:
 		{
 			if (worker->second.get_base_url().empty() == false) limits_.workers_actual_upd(-1);
 
+			
 			worker = workers_.erase(worker);
 			result = true;
 		}
@@ -867,7 +835,9 @@ public:
 			for (std::int16_t n = 0; n < workers_required_to_add; n++)
 			{
 				std::uint32_t process_id = 0;
+				lock.unlock();
 				bool success = create_worker_process(workspace_id_, type_, name_, process_id, ec);
+				lock.lock();
 				if (!success) // todo
 				{
 					logger.api(
@@ -889,8 +859,10 @@ public:
 						1 + n,
 						workers_required_to_add,
 						static_cast<int>(process_id));
+
+					add_initial_worker(process_id);
 				}
-				add_initial_worker(process_id);
+
 			}
 
 			if (limits_.workers_required_to_add() < 0)
@@ -982,7 +954,7 @@ public:
 						}
 						else
 						{
-							logger.debug(
+							logger.api(
 								"directing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy and removed from workgroup\n",
 								workspace_id_,
 								type_,
@@ -1973,7 +1945,7 @@ public:
 
 						if (workgroups != workspace->second->end())
 						{
-							workgroups->second->add_worker(worker_json);
+							workgroups->second->add_worker(worker_json, server_base::get_io_context());
 						}
 
 						session.response().status(http::status::ok);
@@ -2266,8 +2238,14 @@ public:
 				auto workgroup = workspace->second->find_workgroups(workgroup_name, workgroup_type);
 				if (workgroup != workspace->second->end())
 				{
-					// reverse proxy the call to the least connected worker....
-					workgroup->second->proxy_pass(server_base::get_io_context(), session);
+					auto& io_context = server_base::get_io_context();
+					auto& upstream_session_pool = workgroup->second->upstream_sessions_pool_;
+
+					session.routing().proxy_pass_to(
+						[&io_context, &upstream_session_pool](http::session_handler& session_handler) 
+					{ 
+							upstream_session_pool.proxy_pass(session_handler);
+					});
 				}
 			}
 		});
@@ -2422,13 +2400,6 @@ static std::unique_ptr<manager<http::basic::async::server>> cpm_server_;
 } // namespace platform
 } // namespace cloud
 
-class curl_global
-{
-public:
-	curl_global() { curl_global_init(CURL_GLOBAL_ALL); }
-
-	~curl_global() { curl_global_cleanup(); }
-};
 
 #if 0
 static void Daemonize()
@@ -2461,8 +2432,8 @@ inline int start_rest_server(int argc, const char** argv)
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", cmd_args.get_val("http_listen_port") },
 											  { "private_base", "/private/infra/manager" },
-											  { "log_file", "cld.log" },
-											  { "log_level", "api" },
+											  { "log_file", "cerr" },
+											  { "log_level", "none" },
 											  { "https_enabled", "false" },
 											  { "http_use_portsharding", "false" } } };
 

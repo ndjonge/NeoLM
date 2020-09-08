@@ -36,13 +36,21 @@ public:
 		idle
 	};
 
-	session(asio::io_context& io_context, const std::string& host, const std::string& port)
-		: host_(host)
-		, port_(port)
-		, resolver_(io_context)
+	session(asio::io_context& io_context, const std::string& base_url)
+		: resolver_(io_context)
 		, socket_(io_context)
 		, id_(session::instances__++)
 	{
+		//[::1]:8000
+		//127.0.0.1:1000
+		//localhost:8000
+
+		auto start_of_port = base_url.find_last_of(':') + 1;
+
+		port_ = base_url.substr(start_of_port);
+		host_ = base_url.substr(base_url.find_last_of('/') + 1);
+		host_ = host_.substr(0, host_.find_last_of(':'));
+
 		recieve_buffer.reserve(1500);
 		reopen();
 	};
@@ -95,93 +103,151 @@ private:
 
 std::size_t session::instances__{ 0 };
 
-void forward_request(
-	http::basic::async::client::session& upstream_client_session,
-	http::session_handler& downstream_session_handler,
-	std::string& ec)
+
+class upstream_sessions_pool
 {
-	std::string request = http::to_string(downstream_session_handler.request());
+public:
+	std::mutex upstream_sessions_initialise_mutex_;
+	std::atomic<std::int16_t> next_available_session{ 0 };
 
-	asio::error_code error;
+	std::vector<std::unique_ptr<http::basic::async::client::session>> upstream_sessions_;
 
-	char peek_buffer[1];
-	upstream_client_session.socket().non_blocking(true);
-	upstream_client_session.socket().receive(
-		asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
-	upstream_client_session.socket().non_blocking(false);
 
-	if (error != asio::error::would_block)
+	void forward_request(
+		http::basic::async::client::session& upstream_client_session,
+		http::session_handler& downstream_session_handler,
+		std::string& ec)
 	{
-		upstream_client_session.reopen();
-	}
+		std::string request = http::to_string(downstream_session_handler.request());
 
-	auto bytes_written = asio::write(upstream_client_session.socket(), asio::buffer(request.data(), request.size()), error);
+		asio::error_code error;
 
-	if (error || bytes_written != request.size())
-	{
-		downstream_session_handler.response().status(http::status::bad_gateway);
-		ec = error.message();
+		char peek_buffer[1];
+		upstream_client_session.socket().non_blocking(true);
+		upstream_client_session.socket().receive(asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
+		upstream_client_session.socket().non_blocking(false);
+
+		if (error != asio::error::would_block)
+		{
+			upstream_client_session.reopen();
+		}
+
+		auto bytes_written
+			= asio::write(upstream_client_session.socket(), asio::buffer(request.data(), request.size()), error);
+
+		if (error || bytes_written != request.size())
+		{
+			downstream_session_handler.response().status(http::status::bad_gateway);
+			ec = error.message();
+			upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
+
+			return;
+		}
+
+		error.clear();
+		upstream_client_session.recieve_buffer.clear();
+		auto bytes_red = asio::read_until(
+			upstream_client_session.socket(),
+			asio::dynamic_buffer(
+				upstream_client_session.recieve_buffer, upstream_client_session.recieve_buffer.capacity()),
+			"\r\n\r\n",
+			error);
+
+		if (error)
+		{
+			downstream_session_handler.response().status(http::status::bad_gateway);
+			downstream_session_handler.response().body() = error.message();
+			ec = error.message();
+			upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
+			return;
+		}
+
+		http::response_parser response_parser;
+		http::response_parser::result_type result;
+		const char* c = nullptr;
+
+		std::tie(result, c) = response_parser.parse(
+			downstream_session_handler.response(),
+			upstream_client_session.recieve_buffer.data(),
+			upstream_client_session.recieve_buffer.data() + bytes_red);
+
+		if (result == http::response_parser::result_type::good)
+		{
+			auto content_length = downstream_session_handler.response().content_length();
+			if (content_length)
+			{
+				downstream_session_handler.request().set("X-Request-ID", std::to_string(upstream_client_session.id()));
+
+				downstream_session_handler.response().body().reserve(content_length);
+				downstream_session_handler.response().body().assign(c, content_length);
+				// read more?
+			}
+			else if (downstream_session_handler.response().chunked())
+			{
+				std::uint64_t offset = 0;
+				auto chunk_size = std::stoul(c, &offset, 16);
+				auto chuck_data = c + offset + 2;
+				downstream_session_handler.response().body().assign(chuck_data, chunk_size);
+				// TODO: chunked
+			}
+
+			if (downstream_session_handler.response().connection_close() == true)
+			{
+				// std::cout << std::to_string(upstream_client_session.id()) + " : closed \n";
+				upstream_client_session.reopen();
+			}
+		}
+
 		upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
-
 		return;
 	}
 
-	error.clear();
-	upstream_client_session.recieve_buffer.clear();
-	auto bytes_red = asio::read_until(
-		upstream_client_session.socket(),
-		asio::dynamic_buffer(upstream_client_session.recieve_buffer, upstream_client_session.recieve_buffer.capacity()),
-		"\r\n\r\n",
-		error);
-
-	if (error)
+	void make_session(asio::io_context& io_context, const std::string& base_host) // http://hostname:port 
 	{
-		downstream_session_handler.response().status(http::status::bad_gateway);
-		downstream_session_handler.response().body() = error.message();
-		ec = error.message();
-		upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
-		return;
+		std::lock_guard<std::mutex> g{ upstream_sessions_initialise_mutex_ };
+		upstream_sessions_.emplace_back(new http::basic::async::client::session{ io_context, base_host });	
 	}
 
-	http::response_parser response_parser;
-	http::response_parser::result_type result;
-	const char* c = nullptr;
+	void erase(const std::string& )
+	{	
+	}
 
-	std::tie(result, c) = response_parser.parse(
-		downstream_session_handler.response(),
-		upstream_client_session.recieve_buffer.data(),
-		upstream_client_session.recieve_buffer.data() + bytes_red);
-
-	if (result == http::response_parser::result_type::good)
+	void clear() 
 	{
-		auto content_length = downstream_session_handler.response().content_length();
-		if (content_length)
-		{
-			downstream_session_handler.request().set("X-Request-ID", std::to_string(upstream_client_session.id()));
+	}
 
-			downstream_session_handler.response().body().reserve(content_length);
-			downstream_session_handler.response().body().assign(c, content_length);
-			// read more?
-		}
-		else if (downstream_session_handler.response().chunked())
+	void proxy_pass(http::session_handler& downstream_session_handler)
+	{
+		bool found = false;
+		for (auto& upstream_session : upstream_sessions_)
 		{
-			std::uint64_t offset = 0;
-			auto chunk_size = std::stoul(c, &offset, 16);
-			auto chuck_data = c + offset + 2;
-			downstream_session_handler.response().body().assign(chuck_data, chunk_size);
-			// TODO: chunked
+			auto expected_state = http::basic::async::client::session::state::idle;
+
+			if (upstream_session->get_state().compare_exchange_strong(
+					expected_state, http::basic::async::client::session::state::waiting)
+				== true)
+			{
+				std::string ec;
+
+				forward_request(*upstream_session, downstream_session_handler, ec);
+
+				if (ec.empty())
+				{
+					found = true;
+				}
+
+				break;
+			}
 		}
 
-		if (downstream_session_handler.response().connection_close() == true) 
+		if (found == false)
 		{
-			//std::cout << std::to_string(upstream_client_session.id()) + " : closed \n";
-			upstream_client_session.reopen();	
+			std::cout << "not found a idle session\n";
 		}
 	}
 
-	upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
-	return;
-}
+};
+
 
 
 } // namespace client
@@ -314,7 +380,8 @@ private:
 
 		void do_read_body()
 		{
-			if (this->session_handler_.request().body().size() < this->session_handler_.request().content_length())
+			asio::error_code ec;
+			if (session_handler_.request().body().size() < session_handler_.request().content_length())
 			{
 				auto me = this->shared_from_this(); 
 				asio::async_read(
@@ -350,11 +417,14 @@ private:
 						}
 					});
 			}
+			else if (session_handler_.request().body().size() == session_handler_.request().content_length())
+			{
+				do_read_body_done(ec, session_handler_.request().body().size());
+			}
 			else
 			{
-				asio::error_code ec;
 				ec.assign(1, ec.category());
-				this->do_read_body_done(ec, 0);
+				do_read_body_done(ec, 0);
 			}
 		}
 
@@ -432,7 +502,7 @@ private:
 			}
 			else
 			{
-				// socket().shutdown(asio::ip::tcp::socket::shutdown_both);
+				//socket().shutdown(asio::ip::tcp::socket::shutdown_both);
 			}
 		}
 	};
@@ -469,8 +539,12 @@ private:
 		void start()
 		{
 			set_timeout();
-			socket_.set_option(asio::ip::tcp::no_delay(true));
-			do_read_header();
+			asio::error_code ec;
+			socket_.set_option(asio::ip::tcp::no_delay(true), ec);		
+			if (!ec)
+				do_read_header();
+			else
+				ec = ec;
 		}
 
 		void stop() { 
@@ -539,16 +613,14 @@ public:
 		, http_listen_port_begin_(configuration.get<std::int16_t>("http_listen_port_begin", 3000))
 		, http_listen_port_end_(configuration.get<int16_t>("http_listen_port_end", http_listen_port_begin_))
 		, http_listen_port_(network::tcp::socket::invalid_socket)
-		//			, http_listen_address_(
-		//				  configuration.get<std::string>("http_listen_address", "::0"), http_listen_port_begin_)
+		, http_listen_address_(configuration.get<std::string>("http_listen_address", "::0"))
 		, https_use_portsharding_(configuration.get<bool>("https_use_portsharding", false))
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
 		, https_listen_port_begin_(configuration.get<std::int16_t>(
 			  "https_listen_port_begin", configuration.get<int16_t>("http_listen_port_begin") + 2000))
 		, https_listen_port_end_(configuration.get<int16_t>("https_listen_port_end", http_listen_port_begin_))
 		, https_listen_port_(network::tcp::socket::invalid_socket)
-		//			, https_listen_address_(
-		//				  configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
+		, https_listen_address_(configuration.get<std::string>("https_listen_address", "::0"))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 		, io_context_pool_(thread_count_)
 		, acceptor_(io_context_pool_.get_io_context())
@@ -578,14 +650,7 @@ public:
 	{
 		auto http_handler = std::make_shared<server::connection_handler_http>(io_context_pool_.get_io_context(), *this, configuration_);
 
-		asio::ip::tcp::endpoint http_endpoint(asio::ip::tcp::v6(), http_listen_port_begin_);
-
-		acceptor_.open(http_endpoint.protocol());
-
-		if (http_listen_port_begin_ == http_listen_port_end_)
-		{
-			acceptor_.set_option(asio::ip::tcp::acceptor::reuse_address(true));
-		}
+		asio::ip::tcp::endpoint http_endpoint(asio::ip::make_address(http_listen_address_), http_listen_port_begin_);
 
 		asio::error_code ec;
 
@@ -594,8 +659,13 @@ public:
 		for (; http_listen_port_probe <= http_listen_port_end_; http_listen_port_probe++)
 		{
 			http_endpoint.port(http_listen_port_probe);
-			acceptor_.close();
 			acceptor_.open(http_endpoint.protocol());
+
+			if (http_listen_port_begin_ == http_listen_port_end_)
+			{
+				acceptor_.set_option(asio::ip::tcp::acceptor::reuse_address(true), ec);
+			}
+
 			acceptor_.bind(http_endpoint, ec);
 			if (ec)
 			{
@@ -692,12 +762,14 @@ private:
 	std::int16_t http_listen_port_begin_;
 	std::int16_t http_listen_port_end_;
 	std::atomic<network::socket_t> http_listen_port_;
+	std::string http_listen_address_;
 
 	bool https_use_portsharding_;
 	bool https_enabled_;
 	std::int16_t https_listen_port_begin_;
 	std::int16_t https_listen_port_end_;
 	std::atomic<network::socket_t> https_listen_port_;
+	std::string https_listen_address_;
 
 	size_t gzip_min_length_;
 	

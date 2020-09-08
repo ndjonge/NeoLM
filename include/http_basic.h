@@ -3067,9 +3067,14 @@ public:
 
 		auto route_result = router_.call_route(*this);
 
+		if (route_result.proxy_pass())
+		{
+			route_result.proxy_pass()(*this);
+		}
+
 		response_.set("Server", server_id);
 		response_.set("Date", util::return_current_time_and_date());
-		
+
 		if (response_.get("Content-Type", std::string{}).empty())
 			response_.type("text");
 
@@ -3137,6 +3142,7 @@ public:
 	http::request_message& request() { return request_; };
 	const http::api::params& params() const { return *params_; };
 	const http::api::routing& routing() const { return *routing_; };
+	http::api::routing& routing() { return *routing_; };
 
 	void reset()
 	{
@@ -3258,11 +3264,15 @@ public:
 		T value_;
 	};
 
+
 	using endpoint_lambda = std::function<void(session_handler_type& session)>;
 	using middleware_lambda
 		= std::function<outcome<std::int64_t>(middleware_lambda_context& context, session_handler_type& session)>;
 	using exception_lambda = std::function<void(session_handler_type& session, std::exception& e)>;
 	using result = http::api::router_match::route_context_type;
+	using proxy_pass_lambda = std::function<void(http::session_handler&)>;
+
+	void proxy_pass_to(proxy_pass_lambda&& proxy_pass) { proxy_pass_ = proxy_pass; }
 
 	struct metrics
 	{
@@ -3408,11 +3418,13 @@ public:
 	const route& the_route() const { return *route_; }
 	middlewares& middlewares_vector() { return middlewares_; };
 	const middlewares& middlewares_vector() const { return middlewares_; };
+	proxy_pass_lambda& proxy_pass() { return proxy_pass_; };
 
 private:
 	result result_;
 	route* route_{ nullptr };
 	middlewares middlewares_;
+	proxy_pass_lambda proxy_pass_;
 };
 
 template <
@@ -3872,7 +3884,11 @@ namespace client
 class curl_session
 {
 public:
-	curl_session() : hnd_(curl_easy_init()) {}
+	curl_session() : hnd_(curl_easy_init()) 
+	{ 
+		static curl_global c;
+	}
+
 	~curl_session()
 	{
 		curl_easy_cleanup(hnd_);
@@ -3883,6 +3899,14 @@ public:
 
 private:
 	CURL* hnd_;
+
+	class curl_global
+	{
+	public:
+		curl_global() { curl_global_init(CURL_GLOBAL_ALL); }
+
+		~curl_global() { curl_global_cleanup(); }
+	};
 };
 
 class curl
@@ -3984,8 +4008,8 @@ public:
 		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 3000L);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 3000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 100000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 100000L);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
 
@@ -4024,11 +4048,10 @@ public:
 		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 3000L);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 3000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 10000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 10000L);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_MAXCONNECTS, 32L);
 
 		for (const auto& header : request.headers())
 		{
