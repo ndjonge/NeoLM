@@ -1,7 +1,0 @@
-[
-  {
-    "directory": "C:\\Users\\ndejo\\source\\repos\\mir_http\\out\\build\\x64-Clang-Release\\CodeAnalysis",
-    "command": "\"C:/PROGRAM FILES (X86)/MICROSOFT VISUAL STUDIO/2019/COMMUNITY/VC/Tools/Llvm/x64/bin/clang-cl.exe\" \"/DLOCAL_TESTING=\" \"/D_CRT_SECURE_NO_WARNINGS=\" \"/DWIN32=\" \"/D_WINDOWS=\" \"/DNDEBUG=\" \"-m64\" \"-fdiagnostics-absolute-paths\" \"/W4\" \"/GR\" \"/EHsc\" \"/MD\" \"/O2\" \"/Ob1\" \"/IC:\\Users\\ndejo\\source\\repos\\mir_http\\include\" \"/IC:\\projects\\vcpkg\\installed\\x64-windows\\include\" \"C:\\Users\\ndejo\\source\\repos\\mir_http\\example\\main.cpp\"",
-    "file": "C:\\Users\\ndejo\\source\\repos\\mir_http\\example\\main.cpp"
-  }
-]
