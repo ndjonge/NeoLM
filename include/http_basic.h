@@ -1455,7 +1455,8 @@ public:
 			return (http::util::case_insensitive_equal(f.name, name));
 		});
 
-		if (i != std::end(fields_)) returnvalue = static_cast<T>(std::stoi(i->value)); // TODO klopt dit nog? T is_integral
+		if (i != std::end(fields_))
+			returnvalue = static_cast<T>(std::stoi(i->value)); // TODO klopt dit nog? T is_integral
 
 		return static_cast<T>(returnvalue);
 	}
@@ -2670,7 +2671,7 @@ private:
 				{
 					// RFC 7230: Either reject with 400, or replace obs-fold with one or more spaces.
 					// We opt for reject.
-					//error_reason_ = "obsolete line folding is unacceptable";
+					// error_reason_ = "obsolete line folding is unacceptable";
 					return bad;
 				}
 				else if (!is_char(input) || is_ctl(input) || is_tspecial(input))
@@ -3075,8 +3076,7 @@ public:
 		response_.set("Server", server_id);
 		response_.set("Date", util::return_current_time_and_date());
 
-		if (response_.get("Content-Type", std::string{}).empty())
-			response_.type("text");
+		if (response_.get("Content-Type", std::string{}).empty()) response_.type("text");
 
 		switch (route_result.match_result())
 		{
@@ -3263,7 +3263,6 @@ public:
 		std::string error_;
 		T value_;
 	};
-
 
 	using endpoint_lambda = std::function<void(session_handler_type& session)>;
 	using middleware_lambda
@@ -3515,8 +3514,7 @@ public:
 			{
 				for (const auto& endpoint : *(endpoints_))
 				{
-					if (path.size() == 0) 
-						s << "/";
+					if (path.size() == 0) s << "/";
 
 					for (auto& element : path)
 						s << "/" << element;
@@ -3626,7 +3624,7 @@ public:
 		on_http_method(method::options, route, std::move(api_method));
 	}
 
-	void on_proxy_pass(std::string&& route, R&& api_method) 
+	void on_proxy_pass(std::string&& route, R&& api_method)
 	{
 		on_http_method(method::proxy_pass, route, std::move(api_method));
 	}
@@ -3884,10 +3882,7 @@ namespace client
 class curl_session
 {
 public:
-	curl_session() : hnd_(curl_easy_init()) 
-	{ 
-		static curl_global c;
-	}
+	curl_session() : hnd_(curl_easy_init()) { static curl_global c; }
 
 	~curl_session()
 	{
@@ -3982,7 +3977,6 @@ class curl
 	}
 
 public:
-
 	curl(
 		const curl_session& session,
 		const std::string& verb,
@@ -4031,7 +4025,11 @@ public:
 		const http::request_message& request,
 		bool verbose = false,
 		std::ostream& verbose_output_stream = std::clog)
-		: session_(session), buffer_(), headers_(nullptr), verb_(http::method::to_string(request.method())), url_(host + request.url_requested())
+		: session_(session)
+		, buffer_()
+		, headers_(nullptr)
+		, verb_(http::method::to_string(request.method()))
+		, url_(host + request.url_requested())
 	{
 		strcpy(error_buf_, "");
 
@@ -5011,20 +5009,6 @@ public:
 private:
 	const http::basic::client::curl_session session_;
 };
-
-http::response_message forward_request(
-	http::client::session& upstream_session,
-	const std::string& url,
-	http::session_handler& downstream_session,
-	std::string& ec,
-	bool verbose, 
-	std::ostream& output_stream)
-{
-	http::basic::client::curl curl{
-		upstream_session.as_session(), url, downstream_session.request(), verbose, output_stream
-	};
-	return curl.call(ec); // RVO
-}
 
 template <http::method::method_t method>
 http::response_message request(

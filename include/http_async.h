@@ -11,7 +11,6 @@
 
 #include <asio.hpp>
 #include <asio/ssl.hpp>
-//#include <asio/log/trivial.hpp>
 
 #include "http_basic.h"
 
@@ -23,6 +22,13 @@ namespace basic
 
 namespace async
 {
+
+inline std::size_t get_static_id() noexcept
+{
+	// Generate an ID per thread using a "global" ID counter
+	static std::atomic<std::size_t> id{ 0 };
+	return id++;
+}
 
 namespace client
 {
@@ -37,13 +43,11 @@ public:
 	};
 
 	session(asio::io_context& io_context, const std::string& base_url)
-		: resolver_(io_context)
-		, socket_(io_context)
-		, id_(session::instances__++)
+		: resolver_(io_context), socket_(io_context), id_(get_static_id())
 	{
 		//[::1]:8000
-		//127.0.0.1:1000
-		//localhost:8000
+		// 127.0.0.1:1000
+		// localhost:8000
 
 		auto start_of_port = base_url.find_last_of(':') + 1;
 
@@ -61,7 +65,7 @@ public:
 	session& operator=(const session& s) = delete;
 	session& operator=(session&& s) = delete;
 
-	void reopen() 
+	void reopen()
 	{
 		if (socket_.is_open())
 		{
@@ -85,24 +89,19 @@ public:
 	std::atomic<state>& get_state() { return state_; }
 
 	std::size_t id() { return id_; };
-	static std::size_t instances__;
 
 	std::string recieve_buffer;
 
 private:
-//	asio::io_context& io_context_;
+	//	asio::io_context& io_context_;
 	std::string host_;
 	std::string port_;
 
 	asio::ip::tcp::resolver resolver_;
 	asio::ip::tcp::socket socket_;
 	std::atomic<session::state> state_{ state::idle };
-	std::size_t id_{0};
-
+	std::size_t id_{ 0 };
 };
-
-std::size_t session::instances__{ 0 };
-
 
 class upstream_sessions_pool
 {
@@ -111,7 +110,6 @@ public:
 	std::atomic<std::int16_t> next_available_session{ 0 };
 
 	std::vector<std::unique_ptr<http::basic::async::client::session>> upstream_sessions_;
-
 
 	void forward_request(
 		http::basic::async::client::session& upstream_client_session,
@@ -202,19 +200,15 @@ public:
 		return;
 	}
 
-	void make_session(asio::io_context& io_context, const std::string& base_host) // http://hostname:port 
+	void make_session(asio::io_context& io_context, const std::string& base_host) // http://hostname:port
 	{
 		std::lock_guard<std::mutex> g{ upstream_sessions_initialise_mutex_ };
-		upstream_sessions_.emplace_back(new http::basic::async::client::session{ io_context, base_host });	
+		upstream_sessions_.emplace_back(new http::basic::async::client::session{ io_context, base_host });
 	}
 
-	void erase(const std::string& )
-	{	
-	}
+	void erase(const std::string&) {}
 
-	void clear() 
-	{
-	}
+	void clear() {}
 
 	void proxy_pass(http::session_handler& downstream_session_handler)
 	{
@@ -245,10 +239,7 @@ public:
 			std::cout << "not found a idle session\n";
 		}
 	}
-
 };
-
-
 
 } // namespace client
 
@@ -279,7 +270,7 @@ private:
 			server_.logger_.info("connection_handler: start\n");
 		}
 
-		virtual ~connection_handler_base() { server_.logger_.info("connection_handler: stop\n");  }
+		virtual ~connection_handler_base() { server_.logger_.info("connection_handler: stop\n"); }
 
 		connection_handler_base(connection_handler_base const&) = delete;
 		void operator==(connection_handler_base const&) = delete;
@@ -292,15 +283,12 @@ private:
 		socket_t& socket_base() { return static_cast<connection_handler_derived*>(this)->socket(); };
 		std::string remote_address_base() { return static_cast<connection_handler_derived*>(this)->remote_address(); };
 
-		void stop() 
-		{
-			--server_.manager().connections_current();
-		}
+		void stop() { --server_.manager().connections_current(); }
 
 		void set_timeout()
 		{
 			steady_timer_.expires_from_now(std::chrono::seconds(session_handler_.keepalive_max()));
-			
+
 			auto me = this->shared_from_this();
 			steady_timer_.async_wait([me](asio::error_code const& ec) {
 				if (!ec) me->stop();
@@ -318,10 +306,7 @@ private:
 			// Header
 			auto me = this->shared_from_this();
 			asio::async_read_until(
-				this->socket_base(),
-				in_packet_,
-				"\r\n\r\n",
-				[me](asio::error_code const& ec, std::size_t bytes_xfer) {
+				this->socket_base(), in_packet_, "\r\n\r\n", [me](asio::error_code const& ec, std::size_t bytes_xfer) {
 					me->do_read_header_done(ec, bytes_xfer);
 				});
 		}
@@ -383,7 +368,7 @@ private:
 			asio::error_code ec;
 			if (session_handler_.request().body().size() < session_handler_.request().content_length())
 			{
-				auto me = this->shared_from_this(); 
+				auto me = this->shared_from_this();
 				asio::async_read(
 					this->socket_base(),
 					in_packet_,
@@ -440,7 +425,6 @@ private:
 
 				do_write_header();
 
-
 				if (routing.match_result() == http::api::router_match::match_found)
 				{
 					routing.the_route().metric_response_latency(
@@ -462,7 +446,6 @@ private:
 
 					server_.logger_.accesslog(log_msg);
 				}
-
 			}
 		}
 
@@ -502,7 +485,7 @@ private:
 			}
 			else
 			{
-				//socket().shutdown(asio::ip::tcp::socket::shutdown_both);
+				// socket().shutdown(asio::ip::tcp::socket::shutdown_both);
 			}
 		}
 	};
@@ -540,20 +523,21 @@ private:
 		{
 			set_timeout();
 			asio::error_code ec;
-			socket_.set_option(asio::ip::tcp::no_delay(true), ec);		
+			socket_.set_option(asio::ip::tcp::no_delay(true), ec);
 			if (!ec)
 				do_read_header();
 			else
 				ec = ec;
 		}
 
-		void stop() { 
+		void stop()
+		{
 			if (socket_.is_open())
 			{
 				asio::error_code error;
 				this->socket_.shutdown(asio::socket_base::shutdown_send, error);
 				this->socket_.close();
-			}	
+			}
 		}
 
 	private:
@@ -581,17 +565,16 @@ private:
 		void start()
 		{
 			auto me = shared_from_this();
-			socket_.async_handshake(
-				asio::ssl::stream_base::server, [me](asio::error_code const& ec) {
-					if (ec)
-					{
-					}
-					else
-					{
-						me->set_timeout();
-						me->do_read_header();
-					}
-				});
+			socket_.async_handshake(asio::ssl::stream_base::server, [me](asio::error_code const& ec) {
+				if (ec)
+				{
+				}
+				else
+				{
+					me->set_timeout();
+					me->do_read_header();
+				}
+			});
 		}
 
 	private:
@@ -604,7 +587,8 @@ private:
 public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
-		, thread_count_(configuration.get<std::uint8_t>("thread_count", static_cast<std::uint8_t>(std::thread::hardware_concurrency())))
+		, thread_count_(configuration.get<std::uint8_t>(
+			  "thread_count", static_cast<std::uint8_t>(std::thread::hardware_concurrency())))
 		, http_watchdog_idle_timeout_(configuration.get<std::int16_t>("http_watchdog_idle_timeout", 0))
 		, http_watchdog_max_requests_concurrent_(
 			  configuration.get<std::int16_t>("http_watchdog_max_requests_concurrent", 0))
@@ -648,7 +632,8 @@ public:
 
 	virtual server::state start() override
 	{
-		auto http_handler = std::make_shared<server::connection_handler_http>(io_context_pool_.get_io_context(), *this, configuration_);
+		auto http_handler = std::make_shared<server::connection_handler_http>(
+			io_context_pool_.get_io_context(), *this, configuration_);
 
 		asio::ip::tcp::endpoint http_endpoint(asio::ip::make_address(http_listen_address_), http_listen_port_begin_);
 
@@ -692,7 +677,6 @@ public:
 		});
 
 		io_context_pool_.run();
-
 
 		/*ssl_acceptor_.async_accept(
 			https_handler->socket().lowest_layer(), [this, https_handler](const asio::error_code error) {
@@ -748,9 +732,10 @@ private:
 		auto new_handler = std::make_shared<server::connection_handler_https>(
 			io_context_pool_.get_io_context(), *this, configuration_, ssl_context);
 
-		ssl_acceptor_.async_accept(new_handler->socket().lowest_layer(), [this, new_handler](const asio::error_code error) {
-			this->handle_new_https_connection(new_handler, error);
-		});
+		ssl_acceptor_.async_accept(
+			new_handler->socket().lowest_layer(), [this, new_handler](const asio::error_code error) {
+				this->handle_new_https_connection(new_handler, error);
+			});
 	}
 
 	std::uint8_t thread_count_;
@@ -772,12 +757,11 @@ private:
 	std::string https_listen_address_;
 
 	size_t gzip_min_length_;
-	
+
 	class io_context_pool
 	{
 	public:
-		io_context_pool(std::uint8_t thread_count)
-			: thread_count_(thread_count), selected_io_context_(0)
+		io_context_pool(std::uint8_t thread_count) : thread_count_(thread_count), selected_io_context_(0)
 		{
 			for (std::uint8_t i = 0; i < thread_count_; ++i)
 			{
@@ -786,9 +770,9 @@ private:
 			}
 		}
 
-		asio::io_context& get_io_context() {return *io_contexts_[selected_io_context_++ % thread_count_].get(); }
+		asio::io_context& get_io_context() { return *io_contexts_[selected_io_context_++ % thread_count_].get(); }
 
-		void run() 
+		void run()
 		{
 			for (std::uint8_t i = 0; i < thread_count_; ++i)
 			{
@@ -796,7 +780,7 @@ private:
 			}
 		}
 
-		void stop() 
+		void stop()
 		{
 			for (std::uint8_t i = 0; i < thread_count_; ++i)
 			{
@@ -807,7 +791,7 @@ private:
 
 	private:
 		size_t thread_count_;
-		std::vector < std::unique_ptr<asio::io_context> > io_contexts_;
+		std::vector<std::unique_ptr<asio::io_context>> io_contexts_;
 		std::vector<asio::executor_work_guard<asio::io_context::executor_type>> work_guards_for_io_contexts_;
 
 		std::vector<std::thread> thread_pool_;
