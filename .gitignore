@@ -34,14 +34,12 @@ mir_http
 
 *.pdb
 
+/out/*
+/.git
 /.vs
 /.vscode
 /.cmake
 *.ninja*
-out/
-build/
-/build/*
-/out/*
 /CMakefiles
 /CMakeFiles
 CMakeCache.txt
