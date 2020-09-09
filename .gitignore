@@ -35,6 +35,7 @@ mir_http
 *.pdb
 
 /out/*
+/.git
 /.vs
 /.vscode
 /.cmake
