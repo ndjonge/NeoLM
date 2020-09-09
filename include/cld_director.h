@@ -9,9 +9,9 @@
 #define CURL_STATICLIB
 
 #ifndef LOCAL_TESTING
-#include "nlohmann_json.hpp"
 #include "baanlogin.h"
 #include "bdaemon.h"
+#include "nlohmann_json.hpp"
 #include <curl/curl.h>
 
 #ifdef _WIN32
@@ -31,25 +31,24 @@
 #include "nlohmann/json.hpp"
 #endif
 
+#include "http_async.h"
 #include "http_basic.h"
-#include "http_asio.h"
 #include "http_network.h"
 #include "prog_args.h"
 
 using json = nlohmann::json;
-
 
 namespace bse_utils
 {
 #ifdef LOCAL_TESTING
 
 static bool create_bse_process_as_user(
-	const std::string& ,
-	const std::string& ,
-	const std::string& ,
-	const std::string& ,
-	const std::string& ,
-	const std::string& ,
+	const std::string&,
+	const std::string&,
+	const std::string&,
+	const std::string&,
+	const std::string&,
+	const std::string&,
 	std::uint32_t& pid,
 	std::string& ec)
 {
@@ -73,7 +72,7 @@ static bool create_bse_process_as_user(
 				+ std::to_string(pid),
 			ec,
 			{},
-			put_new_instance_json.dump());//,std::cerr, true);
+			put_new_instance_json.dump()); //,std::cerr, true);
 
 		if (ec.empty())
 		{
@@ -82,13 +81,12 @@ static bool create_bse_process_as_user(
 			{
 				throw std::runtime_error{ "error sending \"worker\" registration" };
 			}
-			//else
+			// else
 			//	std::cout << "http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/"
 			//				 "workers/ send\n";
 		}
 		else
 			throw std::runtime_error{ "error sending \"worker\" registration" };
-
 	}).detach();
 
 	return result;
@@ -311,7 +309,7 @@ private:
 	status status_{ status::initial };
 	json worker_metrics_{};
 
-	//std::vector<http::client::session> sessions_to_worker_;
+	// std::vector<http::client::session> sessions_to_worker_;
 
 public:
 	worker() = default;
@@ -401,7 +399,7 @@ public:
 	void cleanup(){};
 
 	http::basic::async::client::upstream_sessions_pool upstream_sessions_pool_;
-	
+
 	iterator find_worker(const std::string& worker_id)
 	{
 		std::lock_guard<std::mutex> g{ workers_mutex_ };
@@ -446,7 +444,6 @@ public:
 		{
 			if (worker->second.get_base_url().empty() == false) limits_.workers_actual_upd(-1);
 
-			
 			worker = workers_.erase(worker);
 			result = true;
 		}
@@ -600,7 +597,6 @@ public:
 				in++;
 		}
 	}
-
 
 	class limits
 	{
@@ -862,7 +858,6 @@ public:
 
 					add_initial_worker(process_id);
 				}
-
 			}
 
 			if (limits_.workers_required_to_add() < 0)
@@ -1429,6 +1424,7 @@ template <typename S> class manager : public S
 {
 protected:
 	using server_base = S;
+
 private:
 	workspaces workspaces_;
 	applications applications_;
@@ -1455,8 +1451,7 @@ public:
 		}
 		catch (json::exception& e)
 		{
-			server_base::logger_.api(
-				"error when reading configuration ({s}) : {s}\n", configuration_file_, e.what());
+			server_base::logger_.api("error when reading configuration ({s}) : {s}\n", configuration_file_, e.what());
 			std::cout << "error when reading configuration (" << configuration_file_ << ") : " << e.what() << std::endl;
 			exit(-1);
 		}
@@ -1476,8 +1471,7 @@ public:
 			session.response().body() = std::string("Ok") + session.request().body();
 		});
 
-		server_base::router_.on_put(
-			"/private/infra/manager/shutdown/{secs}", [this](http::session_handler& session) {
+		server_base::router_.on_put("/private/infra/manager/shutdown/{secs}", [this](http::session_handler& session) {
 			auto& ID = session.params().get("secs");
 
 			int shutdown = std::stoi(ID);
@@ -1543,7 +1537,7 @@ public:
 
 		server_base::router_.on_get("/private/infra/manager/status/{section}", [this](http::session_handler& session) {
 			server_base::manager().server_information(http::basic::server::configuration_.to_json_string());
-				server_base::manager().router_information(server_base::router_.to_json_string());
+			server_base::manager().router_information(server_base::router_.to_json_string());
 
 			auto section_option = http::basic::server::server_manager::json_status_options::full;
 
@@ -1603,63 +1597,66 @@ public:
 			}
 		});
 
-		server_base::router_.on_post("/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
-			auto& workspace_id = session.params().get("workspace_id");
-			auto workspace = workspaces_.get_workspace(workspace_id);
+		server_base::router_.on_post(
+			"/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
+				auto& workspace_id = session.params().get("workspace_id");
+				auto workspace = workspaces_.get_workspace(workspace_id);
 
-			if (workspace != workspaces_.end())
-			{
-				send_response(session, http::status::conflict);
-				return;
-			}
-
-			json workspace_json = json::parse(session.request().body());
-
-			for (auto& workspaces : workspace_json["workspaces"].items())
-			{
-				workspaces.value()["id"] = workspace_id;
-				workspaces_.add_workspace(workspace_id, workspaces.value());
-			}
-
-			send_response(session, http::status::ok);
-		});
-
-		server_base::router_.on_delete("/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
-			auto& id = session.params().get("workspace_id");
-			if (workspaces_.delete_workspace(id))
-			{
-				session.response().status(http::status::ok);
-			}
-			else
-			{
-				send_illegal_workspace_response(session, id);
-			}
-		});
-
-		server_base::router_.on_get("/private/infra/workspaces/{workspace_id}/workgroups", [this](http::session_handler& session) {
-			auto& workspace_id = session.params().get("workspace_id");
-			auto w = workspaces_.get_workspace(workspace_id);
-
-			if (w != workspaces_.end())
-			{
-				json result_json;
-				result_json["workgroups"] = json::array();
-
-				for (auto i = w->second->cbegin(); i != w->second->cend(); ++i)
+				if (workspace != workspaces_.end())
 				{
-					json workgroups_json;
-					i->second->to_json(workgroups_json);
-
-					result_json["workgroups"].emplace_back(workgroups_json);
+					send_response(session, http::status::conflict);
+					return;
 				}
 
-				send_json_response(session, http::status::ok, result_json);
-			}
-			else
-			{
-				send_illegal_workspace_response(session, workspace_id);
-			}
-		});
+				json workspace_json = json::parse(session.request().body());
+
+				for (auto& workspaces : workspace_json["workspaces"].items())
+				{
+					workspaces.value()["id"] = workspace_id;
+					workspaces_.add_workspace(workspace_id, workspaces.value());
+				}
+
+				send_response(session, http::status::ok);
+			});
+
+		server_base::router_.on_delete(
+			"/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
+				auto& id = session.params().get("workspace_id");
+				if (workspaces_.delete_workspace(id))
+				{
+					session.response().status(http::status::ok);
+				}
+				else
+				{
+					send_illegal_workspace_response(session, id);
+				}
+			});
+
+		server_base::router_.on_get(
+			"/private/infra/workspaces/{workspace_id}/workgroups", [this](http::session_handler& session) {
+				auto& workspace_id = session.params().get("workspace_id");
+				auto w = workspaces_.get_workspace(workspace_id);
+
+				if (w != workspaces_.end())
+				{
+					json result_json;
+					result_json["workgroups"] = json::array();
+
+					for (auto i = w->second->cbegin(); i != w->second->cend(); ++i)
+					{
+						json workgroups_json;
+						i->second->to_json(workgroups_json);
+
+						result_json["workgroups"].emplace_back(workgroups_json);
+					}
+
+					send_json_response(session, http::status::ok, result_json);
+				}
+				else
+				{
+					send_illegal_workspace_response(session, workspace_id);
+				}
+			});
 
 		server_base::router_.on_get(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
@@ -2166,10 +2163,7 @@ public:
 						json limits = json::parse(session.request().body());
 						// TODO split function below:
 						workgroups->second->direct_workers(
-							server_base::logger_,
-							limit_name,
-							limits,
-							workgroups::limits::from_json_operation::set);
+							server_base::logger_, limit_name, limits, workgroups::limits::from_json_operation::set);
 						workgroups->second->workgroups_limits().to_json(limits["limits"]);
 
 						result["limits"] = limits;
@@ -2206,10 +2200,7 @@ public:
 						json limits = json::parse(session.request().body());
 
 						workgroups->second->direct_workers(
-							server_base::logger_,
-							limit_name,
-							limits,
-							workgroups::limits::from_json_operation::add);
+							server_base::logger_, limit_name, limits, workgroups::limits::from_json_operation::add);
 
 						workgroups->second->workgroups_limits().to_json(limits["limits"]);
 
@@ -2242,14 +2233,13 @@ public:
 					auto& upstream_session_pool = workgroup->second->upstream_sessions_pool_;
 
 					session.routing().proxy_pass_to(
-						[&io_context, &upstream_session_pool](http::session_handler& session_handler) 
-					{ 
+						[&io_context, &upstream_session_pool](http::session_handler& session_handler) {
 							upstream_session_pool.proxy_pass(session_handler);
-					});
+						});
 				}
 			}
 		});
-	
+
 		server_base::router_.on_internal_error([this](http::session_handler& session, std::exception& e) {
 			server_base::logger().accesslog(
 				"api-error with requested url: \"{s}\", error: \"{s}\", and request body:\n \"{s}\"",
@@ -2262,7 +2252,7 @@ public:
 
 	virtual ~manager() {}
 
-	//const http::configuration& configuration() { return configuration_; }
+	// const http::configuration& configuration() { return configuration_; }
 
 	http::basic::server::state start() override
 	{
@@ -2400,7 +2390,6 @@ static std::unique_ptr<manager<http::basic::async::server>> cpm_server_;
 } // namespace platform
 } // namespace cloud
 
-
 #if 0
 static void Daemonize()
 {
@@ -2433,7 +2422,7 @@ inline int start_rest_server(int argc, const char** argv)
 											  { "http_listen_port_begin", cmd_args.get_val("http_listen_port") },
 											  { "private_base", "/private/infra/manager" },
 											  { "log_file", "cerr" },
-											  { "log_level", "none" },
+											  { "log_level", "api" },
 											  { "https_enabled", "false" },
 											  { "http_use_portsharding", "false" } } };
 
