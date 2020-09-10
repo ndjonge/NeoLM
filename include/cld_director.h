@@ -64,11 +64,11 @@ static bool create_bse_process_as_user(
 		json put_new_instance_json = json::object();
 		std::string ec;
 		put_new_instance_json["process_id"] = pid;
-		put_new_instance_json["base_url"] = "http://wsl2:" + std::to_string(pid);
+		put_new_instance_json["base_url"] = "http://localhost:" + std::to_string(pid);
 		put_new_instance_json["version"] = "test_bshell";
 
 		auto response = http::client::request<http::method::put>(
-			"http://nlbanndjonge02:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/workers/"
+			"http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/workers/"
 				+ std::to_string(pid),
 			ec,
 			{},

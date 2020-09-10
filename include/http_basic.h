@@ -3047,6 +3047,7 @@ public:
 
 				std::string name_decoded
 					= http::request_parser::url_decode(name_value[0], http::request_parser::url_decode_options::query);
+		
 				std::string value_decoded = (name_value.size() == 2) ? http::request_parser::url_decode(
 												name_value[1], http::request_parser::url_decode_options::query)
 																	 : "";
@@ -3099,7 +3100,6 @@ public:
 		}
 
 		this->params_ = nullptr;
-		this->routing_ = nullptr;
 
 		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false
 			 && response_.connection_close() == false)
@@ -3151,6 +3151,7 @@ public:
 		request_parser_.reset();
 		request_.reset();
 		response_.reset();
+		routing_ = nullptr;
 	}
 
 	std::chrono::steady_clock::time_point t0() const noexcept { return t0_; };

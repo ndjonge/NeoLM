@@ -73,7 +73,7 @@ public:
 			socket_.close();
 		}
 
-		asio::ip::tcp::resolver::query query(host_, port_);
+		asio::ip::tcp::resolver::query query(asio::ip::tcp::v4(), host_, port_);
 		auto resolved_endpoints = resolver_.resolve(query);
 		asio::error_code error;
 
@@ -199,6 +199,7 @@ public:
 		upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
 		return;
 	}
+
 
 	void make_session(asio::io_context& io_context, const std::string& base_host) // http://hostname:port
 	{
@@ -417,35 +418,9 @@ private:
 		{
 			if (!ec)
 			{
-				auto routing = session_handler_.handle_request(server_.router_);
-				++server_.manager().requests_handled();
-				std::chrono::steady_clock::time_point t0{};
-
-				t0 = std::chrono::steady_clock::now();
+				http::api::routing routing = session_handler_.handle_request(server_.router_);
 
 				do_write_header();
-
-				if (routing.match_result() == http::api::router_match::match_found)
-				{
-					routing.the_route().metric_response_latency(
-						std::chrono::duration<std::uint64_t, std::nano>(std::chrono::steady_clock::now() - t0).count());
-
-					if (server_.logger_.current_level() >= lgr::level::accesslog)
-					{
-						auto log_msg
-							= server_.manager().log_access(session_handler_, routing.the_route().route_metrics())
-							  + "\n";
-
-						server_.logger_.accesslog(log_msg);
-					}
-				}
-				else
-				{
-					std::string log_msg
-						= server_.manager().log_access(session_handler_, http::api::routing::metrics{}) + "\n";
-
-					server_.logger_.accesslog(log_msg);
-				}
 			}
 		}
 
@@ -453,13 +428,19 @@ private:
 		{
 			if (!session_handler_.response().body().empty())
 			{
-				asio::error_code ec;
-				asio::write(socket_base(), asio::buffer(session_handler_.response().body()), ec);
+				auto me = this->shared_from_this();
+				asio::async_write(
+					socket_base(),
+					asio::buffer(session_handler_.response().body()),
+					[me](asio::error_code const&, std::size_t) 
+					{ 
+						me->do_write_body_done();
+					});
 			}
-			do_write_content_done();
+
 		}
 
-		void do_write_content_done() { do_write_header_done(); }
+		void do_write_body_done() { do_write_header_done(); }
 
 		void do_write_header()
 		{
@@ -478,6 +459,33 @@ private:
 
 		void do_write_header_done()
 		{
+			++server_.manager().requests_handled();
+			std::chrono::steady_clock::time_point t0{};
+
+			t0 = std::chrono::steady_clock::now();
+
+			if (session_handler_.routing().match_result() == http::api::router_match::match_found)
+			{
+				session_handler_.routing().the_route().metric_response_latency(
+					std::chrono::duration<std::uint64_t, std::nano>(std::chrono::steady_clock::now() - t0).count());
+
+				if (server_.logger_.current_level() >= lgr::level::accesslog)
+				{
+					auto log_msg = server_.manager().log_access(
+									   session_handler_, session_handler_.routing().the_route().route_metrics())
+								   + "\n";
+
+					server_.logger_.accesslog(log_msg);
+				}
+			}
+			else
+			{
+				std::string log_msg
+					= server_.manager().log_access(session_handler_, http::api::routing::metrics{}) + "\n";
+
+				server_.logger_.accesslog(log_msg);
+			}
+
 			if (session_handler_.response().connection_keep_alive())
 			{
 				session_handler_.reset();
