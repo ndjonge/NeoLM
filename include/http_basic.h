@@ -1271,9 +1271,7 @@ public:
 
 	inline const T get(const char* name, const T& default_value) const
 	{
-		T returnvalue = default_value;
-
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
 			return http::util::case_insensitive_equal(f.name, name);
 		});
 
@@ -1777,6 +1775,13 @@ public:
 		if (session_handler_ == nullptr) throw std::runtime_error{ "session is not set for this message" };
 
 		return *session_handler_;
+	}
+
+
+	template <typename T>
+	typename std::enable_if<std::is_pointer<T>::value, T>::type get_attribute(const std::string& attribute_name, const T default_value) const
+	{
+		return reinterpret_cast<T>(attributes_.get(attribute_name.c_str(), reinterpret_cast<std::uintptr_t>(default_value)));
 	}
 
 	template <typename T>
@@ -2995,6 +3000,7 @@ public:
 	{
 	}
 
+
 	template <typename InputIterator>
 	std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end)
 	{
@@ -3003,10 +3009,63 @@ public:
 
 	const std::string& parse_error_reason() const { return request_parser_.error_reason(); }
 
-	template <typename router_t> typename router_t::request_result_type handle_request(router_t& router_)
+	template <typename router_t> void set_response_headers(typename router_t::request_result_type& route_result) 
 	{
 		std::string server_id{ configuration_.get<std::string>("server", "http/server/0") };
+		response_.set("Date", util::return_current_time_and_date());
 
+		if (response_.get("Content-Type", std::string{}).empty()) response_.type("text");
+
+		switch (route_result.match_result())
+		{
+			case http::api::router_match::match_found:
+			{
+				// Route has a valid handler, response body is set.
+				// Check bodys size and set headers.
+				break;
+			}
+			case http::api::router_match::no_method:
+			{
+				response_.status(http::status::method_not_allowed);
+				break;
+			}
+			case http::api::router_match::no_route:
+			{
+				response_.status(http::status::not_found);
+				break;
+			}
+		}
+
+		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false
+			 && response_.connection_close() == false)
+			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1
+				&& request_.connection_close() == false))
+		{
+			keepalive_count_decr();
+			response_.set("Connection", "Keep-Alive");
+			// response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max="
+			// +std::to_string(keepalive_count()));
+		}
+		else
+		{
+			response_.set("Connection", "close");
+		}
+
+		if (response_.status() == http::status::no_content)
+		{
+			response_.body() = "";
+			response_.reset_if_exists("Content-Type");
+			response_.reset_if_exists("Content-Length");
+		}
+		else
+		{
+			response_.reset_if_exists("Transfer-Encoding");
+			response_.content_length(response_.body().length());
+		}
+	}
+
+	template <typename router_t> typename router_t::request_result_type handle_request(router_t& router_)
+	{
 		response_.status(http::status::bad_request);
 
 		std::string request_path;
@@ -3064,71 +3123,7 @@ public:
 		request_.url_requested_ = request_.target_;
 		request_.target_ = request_path;
 
-		t0_ = std::chrono::steady_clock::now();
-		t1_ = t0_;
-
-		auto route_result = router_.call_route(*this);
-
-		if (route_result.proxy_pass())
-		{
-			route_result.proxy_pass()(*this);
-		}
-
-		response_.set("Server", server_id);
-		response_.set("Date", util::return_current_time_and_date());
-
-		if (response_.get("Content-Type", std::string{}).empty()) response_.type("text");
-
-		switch (route_result.match_result())
-		{
-			case http::api::router_match::match_found:
-			{
-				// Route has a valid handler, response body is set.
-				// Check bodys size and set headers.
-				break;
-			}
-			case http::api::router_match::no_method:
-			{
-				response_.status(http::status::method_not_allowed);
-				break;
-			}
-			case http::api::router_match::no_route:
-			{
-				response_.status(http::status::not_found);
-				break;
-			}
-		}
-
-		this->params_ = nullptr;
-
-		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false
-			 && response_.connection_close() == false)
-			|| (request_.http_version11() == false && request_.connection_keep_alive() && keepalive_count() > 1
-				&& request_.connection_close() == false))
-		{
-			keepalive_count_decr();
-			response_.set("Connection", "Keep-Alive");
-			// response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max="
-			// +std::to_string(keepalive_count()));
-		}
-		else
-		{
-			response_.set("Connection", "close");
-		}
-
-		if (response_.status() == http::status::no_content)
-		{
-			response_.body() = "";
-			response_.reset_if_exists("Content-Type");
-			response_.reset_if_exists("Content-Length");
-		}
-		else
-		{
-			response_.reset_if_exists("Transfer-Encoding");
-			response_.content_length(response_.body().length());
-		}
-
-		return route_result;
+		return router_.call_route(*this);
 	}
 
 	void keepalive_count_decr() { --keepalive_count_; };
@@ -3151,11 +3146,11 @@ public:
 		request_parser_.reset();
 		request_.reset();
 		response_.reset();
-		routing_ = nullptr;
 	}
 
-	std::chrono::steady_clock::time_point t0() const noexcept { return t0_; };
-	std::chrono::steady_clock::time_point t1() const noexcept { return t1_; };
+	std::chrono::steady_clock::time_point& t0() noexcept { return t0_; };
+	std::chrono::steady_clock::time_point& t1() noexcept { return t1_; };
+	std::chrono::steady_clock::time_point& t2() noexcept { return t2_; };
 
 public:
 	void routing(http::api::routing& r) { routing_ = &r; }
@@ -3174,6 +3169,7 @@ private:
 
 	std::chrono::steady_clock::time_point t0_;
 	std::chrono::steady_clock::time_point t1_;
+	std::chrono::steady_clock::time_point t2_;
 };
 
 namespace api
@@ -3270,9 +3266,9 @@ public:
 		= std::function<outcome<std::int64_t>(middleware_lambda_context& context, session_handler_type& session)>;
 	using exception_lambda = std::function<void(session_handler_type& session, std::exception& e)>;
 	using result = http::api::router_match::route_context_type;
-	using proxy_pass_lambda = std::function<void(http::session_handler&)>;
 
-	void proxy_pass_to(proxy_pass_lambda&& proxy_pass) { proxy_pass_ = proxy_pass; }
+	//using proxy_pass_lambda = std::function<void(http::session_handler&)>;
+	//void proxy_pass_to(proxy_pass_lambda&& proxy_pass) { proxy_pass_ = proxy_pass; }
 
 	struct metrics
 	{
@@ -3418,13 +3414,13 @@ public:
 	const route& the_route() const { return *route_; }
 	middlewares& middlewares_vector() { return middlewares_; };
 	const middlewares& middlewares_vector() const { return middlewares_; };
-	proxy_pass_lambda& proxy_pass() { return proxy_pass_; };
+	//proxy_pass_lambda& proxy_pass() { return proxy_pass_; };
 
 private:
 	result result_;
 	route* route_{ nullptr };
 	middlewares middlewares_;
-	proxy_pass_lambda proxy_pass_;
+	//proxy_pass_lambda proxy_pass_;
 };
 
 template <
@@ -4201,7 +4197,7 @@ public:
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 
-			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_) / 1000;
+			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_) / 1000000;
 
 			std::string msg = lgr::logger::format<lgr::prefix::accesslog>(
 				"{s} - {s} - '{s} {s}' - {d} - {u} - {u} - {u}",
@@ -4848,6 +4844,9 @@ public:
 
 							http::api::router<>::request_result_type routing
 								= session_handler_.handle_request(server_.router_);
+
+
+							session_handler_.set_response_headers<http::api::router<>>(routing);
 
 							t0 = std::chrono::steady_clock::now();
 

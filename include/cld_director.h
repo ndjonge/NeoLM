@@ -2229,13 +2229,9 @@ public:
 				auto workgroup = workspace->second->find_workgroups(workgroup_name, workgroup_type);
 				if (workgroup != workspace->second->end())
 				{
-					auto& io_context = server_base::get_io_context();
-					auto& upstream_session_pool = workgroup->second->upstream_sessions_pool_;
-
-					session.routing().proxy_pass_to(
-						[&io_context, &upstream_session_pool](http::session_handler& session_handler) {
-							upstream_session_pool.proxy_pass(session_handler);
-						});
+					session.request().set_attribute<http::basic::async::client::upstream_sessions_pool*>(
+						"proxy_pass",
+						&workgroup->second->upstream_sessions_pool_);
 				}
 			}
 		});
@@ -2421,7 +2417,7 @@ inline int start_rest_server(int argc, const char** argv)
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", cmd_args.get_val("http_listen_port") },
 											  { "private_base", "/private/infra/manager" },
-											  { "log_file", "cerr" },
+											  { "log_file", "platform.log" },
 											  { "log_level", "api" },
 											  { "https_enabled", "false" },
 											  { "http_use_portsharding", "false" } } };

@@ -65,17 +65,22 @@ public:
 	session& operator=(const session& s) = delete;
 	session& operator=(session&& s) = delete;
 
+	void release() 
+	{
+		state_ = state::idle;
+	}
+
 	void reopen()
 	{
+		asio::error_code error;
 		if (socket_.is_open())
 		{
-			socket_.shutdown(asio::socket_base::shutdown_send);
+			socket_.shutdown(asio::socket_base::shutdown_send, error);
 			socket_.close();
 		}
 
 		asio::ip::tcp::resolver::query query(asio::ip::tcp::v4(), host_, port_);
-		auto resolved_endpoints = resolver_.resolve(query);
-		asio::error_code error;
+		auto resolved_endpoints = resolver_.resolve(query, error);
 
 		asio::connect(socket_, resolved_endpoints.cbegin(), resolved_endpoints.cend(), error);
 
@@ -106,6 +111,9 @@ private:
 class upstream_sessions_pool
 {
 public:
+	using containter_type = std::vector<std::unique_ptr<http::basic::async::client::session>>;
+	using iterator = containter_type::iterator;
+
 	std::mutex upstream_sessions_initialise_mutex_;
 	std::atomic<std::int16_t> next_available_session{ 0 };
 
@@ -200,7 +208,6 @@ public:
 		return;
 	}
 
-
 	void make_session(asio::io_context& io_context, const std::string& base_host) // http://hostname:port
 	{
 		std::lock_guard<std::mutex> g{ upstream_sessions_initialise_mutex_ };
@@ -211,7 +218,7 @@ public:
 
 	void clear() {}
 
-	void proxy_pass(http::session_handler& downstream_session_handler)
+	void forward_to_upstream(std::function<void(http::basic::async::client::session&)> forward_handler)
 	{
 		bool found = false;
 		for (auto& upstream_session : upstream_sessions_)
@@ -222,15 +229,8 @@ public:
 					expected_state, http::basic::async::client::session::state::waiting)
 				== true)
 			{
-				std::string ec;
-
-				forward_request(*upstream_session, downstream_session_handler, ec);
-
-				if (ec.empty())
-				{
-					found = true;
-				}
-
+				forward_handler(*upstream_session);
+				found = true;
 				break;
 			}
 		}
@@ -259,6 +259,7 @@ private:
 		std::deque<std::string> write_buffer_;
 		http::session_handler session_handler_;
 		server& server_;
+		http::api::routing routing_{};
 
 	public:
 		connection_handler_base(asio::io_context& service, server& server, http::configuration& configuration)
@@ -302,17 +303,17 @@ private:
 			steady_timer_.cancel(ec);
 		}
 
-		void do_read_header()
+		void read_request_headers()
 		{
 			// Header
 			auto me = this->shared_from_this();
 			asio::async_read_until(
 				this->socket_base(), in_packet_, "\r\n\r\n", [me](asio::error_code const& ec, std::size_t bytes_xfer) {
-					me->do_read_header_done(ec, bytes_xfer);
+					me->read_request_headers_complete(ec, bytes_xfer);
 				});
 		}
 
-		void do_read_header_done(asio::error_code const& ec, std::size_t bytes_transferred)
+		void read_request_headers_complete(asio::error_code const& ec, std::size_t bytes_transferred)
 		{
 			if (!ec)
 			{
@@ -339,11 +340,11 @@ private:
 
 						this->session_handler_.request().body().reserve(session_handler_.request().content_length());
 
-						do_read_body();
+						read_request_body();
 					}
 					else
 					{
-						do_read_body_done(asio::error_code{}, 0);
+						read_request_body_complete(asio::error_code{}, 0);
 					}
 				}
 				else if (result == http::request_parser::bad)
@@ -351,11 +352,11 @@ private:
 					session_handler_.response().status(http::status::bad_request);
 					write_buffer_.push_back(http::to_string(session_handler_.response()));
 
-					do_write_header();
+					write_response();
 				}
 				else
 				{
-					do_read_header();
+					read_request_headers();
 				}
 			}
 			else
@@ -364,7 +365,7 @@ private:
 			}
 		}
 
-		void do_read_body()
+		void read_request_body()
 		{
 			asio::error_code ec;
 			if (session_handler_.request().body().size() < session_handler_.request().content_length())
@@ -395,84 +396,170 @@ private:
 
 						if (body_size < content_length)
 						{
-							me->do_read_body();
+							me->read_request_body();
 						}
 						else
 						{
-							me->do_read_body_done(ec, bytes_xfer);
+							me->read_request_body_complete(ec, bytes_xfer);
 						}
 					});
 			}
 			else if (session_handler_.request().body().size() == session_handler_.request().content_length())
 			{
-				do_read_body_done(ec, session_handler_.request().body().size());
+				read_request_body_complete(ec, session_handler_.request().body().size());
 			}
 			else
 			{
 				ec.assign(1, ec.category());
-				do_read_body_done(ec, 0);
+				read_request_body_complete(ec, 0);
 			}
 		}
 
-		void do_read_body_done(asio::error_code const& ec, std::size_t)
+		void read_request_body_complete(asio::error_code const& ec, std::size_t)
 		{
 			if (!ec)
 			{
-				http::api::routing routing = session_handler_.handle_request(server_.router_);
+				routing_ = session_handler_.handle_request(server_.router_);
 
-				do_write_header();
+				auto proxy_pass_session
+					= session_handler_.request().get_attribute<http::basic::async::client::upstream_sessions_pool*>(
+						"proxy_pass", nullptr);
+
+				session_handler_.t2() = std::chrono::steady_clock::now();
+
+				if (proxy_pass_session) 
+					proxy_pass_session->forward_to_upstream(
+						[this](http::basic::async::client::session& session) { write_forwarded_request(session); });
+				else
+					write_response();
 			}
 		}
 
-		void do_write_body()
+		void write_forwarded_request(http::basic::async::client::session& upstream_client_session)
 		{
-			if (!session_handler_.response().body().empty())
+			asio::error_code error;
+			char peek_buffer[1];
+
+			upstream_client_session.socket().non_blocking(true);
+			upstream_client_session.socket().receive(
+				asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
+			upstream_client_session.socket().non_blocking(false);
+
+			if (error != asio::error::would_block)
 			{
-				auto me = this->shared_from_this();
-				asio::async_write(
-					socket_base(),
-					asio::buffer(session_handler_.response().body()),
-					[me](asio::error_code const&, std::size_t) 
-					{ 
-						me->do_write_body_done();
-					});
+				upstream_client_session.reopen();
 			}
+
+			write_buffer_.emplace_back(http::to_string(session_handler_.request()));
+
+			auto me = this->shared_from_this();
+
+			asio::async_write(
+				upstream_client_session.socket(),
+				asio::buffer(write_buffer_.front()),
+				[me, &upstream_client_session](asio::error_code const& ec, std::size_t) 
+			{
+					me->write_buffer_.pop_front();
+
+					if (!ec) 
+						me->read_forwarded_response_headers(upstream_client_session);
+			});
+
 
 		}
 
-		void do_write_body_done() { do_write_header_done(); }
+		void read_forwarded_response_headers(http::basic::async::client::session& upstream_client_session)
+		{
+			upstream_client_session.recieve_buffer.clear();
+			auto me = this->shared_from_this();
+			asio::async_read_until(
+				upstream_client_session.socket(),
+				asio::dynamic_buffer(
+					upstream_client_session.recieve_buffer, upstream_client_session.recieve_buffer.capacity()),
+				"\r\n\r\n",
+				[me, &upstream_client_session](asio::error_code ec, size_t bytes_red) {
+				// TODO response body complete? no -> st
+				if (!ec) 
+					me->read_forwarded_response_headers_complete(upstream_client_session, bytes_red);
+				}
+			);
 
-		void do_write_header()
+		}
+
+		void read_forwarded_response_headers_complete(
+			http::basic::async::client::session& upstream_client_session, size_t bytes_red)
+		{
+			http::response_parser response_parser;
+			http::response_parser::result_type result;
+			const char* c = nullptr;
+
+			std::tie(result, c) = response_parser.parse(
+				session_handler_.response(),
+				upstream_client_session.recieve_buffer.data(),
+				upstream_client_session.recieve_buffer.data() + bytes_red);
+
+			if (result == http::response_parser::result_type::good)
+			{
+				auto content_length = session_handler_.response().content_length();
+				if (content_length)
+				{
+					session_handler_.request().set("X-Request-ID", std::to_string(upstream_client_session.id()));
+
+					session_handler_.response().body().reserve(content_length);
+					session_handler_.response().body().assign(c, content_length);
+
+					// read more?
+				}
+				else if (session_handler_.response().chunked())
+				{
+					std::uint64_t offset = 0;
+					auto chunk_size = std::stoul(c, &offset, 16);
+					auto chuck_data = c + offset + 2;
+					session_handler_.response().body().assign(chuck_data, chunk_size);
+					// TODO: chunked
+				}
+
+				if (session_handler_.response().connection_close() == true)
+				{
+					// std::cout << std::to_string(upstream_client_session.id()) + " : closed \n";
+					upstream_client_session.reopen();
+				}
+
+				upstream_client_session.release();
+
+				write_response();
+			}
+		}
+
+		void write_response()
 		{
 			auto me = this->shared_from_this();
-			write_buffer_.emplace_back(session_handler_.response().header_to_string());
+
+			write_buffer_.emplace_back(http::to_string(session_handler_.response()));
 
 			asio::async_write(
 				socket_base(),
 				asio::buffer(this->write_buffer_.front()),
 				write_strand_.wrap([me](asio::error_code, std::size_t) {
 					me->write_buffer_.pop_front();
-
-					me->do_write_body();
+					me->write_response_complete();
 				}));
 		}
 
-		void do_write_header_done()
+		void write_response_complete()
 		{
 			++server_.manager().requests_handled();
-			std::chrono::steady_clock::time_point t0{};
 
-			t0 = std::chrono::steady_clock::now();
-
-			if (session_handler_.routing().match_result() == http::api::router_match::match_found)
+			if (routing_.match_result() == http::api::router_match::match_found)
 			{
-				session_handler_.routing().the_route().metric_response_latency(
-					std::chrono::duration<std::uint64_t, std::nano>(std::chrono::steady_clock::now() - t0).count());
+				routing_.the_route().metric_response_latency(
+					std::chrono::duration<std::uint64_t, std::nano>(
+						std::chrono::steady_clock::now() - session_handler_.t2())
+						.count());
 
 				if (server_.logger_.current_level() >= lgr::level::accesslog)
 				{
-					auto log_msg = server_.manager().log_access(
-									   session_handler_, session_handler_.routing().the_route().route_metrics())
+					auto log_msg = server_.manager().log_access(session_handler_, routing_.the_route().route_metrics())
 								   + "\n";
 
 					server_.logger_.accesslog(log_msg);
@@ -533,9 +620,7 @@ private:
 			asio::error_code ec;
 			socket_.set_option(asio::ip::tcp::no_delay(true), ec);
 			if (!ec)
-				do_read_header();
-			else
-				ec = ec;
+				read_request_headers();
 		}
 
 		void stop()
@@ -580,7 +665,7 @@ private:
 				else
 				{
 					me->set_timeout();
-					me->do_read_header();
+					me->read_request_headers();
 				}
 			});
 		}
