@@ -2404,6 +2404,8 @@ inline int start_rest_server(int argc, const char** argv)
 		argv,
 		{ { "config", { prog_args::arg_t::arg_val, " <config>: filename for the config file", "config.json" } },
 		  { "http_listen_port", { prog_args::arg_t::arg_val, "port number to use", "4000" } },
+		  { "loglevel", { prog_args::arg_t::arg_val, "loglevel", "api" } },
+		  { "logfile", { prog_args::arg_t::arg_val, "logfile", "cerr" } },
 		  { "fg", { prog_args::arg_t::flag, "run in foreground" } } });
 
 	if (cmd_args.process_args() == false)
@@ -2417,8 +2419,8 @@ inline int start_rest_server(int argc, const char** argv)
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", cmd_args.get_val("http_listen_port") },
 											  { "private_base", "/private/infra/manager" },
-											  { "log_file", "platform.log" },
-											  { "log_level", "api" },
+											  { "log_file", cmd_args.get_val("logfile") },
+											  { "log_level", cmd_args.get_val("loglevel") },
 											  { "https_enabled", "false" },
 											  { "http_use_portsharding", "false" } } };
 

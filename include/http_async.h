@@ -25,7 +25,6 @@ namespace async
 
 inline std::size_t get_static_id() noexcept
 {
-	// Generate an ID per thread using a "global" ID counter
 	static std::atomic<std::size_t> id{ 0 };
 	return id++;
 }
@@ -118,95 +117,6 @@ public:
 	std::atomic<std::int16_t> next_available_session{ 0 };
 
 	std::vector<std::unique_ptr<http::basic::async::client::session>> upstream_sessions_;
-
-	void forward_request(
-		http::basic::async::client::session& upstream_client_session,
-		http::session_handler& downstream_session_handler,
-		std::string& ec)
-	{
-		std::string request = http::to_string(downstream_session_handler.request());
-
-		asio::error_code error;
-
-		char peek_buffer[1];
-		upstream_client_session.socket().non_blocking(true);
-		upstream_client_session.socket().receive(asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
-		upstream_client_session.socket().non_blocking(false);
-
-		if (error != asio::error::would_block)
-		{
-			upstream_client_session.reopen();
-		}
-
-		auto bytes_written
-			= asio::write(upstream_client_session.socket(), asio::buffer(request.data(), request.size()), error);
-
-		if (error || bytes_written != request.size())
-		{
-			downstream_session_handler.response().status(http::status::bad_gateway);
-			ec = error.message();
-			upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
-
-			return;
-		}
-
-		error.clear();
-		upstream_client_session.recieve_buffer.clear();
-		auto bytes_red = asio::read_until(
-			upstream_client_session.socket(),
-			asio::dynamic_buffer(
-				upstream_client_session.recieve_buffer, upstream_client_session.recieve_buffer.capacity()),
-			"\r\n\r\n",
-			error);
-
-		if (error)
-		{
-			downstream_session_handler.response().status(http::status::bad_gateway);
-			downstream_session_handler.response().body() = error.message();
-			ec = error.message();
-			upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
-			return;
-		}
-
-		http::response_parser response_parser;
-		http::response_parser::result_type result;
-		const char* c = nullptr;
-
-		std::tie(result, c) = response_parser.parse(
-			downstream_session_handler.response(),
-			upstream_client_session.recieve_buffer.data(),
-			upstream_client_session.recieve_buffer.data() + bytes_red);
-
-		if (result == http::response_parser::result_type::good)
-		{
-			auto content_length = downstream_session_handler.response().content_length();
-			if (content_length)
-			{
-				downstream_session_handler.request().set("X-Request-ID", std::to_string(upstream_client_session.id()));
-
-				downstream_session_handler.response().body().reserve(content_length);
-				downstream_session_handler.response().body().assign(c, content_length);
-				// read more?
-			}
-			else if (downstream_session_handler.response().chunked())
-			{
-				std::uint64_t offset = 0;
-				auto chunk_size = std::stoul(c, &offset, 16);
-				auto chuck_data = c + offset + 2;
-				downstream_session_handler.response().body().assign(chuck_data, chunk_size);
-				// TODO: chunked
-			}
-
-			if (downstream_session_handler.response().connection_close() == true)
-			{
-				// std::cout << std::to_string(upstream_client_session.id()) + " : closed \n";
-				upstream_client_session.reopen();
-			}
-		}
-
-		upstream_client_session.get_state().store(http::basic::async::client::session::state::idle);
-		return;
-	}
 
 	void make_session(asio::io_context& io_context, const std::string& base_host) // http://hostname:port
 	{

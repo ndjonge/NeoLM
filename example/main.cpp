@@ -24,10 +24,11 @@ int main()
 
 #ifdef _WIN32
 	const char* rest_argv[]
-		= { "appname", "-config", "C:/tmp/pm_root/config.json", "-http_listen_port", "4000" };
+		= { "appname", "-config", "C:/tmp/pm_root/config.json", "-http_listen_port", "4000", "-logfile" , "cerr", "loglevel", "debug" };
 #else
 	const char* rest_argv[]
-		= { "appname", "-config", "/home/ndjonge/config.json", "-http_listen_port", "4000" };
+		= { "appname",	"-config", "/home/ndjonge/config.json", "-http_listen_port", "4000", "-logfile", "cerr",
+			"loglevel", "debug" };
 #endif
 	start_rest_server(4, rest_argv);
 
