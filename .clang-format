@@ -43,6 +43,6 @@ SpaceInEmptyParentheses: false
 SpacesInCStyleCastParentheses: false
 SpaceAfterControlStatementKeyword: true
 SpaceBeforeAssignmentOperators: true
-SortIncludes:false
+SortIncludes: false
 ContinuationIndentWidth: 4
 NamespaceIndentation: None

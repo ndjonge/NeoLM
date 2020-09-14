@@ -3011,7 +3011,7 @@ public:
 
 	template <typename router_t> void set_response_headers(typename router_t::request_result_type& route_result) 
 	{
-		std::string server_id{ configuration_.get<std::string>("server", "http/server/0") };
+		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
 		response_.set("Date", util::return_current_time_and_date());
 
 		if (response_.get("Content-Type", std::string{}).empty()) response_.type("text");

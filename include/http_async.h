@@ -444,6 +444,7 @@ private:
 		void write_response()
 		{
 			auto me = this->shared_from_this();
+			session_handler_.set_response_headers<http::api::router<>>(routing_);
 
 			write_buffer_.emplace_back(http::to_string(session_handler_.response()));
 
