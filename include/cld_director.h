@@ -24,7 +24,7 @@
 #endif
 
 #else
-#define get_version_ex(PORT_SET, NULL) "version 1.0"
+#define get_version_ex(PORT_SET, NULL) "1.0"
 #define BAAN_WINSTATION_NAME "baan"
 #define BAAN_DESKTOP_NAME "desktop"
 #define PORT_SET "9.4x"
@@ -399,6 +399,11 @@ public:
 	void cleanup(){};
 
 	http::basic::async::client::upstreams upstreams_;
+
+	bool has_workers_available() 
+	{ 
+		return limits_.workers_actual() > 0;
+	}
 
 	iterator find_worker(const std::string& worker_id)
 	{
@@ -2224,16 +2229,25 @@ public:
 
 			auto workspace = workspaces_.get_workspace(workspace_id);
 
+			bool forwarded = false;
+
 			if (workspace != workspaces_.end())
 			{
 				auto workgroup = workspace->second->find_workgroups(workgroup_name, workgroup_type);
-				if (workgroup != workspace->second->end())
+
+				if (workgroup != workspace->second->end() && workgroup->second->has_workers_available())
 				{
+					forwarded = true;
 					session.request().set_attribute<http::basic::async::client::upstreams*>(
 						"proxy_pass",
 						&workgroup->second->upstreams_);
+
 				}
 			}
+
+			if (forwarded == false) 
+				session.response().status(http::status::bad_gateway);
+
 		});
 
 		server_base::router_.on_internal_error([this](http::session_handler& session, std::exception& e) {
@@ -2383,6 +2397,27 @@ public:
 };
 
 static std::unique_ptr<manager<http::basic::async::server>> cpm_server_;
+
+namespace selftest
+{
+
+bool run() 
+{ 
+	bool result = false;
+	std::string error_code;
+	http::client::session session;
+
+	std::string payload;
+
+	payload.assign(1024 * 1024, 'a');
+
+	auto response = http::client::request<http::method::post>(session, "http://localhost:4000/api/test", error_code, {}, payload);
+
+	return result; 
+}
+
+}
+
 } // namespace platform
 } // namespace cloud
 
@@ -2406,7 +2441,8 @@ inline int start_rest_server(int argc, const char** argv)
 		  { "http_listen_port", { prog_args::arg_t::arg_val, "port number to use", "4000" } },
 		  { "loglevel", { prog_args::arg_t::arg_val, "loglevel", "api" } },
 		  { "logfile", { prog_args::arg_t::arg_val, "logfile", "cerr" } },
-		  { "fg", { prog_args::arg_t::flag, "run in foreground" } } });
+		  { "fg", { prog_args::arg_t::flag, "run in foreground" } },
+		  { "test", { prog_args::arg_t::flag, "run some tests" } } });
 
 	if (cmd_args.process_args() == false)
 	{
@@ -2414,7 +2450,7 @@ inline int start_rest_server(int argc, const char** argv)
 		exit(1);
 	}
 
-	std::string server_version = std::string{ "Platform Manager/" } + get_version_ex(PORT_SET, NULL);
+	std::string server_version = std::string{ "ln-cld-mgr/" } + get_version_ex(PORT_SET, NULL);
 
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", cmd_args.get_val("http_listen_port") },
@@ -2428,6 +2464,12 @@ inline int start_rest_server(int argc, const char** argv)
 		new cloud::platform::manager<http::basic::async::server>(http_configuration, cmd_args.get_val("config")));
 
 	cloud::platform::cpm_server_->start();
+
+	if (cmd_args.flag_set("test"))
+	{
+		cloud::platform::selftest::run();
+	}
+
 
 	return 0;
 }

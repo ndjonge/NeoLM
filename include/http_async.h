@@ -48,7 +48,6 @@ public:
 		, socket_(io_context)
 		, id_(host_ + '_' + port_ + "_" + std::to_string(get_static_id()))
 	{
-		recieve_buffer.reserve(1500);
 		reopen();
 	};
 
@@ -91,7 +90,7 @@ public:
 	std::string host_;
 	std::string port_;
 	std::string id_;
-	std::string recieve_buffer;
+	std::vector<char> buffer_;
 	asio::ip::tcp::resolver resolver_;
 
 private:
@@ -202,7 +201,7 @@ private:
 	protected:
 		asio::io_context& service_;
 		asio::io_context::strand write_strand_;
-		asio::streambuf in_packet_;
+		asio::streambuf in_packet_{8192};
 		asio::steady_timer steady_timer_;
 
 		std::deque<std::string> write_buffer_;
@@ -402,6 +401,7 @@ private:
 				upstream_connection.reopen();
 			}
 
+			session_handler_.request().set("Accept-Encoding", "gzip");
 			write_buffer_.emplace_back(http::to_string(session_handler_.request()));
 
 			auto me = this->shared_from_this();
@@ -420,14 +420,16 @@ private:
 
 		}
 
+
 		void read_forwarded_response_headers(http::basic::async::client::connection& upstream_connection)
 		{
-			upstream_connection.recieve_buffer.clear();
 			auto me = this->shared_from_this();
+
+			upstream_connection.buffer_.clear();
+
 			asio::async_read_until(
 				upstream_connection.socket(),
-				asio::dynamic_buffer(
-					upstream_connection.recieve_buffer, upstream_connection.recieve_buffer.capacity()),
+				asio::dynamic_buffer(upstream_connection.buffer_),
 				"\r\n\r\n",
 				[me, &upstream_connection](asio::error_code ec, size_t bytes_red) {
 				// TODO response body complete? no -> st
@@ -447,8 +449,8 @@ private:
 
 			std::tie(result, c) = response_parser.parse(
 				session_handler_.response(),
-				upstream_connection.recieve_buffer.data(),
-				upstream_connection.recieve_buffer.data() + bytes_red);
+				upstream_connection.buffer_.data(),
+				upstream_connection.buffer_.data() + bytes_red);
 
 			if (result == http::response_parser::result_type::good)
 			{
@@ -458,9 +460,21 @@ private:
 					session_handler_.request().set("X-Request-ID", upstream_connection.id());
 					session_handler_.response().set("X-Upstream-Server", upstream_connection.id());
 
-					session_handler_.response().body().reserve(content_length);
-					session_handler_.response().body().assign(c, content_length);
+					auto content_already_received
+						= static_cast<size_t>( upstream_connection.buffer_.data() + upstream_connection.buffer_.size() - c );
 
+					session_handler_.response().body().reserve(content_length);
+
+					session_handler_.response().body().assign(c, content_already_received);
+
+					if (content_already_received < content_length)
+					{
+						read_forwarded_response_body(upstream_connection);
+					}
+					else
+					{
+						read_forwarded_response_body_complete(upstream_connection);
+					}
 					// read more?
 				}
 				else if (session_handler_.response().chunked())
@@ -470,18 +484,58 @@ private:
 					auto chuck_data = c + offset + 2;
 					session_handler_.response().body().assign(chuck_data, chunk_size);
 					// TODO: chunked
+					read_forwarded_response_body_complete(upstream_connection);
 				}
-
-				if (session_handler_.response().connection_close() == true)
-				{
-					// std::cout << std::to_string(upstream_connection.id()) + " : closed \n";
-					upstream_connection.reopen();
-				}
-
-				upstream_connection.release();
-
-				write_response();
 			}
+		}
+
+		void read_forwarded_response_body(http::basic::async::client::connection& upstream_connection) 
+		{
+			asio::error_code ec;
+			if (session_handler_.response().body().size() < session_handler_.response().content_length())
+			{
+				auto me = this->shared_from_this();
+				upstream_connection.buffer_.clear();
+				asio::async_read(
+					upstream_connection.socket(),
+					asio::dynamic_buffer(upstream_connection.buffer_),
+					asio::transfer_at_least(1),
+					[me, &upstream_connection](asio::error_code const& ec, std::size_t bytes_xfer) {
+						auto content_length = me->session_handler_.response().content_length();
+
+						me->session_handler_.response().body().append(upstream_connection.buffer_.data(), bytes_xfer);
+
+						if (me->session_handler_.response().body().length() < content_length)
+						{
+							me->read_forwarded_response_body(upstream_connection);
+						}
+						else
+						{
+							me->read_forwarded_response_body_complete(upstream_connection);
+						}
+					});
+			}
+			else if (session_handler_.response().body().size() == session_handler_.response().content_length())
+			{
+				read_forwarded_response_body_complete(upstream_connection);
+			}
+			else
+			{
+				assert(1==0);
+				read_forwarded_response_body_complete(upstream_connection);
+			}
+		}
+
+		void read_forwarded_response_body_complete(http::basic::async::client::connection& upstream_connection) 
+		{
+			if (session_handler_.response().connection_close() == true)
+			{
+				upstream_connection.reopen();
+			}
+
+			upstream_connection.release();
+
+			write_response();
 		}
 
 		void write_response()

@@ -4008,6 +4008,7 @@ public:
 		{
 			headers_ = curl_slist_append(headers_, a.c_str());
 		}
+		headers_ = curl_slist_append(headers_, std::string{ "Expect: " }.c_str());
 		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb.c_str());
 		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url.c_str());
@@ -4052,6 +4053,7 @@ public:
 		{
 			headers_ = curl_slist_append(headers_, std::string{ header.name + ": " + header.value }.c_str());
 		}
+		headers_ = curl_slist_append(headers_, std::string{ "Expect: " }.c_str());
 		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb_.c_str());
 		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url_.c_str());
