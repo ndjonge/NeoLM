@@ -32,7 +32,7 @@ inline std::size_t get_static_id() noexcept
 namespace client
 {
 
-class session
+class connection
 {
 public:
 	enum class state
@@ -41,28 +41,22 @@ public:
 		idle
 	};
 
-	session(asio::io_context& io_context, const std::string& base_url)
-		: resolver_(io_context), socket_(io_context), id_(get_static_id())
+	connection(asio::io_context& io_context, const std::string& host, std::string port)
+		: host_(host)
+		, port_(port)
+		, resolver_(io_context)
+		, socket_(io_context)
+		, id_(host_ + '_' + port_ + "_" + std::to_string(get_static_id()))
 	{
-		//[::1]:8000
-		// 127.0.0.1:1000
-		// localhost:8000
-
-		auto start_of_port = base_url.find_last_of(':') + 1;
-
-		port_ = base_url.substr(start_of_port);
-		host_ = base_url.substr(base_url.find_last_of('/') + 1);
-		host_ = host_.substr(0, host_.find_last_of(':'));
-
 		recieve_buffer.reserve(1500);
 		reopen();
 	};
 
-	session(const session& s) = delete;
-	session(session&& s) = delete;
+	connection(const connection& s) = delete;
+	connection(connection&& s) = delete;
 
-	session& operator=(const session& s) = delete;
-	session& operator=(session&& s) = delete;
+	connection& operator=(const connection& s) = delete;
+	connection& operator=(connection&& s) = delete;
 
 	void release() 
 	{
@@ -89,67 +83,112 @@ public:
 		}
 	}
 
+	const std::string& id() const { return id_; }
+
 	asio::ip::tcp::socket& socket() { return socket_; }
 	std::atomic<state>& get_state() { return state_; }
 
-	std::size_t id() { return id_; };
-
-	std::string recieve_buffer;
-
-private:
-	//	asio::io_context& io_context_;
 	std::string host_;
 	std::string port_;
-
+	std::string id_;
+	std::string recieve_buffer;
 	asio::ip::tcp::resolver resolver_;
+
+private:
+
+	std::atomic<connection::state> state_{ state::idle };
 	asio::ip::tcp::socket socket_;
-	std::atomic<session::state> state_{ state::idle };
-	std::size_t id_{ 0 };
 };
 
-class upstream_sessions_pool
+class upstreams
 {
 public:
-	using containter_type = std::vector<std::unique_ptr<http::basic::async::client::session>>;
+
+	void add_upstream(asio::io_context& io_context, std::string& base_url) 
+	{
+		upstreams_.emplace_back(new upstream(io_context, base_url));
+	}
+
+	class upstream
+	{
+	public:
+		using containter_type = std::vector<std::unique_ptr<http::basic::async::client::connection>>;
+		using iterator = containter_type::iterator;
+
+		upstream(asio::io_context& io_context, const std::string& base_url)
+			: io_context_(io_context), base_url_(base_url)
+		{
+			//TODO: make more robust client url parsing.
+			auto start_of_port = base_url.find_last_of(':') + 1;
+			port_ = base_url.substr(start_of_port);
+			host_ = base_url.substr(base_url.find_last_of('/') + 1);
+			host_ = host_.substr(0, host_.find_last_of(':'));
+		}
+
+
+		std::atomic<std::uint8_t> nr_of_connections_idle_;
+		std::atomic<std::uint8_t> nr_of_connections_;
+
+		const std::string& base_url() const { return base_url_; }
+		std::string base_url_;
+		std::string host_;
+		std::string port_;
+		std::mutex sessions_initialise_mutex_;
+
+		void add_connection() 
+		{ 
+			connections_.emplace_back(new connection{io_context_, host_, port_});
+		}
+
+		asio::io_context& io_context_;
+		containter_type connections_;
+		std::lock_guard<std::mutex> g{ sessions_initialise_mutex_ };
+	};
+
+	using containter_type = std::vector<std::unique_ptr<upstream>>;
 	using iterator = containter_type::iterator;
+	
+	containter_type upstreams_;
 
-	std::mutex upstream_sessions_initialise_mutex_;
-	std::atomic<std::int16_t> next_available_session{ 0 };
-
-	std::vector<std::unique_ptr<http::basic::async::client::session>> upstream_sessions_;
-
-	void make_session(asio::io_context& io_context, const std::string& base_host) // http://hostname:port
+	void forward(std::function<void(http::basic::async::client::connection&)> forward_handler, lgr::logger& logger)
 	{
-		std::lock_guard<std::mutex> g{ upstream_sessions_initialise_mutex_ };
-		upstream_sessions_.emplace_back(new http::basic::async::client::session{ io_context, base_host });
-	}
+		auto selected_upstream
+			= std::min_element(upstreams_.cbegin(), upstreams_.cend(), [](auto& rhs, auto& lhs) {
+				  return rhs->nr_of_connections_ < lhs->nr_of_connections_;
+			  });
 
-	void erase(const std::string&) {}
-
-	void clear() {}
-
-	void forward_to_upstream(std::function<void(http::basic::async::client::session&)> forward_handler)
-	{
-		bool found = false;
-		for (auto& upstream_session : upstream_sessions_)
+		if (selected_upstream != upstreams_.cend())
 		{
-			auto expected_state = http::basic::async::client::session::state::idle;
-
-			if (upstream_session->get_state().compare_exchange_strong(
-					expected_state, http::basic::async::client::session::state::waiting)
-				== true)
+			bool found = false;
+			do
 			{
-				forward_handler(*upstream_session);
-				found = true;
-				break;
-			}
-		}
+				for (auto& connection : selected_upstream->get()->connections_)
+				{
+					// Select the least connected upstream
+					auto expected_state = http::basic::async::client::connection::state::idle;
 
-		if (found == false)
-		{
-			std::cout << "not found a idle session\n";
+					if (connection->get_state().compare_exchange_strong(
+							expected_state, http::basic::async::client::connection::state::waiting)
+						== true)
+					{
+						forward_handler(*connection);
+						found = true;
+						break;
+					}
+				}
+
+				if (found == false)
+				{
+					selected_upstream->get()->add_connection();
+
+					logger.api(
+						"reverse proxy: adding new upstream connection to {s}\n", selected_upstream->get()->base_url());
+
+				}
+			} while (found == false);
 		}
 	}
+
 };
 
 } // namespace client
@@ -331,33 +370,36 @@ private:
 			{
 				routing_ = session_handler_.handle_request(server_.router_);
 
-				auto proxy_pass_session
-					= session_handler_.request().get_attribute<http::basic::async::client::upstream_sessions_pool*>(
+				auto upstreams
+					= session_handler_.request().get_attribute<http::basic::async::client::upstreams*>(
 						"proxy_pass", nullptr);
 
 				session_handler_.t2() = std::chrono::steady_clock::now();
 
-				if (proxy_pass_session) 
-					proxy_pass_session->forward_to_upstream(
-						[this](http::basic::async::client::session& session) { write_forwarded_request(session); });
+				if (upstreams) 
+					upstreams->forward([this](http::basic::async::client::connection& connection) {
+						write_forwarded_request(connection);
+						},
+						server_.logger()
+				);
 				else
 					write_response();
 			}
 		}
 
-		void write_forwarded_request(http::basic::async::client::session& upstream_client_session)
+		void write_forwarded_request(http::basic::async::client::connection& upstream_connection)
 		{
 			asio::error_code error;
 			char peek_buffer[1];
 
-			upstream_client_session.socket().non_blocking(true);
-			upstream_client_session.socket().receive(
+			upstream_connection.socket().non_blocking(true);
+			upstream_connection.socket().receive(
 				asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
-			upstream_client_session.socket().non_blocking(false);
+			upstream_connection.socket().non_blocking(false);
 
 			if (error != asio::error::would_block)
 			{
-				upstream_client_session.reopen();
+				upstream_connection.reopen();
 			}
 
 			write_buffer_.emplace_back(http::to_string(session_handler_.request()));
@@ -365,39 +407,39 @@ private:
 			auto me = this->shared_from_this();
 
 			asio::async_write(
-				upstream_client_session.socket(),
+				upstream_connection.socket(),
 				asio::buffer(write_buffer_.front()),
-				[me, &upstream_client_session](asio::error_code const& ec, std::size_t) 
+				[me, &upstream_connection](asio::error_code const& ec, std::size_t) 
 			{
 					me->write_buffer_.pop_front();
 
 					if (!ec) 
-						me->read_forwarded_response_headers(upstream_client_session);
+						me->read_forwarded_response_headers(upstream_connection);
 			});
 
 
 		}
 
-		void read_forwarded_response_headers(http::basic::async::client::session& upstream_client_session)
+		void read_forwarded_response_headers(http::basic::async::client::connection& upstream_connection)
 		{
-			upstream_client_session.recieve_buffer.clear();
+			upstream_connection.recieve_buffer.clear();
 			auto me = this->shared_from_this();
 			asio::async_read_until(
-				upstream_client_session.socket(),
+				upstream_connection.socket(),
 				asio::dynamic_buffer(
-					upstream_client_session.recieve_buffer, upstream_client_session.recieve_buffer.capacity()),
+					upstream_connection.recieve_buffer, upstream_connection.recieve_buffer.capacity()),
 				"\r\n\r\n",
-				[me, &upstream_client_session](asio::error_code ec, size_t bytes_red) {
+				[me, &upstream_connection](asio::error_code ec, size_t bytes_red) {
 				// TODO response body complete? no -> st
 				if (!ec) 
-					me->read_forwarded_response_headers_complete(upstream_client_session, bytes_red);
+					me->read_forwarded_response_headers_complete(upstream_connection, bytes_red);
 				}
 			);
 
 		}
 
 		void read_forwarded_response_headers_complete(
-			http::basic::async::client::session& upstream_client_session, size_t bytes_red)
+			http::basic::async::client::connection& upstream_connection, size_t bytes_red)
 		{
 			http::response_parser response_parser;
 			http::response_parser::result_type result;
@@ -405,15 +447,16 @@ private:
 
 			std::tie(result, c) = response_parser.parse(
 				session_handler_.response(),
-				upstream_client_session.recieve_buffer.data(),
-				upstream_client_session.recieve_buffer.data() + bytes_red);
+				upstream_connection.recieve_buffer.data(),
+				upstream_connection.recieve_buffer.data() + bytes_red);
 
 			if (result == http::response_parser::result_type::good)
 			{
 				auto content_length = session_handler_.response().content_length();
 				if (content_length)
 				{
-					session_handler_.request().set("X-Request-ID", std::to_string(upstream_client_session.id()));
+					session_handler_.request().set("X-Request-ID", upstream_connection.id());
+					session_handler_.response().set("X-Upstream-Server", upstream_connection.id());
 
 					session_handler_.response().body().reserve(content_length);
 					session_handler_.response().body().assign(c, content_length);
@@ -431,11 +474,11 @@ private:
 
 				if (session_handler_.response().connection_close() == true)
 				{
-					// std::cout << std::to_string(upstream_client_session.id()) + " : closed \n";
-					upstream_client_session.reopen();
+					// std::cout << std::to_string(upstream_connection.id()) + " : closed \n";
+					upstream_connection.reopen();
 				}
 
-				upstream_client_session.release();
+				upstream_connection.release();
 
 				write_response();
 			}

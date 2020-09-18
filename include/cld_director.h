@@ -398,7 +398,7 @@ public:
 
 	void cleanup(){};
 
-	http::basic::async::client::upstream_sessions_pool upstream_sessions_pool_;
+	http::basic::async::client::upstreams upstreams_;
 
 	iterator find_worker(const std::string& worker_id)
 	{
@@ -429,7 +429,7 @@ public:
 		if (base_url.empty() == false)
 		{
 			limits_.workers_actual_upd(1);
-			upstream_sessions_pool_.make_session(io_context, base_url);
+			upstreams_.add_upstream(io_context, base_url);
 		}
 	}
 
@@ -2229,9 +2229,9 @@ public:
 				auto workgroup = workspace->second->find_workgroups(workgroup_name, workgroup_type);
 				if (workgroup != workspace->second->end())
 				{
-					session.request().set_attribute<http::basic::async::client::upstream_sessions_pool*>(
+					session.request().set_attribute<http::basic::async::client::upstreams*>(
 						"proxy_pass",
-						&workgroup->second->upstream_sessions_pool_);
+						&workgroup->second->upstreams_);
 				}
 			}
 		});
