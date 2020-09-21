@@ -82,7 +82,7 @@ static bool create_bse_process_as_user(
 				throw std::runtime_error{ "error sending \"worker\" registration" };
 			}
 			// else
-			//	std::cout << "http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/"
+			//	std::cout << "http://localhost:5000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/"
 			//				 "workers/ send\n";
 		}
 		else
@@ -2457,7 +2457,8 @@ inline int start_rest_server(int argc, const char** argv)
 											  { "private_base", "/private/infra/manager" },
 											  { "log_file", cmd_args.get_val("logfile") },
 											  { "log_level", cmd_args.get_val("loglevel") },
-											  { "https_enabled", "false" },
+											  { "https_enabled", "true" },
+											  { "http_enabled", "true" },
 											  { "http_use_portsharding", "false" } } };
 
 	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager<http::basic::async::server>>(

@@ -475,15 +475,11 @@ private:
 					{
 						read_forwarded_response_body_complete(upstream_connection);
 					}
-					// read more?
 				}
 				else if (session_handler_.response().chunked())
 				{
-					std::uint64_t offset = 0;
-					auto chunk_size = std::stoul(c, &offset, 16);
-					auto chuck_data = c + offset + 2;
-					session_handler_.response().body().assign(chuck_data, chunk_size);
-					// TODO: chunked
+					session_handler_.response().status(http::status::internal_server_error);
+					session_handler_.response().body() = "chunked upstream response received\n";
 					read_forwarded_response_body_complete(upstream_connection);
 				}
 			}
@@ -500,7 +496,7 @@ private:
 					upstream_connection.socket(),
 					asio::dynamic_buffer(upstream_connection.buffer_),
 					asio::transfer_at_least(1),
-					[me, &upstream_connection](asio::error_code const& ec, std::size_t bytes_xfer) {
+					[me, &upstream_connection](asio::error_code const&, std::size_t bytes_xfer) {
 						auto content_length = me->session_handler_.response().content_length();
 
 						me->session_handler_.response().body().append(upstream_connection.buffer_.data(), bytes_xfer);
@@ -661,7 +657,23 @@ private:
 
 		asio::ssl::stream<asio::ip::tcp::socket>& socket() { return socket_; };
 
-		std::string remote_address() { return socket_.lowest_layer().remote_endpoint().address().to_string(); }
+		std::string remote_address()
+		{
+			asio::error_code ec;
+
+			try
+			{
+				std::string ret = socket_.lowest_layer().remote_endpoint().address().to_string(ec);
+
+				if (ec) ret = "?";
+
+				return ret;
+			}
+			catch (...)
+			{
+				return "-";
+			}
+		}
 
 		void start()
 		{
@@ -702,23 +714,37 @@ public:
 		, https_use_portsharding_(configuration.get<bool>("https_use_portsharding", false))
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
 		, https_listen_port_begin_(configuration.get<std::int16_t>(
-			  "https_listen_port_begin", configuration.get<int16_t>("http_listen_port_begin") + 2000))
-		, https_listen_port_end_(configuration.get<int16_t>("https_listen_port_end", http_listen_port_begin_))
+			  "https_listen_port_begin", configuration.get<int16_t>("http_listen_port_begin") + 1000))
+		, https_listen_port_end_(configuration.get<int16_t>("https_listen_port_end", https_listen_port_begin_))
 		, https_listen_port_(network::tcp::socket::invalid_socket)
 		, https_listen_address_(configuration.get<std::string>("https_listen_address", "::0"))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 		, io_context_pool_(thread_count_)
-		, acceptor_(io_context_pool_.get_io_context())
-		, ssl_acceptor_(io_context_pool_.get_io_context())
-		, ssl_context(asio::ssl::context::tlsv12)
+		, http_acceptor_(io_context_pool_.get_io_context())
+		, https_acceptor_(io_context_pool_.get_io_context())
+		, https_ssl_context_(asio::ssl::context::tlsv13)
 	{
-		// ssl_context.use_certificate_chain_file(configuration_.get("ssl_certificate"));
-		// ssl_context.use_private_key_file(configuration_.get("ssl_certificate_key"), asio::ssl::context::pem);
+		if (https_enabled_)
+		{
+			asio::error_code error_code;
+			https_ssl_context_.use_certificate_chain_file(
+				configuration_.get<std::string>("https_certificate_certificate_file", "server.crt"), error_code);
+			
+			if (error_code) std::cout << "https error: " << error_code.message() << "\n";
+
+			https_ssl_context_.use_private_key_file(
+				configuration_.get<std::string>("https_certificate_certificate_key", "server.key"),
+				asio::ssl::context::pem,
+				error_code);
+
+			if (error_code) std::cout << "https error: " << error_code.message() << "\n";
+
+		}
 
 		if (configuration_.get("ssl_certificate_verify").size() > 0)
 		{
-			ssl_context.load_verify_file(configuration_.get("ssl_certificate_verify"));
-			ssl_context.set_verify_mode(
+			https_ssl_context_.load_verify_file(configuration_.get("ssl_certificate_verify"));
+			https_ssl_context_.set_verify_mode(
 				asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert | asio::ssl::verify_client_once);
 			// set_session_id_context = true;
 		}
@@ -736,7 +762,11 @@ public:
 		auto http_handler = std::make_shared<server::connection_handler_http>(
 			io_context_pool_.get_io_context(), *this, configuration_);
 
+		auto https_handler = std::make_shared<server::connection_handler_https>(
+			io_context_pool_.get_io_context(), *this, configuration_, https_ssl_context_);
+
 		asio::ip::tcp::endpoint http_endpoint(asio::ip::make_address(http_listen_address_), http_listen_port_begin_);
+		asio::ip::tcp::endpoint https_endpoint(asio::ip::make_address(https_listen_address_), https_listen_port_begin_);
 
 		asio::error_code ec;
 
@@ -745,14 +775,14 @@ public:
 		for (; http_listen_port_probe <= http_listen_port_end_; http_listen_port_probe++)
 		{
 			http_endpoint.port(http_listen_port_probe);
-			acceptor_.open(http_endpoint.protocol());
+			http_acceptor_.open(http_endpoint.protocol());
 
 			if (http_listen_port_begin_ == http_listen_port_end_)
 			{
-				acceptor_.set_option(asio::ip::tcp::acceptor::reuse_address(true), ec);
+				http_acceptor_.set_option(asio::ip::tcp::acceptor::reuse_address(true), ec);
 			}
 
-			acceptor_.bind(http_endpoint, ec);
+			http_acceptor_.bind(http_endpoint, ec);
 			if (ec)
 			{
 				http_listen_port_probe++;
@@ -767,22 +797,63 @@ public:
 				"cannot bind/listen to port in range: [ " + std::to_string(http_listen_port_begin_) + ":"
 				+ std::to_string(http_listen_port_end_) + " ]"));
 
-		acceptor_.listen(asio::socket_base::max_connections);
-
+		http_acceptor_.listen(asio::socket_base::max_connections);
 		configuration_.set("http_listen_port", std::to_string(http_listen_port_probe));
 		logger_.info("http listener on port: {d} started\n", http_listen_port_probe);
 		http_listen_port_.store(http_listen_port_probe);
 
-		acceptor_.async_accept(http_handler->socket(), [this, http_handler](const asio::error_code error) {
+		if (https_enabled_)
+		{
+			// setup listener for https if enabled
+			auto https_listen_port_probe = https_listen_port_begin_;
+
+			for (; https_listen_port_probe <= https_listen_port_end_; https_listen_port_probe++)
+			{
+				https_endpoint.port(https_listen_port_probe);
+				https_acceptor_.open(https_endpoint.protocol());
+
+				if (https_listen_port_begin_ == https_listen_port_end_)
+				{
+					https_acceptor_.set_option(asio::ip::tcp::acceptor::reuse_address(true), ec);
+				}
+
+				https_acceptor_.bind(https_endpoint, ec);
+				if (ec)
+				{
+					https_listen_port_probe++;
+					continue;
+				}
+				else
+					break;
+			}
+
+			if (ec)
+				throw std::runtime_error(std::string(
+					"cannot bind/listen to port in range: [ " + std::to_string(https_listen_port_begin_) + ":"
+					+ std::to_string(https_listen_port_end_) + " ]"));
+
+			https_acceptor_.listen(asio::socket_base::max_connections);
+
+			configuration_.set("https_listen_port", std::to_string(https_listen_port_probe));
+			logger_.info("https listener on port: {d} started\n", https_listen_port_probe);
+			http_listen_port_.store(https_listen_port_probe);
+
+		}
+
+		http_acceptor_.async_accept(http_handler->socket(), [this, http_handler](const asio::error_code error) {
 			this->handle_new_connection(http_handler, error);
 		});
 
-		io_context_pool_.run();
+		if (https_enabled_)
+		{
 
-		/*ssl_acceptor_.async_accept(
-			https_handler->socket().lowest_layer(), [this, https_handler](const asio::error_code error) {
-		   this->handle_new_https_connection(https_handler, error); });
-		*/
+			https_acceptor_.async_accept(
+				https_handler->socket().lowest_layer(), [this, https_handler](const asio::error_code error) {
+					this->handle_new_https_connection(https_handler, error);
+				});
+		}
+
+		io_context_pool_.run();
 
 		state_.store(http::basic::server::state::active);
 		return state_;
@@ -815,7 +886,7 @@ private:
 		auto new_handler = std::make_shared<server::connection_handler_http>(
 			io_context_pool_.get_io_context(), *this, configuration_);
 
-		acceptor_.async_accept(new_handler->socket(), [this, new_handler](const asio::error_code error) {
+		http_acceptor_.async_accept(new_handler->socket(), [this, new_handler](const asio::error_code error) {
 			this->handle_new_connection(new_handler, error);
 		});
 	}
@@ -831,9 +902,9 @@ private:
 		handler->start();
 
 		auto new_handler = std::make_shared<server::connection_handler_https>(
-			io_context_pool_.get_io_context(), *this, configuration_, ssl_context);
+			io_context_pool_.get_io_context(), *this, configuration_, https_ssl_context_);
 
-		ssl_acceptor_.async_accept(
+		https_acceptor_.async_accept(
 			new_handler->socket().lowest_layer(), [this, new_handler](const asio::error_code error) {
 				this->handle_new_https_connection(new_handler, error);
 			});
@@ -901,9 +972,9 @@ private:
 
 	io_context_pool io_context_pool_;
 
-	asio::ip::tcp::acceptor acceptor_;
-	asio::ip::tcp::acceptor ssl_acceptor_;
-	asio::ssl::context ssl_context;
+	asio::ip::tcp::acceptor http_acceptor_;
+	asio::ip::tcp::acceptor https_acceptor_;
+	asio::ssl::context https_ssl_context_;
 };
 
 } // namespace async
