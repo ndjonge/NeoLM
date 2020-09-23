@@ -6,4 +6,6 @@ work in progress...
 requirements:
 
 zlib
-openssl
+curl
+openssl 1.1.1
+(non boost)asio 
