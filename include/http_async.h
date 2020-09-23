@@ -44,9 +44,9 @@ public:
 	connection(asio::io_context& io_context, const std::string& host, std::string port)
 		: host_(host)
 		, port_(port)
+		, id_(host_ + '_' + port_ + "_" + std::to_string(get_static_id()))
 		, resolver_(io_context)
 		, socket_(io_context)
-		, id_(host_ + '_' + port_ + "_" + std::to_string(get_static_id()))
 	{
 		reopen();
 	};
@@ -115,7 +115,7 @@ public:
 		using iterator = containter_type::iterator;
 
 		upstream(asio::io_context& io_context, const std::string& base_url)
-			: io_context_(io_context), base_url_(base_url)
+			: base_url_(base_url), io_context_(io_context)
 		{
 			//TODO: make more robust client url parsing.
 			auto start_of_port = base_url.find_last_of(':') + 1;
@@ -151,8 +151,8 @@ public:
 
 	void forward(std::function<void(http::basic::async::client::connection&)> forward_handler, lgr::logger& logger)
 	{
-		auto selected_upstream
-			= std::min_element(upstreams_.cbegin(), upstreams_.cend(), [](auto& rhs, auto& lhs) {
+		auto selected_upstream = std::min_element(
+			upstreams_.cbegin(), upstreams_.cend(), [](const std::unique_ptr<upstream>& rhs, const std::unique_ptr<upstream>& lhs) {
 				  return rhs->nr_of_connections_ < lhs->nr_of_connections_;
 			  });
 
