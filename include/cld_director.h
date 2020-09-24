@@ -9,9 +9,9 @@
 #define CURL_STATICLIB
 
 #ifndef LOCAL_TESTING
+#include "nlohmann_json.hpp"
 #include "baanlogin.h"
 #include "bdaemon.h"
-#include "nlohmann_json.hpp"
 #include <curl/curl.h>
 
 #ifdef _WIN32
@@ -398,12 +398,9 @@ public:
 
 	void cleanup(){};
 
-	http::basic::async::client::upstreams upstreams_;
+	http::basic::async::upstreams upstreams_;
 
-	bool has_workers_available() 
-	{ 
-		return limits_.workers_actual() > 0;
-	}
+	bool has_workers_available() { return limits_.workers_actual() > 0; }
 
 	iterator find_worker(const std::string& worker_id)
 	{
@@ -447,8 +444,11 @@ public:
 
 		if (worker != workers_.end())
 		{
-			if (worker->second.get_base_url().empty() == false) limits_.workers_actual_upd(-1);
-
+			if (worker->second.get_base_url().empty() == false)
+			{
+				upstreams_.erase_upstream(worker->second.get_base_url());
+				limits_.workers_actual_upd(-1);
+			}
 			worker = workers_.erase(worker);
 			result = true;
 		}
@@ -2222,6 +2222,21 @@ public:
 				}
 			});
 
+		server_base::router_.on_get("/private/infra/dispatcher/upstreams", [this](http::session_handler& session) {
+			for (const auto& workspace : workspaces_)
+			{
+				std::stringstream ss;
+				for (const auto& workgroup : *workspace.second)
+				{
+					ss << workgroup.second->upstreams_.to_string(workspace.first);
+				}
+
+				session.response().body() += ss.str();
+			}
+
+			session.response().status(http::status::ok);
+		});
+
 		server_base::router_.on_proxy_pass("/", [this](http::session_handler& session) {
 			auto workspace_id = session.request().get<std::string>("X-Workspace-ID", "workspace_000");
 			auto workgroup_name = session.request().get<std::string>("X-WorkGroup-Name", "untitled");
@@ -2238,16 +2253,12 @@ public:
 				if (workgroup != workspace->second->end() && workgroup->second->has_workers_available())
 				{
 					forwarded = true;
-					session.request().set_attribute<http::basic::async::client::upstreams*>(
-						"proxy_pass",
-						&workgroup->second->upstreams_);
-
+					session.request().set_attribute<http::basic::async::upstreams*>(
+						"proxy_pass", &workgroup->second->upstreams_);
 				}
 			}
 
-			if (forwarded == false) 
-				session.response().status(http::status::bad_gateway);
-
+			if (forwarded == false) session.response().status(http::status::bad_gateway);
 		});
 
 		server_base::router_.on_internal_error([this](http::session_handler& session, std::exception& e) {
@@ -2401,8 +2412,8 @@ static std::unique_ptr<manager<http::basic::async::server>> cpm_server_;
 namespace selftest
 {
 
-bool run() 
-{ 
+inline bool run()
+{
 	bool result = false;
 	std::string error_code;
 	http::client::session session;
@@ -2411,12 +2422,13 @@ bool run()
 
 	payload.assign(1024 * 1024, 'a');
 
-	auto response = http::client::request<http::method::post>(session, "http://localhost:4000/api/test", error_code, {}, payload);
+	auto response
+		= http::client::request<http::method::post>(session, "http://localhost:4000/api/test", error_code, {}, payload);
 
-	return result; 
+	return result;
 }
 
-}
+} // namespace selftest
 
 } // namespace platform
 } // namespace cloud
@@ -2470,7 +2482,6 @@ inline int start_rest_server(int argc, const char** argv)
 	{
 		cloud::platform::selftest::run();
 	}
-
 
 	return 0;
 }

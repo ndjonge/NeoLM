@@ -1091,7 +1091,7 @@ inline std::string hostname()
 	::gethostname(&hostname_buffer[0], sizeof(hostname_buffer));
 
 	std::transform(hostname_buffer.begin(), hostname_buffer.end(), hostname_buffer.begin(), [](char c) {
-		return static_cast<char>(std::tolower(c));
+		return static_cast<char>(std::toupper(c));
 	});
 	return std::string{ hostname_buffer.data() };
 }

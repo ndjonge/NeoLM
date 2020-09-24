@@ -29,89 +29,122 @@ inline std::size_t get_static_id() noexcept
 	return id++;
 }
 
-namespace client
-{
-
-class connection
-{
-public:
-	enum class state
-	{
-		waiting,
-		idle
-	};
-
-	connection(asio::io_context& io_context, const std::string& host, std::string port)
-		: host_(host)
-		, port_(port)
-		, id_(host_ + '_' + port_ + "_" + std::to_string(get_static_id()))
-		, resolver_(io_context)
-		, socket_(io_context)
-	{
-		reopen();
-	};
-
-	connection(const connection& s) = delete;
-	connection(connection&& s) = delete;
-
-	connection& operator=(const connection& s) = delete;
-	connection& operator=(connection&& s) = delete;
-
-	void release() 
-	{
-		state_ = state::idle;
-	}
-
-	void reopen()
-	{
-		asio::error_code error;
-		if (socket_.is_open())
-		{
-			socket_.shutdown(asio::socket_base::shutdown_send, error);
-			socket_.close();
-		}
-
-		asio::ip::tcp::resolver::query query(asio::ip::tcp::v4(), host_, port_);
-		auto resolved_endpoints = resolver_.resolve(query, error);
-
-		asio::connect(socket_, resolved_endpoints.cbegin(), resolved_endpoints.cend(), error);
-
-		if (error)
-		{
-			std::cout << "not open\n";
-		}
-	}
-
-	const std::string& id() const { return id_; }
-
-	asio::ip::tcp::socket& socket() { return socket_; }
-	std::atomic<state>& get_state() { return state_; }
-
-	std::string host_;
-	std::string port_;
-	std::string id_;
-	std::vector<char> buffer_;
-	asio::ip::tcp::resolver resolver_;
-
-private:
-
-	std::atomic<connection::state> state_{ state::idle };
-	asio::ip::tcp::socket socket_;
-};
-
 class upstreams
 {
 public:
+	
+	template <typename upstream_type>
+	class connection
+	{
+	public:
+		enum class state
+		{
+			waiting,
+			idle
+		};
 
-	void add_upstream(asio::io_context& io_context, std::string& base_url) 
+		connection(asio::io_context& io_context, const std::string& host, std::string port, upstream_type& owner)
+			: host_(host)
+			, port_(port)
+			, id_(host_ + '_' + port_ + "_" + std::to_string(get_static_id()))
+			, resolver_(io_context)
+			, socket_(io_context)
+			, owner_(owner)
+		{
+			reopen();
+		};
+
+		connection(const connection& s) = delete;
+		connection(connection&& s) = delete;
+
+		connection& operator=(const connection& s) = delete;
+		connection& operator=(connection&& s) = delete;
+
+		void release() { state_ = state::idle; }
+
+		void reopen()
+		{
+			asio::error_code error;
+			if (socket_.is_open())
+			{
+				socket_.shutdown(asio::socket_base::shutdown_send, error);
+				socket_.close();
+			}
+
+			asio::ip::tcp::resolver::query query(asio::ip::tcp::v4(), host_, port_);
+			auto resolved_endpoints = resolver_.resolve(query, error);
+
+			asio::connect(socket_, resolved_endpoints.cbegin(), resolved_endpoints.cend(), error);
+
+			if (error)
+			{
+				std::cout << "not open\n";
+			}
+		}
+
+		const std::string& id() const { return id_; }
+
+		asio::ip::tcp::socket& socket() { return socket_; }
+		std::atomic<state>& get_state() { return state_; }
+
+		std::string host_;
+		std::string port_;
+		std::string id_;
+		std::vector<char> buffer_;
+		asio::ip::tcp::resolver resolver_;
+
+		upstream_type& owner() { return owner_; }
+
+	private:
+		std::atomic<connection::state> state_{ state::idle };
+		asio::ip::tcp::socket socket_;
+		upstream_type& owner_;
+	};
+
+
+
+	void add_upstream(asio::io_context& io_context, const std::string& base_url) 
 	{
 		upstreams_.emplace_back(new upstream(io_context, base_url));
+	}
+
+	void erase_upstream(const std::string& base_url)
+	{
+		auto upstream_to_remove = std::find_if(
+			upstreams_.cbegin(),
+			upstreams_.cend(),
+			[base_url](const std::unique_ptr<upstream>& rhs) {
+				return (rhs->base_url_ == base_url);
+			});
+
+		if (upstream_to_remove != upstreams_.cend())
+		{
+			upstreams_.erase(upstream_to_remove);
+		}
+	}
+
+	std::string to_string(const std::string& workspace) 
+	{
+		std::ostringstream ss;
+
+		for (auto& upstream : upstreams_)
+		{
+			ss << workspace << " : " << upstream->base_url_ << " : " << std::to_string(upstream->connections_.size()) 
+				<< ", 1xx: " << std::to_string(upstream->responses_1xx_) 
+				<< ", 2xx: " << std::to_string(upstream->responses_2xx_) 
+				<< ", 3xx: " << std::to_string(upstream->responses_3xx_)
+				<< ", 4xx: " << std::to_string(upstream->responses_4xx_)
+				<< ", 5xx: " << std::to_string(upstream->responses_5xx_)
+				<< ", tot: " << std::to_string(upstream->responses_tot_)
+				<< "\n";
+		}
+		return ss.str();
 	}
 
 	class upstream
 	{
 	public:
-		using containter_type = std::vector<std::unique_ptr<http::basic::async::client::connection>>;
+		using containter_type = std::vector<std::unique_ptr<http::basic::async::upstreams::connection<upstream>>>;
 		using iterator = containter_type::iterator;
 
 		upstream(asio::io_context& io_context, const std::string& base_url)
@@ -124,9 +157,26 @@ public:
 			host_ = host_.substr(0, host_.find_last_of(':'));
 		}
 
+		void update_status_code_metrics(std::int32_t status) 
+		{ 
+			assert(status >= 100);
+			assert(status < 600);
 
-		std::atomic<std::uint8_t> nr_of_connections_idle_;
-		std::atomic<std::uint8_t> nr_of_connections_;
+			if (status >= 100 && status < 200) responses_1xx_++;
+			if (status >= 200 && status < 300) responses_2xx_++;
+			if (status >= 300 && status < 400) responses_3xx_++;
+			if (status >= 400 && status < 500) responses_4xx_++;
+			if (status >= 500 && status < 600) responses_5xx_++;
+
+			responses_tot_++;
+		}
+
+		std::atomic<std::uint16_t> responses_1xx_;
+		std::atomic<std::uint16_t> responses_2xx_;
+		std::atomic<std::uint16_t> responses_3xx_;
+		std::atomic<std::uint16_t> responses_4xx_;
+		std::atomic<std::uint16_t> responses_5xx_;
+		std::atomic<std::uint16_t> responses_tot_;
 
 		const std::string& base_url() const { return base_url_; }
 		std::string base_url_;
@@ -136,7 +186,7 @@ public:
 
 		void add_connection() 
 		{ 
-			connections_.emplace_back(new connection{io_context_, host_, port_});
+			connections_.emplace_back(new connection<upstream>{io_context_, host_, port_, *this});
 		}
 
 		asio::io_context& io_context_;
@@ -146,14 +196,15 @@ public:
 
 	using containter_type = std::vector<std::unique_ptr<upstream>>;
 	using iterator = containter_type::iterator;
+	using connection_type = http::basic::async::upstreams::connection<upstream>;
 	
 	containter_type upstreams_;
 
-	void forward(std::function<void(http::basic::async::client::connection&)> forward_handler, lgr::logger& logger)
+	void forward(std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
 	{
 		auto selected_upstream = std::min_element(
 			upstreams_.cbegin(), upstreams_.cend(), [](const std::unique_ptr<upstream>& rhs, const std::unique_ptr<upstream>& lhs) {
-				  return rhs->nr_of_connections_ < lhs->nr_of_connections_;
+				return rhs->connections_.size() < lhs->connections_.size();
 			  });
 
 		if (selected_upstream != upstreams_.cend())
@@ -164,10 +215,10 @@ public:
 				for (auto& connection : selected_upstream->get()->connections_)
 				{
 					// Select the least connected upstream
-					auto expected_state = http::basic::async::client::connection::state::idle;
+					auto expected_state = http::basic::async::upstreams::connection_type::state::idle;
 
 					if (connection->get_state().compare_exchange_strong(
-							expected_state, http::basic::async::client::connection::state::waiting)
+							expected_state, http::basic::async::upstreams::connection_type::state::waiting)
 						== true)
 					{
 						forward_handler(*connection);
@@ -190,7 +241,6 @@ public:
 
 };
 
-} // namespace client
 
 class server : public http::basic::server
 {
@@ -370,13 +420,14 @@ private:
 				routing_ = session_handler_.handle_request(server_.router_);
 
 				auto upstreams
-					= session_handler_.request().get_attribute<http::basic::async::client::upstreams*>(
+					= session_handler_.request().get_attribute<http::basic::async::upstreams*>(
 						"proxy_pass", nullptr);
 
 				session_handler_.t2() = std::chrono::steady_clock::now();
 
 				if (upstreams) 
-					upstreams->forward([this](http::basic::async::client::connection& connection) {
+					upstreams->forward(
+						[this](http::basic::async::upstreams::connection_type& connection) {
 						write_forwarded_request(connection);
 						},
 						server_.logger()
@@ -386,7 +437,7 @@ private:
 			}
 		}
 
-		void write_forwarded_request(http::basic::async::client::connection& upstream_connection)
+		void write_forwarded_request(http::basic::async::upstreams::connection_type& upstream_connection)
 		{
 			asio::error_code error;
 			char peek_buffer[1];
@@ -421,7 +472,7 @@ private:
 		}
 
 
-		void read_forwarded_response_headers(http::basic::async::client::connection& upstream_connection)
+		void read_forwarded_response_headers(http::basic::async::upstreams::connection_type& upstream_connection)
 		{
 			auto me = this->shared_from_this();
 
@@ -441,7 +492,7 @@ private:
 		}
 
 		void read_forwarded_response_headers_complete(
-			http::basic::async::client::connection& upstream_connection, size_t bytes_red)
+			http::basic::async::upstreams::connection_type& upstream_connection, size_t bytes_red)
 		{
 			http::response_parser response_parser;
 			http::response_parser::result_type result;
@@ -462,6 +513,10 @@ private:
 
 					auto content_already_received
 						= static_cast<size_t>( upstream_connection.buffer_.data() + upstream_connection.buffer_.size() - c );
+
+					auto status_code = http::status::to_int(session_handler_.response().status());
+
+					upstream_connection.owner().update_status_code_metrics(status_code);
 
 					session_handler_.response().body().reserve(content_length);
 
@@ -485,7 +540,7 @@ private:
 			}
 		}
 
-		void read_forwarded_response_body(http::basic::async::client::connection& upstream_connection) 
+		void read_forwarded_response_body(http::basic::async::upstreams::connection_type& upstream_connection) 
 		{
 			asio::error_code ec;
 			if (session_handler_.response().body().size() < session_handler_.response().content_length())
@@ -522,7 +577,7 @@ private:
 			}
 		}
 
-		void read_forwarded_response_body_complete(http::basic::async::client::connection& upstream_connection) 
+		void read_forwarded_response_body_complete(http::basic::async::upstreams::connection_type& upstream_connection) 
 		{
 			if (session_handler_.response().connection_close() == true)
 			{
