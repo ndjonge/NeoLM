@@ -1255,11 +1255,15 @@ class workspaces
 public:
 	using value_type = std::unique_ptr<workspace>;
 	using container_type = std::map<const std::string, value_type>;
+	using tenant_lookup_type = std::map<const std::string, workspace*>;
+
 	using iterator = container_type::iterator;
 	using const_iterator = container_type::const_iterator;
 	using mutex_type = std::mutex;
 
 private:
+	tenant_lookup_type tenant_lookup_;
+
 	container_type workspaces_;
 	mutable mutex_type workspaces_mutex_;
 
@@ -1298,8 +1302,16 @@ public:
 
 		if (i == workspaces_.end())
 		{
-			workspaces_.insert(container_type::value_type{
+			auto new_workspace = workspaces_.insert(container_type::value_type{
 				id, new workspace{ id, "http://127.0.0.1:" + port, base_path, manager_workspace, j } });
+
+			if (new_workspace.second)
+			{
+				// TODO workspace / tenant 1:1 check.
+				tenant_lookup_.insert(tenant_lookup_type::value_type{ new_workspace.first->second->get_tenant_id(),
+																	  new_workspace.first->second.get() });
+			}
+
 			return true;
 		}
 		else
@@ -1325,6 +1337,16 @@ public:
 	}
 
 	const_iterator get_workspace(const std::string& id) const { return workspaces_.find(id); }
+	
+	workspace* get_tenant_workspace(const std::string& tenant_id) const
+	{
+		auto result = tenant_lookup_.find(tenant_id);
+		
+		if (result != tenant_lookup_.end())
+			return result->second;
+		else
+			return nullptr;
+	}
 
 	iterator get_workspace(const std::string& id) { return workspaces_.find(id); }
 
@@ -2238,19 +2260,20 @@ public:
 		});
 
 		server_base::router_.on_proxy_pass("/", [this](http::session_handler& session) {
-			auto workspace_id = session.request().get<std::string>("X-Workspace-ID", "workspace_000");
+			auto tenant_id = session.request().get<std::string>("X-Infor-TenantId", "tenant_000");
+
 			auto workgroup_name = session.request().get<std::string>("X-WorkGroup-Name", "untitled");
 			auto workgroup_type = session.request().get<std::string>("X-WorkGroup-Type", "bshells");
 
-			auto workspace = workspaces_.get_workspace(workspace_id);
+			auto workspace = workspaces_.get_tenant_workspace(tenant_id);
 
 			bool forwarded = false;
 
-			if (workspace != workspaces_.end())
+			if (workspace != nullptr)
 			{
-				auto workgroup = workspace->second->find_workgroups(workgroup_name, workgroup_type);
+				auto workgroup = workspace->find_workgroups(workgroup_name, workgroup_type);
 
-				if (workgroup != workspace->second->end() && workgroup->second->has_workers_available())
+				if (workgroup != workspace->end() && workgroup->second->has_workers_available())
 				{
 					forwarded = true;
 					session.request().set_attribute<http::basic::async::upstreams*>(
@@ -2423,7 +2446,7 @@ inline bool run()
 	payload.assign(1024 * 1024, 'a');
 
 	auto response
-		= http::client::request<http::method::post>(session, "http://localhost:4000/api/test", error_code, {}, payload);
+		= http::client::request<http::method::post>(session, "http://localhost:4000/api/test", error_code, {"X-Infor-TenantId: tenant000_prd"}, payload);
 
 	return result;
 }
