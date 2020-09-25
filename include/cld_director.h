@@ -961,6 +961,7 @@ public:
 								name_,
 								worker->first,
 								worker->second.get_base_url());
+							upstreams_.erase_upstream(worker->second.get_base_url());
 							worker = workers_.erase(workers_.find(worker->first));
 							limits_.workers_actual_upd(-1);
 
@@ -1314,7 +1315,6 @@ public:
 			result = new_workspace.second; // add_workspace returns true when an inserted happend.
 		}
 
-
 		return result;
 	}
 
@@ -1336,11 +1336,11 @@ public:
 	}
 
 	const_iterator get_workspace(const std::string& id) const { return workspaces_.find(id); }
-	
+
 	workspace* get_tenant_workspace(const std::string& tenant_id) const
 	{
 		auto result = tenant_lookup_.find(tenant_id);
-		
+
 		if (result != tenant_lookup_.end())
 			return result->second;
 		else
@@ -2444,8 +2444,8 @@ inline bool run()
 
 	payload.assign(1024 * 1024, 'a');
 
-	auto response
-		= http::client::request<http::method::post>(session, "http://localhost:4000/api/test", error_code, {"X-Infor-TenantId: tenant000_prd"}, payload);
+	auto response = http::client::request<http::method::post>(
+		session, "http://localhost:4000/api/test", error_code, { "X-Infor-TenantId: tenant000_prd" }, payload);
 
 	return result;
 }
