@@ -1297,7 +1297,7 @@ public:
 	bool add_workspace(const std::string id, const json::value_type& j)
 	{
 		std::unique_lock<mutex_type> l{ workspaces_mutex_ };
-
+		bool result = false;
 		auto i = workspaces_.find(id);
 
 		if (i == workspaces_.end())
@@ -1307,17 +1307,15 @@ public:
 
 			if (new_workspace.second)
 			{
-				// TODO workspace / tenant 1:1 check.
 				tenant_lookup_.insert(tenant_lookup_type::value_type{ new_workspace.first->second->get_tenant_id(),
 																	  new_workspace.first->second.get() });
 			}
 
-			return true;
+			result = new_workspace.second; // add_workspace returns true when an inserted happend.
 		}
-		else
-		{
-			return false;
-		}
+
+
+		return result;
 	}
 
 	bool delete_workspace(const std::string id)
@@ -1331,6 +1329,7 @@ public:
 		}
 		else
 		{
+			tenant_lookup_.erase(i->second->get_tenant_id());
 			workspaces_.erase(i);
 			return true;
 		}
