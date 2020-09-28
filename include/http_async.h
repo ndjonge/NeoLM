@@ -184,17 +184,15 @@ public:
 		std::string host_;
 		std::string port_;
 
-		using mutex_type = std::mutex;
-
 		void add_connection()
 		{
-			std::lock_guard<mutex_type> g{ connection_mutex_ };
+			std::lock_guard<std::mutex> g{ connection_mutex_ };
 			connections_.emplace_back(new connection<upstream>{ io_context_, host_, port_, *this });
 		}
 
 		asio::io_context& io_context_;
 		containter_type connections_;
-		mutex_type connection_mutex_;
+		std::mutex connection_mutex_;
 	};
 
 	using containter_type = std::vector<std::unique_ptr<upstream>>;
@@ -203,14 +201,18 @@ public:
 
 	containter_type upstreams_;
 
-
 	void forward(std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
 	{
 		auto selected_upstream = std::min_element(
 			upstreams_.cbegin(),
 			upstreams_.cend(),
 			[](const std::unique_ptr<upstream>& rhs, const std::unique_ptr<upstream>& lhs) {
-				return (rhs->connections_busy_ < lhs->connections_busy_); 
+				bool leastcon
+					= (rhs->connections_busy_ < lhs->connections_busy_) || 
+					((rhs->connections_busy_ == lhs->connections_busy_)
+					  && (rhs->responses_tot_ < lhs->responses_tot_));
+
+				return leastcon; 
 			});
 
 		if (selected_upstream != upstreams_.cend())
@@ -274,12 +276,12 @@ private:
 			, session_handler_(configuration)
 			, server_(server)
 		{
-			server_.logger_.info("connection_handler: start({d})\n", server_.manager().connections_current().load());
+			server_.logger_.info("connection_handler: start {u}\n", reinterpret_cast<uintptr_t>(this));
 		}
 
 		virtual ~connection_handler_base()
 		{
-			server_.logger_.info("connection_handler: stop({d})\n", server_.manager().connections_current().load());
+			server_.logger_.info("connection_handler: close {u}\n", reinterpret_cast<uintptr_t>(this));
 		}
 
 		connection_handler_base(connection_handler_base const&) = delete;
@@ -293,6 +295,7 @@ private:
 		socket_t& socket_base() { return static_cast<connection_handler_derived*>(this)->socket(); };
 		std::string remote_address_base() { return static_cast<connection_handler_derived*>(this)->remote_address(); };
 
+		virtual void start() {};
 		virtual void stop() { --server_.manager().connections_current(); }
 
 		void set_timeout()
@@ -465,6 +468,8 @@ private:
 			}
 
 			session_handler_.request().set("Accept-Encoding", "gzip");
+			session_handler_.request().reset_if_exists("Expect");
+
 			write_buffer_.emplace_back(http::to_string(session_handler_.request()));
 
 			auto me = this->shared_from_this();
@@ -682,7 +687,7 @@ private:
 			}
 		}
 
-		void start()
+		void start() override
 		{
 			set_timeout();
 			asio::error_code ec;
@@ -692,12 +697,14 @@ private:
 
 		void stop() override
 		{
-			if (socket_.is_open())
+			socket_.cancel();
+
+			/*if (socket_.is_open())
 			{
 				asio::error_code error;
 				this->socket_.shutdown(asio::socket_base::shutdown_send, error);
 				this->socket_.close();
-			}
+			}*/
 		}
 
 	private:
@@ -738,7 +745,7 @@ private:
 			}
 		}
 
-		void start()
+		void start() override
 		{
 			auto me = shared_from_this();
 			socket_.async_handshake(asio::ssl::stream_base::server, [me](asio::error_code const& ec) {
@@ -752,6 +759,17 @@ private:
 				}
 			});
 		}
+
+		void stop() override
+		{
+			if (socket_.lowest_layer().is_open())
+			{
+				asio::error_code error;
+				this->socket_.lowest_layer().shutdown(asio::socket_base::shutdown_send, error);
+				this->socket_.lowest_layer().close();
+			}
+		}
+	
 
 	private:
 		asio::ssl::stream<asio::ip::tcp::socket> socket_;
