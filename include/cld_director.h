@@ -943,12 +943,14 @@ public:
 						{
 							worker->second.set_status(worker::status::error);
 							logger.debug(
-								"directing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy\n",
+								"directing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy : error:{s} status:{s}\n",
 								workspace_id_,
 								type_,
 								name_,
 								worker->first,
-								worker->second.get_base_url());
+								worker->second.get_base_url(),
+								ec,
+								http::status::to_string(response.status()));
 
 							rescan = true;
 						}
@@ -2259,7 +2261,7 @@ public:
 		});
 
 		server_base::router_.on_proxy_pass("/", [this](http::session_handler& session) {
-			auto tenant_id = session.request().get<std::string>("X-Infor-TenantId", "tenant_000");
+			auto tenant_id = session.request().get<std::string>("X-Infor-TenantId", "tenant000_prd");
 
 			auto workgroup_name = session.request().get<std::string>("X-WorkGroup-Name", "untitled");
 			auto workgroup_type = session.request().get<std::string>("X-WorkGroup-Type", "bshells");

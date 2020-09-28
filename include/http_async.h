@@ -32,9 +32,7 @@ inline std::size_t get_static_id() noexcept
 class upstreams
 {
 public:
-	
-	template <typename upstream_type>
-	class connection
+	template <typename upstream_type> class connection
 	{
 	public:
 		enum class state
@@ -60,7 +58,11 @@ public:
 		connection& operator=(const connection& s) = delete;
 		connection& operator=(connection&& s) = delete;
 
-		void release() { state_ = state::idle; }
+		void release()
+		{
+			--owner_.connections_busy_;
+			state_ = state::idle;
+		}
 
 		void reopen()
 		{
@@ -101,21 +103,17 @@ public:
 		upstream_type& owner_;
 	};
 
-
-
-	void add_upstream(asio::io_context& io_context, const std::string& base_url) 
+	void add_upstream(asio::io_context& io_context, const std::string& base_url)
 	{
 		upstreams_.emplace_back(new upstream(io_context, base_url));
 	}
 
 	void erase_upstream(const std::string& base_url)
 	{
-		auto upstream_to_remove = std::find_if(
-			upstreams_.cbegin(),
-			upstreams_.cend(),
-			[base_url](const std::unique_ptr<upstream>& rhs) {
-				return (rhs->base_url_ == base_url);
-			});
+		auto upstream_to_remove
+			= std::find_if(upstreams_.cbegin(), upstreams_.cend(), [base_url](const std::unique_ptr<upstream>& rhs) {
+				  return (rhs->base_url_ == base_url);
+			  });
 
 		if (upstream_to_remove != upstreams_.cend())
 		{
@@ -123,20 +121,21 @@ public:
 		}
 	}
 
-	std::string to_string(const std::string& workspace) 
+	std::string to_string(const std::string& workspace)
 	{
 		std::ostringstream ss;
 
 		for (auto& upstream : upstreams_)
 		{
-			ss << workspace << " : " << upstream->base_url_ << " : " << std::to_string(upstream->connections_.size()) 
-				<< ", 1xx: " << std::to_string(upstream->responses_1xx_) 
-				<< ", 2xx: " << std::to_string(upstream->responses_2xx_) 
+			ss << workspace << " : " << upstream->base_url_ << " : " 
+				<< std::to_string(upstream->connections_busy_)
+			   << ", " << std::to_string(upstream->connections_.size() - upstream->connections_busy_)
+				<< ", 1xx: " << std::to_string(upstream->responses_1xx_)
+				<< ", 2xx: " << std::to_string(upstream->responses_2xx_)
 				<< ", 3xx: " << std::to_string(upstream->responses_3xx_)
 				<< ", 4xx: " << std::to_string(upstream->responses_4xx_)
 				<< ", 5xx: " << std::to_string(upstream->responses_5xx_)
-				<< ", tot: " << std::to_string(upstream->responses_tot_)
-				<< "\n";
+				<< ", tot: " << std::to_string(upstream->responses_tot_) << "\n";
 		}
 		return ss.str();
 	}
@@ -150,15 +149,15 @@ public:
 		upstream(asio::io_context& io_context, const std::string& base_url)
 			: base_url_(base_url), io_context_(io_context)
 		{
-			//TODO: make more robust client url parsing.
+			// TODO: make more robust client url parsing.
 			auto start_of_port = base_url.find_last_of(':') + 1;
 			port_ = base_url.substr(start_of_port);
 			host_ = base_url.substr(base_url.find_last_of('/') + 1);
 			host_ = host_.substr(0, host_.find_last_of(':'));
 		}
 
-		void update_status_code_metrics(std::int32_t status) 
-		{ 
+		void update_status_code_metrics(std::int32_t status)
+		{
 			assert(status >= 100);
 			assert(status < 600);
 
@@ -171,47 +170,55 @@ public:
 			responses_tot_++;
 		}
 
-		std::atomic<std::uint16_t> responses_1xx_;
-		std::atomic<std::uint16_t> responses_2xx_;
-		std::atomic<std::uint16_t> responses_3xx_;
-		std::atomic<std::uint16_t> responses_4xx_;
-		std::atomic<std::uint16_t> responses_5xx_;
-		std::atomic<std::uint16_t> responses_tot_;
+		std::atomic<std::uint16_t> connections_busy_{ 0 };
+
+		std::atomic<std::uint16_t> responses_1xx_{ 0 };
+		std::atomic<std::uint16_t> responses_2xx_{ 0 };
+		std::atomic<std::uint16_t> responses_3xx_{ 0 };
+		std::atomic<std::uint16_t> responses_4xx_{ 0 };
+		std::atomic<std::uint16_t> responses_5xx_{ 0 };
+		std::atomic<std::uint16_t> responses_tot_{ 0 };
 
 		const std::string& base_url() const { return base_url_; }
 		std::string base_url_;
 		std::string host_;
 		std::string port_;
-		std::mutex sessions_initialise_mutex_;
 
-		void add_connection() 
-		{ 
-			connections_.emplace_back(new connection<upstream>{io_context_, host_, port_, *this});
+		using mutex_type = std::mutex;
+
+		void add_connection()
+		{
+			std::lock_guard<mutex_type> g{ connection_mutex_ };
+			connections_.emplace_back(new connection<upstream>{ io_context_, host_, port_, *this });
 		}
 
 		asio::io_context& io_context_;
 		containter_type connections_;
-		std::lock_guard<std::mutex> g{ sessions_initialise_mutex_ };
+		mutex_type connection_mutex_;
 	};
 
 	using containter_type = std::vector<std::unique_ptr<upstream>>;
 	using iterator = containter_type::iterator;
 	using connection_type = http::basic::async::upstreams::connection<upstream>;
-	
+
 	containter_type upstreams_;
+
 
 	void forward(std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
 	{
 		auto selected_upstream = std::min_element(
-			upstreams_.cbegin(), upstreams_.cend(), [](const std::unique_ptr<upstream>& rhs, const std::unique_ptr<upstream>& lhs) {
-				return rhs->connections_.size() < lhs->connections_.size();
-			  });
+			upstreams_.cbegin(),
+			upstreams_.cend(),
+			[](const std::unique_ptr<upstream>& rhs, const std::unique_ptr<upstream>& lhs) {
+				return (rhs->connections_busy_ < lhs->connections_busy_); 
+			});
 
 		if (selected_upstream != upstreams_.cend())
 		{
 			bool found = false;
 			do
 			{
+				std::unique_lock<std::mutex> g{ selected_upstream->get()->connection_mutex_};
 				for (auto& connection : selected_upstream->get()->connections_)
 				{
 					// Select the least connected upstream
@@ -221,6 +228,8 @@ public:
 							expected_state, http::basic::async::upstreams::connection_type::state::waiting)
 						== true)
 					{
+						g.unlock();
+						++selected_upstream->get()->connections_busy_;
 						forward_handler(*connection);
 						found = true;
 						break;
@@ -229,18 +238,16 @@ public:
 
 				if (found == false)
 				{
+					g.unlock();
 					selected_upstream->get()->add_connection();
 
 					logger.api(
 						"reverse proxy: adding new upstream connection to {s}\n", selected_upstream->get()->base_url());
-
 				}
 			} while (found == false);
 		}
 	}
-
 };
-
 
 class server : public http::basic::server
 {
@@ -251,7 +258,7 @@ private:
 	protected:
 		asio::io_context& service_;
 		asio::io_context::strand write_strand_;
-		asio::streambuf in_packet_{8192};
+		asio::streambuf in_packet_{ 8192 };
 		asio::steady_timer steady_timer_;
 
 		std::deque<std::string> write_buffer_;
@@ -267,10 +274,13 @@ private:
 			, session_handler_(configuration)
 			, server_(server)
 		{
-			server_.logger_.info("connection_handler: start\n");
+			server_.logger_.info("connection_handler: start({d})\n", server_.manager().connections_current().load());
 		}
 
-		virtual ~connection_handler_base() { server_.logger_.info("connection_handler: stop\n"); }
+		virtual ~connection_handler_base()
+		{
+			server_.logger_.info("connection_handler: stop({d})\n", server_.manager().connections_current().load());
+		}
 
 		connection_handler_base(connection_handler_base const&) = delete;
 		void operator==(connection_handler_base const&) = delete;
@@ -283,7 +293,7 @@ private:
 		socket_t& socket_base() { return static_cast<connection_handler_derived*>(this)->socket(); };
 		std::string remote_address_base() { return static_cast<connection_handler_derived*>(this)->remote_address(); };
 
-		void stop() { --server_.manager().connections_current(); }
+		virtual void stop() { --server_.manager().connections_current(); }
 
 		void set_timeout()
 		{
@@ -419,19 +429,22 @@ private:
 			{
 				routing_ = session_handler_.handle_request(server_.router_);
 
+				if (server_.logger_.current_level() == lgr::level::debug)
+				{
+					server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(session_handler_.request()));
+				}
+
 				auto upstreams
-					= session_handler_.request().get_attribute<http::basic::async::upstreams*>(
-						"proxy_pass", nullptr);
+					= session_handler_.request().get_attribute<http::basic::async::upstreams*>("proxy_pass", nullptr);
 
 				session_handler_.t2() = std::chrono::steady_clock::now();
 
-				if (upstreams) 
+				if (upstreams)
 					upstreams->forward(
 						[this](http::basic::async::upstreams::connection_type& connection) {
-						write_forwarded_request(connection);
+							write_forwarded_request(connection);
 						},
-						server_.logger()
-				);
+						server_.logger());
 				else
 					write_response();
 			}
@@ -443,8 +456,7 @@ private:
 			char peek_buffer[1];
 
 			upstream_connection.socket().non_blocking(true);
-			upstream_connection.socket().receive(
-				asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
+			upstream_connection.socket().receive(asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
 			upstream_connection.socket().non_blocking(false);
 
 			if (error != asio::error::would_block)
@@ -460,17 +472,12 @@ private:
 			asio::async_write(
 				upstream_connection.socket(),
 				asio::buffer(write_buffer_.front()),
-				[me, &upstream_connection](asio::error_code const& ec, std::size_t) 
-			{
+				[me, &upstream_connection](asio::error_code const& ec, std::size_t) {
 					me->write_buffer_.pop_front();
 
-					if (!ec) 
-						me->read_forwarded_response_headers(upstream_connection);
-			});
-
-
+					if (!ec) me->read_forwarded_response_headers(upstream_connection);
+				});
 		}
-
 
 		void read_forwarded_response_headers(http::basic::async::upstreams::connection_type& upstream_connection)
 		{
@@ -483,12 +490,9 @@ private:
 				asio::dynamic_buffer(upstream_connection.buffer_),
 				"\r\n\r\n",
 				[me, &upstream_connection](asio::error_code ec, size_t bytes_red) {
-				// TODO response body complete? no -> st
-				if (!ec) 
-					me->read_forwarded_response_headers_complete(upstream_connection, bytes_red);
-				}
-			);
-
+					// TODO response body complete? no -> st
+					if (!ec) me->read_forwarded_response_headers_complete(upstream_connection, bytes_red);
+				});
 		}
 
 		void read_forwarded_response_headers_complete(
@@ -511,8 +515,8 @@ private:
 					session_handler_.request().set("X-Request-ID", upstream_connection.id());
 					session_handler_.response().set("X-Upstream-Server", upstream_connection.id());
 
-					auto content_already_received
-						= static_cast<size_t>( upstream_connection.buffer_.data() + upstream_connection.buffer_.size() - c );
+					auto content_already_received = static_cast<size_t>(
+						upstream_connection.buffer_.data() + upstream_connection.buffer_.size() - c);
 
 					auto status_code = http::status::to_int(session_handler_.response().status());
 
@@ -540,7 +544,7 @@ private:
 			}
 		}
 
-		void read_forwarded_response_body(http::basic::async::upstreams::connection_type& upstream_connection) 
+		void read_forwarded_response_body(http::basic::async::upstreams::connection_type& upstream_connection)
 		{
 			asio::error_code ec;
 			if (session_handler_.response().body().size() < session_handler_.response().content_length())
@@ -572,12 +576,12 @@ private:
 			}
 			else
 			{
-				assert(1==0);
+				assert(1 == 0);
 				read_forwarded_response_body_complete(upstream_connection);
 			}
 		}
 
-		void read_forwarded_response_body_complete(http::basic::async::upstreams::connection_type& upstream_connection) 
+		void read_forwarded_response_body_complete(http::basic::async::upstreams::connection_type& upstream_connection)
 		{
 			if (session_handler_.response().connection_close() == true)
 			{
@@ -618,8 +622,13 @@ private:
 
 				if (server_.logger_.current_level() >= lgr::level::accesslog)
 				{
-					auto log_msg = server_.manager().log_access(session_handler_, routing_.the_route().route_metrics())
-								   + "\n";
+					if (server_.logger_.current_level() == lgr::level::debug)
+					{
+						server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(session_handler_.response()));
+					}
+
+					auto log_msg
+						= server_.manager().log_access(session_handler_, routing_.the_route().route_metrics()) + "\n";
 
 					server_.logger_.accesslog(log_msg);
 				}
@@ -678,11 +687,10 @@ private:
 			set_timeout();
 			asio::error_code ec;
 			socket_.set_option(asio::ip::tcp::no_delay(true), ec);
-			if (!ec)
-				read_request_headers();
+			if (!ec) read_request_headers();
 		}
 
-		void stop()
+		void stop() override
 		{
 			if (socket_.is_open())
 			{
@@ -784,7 +792,7 @@ public:
 			asio::error_code error_code;
 			https_ssl_context_.use_certificate_chain_file(
 				configuration_.get<std::string>("https_certificate_certificate_file", "server.crt"), error_code);
-			
+
 			if (error_code) std::cout << "https error: " << error_code.message() << "\n";
 
 			https_ssl_context_.use_private_key_file(
@@ -793,7 +801,6 @@ public:
 				error_code);
 
 			if (error_code) std::cout << "https error: " << error_code.message() << "\n";
-
 		}
 
 		if (configuration_.get("ssl_certificate_verify").size() > 0)
@@ -892,7 +899,6 @@ public:
 			configuration_.set("https_listen_port", std::to_string(https_listen_port_probe));
 			logger_.info("https listener on port: {d} started\n", https_listen_port_probe);
 			http_listen_port_.store(https_listen_port_probe);
-
 		}
 
 		http_acceptor_.async_accept(http_handler->socket(), [this, http_handler](const asio::error_code error) {

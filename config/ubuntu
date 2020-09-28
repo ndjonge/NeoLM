@@ -7,4 +7,14 @@ sudo apt install gnome-tweaks
 
 sudo apt install -y zsh
 usermod -s $(which zsh) ndjonge
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
 ubuntu2004 config --default-user ndjonge
+
+ln -s "/mnt/c/Users/ndejo/AppData/Local/Programs/Microsoft VS Code/bin/code" vscode
+sudo apt install libpthread-stubs0-dev
+./vcpkg install zlib:x64-linux
+./vcpkg install pthread:x64-linux
+./vcpkg install asio:x64-linux
+./vcpkg install nlohmann-json:x64-linux
+./vcpkg install curl:x64-linux
