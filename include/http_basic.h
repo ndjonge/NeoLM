@@ -800,7 +800,7 @@ inline std::string to_string(method_t method) noexcept
 		case method::proxy_pass:
 			return "PROXY_PASS";
 		default:
-			return "<unknown>";
+			return "ERROR";
 	}
 }
 
@@ -3009,7 +3009,7 @@ public:
 
 	const std::string& parse_error_reason() const { return request_parser_.error_reason(); }
 
-	template <typename router_t> void set_response_headers(typename router_t::request_result_type& route_result) 
+	template <typename router_t> void set_response_headers(typename router_t::request_result_type& route_result, http::status::status_t error_status = http::status::not_found) 
 	{
 		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
 		response_.set("Date", util::return_current_time_and_date());
@@ -3031,9 +3031,15 @@ public:
 			}
 			case http::api::router_match::no_route:
 			{
-				response_.status(http::status::not_found);
+				response_.status(error_status);
 				break;
 			}
+		}
+
+		if (request().method() == http::method::unknown)
+		{
+			// no request was parsed, close the connection.
+			response().set("Connection", "Close");
 		}
 
 		if ((request_.http_version11() == true && keepalive_count() > 1 && request_.connection_close() == false
@@ -3043,8 +3049,6 @@ public:
 		{
 			keepalive_count_decr();
 			response_.set("Connection", "Keep-Alive");
-			// response_.set("Keep-Alive", std::string("timeout=") + std::to_string(keepalive_max()) + ", max="
-			// +std::to_string(keepalive_count()));
 		}
 		else
 		{
@@ -3999,8 +4003,8 @@ public:
 		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 100000L);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 100000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 1000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 1000L);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
 
@@ -4044,8 +4048,8 @@ public:
 		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 10000L);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 10000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 1000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 1000L);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
 		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
 

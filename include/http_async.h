@@ -207,10 +207,7 @@ public:
 			upstreams_.cbegin(),
 			upstreams_.cend(),
 			[](const std::unique_ptr<upstream>& rhs, const std::unique_ptr<upstream>& lhs) {
-				bool leastcon
-					= (rhs->connections_busy_ < lhs->connections_busy_) || 
-					((rhs->connections_busy_ == lhs->connections_busy_)
-					  && (rhs->responses_tot_ < lhs->responses_tot_));
+				bool leastcon = (rhs->connections_busy_ < lhs->connections_busy_);
 
 				return leastcon; 
 			});
@@ -244,7 +241,7 @@ public:
 					selected_upstream->get()->add_connection();
 
 					logger.api(
-						"reverse proxy: adding new upstream connection to {s}\n", selected_upstream->get()->base_url());
+						"adding new upstream connection to {s}\n", selected_upstream->get()->base_url());
 				}
 			} while (found == false);
 		}
@@ -317,6 +314,7 @@ private:
 		void read_request_headers()
 		{
 			// Header
+			in_packet_.consume(in_packet_.size());
 			auto me = this->shared_from_this();
 			asio::async_read_until(
 				this->socket_base(), in_packet_, "\r\n\r\n", [me](asio::error_code const& ec, std::size_t bytes_xfer) {
@@ -360,9 +358,8 @@ private:
 				}
 				else if (result == http::request_parser::bad)
 				{
+					session_handler_.request().set("Remote_Addr", this->remote_address_base());
 					session_handler_.response().status(http::status::bad_request);
-					write_buffer_.push_back(http::to_string(session_handler_.response()));
-
 					write_response();
 				}
 				else
@@ -372,7 +369,24 @@ private:
 			}
 			else
 			{
-				stop();
+				session_handler_.request().set("Remote_Addr", this->remote_address_base());
+
+				if (ec == asio::error::not_found)
+				{
+					session_handler_.response().status(http::status::payload_too_large);
+					write_response();
+				}
+				else
+				{
+					stop();
+					//if (ec == asio::error::operation_aborted)
+					//{
+					//	session_handler_.response().status(http::status::request_timeout);
+					//	write_response();
+					//}
+					//else
+					//	stop();
+				}
 			}
 		}
 
@@ -601,7 +615,8 @@ private:
 		void write_response()
 		{
 			auto me = this->shared_from_this();
-			session_handler_.set_response_headers<http::api::router<>>(routing_);
+
+			session_handler_.set_response_headers<http::api::router<>>(routing_, session_handler_.response().status());
 
 			write_buffer_.emplace_back(http::to_string(session_handler_.response()));
 
