@@ -60,7 +60,7 @@ public:
 
 		void release()
 		{
-			--owner_.connections_busy_;
+			--(owner_.connections_busy_);
 			state_ = state::idle;
 		}
 
@@ -227,9 +227,10 @@ public:
 							expected_state, http::basic::async::upstreams::connection_type::state::waiting)
 						== true)
 					{
+						auto selected_connection = connection.get();
 						g.unlock();
-						++selected_upstream->get()->connections_busy_;
-						forward_handler(*connection);
+						++(selected_upstream->get()->connections_busy_);
+						forward_handler(*selected_connection);
 						found = true;
 						break;
 					}

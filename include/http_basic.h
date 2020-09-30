@@ -191,11 +191,11 @@ inline std::size_t get_thread_id() noexcept
 class logger
 {
 public:
-	logger(const std::string& file, const std::string& level) : ostream_(&std::cerr)
+	logger(const std::string& file, const std::string& level) : ostream_(&std::cout)
 	{
 		set_level(level);
 
-		if (level_ != level::none && file != "cerr")
+		if (level_ != level::none && file != "cout")
 		{
 			redirected_ostream_.open(file, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
 			ostream_ = &redirected_ostream_;
