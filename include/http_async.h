@@ -38,7 +38,8 @@ public:
 		enum class state
 		{
 			waiting,
-			idle
+			idle,
+			delete_
 		};
 
 		connection(asio::io_context& io_context, const std::string& host, std::string port, upstream_type& owner)
@@ -61,7 +62,7 @@ public:
 		void release()
 		{
 			--(owner_.connections_busy_);
-			state_ = state::idle;
+			state_ = state::idle;				
 		}
 
 		void reopen()
@@ -216,11 +217,36 @@ public:
 		//		bool leastcon = (rhs->connections_busy_ < lhs->connections_busy_);
 		//		return leastcon; 
 		//	});
-		static std::atomic<std::uint8_t> rr = 0;
-		auto selected_upstream = upstreams_.cbegin() + (++rr % upstreams_.size());
 
-		for (auto probe_upstream = upstreams_.cbegin(); probe_upstream != upstreams_.cend(); probe_upstream++)
+
+		static std::atomic<std::uint8_t> rr{0};
+		auto selected_upstream = upstreams_.begin() + (++rr % upstreams_.size());
+
+		for (auto probe_upstream = upstreams_.begin(); probe_upstream != upstreams_.end(); probe_upstream++)
 		{
+			{
+				if (selected_upstream->get()->connections_total_.load() > 4 && selected_upstream->get()->connections_busy_.load() < 4 )
+				{
+					std::unique_lock<std::mutex> g{ selected_upstream->get()->connection_mutex_};
+					for (auto connection = selected_upstream->get()->connections_.begin(); connection != selected_upstream->get()->connections_.end();)
+					{
+
+						auto expected_state = http::basic::async::upstreams::connection_type::state::idle;
+						if (connection->get()->get_state().compare_exchange_strong(
+								expected_state, http::basic::async::upstreams::connection_type::state::delete_)
+							== true)
+						{
+							connection = selected_upstream->get()->connections_.erase(connection);
+							selected_upstream->get()->connections_total_--;
+						}
+						else
+						{
+							++connection;
+						}
+						
+					}
+				}
+			}
 			auto selected_upstream_connections_total = selected_upstream->get()->connections_total_.load();
 			auto selected_upstream_connections_busy = selected_upstream->get()->connections_busy_.load();
 
@@ -231,13 +257,13 @@ public:
 			auto probe_upstream_connections_free = probe_upstream_connections_total - probe_upstream_connections_busy;
 
 
-			if (selected_upstream_connections_free > 0 && probe_upstream_connections_free > probe_upstream_connections_free)
+			if (selected_upstream_connections_free > 0 && selected_upstream_connections_total > probe_upstream_connections_total)
 			{
 				selected_upstream = probe_upstream; 
 			} 
 		}
 
-		if (selected_upstream != upstreams_.cend())
+		if (selected_upstream != upstreams_.end())
 		{
 			bool found = false;
 			do
