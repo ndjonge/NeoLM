@@ -127,9 +127,13 @@ public:
 
 		for (auto& upstream : upstreams_)
 		{
-			ss << workspace << " : " << upstream->base_url_ << " : " 
-				<< std::to_string(upstream->connections_busy_)
-			   << ", " << std::to_string(upstream->connections_.size() - upstream->connections_busy_)
+			auto connections_busy_ = upstream->connections_busy_.load();
+			auto connections_total = upstream->connections_total_.load();
+			auto connections_idle = connections_total - connections_busy_;
+
+			ss << workspace << " : " << upstream->base_url_ << " , connections (total/idle/busy):" 
+				<< std::to_string(connections_total) << "/"
+			   << std::to_string(connections_idle) << "/" << std::to_string(connections_busy_)
 				<< ", 1xx: " << std::to_string(upstream->responses_1xx_)
 				<< ", 2xx: " << std::to_string(upstream->responses_2xx_)
 				<< ", 3xx: " << std::to_string(upstream->responses_3xx_)
@@ -171,6 +175,7 @@ public:
 		}
 
 		std::atomic<std::uint16_t> connections_busy_{ 0 };
+		std::atomic<std::size_t> connections_total_{ 0 };
 
 		std::atomic<std::uint16_t> responses_1xx_{ 0 };
 		std::atomic<std::uint16_t> responses_2xx_{ 0 };
@@ -188,6 +193,7 @@ public:
 		{
 			std::lock_guard<std::mutex> g{ connection_mutex_ };
 			connections_.emplace_back(new connection<upstream>{ io_context_, host_, port_, *this });
+			connections_total_ = connections_.size();
 		}
 
 		asio::io_context& io_context_;
@@ -203,14 +209,33 @@ public:
 
 	void forward(std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
 	{
-		auto selected_upstream = std::min_element(
-			upstreams_.cbegin(),
-			upstreams_.cend(),
-			[](const std::unique_ptr<upstream>& rhs, const std::unique_ptr<upstream>& lhs) {
-				bool leastcon = (rhs->connections_busy_ < lhs->connections_busy_);
+		//auto selected_upstream = std::min_element(
+		//	upstreams_.cbegin(),
+		//	upstreams_.cend(),
+		//	[](const std::unique_ptr<upstream>& rhs, const std::unique_ptr<upstream>& lhs) {
+		//		bool leastcon = (rhs->connections_busy_ < lhs->connections_busy_);
+		//		return leastcon; 
+		//	});
+		static std::atomic<std::uint8_t> rr = 0;
+		auto selected_upstream = upstreams_.cbegin() + (++rr % upstreams_.size());
 
-				return leastcon; 
-			});
+		for (auto probe_upstream = upstreams_.cbegin(); probe_upstream != upstreams_.cend(); probe_upstream++)
+		{
+			auto selected_upstream_connections_total = selected_upstream->get()->connections_total_.load();
+			auto selected_upstream_connections_busy = selected_upstream->get()->connections_busy_.load();
+
+			auto probe_upstream_connections_total = probe_upstream->get()->connections_total_.load();
+			auto probe_upstream_connections_busy = probe_upstream->get()->connections_busy_.load();
+
+			auto selected_upstream_connections_free = selected_upstream_connections_total - selected_upstream_connections_busy;
+			auto probe_upstream_connections_free = probe_upstream_connections_total - probe_upstream_connections_busy;
+
+
+			if (selected_upstream_connections_free > 0 && probe_upstream_connections_free > probe_upstream_connections_free)
+			{
+				selected_upstream = probe_upstream; 
+			} 
+		}
 
 		if (selected_upstream != upstreams_.cend())
 		{
