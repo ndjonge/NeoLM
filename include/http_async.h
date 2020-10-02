@@ -60,11 +60,12 @@ public:
 		connection& operator=(const connection& s) = delete;
 		connection& operator=(connection&& s) = delete;
 
-		bool should_drain() 
+		bool should_drain()
 		{
 			const int upstream_connections_keep_alive = 8;
 
-			if (owner_.connections_total_ > upstream_connections_keep_alive && owner_.connections_total_ - owner_.connections_busy_ > 4) 
+			if (owner_.connections_total_ > upstream_connections_keep_alive
+				&& owner_.connections_total_ - owner_.connections_busy_ > 4)
 				return true;
 			else
 				return false;
@@ -79,7 +80,7 @@ public:
 		void release()
 		{
 			--(owner_.connections_busy_);
-			state_ = state::idle;				
+			state_ = state::idle;
 		}
 
 		void reopen()
@@ -152,15 +153,15 @@ public:
 			auto connections_total = upstream->connections_total_.load();
 			auto connections_idle = connections_total - connections_busy_;
 
-			ss << workspace << " : " << upstream->base_url_ << " , connections (total/idle/busy):" 
-				<< std::to_string(connections_total) << "/"
+			ss << workspace << " : " << upstream->base_url_
+			   << " , connections (total/idle/busy):" << std::to_string(connections_total) << "/"
 			   << std::to_string(connections_idle) << "/" << std::to_string(connections_busy_)
-				<< ", 1xx: " << std::to_string(upstream->responses_1xx_)
-				<< ", 2xx: " << std::to_string(upstream->responses_2xx_)
-				<< ", 3xx: " << std::to_string(upstream->responses_3xx_)
-				<< ", 4xx: " << std::to_string(upstream->responses_4xx_)
-				<< ", 5xx: " << std::to_string(upstream->responses_5xx_)
-				<< ", tot: " << std::to_string(upstream->responses_tot_) << "\n";
+			   << ", 1xx: " << std::to_string(upstream->responses_1xx_)
+			   << ", 2xx: " << std::to_string(upstream->responses_2xx_)
+			   << ", 3xx: " << std::to_string(upstream->responses_3xx_)
+			   << ", 4xx: " << std::to_string(upstream->responses_4xx_)
+			   << ", 5xx: " << std::to_string(upstream->responses_5xx_)
+			   << ", tot: " << std::to_string(upstream->responses_tot_) << "\n";
 		}
 		return ss.str();
 	}
@@ -239,50 +240,28 @@ public:
 
 	void forward(std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
 	{
-		static std::atomic<std::uint8_t> rr{0};
+		static std::atomic<std::uint8_t> rr{ 0 };
 
-		std::unique_lock<std::mutex> upstreams_guard{ upstreams_lock_ };
+		//		std::unique_lock<std::mutex> upstreams_guard{ upstreams_lock_ };
 
-		auto selected_upstream = upstreams_.begin();//+(++rr % upstreams_.size());
+		auto selected_upstream = upstreams_.begin() + (++rr % upstreams_.size());
 
 		for (auto probe_upstream = upstreams_.begin(); probe_upstream != upstreams_.end(); probe_upstream++)
 		{
-			{
-				std::unique_lock<std::mutex> connections_guard{ probe_upstream->get()->connection_mutex_ };
-				for (auto connection = probe_upstream->get()->connections_.begin();
-					 connection != probe_upstream->get()->connections_.end();)
-				{
-
-					auto expected_state = http::basic::async::upstreams::connection_type::state::drain;
-					if (connection->get()->get_state().compare_exchange_strong(
-							expected_state, http::basic::async::upstreams::connection_type::state::erase)
-						== true)
-					{
-						logger.api("delete upstream connection from {s}\n", selected_upstream->get()->base_url());
-						connection = probe_upstream->get()->connections_.erase(connection);
-						probe_upstream->get()->connections_total_--;
-					}
-					else
-					{
-						++connection;
-					}
-						
-				}
-			}
-
 			auto selected_upstream_connections_total = selected_upstream->get()->connections_total_.load();
-			auto selected_upstream_connections_busy = selected_upstream->get()->connections_busy_.load();
+			auto selected_upstream_connections_free = selected_upstream->get()->connections_total_.load()
+													  - selected_upstream->get()->connections_busy_.load();
+			;
 
 			auto probe_upstream_connections_busy = selected_upstream->get()->connections_busy_.load();
 			auto probe_upstream_connections_total = probe_upstream->get()->connections_total_.load();
 			auto probe_upstream_connections_free = probe_upstream_connections_total - probe_upstream_connections_busy;
 
-			if ((probe_upstream_connections_free > 0)
-				//&& (selected_upstream_connections_free > probe_upstream_connections_free)
-				&& selected_upstream_connections_total > probe_upstream_connections_total)
+			if ((selected_upstream_connections_total > probe_upstream_connections_total)
+				&& (selected_upstream_connections_free < probe_upstream_connections_free))
 			{
-				selected_upstream = probe_upstream; 
-			} 
+				selected_upstream = probe_upstream;
+			}
 		}
 
 		if (selected_upstream != upstreams_.end())
@@ -290,7 +269,7 @@ public:
 			bool found = false;
 			do
 			{
-				std::unique_lock<std::mutex> connections_guard{ selected_upstream->get()->connection_mutex_};
+				std::unique_lock<std::mutex> connections_guard{ selected_upstream->get()->connection_mutex_ };
 				for (auto& connection : selected_upstream->get()->connections_)
 				{
 					// Select the least connected upstream
@@ -314,8 +293,7 @@ public:
 					connections_guard.unlock();
 					selected_upstream->get()->add_connection();
 
-					logger.api(
-						"new upstream connection to {s}\n", selected_upstream->get()->base_url());
+					logger.api("new upstream connection to {s}\n", selected_upstream->get()->base_url());
 				}
 			} while (found == false);
 		}
@@ -366,7 +344,7 @@ private:
 		socket_t& socket_base() { return static_cast<connection_handler_derived*>(this)->socket(); };
 		std::string remote_address_base() { return static_cast<connection_handler_derived*>(this)->remote_address(); };
 
-		virtual void start() {};
+		virtual void start(){};
 		virtual void stop() { --server_.manager().connections_current(); }
 
 		void set_timeout()
@@ -453,12 +431,12 @@ private:
 				else
 				{
 					stop();
-					//if (ec == asio::error::operation_aborted)
+					// if (ec == asio::error::operation_aborted)
 					//{
 					//	session_handler_.response().status(http::status::request_timeout);
 					//	write_response();
 					//}
-					//else
+					// else
 					//	stop();
 				}
 			}
@@ -676,11 +654,12 @@ private:
 
 		void read_forwarded_response_body_complete(http::basic::async::upstreams::connection_type& upstream_connection)
 		{
-			if (upstream_connection.should_drain())
-			{
-				upstream_connection.drain();
-			}
-			else if (session_handler_.response().connection_close() == true)
+			// if (upstream_connection.should_drain())
+			// {
+			// 	upstream_connection.drain();
+			// }
+			// else
+			if (session_handler_.response().connection_close() == true)
 			{
 				upstream_connection.reopen();
 				upstream_connection.release();
@@ -865,7 +844,6 @@ private:
 				this->socket_.lowest_layer().close();
 			}
 		}
-	
 
 	private:
 		asio::ssl::stream<asio::ip::tcp::socket> socket_;
