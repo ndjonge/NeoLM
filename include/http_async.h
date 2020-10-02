@@ -39,7 +39,8 @@ public:
 		{
 			waiting,
 			idle,
-			delete_
+			drain,
+			erase
 		};
 
 		connection(asio::io_context& io_context, const std::string& host, std::string port, upstream_type& owner)
@@ -58,6 +59,22 @@ public:
 
 		connection& operator=(const connection& s) = delete;
 		connection& operator=(connection&& s) = delete;
+
+		bool should_drain() 
+		{
+			const int upstream_connections_keep_alive = 8;
+
+			if (owner_.connections_total_ > upstream_connections_keep_alive && owner_.connections_total_ - owner_.connections_busy_ > 4) 
+				return true;
+			else
+				return false;
+		}
+
+		void drain()
+		{
+			--(owner_.connections_busy_);
+			state_ = state::drain;
+		}
 
 		void release()
 		{
@@ -106,11 +123,14 @@ public:
 
 	void add_upstream(asio::io_context& io_context, const std::string& base_url)
 	{
+		std::unique_lock<std::mutex> g{ upstreams_lock_ };
 		upstreams_.emplace_back(new upstream(io_context, base_url));
 	}
 
 	void erase_upstream(const std::string& base_url)
 	{
+		std::unique_lock<std::mutex> g{ upstreams_lock_ };
+
 		auto upstream_to_remove
 			= std::find_if(upstreams_.cbegin(), upstreams_.cend(), [base_url](const std::unique_ptr<upstream>& rhs) {
 				  return (rhs->base_url_ == base_url);
@@ -150,6 +170,13 @@ public:
 	public:
 		using containter_type = std::vector<std::unique_ptr<http::basic::async::upstreams::connection<upstream>>>;
 		using iterator = containter_type::iterator;
+
+		enum class state
+		{
+			up,
+			drain,
+			down
+		};
 
 		upstream(asio::io_context& io_context, const std::string& base_url)
 			: base_url_(base_url), io_context_(io_context)
@@ -197,6 +224,7 @@ public:
 			connections_total_ = connections_.size();
 		}
 
+		state state_;
 		asio::io_context& io_context_;
 		containter_type connections_;
 		std::mutex connection_mutex_;
@@ -207,57 +235,51 @@ public:
 	using connection_type = http::basic::async::upstreams::connection<upstream>;
 
 	containter_type upstreams_;
+	std::mutex upstreams_lock_;
 
 	void forward(std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
 	{
-		//auto selected_upstream = std::min_element(
-		//	upstreams_.cbegin(),
-		//	upstreams_.cend(),
-		//	[](const std::unique_ptr<upstream>& rhs, const std::unique_ptr<upstream>& lhs) {
-		//		bool leastcon = (rhs->connections_busy_ < lhs->connections_busy_);
-		//		return leastcon; 
-		//	});
-
-
 		static std::atomic<std::uint8_t> rr{0};
-		auto selected_upstream = upstreams_.begin() + (++rr % upstreams_.size());
+
+		std::unique_lock<std::mutex> upstreams_guard{ upstreams_lock_ };
+
+		auto selected_upstream = upstreams_.begin();//+(++rr % upstreams_.size());
 
 		for (auto probe_upstream = upstreams_.begin(); probe_upstream != upstreams_.end(); probe_upstream++)
 		{
 			{
-				if (selected_upstream->get()->connections_total_.load() > 4 && selected_upstream->get()->connections_busy_.load() < 4 )
+				std::unique_lock<std::mutex> connections_guard{ probe_upstream->get()->connection_mutex_ };
+				for (auto connection = probe_upstream->get()->connections_.begin();
+					 connection != probe_upstream->get()->connections_.end();)
 				{
-					std::unique_lock<std::mutex> g{ selected_upstream->get()->connection_mutex_};
-					for (auto connection = selected_upstream->get()->connections_.begin(); connection != selected_upstream->get()->connections_.end();)
-					{
 
-						auto expected_state = http::basic::async::upstreams::connection_type::state::idle;
-						if (connection->get()->get_state().compare_exchange_strong(
-								expected_state, http::basic::async::upstreams::connection_type::state::delete_)
-							== true)
-						{
-							connection = selected_upstream->get()->connections_.erase(connection);
-							selected_upstream->get()->connections_total_--;
-						}
-						else
-						{
-							++connection;
-						}
-						
+					auto expected_state = http::basic::async::upstreams::connection_type::state::drain;
+					if (connection->get()->get_state().compare_exchange_strong(
+							expected_state, http::basic::async::upstreams::connection_type::state::erase)
+						== true)
+					{
+						logger.api("delete upstream connection from {s}\n", selected_upstream->get()->base_url());
+						connection = probe_upstream->get()->connections_.erase(connection);
+						probe_upstream->get()->connections_total_--;
 					}
+					else
+					{
+						++connection;
+					}
+						
 				}
 			}
+
 			auto selected_upstream_connections_total = selected_upstream->get()->connections_total_.load();
 			auto selected_upstream_connections_busy = selected_upstream->get()->connections_busy_.load();
 
+			auto probe_upstream_connections_busy = selected_upstream->get()->connections_busy_.load();
 			auto probe_upstream_connections_total = probe_upstream->get()->connections_total_.load();
-			auto probe_upstream_connections_busy = probe_upstream->get()->connections_busy_.load();
-
-			auto selected_upstream_connections_free = selected_upstream_connections_total - selected_upstream_connections_busy;
 			auto probe_upstream_connections_free = probe_upstream_connections_total - probe_upstream_connections_busy;
 
-
-			if (selected_upstream_connections_free > 0 && selected_upstream_connections_total > probe_upstream_connections_total)
+			if ((probe_upstream_connections_free > 0)
+				//&& (selected_upstream_connections_free > probe_upstream_connections_free)
+				&& selected_upstream_connections_total > probe_upstream_connections_total)
 			{
 				selected_upstream = probe_upstream; 
 			} 
@@ -268,7 +290,7 @@ public:
 			bool found = false;
 			do
 			{
-				std::unique_lock<std::mutex> g{ selected_upstream->get()->connection_mutex_};
+				std::unique_lock<std::mutex> connections_guard{ selected_upstream->get()->connection_mutex_};
 				for (auto& connection : selected_upstream->get()->connections_)
 				{
 					// Select the least connected upstream
@@ -279,7 +301,7 @@ public:
 						== true)
 					{
 						auto selected_connection = connection.get();
-						g.unlock();
+						connections_guard.unlock();
 						++(selected_upstream->get()->connections_busy_);
 						forward_handler(*selected_connection);
 						found = true;
@@ -289,11 +311,11 @@ public:
 
 				if (found == false)
 				{
-					g.unlock();
+					connections_guard.unlock();
 					selected_upstream->get()->add_connection();
 
 					logger.api(
-						"adding new upstream connection to {s}\n", selected_upstream->get()->base_url());
+						"new upstream connection to {s}\n", selected_upstream->get()->base_url());
 				}
 			} while (found == false);
 		}
@@ -654,12 +676,19 @@ private:
 
 		void read_forwarded_response_body_complete(http::basic::async::upstreams::connection_type& upstream_connection)
 		{
-			if (session_handler_.response().connection_close() == true)
+			if (upstream_connection.should_drain())
+			{
+				upstream_connection.drain();
+			}
+			else if (session_handler_.response().connection_close() == true)
 			{
 				upstream_connection.reopen();
+				upstream_connection.release();
 			}
-
-			upstream_connection.release();
+			else
+			{
+				upstream_connection.release();
+			}
 
 			write_response();
 		}
