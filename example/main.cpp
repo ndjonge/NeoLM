@@ -29,7 +29,9 @@ int main()
 	const char* rest_argv[]
 		= { "appname",	"-config", "/home/ndjonge/config.json", "-test", "-http_listen_port", "4000", "-logfile", "cout", "-loglevel", "api" };
 #endif
-	start_rest_server(9, rest_argv);
+
+
+	start_rest_server(sizeof(rest_argv) / sizeof(rest_argv[0]), rest_argv);
 
 	while (1)
 	{

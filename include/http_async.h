@@ -46,7 +46,7 @@ public:
 		connection(asio::io_context& io_context, const std::string& host, std::string port, upstream_type& owner)
 			: host_(host)
 			, port_(port)
-			, id_(host_ + '_' + port_ + "_" + std::to_string(get_static_id()))
+			, id_(port_ + "-" + owner.id() + "-" + std::to_string(get_static_id()))
 			, resolver_(io_context)
 			, socket_(io_context)
 			, owner_(owner)
@@ -60,27 +60,18 @@ public:
 		connection& operator=(const connection& s) = delete;
 		connection& operator=(connection&& s) = delete;
 
-		bool should_drain()
-		{
-			const int upstream_connections_keep_alive = 8;
+		bool should_drain() const { return owner_.state_ == upstreams::upstream::state::drain; }
 
-			if (owner_.connections_total_ > upstream_connections_keep_alive
-				&& owner_.connections_total_ - owner_.connections_busy_ > 4)
-				return true;
-			else
-				return false;
+		void release()
+		{
+			--(owner_.connections_busy_);
+			state_ = state::idle;
 		}
 
 		void drain()
 		{
 			--(owner_.connections_busy_);
 			state_ = state::drain;
-		}
-
-		void release()
-		{
-			--(owner_.connections_busy_);
-			state_ = state::idle;
 		}
 
 		void reopen()
@@ -122,6 +113,55 @@ public:
 		upstream_type& owner_;
 	};
 
+	void up(const std::string& base_url)
+	{
+		std::unique_lock<std::mutex> g{ upstreams_lock_ };
+
+		auto upstream_to_change_state
+			= std::find_if(upstreams_.cbegin(), upstreams_.cend(), [base_url](const std::unique_ptr<upstream>& rhs) {
+				  return (rhs->base_url_ == base_url);
+			  });
+
+		if (upstream_to_change_state != upstreams_.cend())
+		{
+			upstream_to_change_state->get()->set_state(http::basic::async::upstreams::upstream::state::up);
+		}
+	}
+
+	void drain(const std::string& base_url)
+	{
+		std::unique_lock<std::mutex> g{ upstreams_lock_ };
+
+		auto upstream_to_change_state
+			= std::find_if(upstreams_.cbegin(), upstreams_.cend(), [base_url](const std::unique_ptr<upstream>& rhs) {
+				  return (rhs->base_url_ == base_url);
+			  });
+
+		if (upstream_to_change_state != upstreams_.cend())
+		{
+			upstream_to_change_state->get()->set_state(http::basic::async::upstreams::upstream::state::drain);
+		}
+	}
+
+	void down(const std::string& base_url)
+	{
+		std::unique_lock<std::mutex> g{ upstreams_lock_ };
+
+		auto upstream_to_change_state
+			= std::find_if(upstreams_.cbegin(), upstreams_.cend(), [base_url](const std::unique_ptr<upstream>& rhs) {
+				  return (rhs->base_url_ == base_url);
+			  });
+
+		if (upstream_to_change_state != upstreams_.cend())
+		{
+			while (upstream_to_change_state->get()->connections_busy_ > 0)
+			{
+				std::this_thread::yield();
+			}
+			upstream_to_change_state->get()->set_state(http::basic::async::upstreams::upstream::state::down);
+		}
+	}
+
 	void add_upstream(asio::io_context& io_context, const std::string& base_url)
 	{
 		std::unique_lock<std::mutex> g{ upstreams_lock_ };
@@ -152,9 +192,15 @@ public:
 			auto connections_busy_ = upstream->connections_busy_.load();
 			auto connections_total = upstream->connections_total_.load();
 			auto connections_idle = connections_total - connections_busy_;
+			auto upstream_state = "up";
 
-			ss << workspace << " : " << upstream->base_url_
-			   << " , connections (total/idle/busy):" << std::to_string(connections_total) << "/"
+			if (upstream->state_ == upstream::state::drain)
+				upstream_state = "drain";
+			else if (upstream->state_ == upstream::state::down)
+				upstream_state = "down";
+
+			ss << workspace << " : " << upstream->base_url_ << ", " << upstream->id_ << ", " << upstream_state
+			   << ", connections (total/idle/busy):" << std::to_string(connections_total) << "/"
 			   << std::to_string(connections_idle) << "/" << std::to_string(connections_busy_)
 			   << ", 1xx: " << std::to_string(upstream->responses_1xx_)
 			   << ", 2xx: " << std::to_string(upstream->responses_2xx_)
@@ -180,7 +226,7 @@ public:
 		};
 
 		upstream(asio::io_context& io_context, const std::string& base_url)
-			: base_url_(base_url), io_context_(io_context)
+			: base_url_(base_url), io_context_(io_context), id_(std::to_string(get_static_id()))
 		{
 			// TODO: make more robust client url parsing.
 			auto start_of_port = base_url.find_last_of(':') + 1;
@@ -213,10 +259,14 @@ public:
 		std::atomic<std::uint16_t> responses_5xx_{ 0 };
 		std::atomic<std::uint16_t> responses_tot_{ 0 };
 
-		const std::string& base_url() const { return base_url_; }
 		std::string base_url_;
 		std::string host_;
 		std::string port_;
+		std::string id_;
+
+		const std::string& base_url() const { return base_url_; }
+		const std::string& id() const { return id_; }
+		void set_state(upstream::state state) { state_ = state; }
 
 		void add_connection()
 		{
@@ -225,7 +275,7 @@ public:
 			connections_total_ = connections_.size();
 		}
 
-		state state_;
+		std::atomic<state> state_{ state::down };
 		asio::io_context& io_context_;
 		containter_type connections_;
 		std::mutex connection_mutex_;
@@ -238,11 +288,12 @@ public:
 	containter_type upstreams_;
 	std::mutex upstreams_lock_;
 
-	void forward(std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
+	bool forward(std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
 	{
+		bool result = true;
 		static std::atomic<std::uint8_t> rr{ 0 };
 
-		//		std::unique_lock<std::mutex> upstreams_guard{ upstreams_lock_ };
+		std::unique_lock<std::mutex> upstreams_guard{ upstreams_lock_ };
 
 		auto selected_upstream = upstreams_.begin() + (++rr % upstreams_.size());
 
@@ -251,20 +302,24 @@ public:
 			auto selected_upstream_connections_total = selected_upstream->get()->connections_total_.load();
 			auto selected_upstream_connections_free = selected_upstream->get()->connections_total_.load()
 													  - selected_upstream->get()->connections_busy_.load();
-			;
 
 			auto probe_upstream_connections_busy = selected_upstream->get()->connections_busy_.load();
 			auto probe_upstream_connections_total = probe_upstream->get()->connections_total_.load();
 			auto probe_upstream_connections_free = probe_upstream_connections_total - probe_upstream_connections_busy;
 
-			if ((selected_upstream_connections_total > probe_upstream_connections_total)
+			if ((probe_upstream->get()->state_ == upstream::state::up)
+				&& selected_upstream->get()->state_ != upstream::state::up)
+				selected_upstream = probe_upstream;
+
+			if ((probe_upstream->get()->state_ == upstream::state::up)
+				&& (selected_upstream_connections_total > probe_upstream_connections_total)
 				&& (selected_upstream_connections_free < probe_upstream_connections_free))
 			{
 				selected_upstream = probe_upstream;
 			}
 		}
 
-		if (selected_upstream != upstreams_.end())
+		if (selected_upstream != upstreams_.end() && (selected_upstream->get()->state_ == upstream::state::up))
 		{
 			bool found = false;
 			do
@@ -297,6 +352,12 @@ public:
 				}
 			} while (found == false);
 		}
+		else
+		{
+			logger.api("failed to find a suitable upstream\n");
+			result = false;
+		}
+		return result;
 	}
 };
 
@@ -509,11 +570,19 @@ private:
 				session_handler_.t2() = std::chrono::steady_clock::now();
 
 				if (upstreams)
-					upstreams->forward(
+				{
+					auto forward_result = upstreams->forward(
 						[this](http::basic::async::upstreams::connection_type& connection) {
 							write_forwarded_request(connection);
 						},
 						server_.logger());
+
+					if (forward_result == false)
+					{
+						session_handler_.response().status(http::status::bad_gateway);
+						write_response();
+					}
+				}
 				else
 					write_response();
 			}
@@ -580,12 +649,13 @@ private:
 
 			if (result == http::response_parser::result_type::good)
 			{
+				session_handler_.request().set("X-Request-ID", upstream_connection.id());
+				session_handler_.response().set("X-Upstream-Server", upstream_connection.id());
+
 				auto content_length = session_handler_.response().content_length();
+
 				if (content_length)
 				{
-					session_handler_.request().set("X-Request-ID", upstream_connection.id());
-					session_handler_.response().set("X-Upstream-Server", upstream_connection.id());
-
 					auto content_already_received = static_cast<size_t>(
 						upstream_connection.buffer_.data() + upstream_connection.buffer_.size() - c);
 
@@ -610,6 +680,10 @@ private:
 				{
 					session_handler_.response().status(http::status::internal_server_error);
 					session_handler_.response().body() = "chunked upstream response received\n";
+					read_forwarded_response_body_complete(upstream_connection);
+				}
+				else
+				{
 					read_forwarded_response_body_complete(upstream_connection);
 				}
 			}
@@ -654,11 +728,13 @@ private:
 
 		void read_forwarded_response_body_complete(http::basic::async::upstreams::connection_type& upstream_connection)
 		{
-			// if (upstream_connection.should_drain())
-			// {
-			// 	upstream_connection.drain();
-			// }
-			// else
+			if (upstream_connection.should_drain())
+			{
+				upstream_connection.drain();
+				write_response();
+				return;
+			}
+
 			if (session_handler_.response().connection_close() == true)
 			{
 				upstream_connection.reopen();

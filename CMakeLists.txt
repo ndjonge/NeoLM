@@ -56,8 +56,7 @@ target_link_libraries( ${PROJECT_NAME} ${CURL_LIBRARIES} OpenSSL::SSL OpenSSL::C
 if(WIN32)
     add_definitions(-DLOCAL_TESTING)
 else()
-add_definitions(-DLOCAL_TESTING -std=c++11 -Wreorder -O2 -march=native -mtune=native) 
-    
+    add_definitions(-DLOCAL_TESTING -std=c++11 -Wreorder -O2 -march=native -mtune=native)  
 #    add_definitions(-DLOCAL_TESTING -std=c++11 -Wreorder -g -fsanitize=thread -fno-omit-frame-pointer) 
     target_link_libraries( ${PROJECT_NAME} pthread) 
     #target_link_libraries( ${PROJECT_NAME} pthread -fsanitize=thread -fno-omit-frame-pointer) 
