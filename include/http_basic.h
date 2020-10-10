@@ -609,7 +609,7 @@ namespace case_insensitive
 
 template <typename T> struct equal_to
 {
-	auto operator()(const T& lhs, const T& rhs) const { 
+	bool operator()(const T& lhs, const T& rhs) const { 
 		return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin(), [](char a, char b) {
 					   return ((a > 96) && (a < 123) ? a ^= 0x20 : a) == ((b > 96) && (b < 123) ? b ^= 0x20 : b);
 				   });
@@ -622,7 +622,7 @@ namespace case_sensitive
 {
 	template<typename T> struct equal_to
 	{
-		auto operator()(const T& lhs, const T& rhs) const { return lhs == rhs; }
+		bool operator()(const T& lhs, const T& rhs) const { return lhs == rhs; }
 	};
 }
 
