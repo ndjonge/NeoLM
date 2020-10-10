@@ -1327,7 +1327,7 @@ public:
 	inline void reset(const std::string& name)
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return http::util::case_insensitive_equal(f.name, name);
+			return compare_field_name(f.name, name);
 		});
 
 		if (i != std::end(fields_))
