@@ -1286,25 +1286,6 @@ public:
 			return i->value;
 	}
 
-
-	inline const T get(const char* name, size_t name_lenght, const T& default_value) const
-	{
-		std::string_view x;
-
-		auto i = std::find_if(fields_.cbegin(), fields_.cend(), [name](const http::field<T>& f) {
-			return compare_field_name()(f.name, name);
-		});
-
-		if (i != fields_.cend())
-		{
-			return i->value;
-		}
-		else
-		{
-			return default_value;
-		}
-	}
-
 	inline bool has(const char* name) const
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
