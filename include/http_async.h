@@ -297,7 +297,7 @@ public:
 		bool result = true;
 		static std::atomic<std::uint8_t> rr{ 0 };
 
-		std::unique_lock<std::mutex> upstreams_guard{ upstreams_lock_ };
+//		std::unique_lock<std::mutex> upstreams_guard{ upstreams_lock_ };
 
 		auto selected_upstream = upstreams_.cbegin() + (++rr % upstreams_.size());
 
@@ -317,7 +317,7 @@ public:
 			if ((probe_upstream_state == upstream::state::up) && selected_upstream_state != upstream::state::up)
 				selected_upstream = probe_upstream;
 
-			if ((probe_upstream_state == upstream::state::up)
+			if ((probe_upstream->get()->state_ == upstream::state::up)
 				&& (selected_upstream_connections_total > probe_upstream_connections_total)
 				&& (selected_upstream_connections_free < probe_upstream_connections_free))
 			{
@@ -330,7 +330,7 @@ public:
 			bool found = false;
 			do
 			{
-				//std::unique_lock<std::mutex> connections_guard{ selected_upstream->get()->connection_mutex_ };
+				std::unique_lock<std::mutex> connections_guard{ selected_upstream->get()->connection_mutex_ };
 				for (auto& connection : selected_upstream->get()->connections_)
 				{
 					// Select the least connected upstream
@@ -341,7 +341,7 @@ public:
 						== true)
 					{
 						auto selected_connection = connection.get();
-						//connections_guard.unlock();
+						connections_guard.unlock();
 						++(selected_upstream->get()->connections_busy_);
 						forward_handler(*selected_connection);
 						found = true;
@@ -351,7 +351,7 @@ public:
 
 				if (found == false)
 				{
-					//connections_guard.unlock();
+					connections_guard.unlock();
 					selected_upstream->get()->add_connection();
 
 					logger.api("new upstream connection to {s}\n", selected_upstream->get()->base_url());
