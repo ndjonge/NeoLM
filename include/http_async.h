@@ -299,9 +299,9 @@ public:
 
 		std::unique_lock<std::mutex> upstreams_guard{ upstreams_lock_ };
 
-		auto selected_upstream = upstreams_.begin() + (++rr % upstreams_.size());
+		auto selected_upstream = upstreams_.cbegin() + (++rr % upstreams_.size());
 
-		for (auto probe_upstream = upstreams_.begin(); probe_upstream != upstreams_.end(); probe_upstream++)
+		for (auto probe_upstream = upstreams_.cbegin(); probe_upstream != upstreams_.cend(); probe_upstream++)
 		{
 			auto selected_upstream_connections_total = selected_upstream->get()->connections_total_.load();
 			auto selected_upstream_connections_free = selected_upstream->get()->connections_total_.load()
@@ -311,11 +311,13 @@ public:
 			auto probe_upstream_connections_total = probe_upstream->get()->connections_total_.load();
 			auto probe_upstream_connections_free = probe_upstream_connections_total - probe_upstream_connections_busy;
 
-			if ((probe_upstream->get()->state_ == upstream::state::up)
-				&& selected_upstream->get()->state_ != upstream::state::up)
+			auto probe_upstream_state = probe_upstream->get()->state_.load();
+			auto selected_upstream_state = selected_upstream->get()->state_.load();
+
+			if ((probe_upstream_state == upstream::state::up) && selected_upstream_state != upstream::state::up)
 				selected_upstream = probe_upstream;
 
-			if ((probe_upstream->get()->state_ == upstream::state::up)
+			if ((probe_upstream_state == upstream::state::up)
 				&& (selected_upstream_connections_total > probe_upstream_connections_total)
 				&& (selected_upstream_connections_free < probe_upstream_connections_free))
 			{
@@ -323,12 +325,12 @@ public:
 			}
 		}
 
-		if (selected_upstream != upstreams_.end() && (selected_upstream->get()->state_ == upstream::state::up))
+		if (selected_upstream != upstreams_.cend() && (selected_upstream->get()->state_ == upstream::state::up))
 		{
 			bool found = false;
 			do
 			{
-				std::unique_lock<std::mutex> connections_guard{ selected_upstream->get()->connection_mutex_ };
+				//std::unique_lock<std::mutex> connections_guard{ selected_upstream->get()->connection_mutex_ };
 				for (auto& connection : selected_upstream->get()->connections_)
 				{
 					// Select the least connected upstream
@@ -339,7 +341,7 @@ public:
 						== true)
 					{
 						auto selected_connection = connection.get();
-						connections_guard.unlock();
+						//connections_guard.unlock();
 						++(selected_upstream->get()->connections_busy_);
 						forward_handler(*selected_connection);
 						found = true;
@@ -349,7 +351,7 @@ public:
 
 				if (found == false)
 				{
-					connections_guard.unlock();
+					//connections_guard.unlock();
 					selected_upstream->get()->add_connection();
 
 					logger.api("new upstream connection to {s}\n", selected_upstream->get()->base_url());
