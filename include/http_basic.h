@@ -1162,14 +1162,14 @@ public:
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+		auto i = std::find_if(fields_.cbegin(), fields_.cend(), [name](const http::field<T>& f) {
 			if (compare_field_name()(f.name, name))
 				return true;
 			else
 				return false;
 		});
 
-		if (i != std::cend(fields_)) returnvalue = i->value == "true";
+		if (i != fields_.cend()) returnvalue = i->value == "true";
 
 		return static_cast<P>(returnvalue);
 	}
@@ -1182,11 +1182,11 @@ public:
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+		auto i = std::find_if(fields_.cbegin(), fields_.cend(), [name](const http::field<T>& f) {
 			return compare_field_name()(f.name, name);
 		});
 
-		if (i != std::cend(fields_)) returnvalue = static_cast<P>(i->value);
+		if (i != fields_.cend()) returnvalue = static_cast<P>(i->value);
 
 		return static_cast<P>(returnvalue);
 	}
@@ -1199,11 +1199,11 @@ public:
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+		auto i = std::find_if(fields_.cbegin(), fields_.cend(), [name](const http::field<T>& f) {
 			return compare_field_name()(f.name, name);
 		});
 
-		if (i != std::cend(fields_)) returnvalue = static_cast<P>(std::stoi(i->value));
+		if (i != fields_.cend()) returnvalue = static_cast<P>(std::stoi(i->value));
 
 		return static_cast<P>(returnvalue);
 	}
@@ -1230,11 +1230,11 @@ public:
 		P>::type
 	get(const std::string& name) const
 	{
-		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+		auto i = std::find_if(fields_.cbegin(), fields_.cend(), [name](const http::field<T>& f) {
 			return compare_field_name()(f.name, name);
 		});
 
-		if (i != std::cend(fields_))
+		if (i != fields_.cend())
 			return static_cast<P>(std::stoi(i->value));
 		else
 			throw std::runtime_error{ std::string{ "get of field: '" } + name + "' failed because it was not found" };
@@ -1254,11 +1254,11 @@ public:
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<std::string>& f) {
+		auto i = std::find_if(fields_.cbegin(), fields_.cend(), [name](const http::field<std::string>& f) {
 			return compare_field_name()(f.name, name);
 		});
 
-		if (i != std::cend(fields_))
+		if (i != fields_.cend())
 		{
 			exists = true;
 			returnvalue = i->value;
@@ -1274,11 +1274,11 @@ public:
 
 	inline const T get(const char* name) const
 	{
-		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+		auto i = std::find_if(fields_.cbegin(), fields_.cend(), [name](const http::field<T>& f) {
 			return (compare_field_name()(f.name, name));
 		});
 
-		if (i == std::cend(fields_))
+		if (i == fields_.cend())
 		{
 			throw std::runtime_error{ std::string{ "get of field: '" } + name + "' failed because it was not found" };
 		}
@@ -1291,11 +1291,11 @@ public:
 	{
 		std::string_view x;
 
-		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+		auto i = std::find_if(fields_.cbegin(), fields_.cend(), [name](const http::field<T>& f) {
 			return compare_field_name()(f.name, name);
 		});
 
-		if (i != std::cend(fields_))
+		if (i != fields_.cend())
 		{
 			return i->value;
 		}
