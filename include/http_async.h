@@ -81,10 +81,12 @@ public:
 			{
 				socket_.shutdown(asio::socket_base::shutdown_send, error);
 				socket_.close();
+
+				++owner_.connections_reopened_;
 			}
 
 			asio::ip::tcp::resolver::query query(asio::ip::tcp::v4(), host_, port_);
-			auto resolved_endpoints = resolver_.resolve(query, error);
+			static thread_local auto resolved_endpoints = resolver_.resolve(query, error);
 
 			asio::connect(socket_, resolved_endpoints.cbegin(), resolved_endpoints.cend(), error);
 
@@ -200,8 +202,9 @@ public:
 				upstream_state = "down";
 
 			ss << workspace << " : " << upstream->base_url_ << ", " << upstream->id_ << ", " << upstream_state
-			   << ", connections (total/idle/busy):" << std::to_string(connections_total) << "/"
-			   << std::to_string(connections_idle) << "/" << std::to_string(connections_busy_)
+			   << ", connections (total/idle/busy/reopend):" << std::to_string(connections_total) << "/"
+			   << std::to_string(connections_idle) << "/" << std::to_string(connections_busy_) << "/"
+			   << std::to_string(upstream->connections_reopened_)
 			   << ", 1xx: " << std::to_string(upstream->responses_1xx_)
 			   << ", 2xx: " << std::to_string(upstream->responses_2xx_)
 			   << ", 3xx: " << std::to_string(upstream->responses_3xx_)
@@ -251,6 +254,7 @@ public:
 
 		std::atomic<std::uint16_t> connections_busy_{ 0 };
 		std::atomic<std::size_t> connections_total_{ 0 };
+		std::atomic<std::uint16_t> connections_reopened_{ 0 };
 
 		std::atomic<std::uint16_t> responses_1xx_{ 0 };
 		std::atomic<std::uint16_t> responses_2xx_{ 0 };
@@ -259,10 +263,6 @@ public:
 		std::atomic<std::uint16_t> responses_5xx_{ 0 };
 		std::atomic<std::uint16_t> responses_tot_{ 0 };
 
-		std::string base_url_;
-		std::string host_;
-		std::string port_;
-		std::string id_;
 
 		const std::string& base_url() const { return base_url_; }
 		const std::string& id() const { return id_; }
@@ -276,7 +276,11 @@ public:
 		}
 
 		std::atomic<state> state_{ state::down };
+		std::string base_url_;
 		asio::io_context& io_context_;
+		std::string host_;
+		std::string port_;
+		std::string id_;
 		containter_type connections_;
 		std::mutex connection_mutex_;
 	};
@@ -564,8 +568,8 @@ private:
 					server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(session_handler_.request()));
 				}
 
-				auto upstreams
-					= session_handler_.request().get_attribute<http::basic::async::upstreams*>("proxy_pass", nullptr);
+				auto upstreams = session_handler_.request().template get_attribute<http::basic::async::upstreams*>(
+					"proxy_pass", nullptr);
 
 				session_handler_.t2() = std::chrono::steady_clock::now();
 

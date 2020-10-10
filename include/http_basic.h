@@ -604,11 +604,26 @@ inline std::string escape_json(const std::string& s)
 	return ss.str();
 }
 
-inline bool case_insensitive_equal(const std::string& str1, const std::string& str2) noexcept
+namespace case_insensitive
 {
-	return str1.size() == str2.size() && std::equal(str1.begin(), str1.end(), str2.begin(), [](char a, char b) {
-			   return ((a > 96) && (a < 123) ? a ^= 0x20 : a) == ((b > 96) && (b < 123) ? b ^= 0x20 : b);
-		   });
+
+template <typename T> struct equal_to
+{
+	auto operator()(const T& lhs, const T& rhs) const { 
+		return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin(), [](char a, char b) {
+					   return ((a > 96) && (a < 123) ? a ^= 0x20 : a) == ((b > 96) && (b < 123) ? b ^= 0x20 : b);
+				   });
+	}
+};
+
+} // namespace case_insensitive
+
+namespace case_sensitive
+{
+	template<typename T> struct equal_to
+	{
+		auto operator()(const T& lhs, const T& rhs) const { return lhs == rhs; }
+	};
 }
 
 inline std::string return_current_time_and_date()
@@ -1097,12 +1112,14 @@ public:
 	T value;
 };
 
-template <typename T> class fields
+template <typename T, class C = std::equal_to<std::string>>
+class fields
 {
 
 public:
 	using iterator = typename std::vector<http::field<T>>::iterator;
 	using value_type = http::field<T>;
+	using compare_field_name = C;
 
 protected:
 	std::vector<fields::value_type> fields_;
@@ -1112,11 +1129,11 @@ public:
 
 	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list){};
 
-	fields(const http::fields<T>& f) = default;
-	fields(http::fields<T>&& f) noexcept = default;
+	fields(const http::fields<T,C>& f) = default;
+	fields(http::fields<T, C>&& f) noexcept = default;
 
-	fields<T>& operator=(const http::fields<T>&) = default;
-	fields<T>& operator=(http::fields<T>&&) noexcept = default;
+	fields<T, C>& operator=(const http::fields<T, C>&) = default;
+	fields<T, C>& operator=(http::fields<T, C>&&) noexcept = default;
 
 	~fields() = default;
 
@@ -1145,14 +1162,14 @@ public:
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			if (http::util::case_insensitive_equal(f.name, name))
+		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+			if (compare_field_name()(f.name, name))
 				return true;
 			else
 				return false;
 		});
 
-		if (i != std::end(fields_)) returnvalue = i->value == "true";
+		if (i != std::cend(fields_)) returnvalue = i->value == "true";
 
 		return static_cast<P>(returnvalue);
 	}
@@ -1165,11 +1182,11 @@ public:
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return http::util::case_insensitive_equal(f.name, name);
+		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+			return compare_field_name()(f.name, name);
 		});
 
-		if (i != std::end(fields_)) returnvalue = static_cast<P>(i->value);
+		if (i != std::cend(fields_)) returnvalue = static_cast<P>(i->value);
 
 		return static_cast<P>(returnvalue);
 	}
@@ -1182,11 +1199,11 @@ public:
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return http::util::case_insensitive_equal(f.name, name);
+		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+			return compare_field_name()(f.name, name);
 		});
 
-		if (i != std::end(fields_)) returnvalue = static_cast<P>(std::stoi(i->value));
+		if (i != std::cend(fields_)) returnvalue = static_cast<P>(std::stoi(i->value));
 
 		return static_cast<P>(returnvalue);
 	}
@@ -1198,7 +1215,7 @@ public:
 	get(const std::string& name) const
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return http::util::case_insensitive_equal(f.name, name);
+			return compare_field_name()(f.name, name);
 		});
 
 		if (i != std::end(fields_))
@@ -1213,11 +1230,11 @@ public:
 		P>::type
 	get(const std::string& name) const
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return http::util::case_insensitive_equal(f.name, name);
+		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+			return compare_field_name()(f.name, name);
 		});
 
-		if (i != std::end(fields_))
+		if (i != std::cend(fields_))
 			return static_cast<P>(std::stoi(i->value));
 		else
 			throw std::runtime_error{ std::string{ "get of field: '" } + name + "' failed because it was not found" };
@@ -1237,11 +1254,11 @@ public:
 	{
 		P returnvalue = value;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return http::util::case_insensitive_equal(f.name, name);
+		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<std::string>& f) {
+			return compare_field_name()(f.name, name);
 		});
 
-		if (i != std::end(fields_))
+		if (i != std::cend(fields_))
 		{
 			exists = true;
 			returnvalue = i->value;
@@ -1257,11 +1274,11 @@ public:
 
 	inline const T get(const char* name) const
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return (http::util::case_insensitive_equal(f.name, name));
+		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+			return (compare_field_name()(f.name, name));
 		});
 
-		if (i == std::end(fields_))
+		if (i == std::cend(fields_))
 		{
 			throw std::runtime_error{ std::string{ "get of field: '" } + name + "' failed because it was not found" };
 		}
@@ -1269,13 +1286,16 @@ public:
 			return i->value;
 	}
 
-	inline const T get(const char* name, const T& default_value) const
+
+	inline const T get(const char* name, size_t name_lenght, const T& default_value) const
 	{
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return http::util::case_insensitive_equal(f.name, name);
+		std::string_view x;
+
+		auto i = std::find_if(std::cbegin(fields_), std::cend(fields_), [name](const http::field<T>& f) {
+			return compare_field_name()(f.name, name);
 		});
 
-		if (i != std::end(fields_))
+		if (i != std::cend(fields_))
 		{
 			return i->value;
 		}
@@ -1288,7 +1308,7 @@ public:
 	inline bool has(const char* name) const
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return (http::util::case_insensitive_equal(f.name, name));
+			return (compare_field_name(f.name, name));
 		});
 
 		return i != std::end(fields_);
@@ -1297,7 +1317,7 @@ public:
 	inline void set(const std::string& name, const T& value)
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return http::util::case_insensitive_equal(f.name, name);
+			return compare_field_name()(f.name, name);
 		});
 
 		if (i != std::end(fields_))
@@ -1314,7 +1334,7 @@ public:
 	inline void reset_if_exists(const std::string& name)
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return http::util::case_insensitive_equal(f.name, name);
+			return compare_field_name()(f.name, name);
 		});
 
 		if (i != std::end(fields_))
@@ -1434,7 +1454,7 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return http::util::case_insensitive_equal(f.name, name);
+			return http::util::case_sensitive::equal_to<std::string>()(f.name, name);
 		});
 
 		if (i != std::end(fields_)) returnvalue = i->value == "true";
@@ -1450,7 +1470,7 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return (http::util::case_insensitive_equal(f.name, name));
+			return (http::util::case_sensitive::equal_to<std::string>()(f.name, name));
 		});
 
 		if (i != std::end(fields_))
@@ -1467,7 +1487,7 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return (http::util::case_insensitive_equal(f.name, name));
+			return (http::util::case_sensitive::equal_to<std::string>()(f.name, name));
 		});
 
 		if (i != std::end(fields_)) returnvalue = i->value;
@@ -1481,7 +1501,7 @@ public:
 		static const std::string not_found = "";
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) {
-			return (http::util::case_insensitive_equal(f.name, name));
+			return (http::util::case_insensitive::equal_to<std::string>()(f.name, name));
 		});
 
 		if (i == std::end(fields_))
@@ -1499,7 +1519,7 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) {
-			return http::util::case_insensitive_equal(f.name, name);
+			return http::util::case_sensitive::equal_to<std::string>()(f.name, name);
 		});
 
 		if (i != std::end(fields_))
@@ -1532,11 +1552,14 @@ enum message_specializations
 
 template <message_specializations> class header;
 
-template <> class header<request_specialization> : public fields<std::string>
+template <> class header<request_specialization> : public fields<std::string, http::util::case_insensitive::equal_to<std::string>>
 {
-	using query_params = http::fields<std::string>;
+	using query_params = http::fields<std::string, util::case_sensitive::equal_to<std::string>>;
 	friend class session_handler;
 	friend class request_parser;
+
+public:
+	using fields_base = fields<std::string, http::util::case_insensitive::equal_to<std::string>>;
 
 protected:
 	http::method::method_t method_{ method::unknown };
@@ -1617,16 +1640,16 @@ public:
 
 	inline void merge_new_header()
 	{
-		auto special_merge_case = http::util::case_insensitive_equal(last_new_field()->name, "Set-Cookie")
-								  || http::util::case_insensitive_equal(last_new_field()->name, "WWW-Authenticate")
-								  || http::util::case_insensitive_equal(last_new_field()->name, "Proxy-Authenticate");
+		auto special_merge_case = compare_field_name()(last_new_field()->name, "Set-Cookie")
+								  || compare_field_name()(last_new_field()->name, "WWW-Authenticate")
+								  || compare_field_name()(last_new_field()->name, "Proxy-Authenticate");
 
 		auto merged_last_new_header = false;
 
 		if (!special_merge_case && fields_.size() > 1)
 			for (auto i = fields_.rbegin() + 1; i != fields_.rend(); ++i)
 			{
-				if (http::util::case_insensitive_equal(last_new_field()->name, i->name) == true)
+				if (compare_field_name()(last_new_field()->name, i->name) == true)
 				{
 					if ((last_new_field()->value.empty() == false))
 					{
@@ -1641,7 +1664,8 @@ public:
 	}
 };
 
-template <> class header<response_specialization> : public fields<std::string>
+template <>
+class header<response_specialization> : public fields<std::string, http::util::case_insensitive::equal_to<std::string>>
 {
 private:
 	std::string reason_;
@@ -1650,6 +1674,9 @@ private:
 	unsigned int version_nr_ = 11;
 
 	friend class response_parser;
+
+public:
+	using fields_base = fields<std::string, http::util::case_insensitive::equal_to<std::string>>;
 
 public:
 	header() = default;
@@ -1746,9 +1773,13 @@ public:
 	using attributes = http::fields<std::uintptr_t>;
 	attributes attributes_;
 
+	using headers_base = typename header<specialization>::fields_base;
+
 private:
 	std::string body_;
 	const http::session_handler* session_handler_{ nullptr };
+
+	std::uint64_t cached_content_length_ { static_cast<std::uint64_t>(-1) };
 
 public:
 	message() = default;
@@ -1852,19 +1883,22 @@ public:
 
 	const std::string& body() const { return body_; }
 
-	bool chunked() const { return (http::fields<std::string>::get("Transfer-Encoding", std::string{}) == "chunked"); }
+	bool chunked() const
+	{
+		return (headers_base::get("Transfer-Encoding", std::string{}) == "chunked");
+	}
 
 	void chunked(bool value)
 	{
 		if (value)
-			http::fields<std::string>::set("Transfer-Encoding", "chunked");
+			headers_base::set("Transfer-Encoding", "chunked");
 		else
-			http::fields<std::string>::set("Transfer-Encoding", "none");
+			headers_base::set("Transfer-Encoding", "none");
 	}
 
 	bool has_content_length() const
 	{
-		if (http::fields<std::string>::get("Content-Length", std::string{}).empty())
+		if (headers_base::get("Content-Length", std::string{}).empty())
 			return false;
 		else
 			return true;
@@ -1872,7 +1906,7 @@ public:
 
 	void type(const std::string& content_type)
 	{
-		http::fields<std::string>::set("Content-Type", mime_types::extension_to_type(content_type));
+		headers_base::set("Content-Type", mime_types::extension_to_type(content_type));
 	}
 
 	void status(http::status::status_t status) { http::header<specialization>::status(status); }
@@ -1880,24 +1914,33 @@ public:
 
 	void content_length(uint64_t const& length)
 	{
-		http::fields<std::string>::set("Content-Length", std::to_string(length));
+		headers_base::set("Content-Length", std::to_string(length));
 	}
 
-	uint64_t content_length() const
-	{
-		auto content_length_ = http::fields<std::string>::get("Content-Length", std::string{});
-
-		if (content_length_.empty())
-			return 0;
+	std::uint64_t content_length()
+	{ 
+		if (cached_content_length_ != static_cast<std::uint64_t>(-1))
+			return cached_content_length_;
 		else
-			return std::stoul(content_length_);
+		{
+			auto content_length
+				= http::header<request_specialization>::fields_base::get("Content-Length", std::string{ "" });
+
+			if (content_length.empty())
+				cached_content_length_ = 0;
+			else
+				return cached_content_length_ = std::stoul(content_length);
+
+			return cached_content_length_;
+		}
 	}
 
 	bool http_version11() const { return http::header<request_specialization>::version_nr() == 11; }
 
 	bool connection_close() const
 	{
-		if (http::util::case_insensitive_equal(http::fields<std::string>::get("Connection", std::string{}), "close"))
+		if (http::util::case_insensitive::equal_to<std::string>()(
+				headers_base::get("Connection", std::string{}), "close"))
 			return true;
 		else
 			return false;
@@ -1905,8 +1948,8 @@ public:
 
 	bool connection_keep_alive() const
 	{
-		if (http::util::case_insensitive_equal(
-				http::fields<std::string>::get("Connection", std::string{}), "Keep-Alive"))
+		if (http::util::case_insensitive::equal_to<std::string>()(
+				headers_base::get("Connection", std::string{}), "Keep-Alive"))
 			return true;
 		else
 			return false;

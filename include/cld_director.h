@@ -809,7 +809,7 @@ public:
 		do
 		{
 			logger.api(
-				"directing: /{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}\n",
+				"managing: /{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}\n",
 				workspace_id_,
 				type_,
 				name_,
@@ -832,7 +832,7 @@ public:
 				if (!success) // todo
 				{
 					logger.api(
-						"directing: /{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
+						"managing: /{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
 						workspace_id_,
 						type_,
 						name_,
@@ -843,7 +843,7 @@ public:
 				else
 				{
 					logger.api(
-						"directing: /{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}\n",
+						"managing: /{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}\n",
 						workspace_id_,
 						type_,
 						name_,
@@ -891,7 +891,7 @@ public:
 						std::string link_to_status;
 						worker->second.set_worker_metrics(ret);
 						logger.api(
-							"directing: /{s}/{s}/{s} worker {s}({s}) is healthy\n",
+							"managing: /{s}/{s}/{s} worker {s}({s}) is healthy\n",
 							workspace_id_,
 							type_,
 							name_,
@@ -928,7 +928,7 @@ public:
 					else if (ec.empty() && response.body().find("HTTP server has been stopped") != std::string::npos)
 					{
 						logger.debug(
-							"directing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy\n",
+							"managing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy\n",
 							workspace_id_,
 							type_,
 							name_,
@@ -945,7 +945,7 @@ public:
 							if (ec.empty()) ec = "none";
 							worker->second.set_status(worker::status::error);
 							logger.api(
-								"directing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy : socket_error:{s}, "
+								"managing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy : socket_error:{s}, "
 								"status:{d}\n",
 								workspace_id_,
 								type_,
@@ -961,7 +961,7 @@ public:
 						{
 							if (ec.empty()) ec = "none";
 							logger.api(
-								"directing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy : socket_error:{s}, "
+								"managing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy : socket_error:{s}, "
 								"status:{d} --> to be removed from its workgroup\n",
 								workspace_id_,
 								type_,
@@ -1302,7 +1302,7 @@ public:
 		auto t1 = std::chrono::steady_clock::now();
 
 		auto elapsed = t1 - t0;
-		logger.api("directing: {u} workspaces took {d}msec\n", workspaces_.size(), elapsed.count() / 1000000);
+		logger.api("managing: {u} workspaces took {d}msec\n", workspaces_.size(), elapsed.count() / 1000000);
 	}
 
 public:
@@ -2368,7 +2368,7 @@ private:
 				new_config_file << std::setw(4) << manager_json;
 
 				if (new_config_file.fail() == false)
-					server_base::logger_.api("config saved to: \"{s}\"\n", configuration_file_);
+					server_base::logger_.api("managing: config saved to: \"{s}\"\n", configuration_file_);
 			}
 
 			std::this_thread::sleep_for(std::chrono::seconds(5));
