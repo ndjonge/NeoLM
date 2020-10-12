@@ -47,28 +47,28 @@ namespace std14
 
 class shared_mutex
 {
-	typedef std::mutex mutex_t;
-	typedef std::condition_variable cond_t;
-	typedef unsigned count_t;
+	using mutex_type = std::mutex;
+	using cond_type = std::condition_variable;
+	using count_type = unsigned;
 
-	mutex_t mut_;
-	cond_t gate1_;
-	cond_t gate2_;
-	count_t state_;
+	mutex_type mut_;
+	cond_type gate1_;
+	cond_type gate2_;
+	count_type state_;
 
-	static const count_t write_entered_ = 1U << (sizeof(count_t) * CHAR_BIT - 1);
-	static const count_t n_readers_ = ~write_entered_;
+	static const count_type write_entered_ = 1U << (sizeof(count_type) * CHAR_BIT - 1);
+	static const count_type n_readers_ = ~write_entered_;
 
 public:
 	shared_mutex() : state_(0) {}
-	~shared_mutex() { std::lock_guard<mutex_t> _(mut_); }
+	~shared_mutex() { std::lock_guard<mutex_type> _(mut_); }
 
 	shared_mutex(const shared_mutex&) = delete;
 	shared_mutex& operator=(const shared_mutex&) = delete;
 
 	void lock()
 	{
-		std::unique_lock<mutex_t> lk(mut_);
+		std::unique_lock<mutex_type> lk(mut_);
 		while (state_ & write_entered_)
 			gate1_.wait(lk);
 		state_ |= write_entered_;
@@ -78,7 +78,7 @@ public:
 
 	bool try_lock()
 	{
-		std::unique_lock<mutex_t> lk(mut_);
+		std::unique_lock<mutex_type> lk(mut_);
 		if (state_ == 0)
 		{
 			state_ = write_entered_;
@@ -89,7 +89,7 @@ public:
 
 	void unlock()
 	{
-		std::lock_guard<mutex_t> _(mut_);
+		std::lock_guard<mutex_type> _(mut_);
 		state_ = 0;
 		gate1_.notify_all();
 	}
@@ -98,18 +98,18 @@ public:
 
 	void lock_shared()
 	{
-		std::unique_lock<mutex_t> lk(mut_);
+		std::unique_lock<mutex_type> lk(mut_);
 		while ((state_ & write_entered_) || (state_ & n_readers_) == n_readers_)
 			gate1_.wait(lk);
-		count_t num_readers = (state_ & n_readers_) + 1;
+		count_type num_readers = (state_ & n_readers_) + 1;
 		state_ &= ~n_readers_;
 		state_ |= num_readers;
 	}
 
 	void unlock_shared()
 	{
-		std::lock_guard<mutex_t> _(mut_);
-		count_t num_readers = (state_ & n_readers_) - 1;
+		std::lock_guard<mutex_type> _(mut_);
+		count_type num_readers = (state_ & n_readers_) - 1;
 		state_ &= ~n_readers_;
 		state_ |= num_readers;
 		if (state_ & write_entered_)
