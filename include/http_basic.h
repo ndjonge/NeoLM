@@ -37,6 +37,70 @@
 
 #include "http_network.h"
 
+
+#if __cplusplus > 1201402L
+#include <shared_mutex>
+using std14 = std;
+#else
+namespace std14
+{
+
+class shared_mutex
+{
+	std::atomic<int> refcount{ 0 };
+
+public:
+	void lock() // write lock
+	{
+		int val;
+		do
+		{
+			val = 0; // Can only take a write lock when refcount == 0
+
+		} while (!refcount.compare_exchange_weak(val, -1, std::memory_order_acquire));
+		// can memory_order_relaxed be used if only a single thread takes write locks ?
+	}
+
+	void unlock() // write unlock
+	{
+		refcount.store(0, std::memory_order_release);
+	}
+
+	void lock_shared() // read lock
+	{
+		int val;
+		do
+		{
+			do
+			{
+				val = refcount.load(std::memory_order_relaxed);
+
+			} while (val == -1); // spinning until the write lock is released
+
+		} while (!refcount.compare_exchange_weak(val, val + 1, std::memory_order_acquire));
+	}
+
+	void unlock_shared() // read unlock
+	{
+		// This must be a release operation (see answer)
+		refcount.fetch_sub(1, std::memory_order_relaxed);
+	}
+};
+
+template<class T> class shared_lock
+{
+public:
+	shared_lock(T& shared_mutex) : shared_mutex_(shared_mutex) { shared_mutex_.lock_shared(); };
+	~shared_lock()  { shared_mutex_.unlock_shared(); };
+
+private:
+	shared_mutex& shared_mutex_;
+};
+
+
+}
+#endif
+
 namespace gzip
 {
 
