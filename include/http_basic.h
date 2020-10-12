@@ -47,43 +47,79 @@ namespace std14
 
 class shared_mutex
 {
-	std::atomic<int> refcount{ 0 };
+	typedef std::mutex mutex_t;
+	typedef std::condition_variable cond_t;
+	typedef unsigned count_t;
+
+	mutex_t mut_;
+	cond_t gate1_;
+	cond_t gate2_;
+	count_t state_;
+
+	static const count_t write_entered_ = 1U << (sizeof(count_t) * CHAR_BIT - 1);
+	static const count_t n_readers_ = ~write_entered_;
 
 public:
-	void lock() // write lock
+	shared_mutex() : state_(0) {}
+	~shared_mutex() { std::lock_guard<mutex_t> _(mut_); }
+
+	shared_mutex(const shared_mutex&) = delete;
+	shared_mutex& operator=(const shared_mutex&) = delete;
+
+	void lock()
 	{
-		int val;
-		do
+		std::unique_lock<mutex_t> lk(mut_);
+		while (state_ & write_entered_)
+			gate1_.wait(lk);
+		state_ |= write_entered_;
+		while (state_ & n_readers_)
+			gate2_.wait(lk);
+	}
+
+	bool try_lock()
+	{
+		std::unique_lock<mutex_t> lk(mut_);
+		if (state_ == 0)
 		{
-			val = 0; // Can only take a write lock when refcount == 0
-
-		} while (!refcount.compare_exchange_weak(val, -1, std::memory_order_acquire));
-		// can memory_order_relaxed be used if only a single thread takes write locks ?
+			state_ = write_entered_;
+			return true;
+		}
+		return false;
 	}
 
-	void unlock() // write unlock
+	void unlock()
 	{
-		refcount.store(0, std::memory_order_release);
+		std::lock_guard<mutex_t> _(mut_);
+		state_ = 0;
+		gate1_.notify_all();
 	}
 
-	void lock_shared() // read lock
+	// Shared ownership
+
+	void lock_shared()
 	{
-		int val;
-		do
+		std::unique_lock<mutex_t> lk(mut_);
+		while ((state_ & write_entered_) || (state_ & n_readers_) == n_readers_)
+			gate1_.wait(lk);
+		count_t num_readers = (state_ & n_readers_) + 1;
+		state_ &= ~n_readers_;
+		state_ |= num_readers;
+	}
+
+	void unlock_shared()
+	{
+		std::lock_guard<mutex_t> _(mut_);
+		count_t num_readers = (state_ & n_readers_) - 1;
+		state_ &= ~n_readers_;
+		state_ |= num_readers;
+		if (state_ & write_entered_)
 		{
-			do
-			{
-				val = refcount.load(std::memory_order_relaxed);
-
-			} while (val == -1); // spinning until the write lock is released
-
-		} while (!refcount.compare_exchange_weak(val, val + 1, std::memory_order_acquire));
-	}
-
-	void unlock_shared() // read unlock
-	{
-		// This must be a release operation (see answer)
-		refcount.fetch_sub(1, std::memory_order_relaxed);
+			if (num_readers == 0) gate2_.notify_one();
+		}
+		else
+		{
+			if (num_readers == n_readers_ - 1) gate1_.notify_one();
+		}
 	}
 };
 
