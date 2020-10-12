@@ -37,7 +37,6 @@
 
 #include "http_network.h"
 
-
 #if __cplusplus > 1201402L
 #include <shared_mutex>
 using std14 = std;
@@ -123,18 +122,17 @@ public:
 	}
 };
 
-template<class T> class shared_lock
+template <class T> class shared_lock
 {
 public:
 	shared_lock(T& shared_mutex) : shared_mutex_(shared_mutex) { shared_mutex_.lock_shared(); };
-	~shared_lock()  { shared_mutex_.unlock_shared(); };
+	~shared_lock() { shared_mutex_.unlock_shared(); };
 
 private:
 	shared_mutex& shared_mutex_;
 };
 
-
-}
+} // namespace std14
 #endif
 
 namespace gzip
@@ -709,10 +707,11 @@ namespace case_insensitive
 
 template <typename T> struct equal_to
 {
-	bool operator()(const T& lhs, const T& rhs) const { 
+	bool operator()(const T& lhs, const T& rhs) const
+	{
 		return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin(), [](char a, char b) {
-					   return ((a > 96) && (a < 123) ? a ^= 0x20 : a) == ((b > 96) && (b < 123) ? b ^= 0x20 : b);
-				   });
+				   return ((a > 96) && (a < 123) ? a ^= 0x20 : a) == ((b > 96) && (b < 123) ? b ^= 0x20 : b);
+			   });
 	}
 };
 
@@ -720,11 +719,11 @@ template <typename T> struct equal_to
 
 namespace case_sensitive
 {
-	template<typename T> struct equal_to
-	{
-		bool operator()(const T& lhs, const T& rhs) const { return lhs == rhs; }
-	};
-}
+template <typename T> struct equal_to
+{
+	bool operator()(const T& lhs, const T& rhs) const { return lhs == rhs; }
+};
+} // namespace case_sensitive
 
 inline std::string return_current_time_and_date()
 {
@@ -1212,8 +1211,7 @@ public:
 	T value;
 };
 
-template <typename T, class C = std::equal_to<std::string>>
-class fields
+template <typename T, class C = std::equal_to<std::string>> class fields
 {
 
 public:
@@ -1229,7 +1227,7 @@ public:
 
 	fields(std::initializer_list<fields::value_type> init_list) : fields_(init_list){};
 
-	fields(const http::fields<T,C>& f) = default;
+	fields(const http::fields<T, C>& f) = default;
 	fields(http::fields<T, C>&& f) noexcept = default;
 
 	fields<T, C>& operator=(const http::fields<T, C>&) = default;
@@ -1427,7 +1425,7 @@ public:
 	inline void reset(const std::string& name)
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return compare_field_name(f.name, name);
+			return compare_field_name()(f.name, name);
 		});
 
 		if (i != std::end(fields_))
@@ -1633,7 +1631,8 @@ enum message_specializations
 
 template <message_specializations> class header;
 
-template <> class header<request_specialization> : public fields<std::string, http::util::case_insensitive::equal_to<std::string>>
+template <>
+class header<request_specialization> : public fields<std::string, http::util::case_insensitive::equal_to<std::string>>
 {
 	using query_params = http::fields<std::string, util::case_sensitive::equal_to<std::string>>;
 	friend class session_handler;
@@ -1860,7 +1859,7 @@ private:
 	std::string body_;
 	const http::session_handler* session_handler_{ nullptr };
 
-	std::uint64_t cached_content_length_ { static_cast<std::uint64_t>(-1) };
+	std::uint64_t cached_content_length_{ static_cast<std::uint64_t>(-1) };
 
 public:
 	message() = default;
@@ -1889,11 +1888,12 @@ public:
 		return *session_handler_;
 	}
 
-
 	template <typename T>
-	typename std::enable_if<std::is_pointer<T>::value, T>::type get_attribute(const std::string& attribute_name, const T default_value) const
+	typename std::enable_if<std::is_pointer<T>::value, T>::type
+	get_attribute(const std::string& attribute_name, const T default_value) const
 	{
-		return reinterpret_cast<T>(attributes_.get(attribute_name.c_str(), reinterpret_cast<std::uintptr_t>(default_value)));
+		return reinterpret_cast<T>(
+			attributes_.get(attribute_name.c_str(), reinterpret_cast<std::uintptr_t>(default_value)));
 	}
 
 	template <typename T>
@@ -1964,10 +1964,7 @@ public:
 
 	const std::string& body() const { return body_; }
 
-	bool chunked() const
-	{
-		return (headers_base::get("Transfer-Encoding", std::string{}) == "chunked");
-	}
+	bool chunked() const { return (headers_base::get("Transfer-Encoding", std::string{}) == "chunked"); }
 
 	void chunked(bool value)
 	{
@@ -1993,13 +1990,10 @@ public:
 	void status(http::status::status_t status) { http::header<specialization>::status(status); }
 	http::status::status_t status() const { return http::header<specialization>::status(); }
 
-	void content_length(uint64_t const& length)
-	{
-		headers_base::set("Content-Length", std::to_string(length));
-	}
+	void content_length(uint64_t const& length) { headers_base::set("Content-Length", std::to_string(length)); }
 
 	std::uint64_t content_length()
-	{ 
+	{
 		if (cached_content_length_ != static_cast<std::uint64_t>(-1))
 			return cached_content_length_;
 		else
@@ -3124,7 +3118,6 @@ public:
 	{
 	}
 
-
 	template <typename InputIterator>
 	std::tuple<request_parser::result_type, InputIterator> parse_request(InputIterator begin, InputIterator end)
 	{
@@ -3133,7 +3126,10 @@ public:
 
 	const std::string& parse_error_reason() const { return request_parser_.error_reason(); }
 
-	template <typename router_t> void set_response_headers(typename router_t::request_result_type& route_result, http::status::status_t error_status = http::status::not_found) 
+	template <typename router_t>
+	void set_response_headers(
+		typename router_t::request_result_type& route_result,
+		http::status::status_t error_status = http::status::not_found)
 	{
 		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
 		response_.set("Date", util::return_current_time_and_date());
@@ -3234,7 +3230,7 @@ public:
 
 				std::string name_decoded
 					= http::request_parser::url_decode(name_value[0], http::request_parser::url_decode_options::query);
-		
+
 				std::string value_decoded = (name_value.size() == 2) ? http::request_parser::url_decode(
 												name_value[1], http::request_parser::url_decode_options::query)
 																	 : "";
@@ -3395,8 +3391,8 @@ public:
 	using exception_lambda = std::function<void(session_handler_type& session, std::exception& e)>;
 	using result = http::api::router_match::route_context_type;
 
-	//using proxy_pass_lambda = std::function<void(http::session_handler&)>;
-	//void proxy_pass_to(proxy_pass_lambda&& proxy_pass) { proxy_pass_ = proxy_pass; }
+	// using proxy_pass_lambda = std::function<void(http::session_handler&)>;
+	// void proxy_pass_to(proxy_pass_lambda&& proxy_pass) { proxy_pass_ = proxy_pass; }
 
 	struct metrics
 	{
@@ -3542,13 +3538,13 @@ public:
 	const route& the_route() const { return *route_; }
 	middlewares& middlewares_vector() { return middlewares_; };
 	const middlewares& middlewares_vector() const { return middlewares_; };
-	//proxy_pass_lambda& proxy_pass() { return proxy_pass_; };
+	// proxy_pass_lambda& proxy_pass() { return proxy_pass_; };
 
 private:
 	result result_;
 	route* route_{ nullptr };
 	middlewares middlewares_;
-	//proxy_pass_lambda proxy_pass_;
+	// proxy_pass_lambda proxy_pass_;
 };
 
 template <
@@ -4974,7 +4970,6 @@ public:
 
 							http::api::router<>::request_result_type routing
 								= session_handler_.handle_request(server_.router_);
-
 
 							session_handler_.set_response_headers<http::api::router<>>(routing);
 

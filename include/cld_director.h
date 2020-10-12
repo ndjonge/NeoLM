@@ -883,9 +883,10 @@ public:
 					// else
 					//	random_failure = false;
 
-					if ((ec.empty() && response.get("Content-type").find("json") != std::string::npos)) /* &&
-																										   random_failure
-																										   == false)*/
+					if ((ec.empty()
+						 && response.get("Content-type").find("json") != std::string::npos)) /* &&
+																								random_failure
+																								== false)*/
 					{
 						json ret = json::parse(response.body());
 						std::string link_to_status;
@@ -2391,8 +2392,7 @@ public:
 		error["error"].emplace_back(json{ { "code", code }, { "message", message } });
 
 		session.response().body() = error.dump();
-		server_base::logger().error(
-			"{s}, json{s}\n", session.request().url_requested(), session.response().body());
+		server_base::logger().error("{s}, json{s}\n", session.request().url_requested(), session.response().body());
 	}
 
 	virtual void set_json_response_catch(http::session_handler& session, const json::type_error& error)
@@ -2676,7 +2676,7 @@ inline bool body_1mb()
 	return result;
 }
 
-bool post_empty_workspace() 
+inline bool post_empty_workspace()
 {
 	bool result = false;
 	std::string error_code;
@@ -2685,15 +2685,16 @@ bool post_empty_workspace()
 	std::string payload;
 
 	payload.assign(
-		"{\"workspaces\":[{\"description\":\"workspace_000\",\"id\":\"workspace_000\",\"tenant_id\":\"tenant000_prd\"}]}");
+		"{\"workspaces\":[{\"description\":\"workspace_000\",\"id\":\"workspace_000\",\"tenant_id\":\"tenant000_prd\"}]"
+		"}");
 
 	auto response = http::client::request<http::method::post>(
-		session, "http://localhost:4000/private/infra/workspaces/workspace_000", error_code, { }, payload);
+		session, "http://localhost:4000/private/infra/workspaces/workspace_000", error_code, {}, payload);
 
 	return result;
 }
 
-bool get_empty_workspace()
+inline bool get_empty_workspace()
 {
 	bool result = false;
 	std::string error_code;
@@ -2707,7 +2708,7 @@ bool get_empty_workspace()
 	return result;
 }
 
-bool post_test_workgroup_to_empty_workspace()
+inline bool post_test_workgroup_to_empty_workspace()
 {
 	bool result = false;
 	std::string error_code;
@@ -2716,14 +2717,25 @@ bool post_test_workgroup_to_empty_workspace()
 	std::string payload;
 
 	payload.assign(
-"{\"workgroups\": [{\"details\" : {\"bse\" : \"D:/Infor/lnmsql/bse\",\"bse_bin\" : \"\\\\\\\\view\\\\enha_BDNT79248.NLBAWPSET7.ndjonge\\\\obj.dbg.WinX64\\bin\",\"bse_user\" : \"ndjonge\",\"cli_options\" :\"-httpserver -delay 0 -install -set HTTP_BOOT_PROCESS=otttsthttpboot D:/Infor/lnmsql/bse/http/t.o\",\"http_options\" : \"http_watchdog_timeout:60,log_level:access_log\",\"os_password\" : \"$2S$80EEA66DF8FBAEB005D7210E2372952C\",\"os_user\" : \"ndjonge@infor.com\",\"program\" : \"ntbshell.exe\",\"startobject\" : \"\"},\"limits\" : {\"workers_actual\" : 10,\"workers_max\" : 10,\"workers_min\" : 10,\"workers_pending\" : 0,\"workers_required\" : 10},   \"name\" : \"untitled\",\"type\": \"bshells\"}]}");
+		"{\"workgroups\": [{\"details\" : {\"bse\" : \"D:/Infor/lnmsql/bse\",\"bse_bin\" : "
+		"\"\\\\\\\\view\\\\enha_BDNT79248.NLBAWPSET7.ndjonge\\\\obj.dbg.WinX64\\bin\",\"bse_user\" : "
+		"\"ndjonge\",\"cli_options\" :\"-httpserver -delay 0 -install -set HTTP_BOOT_PROCESS=otttsthttpboot "
+		"D:/Infor/lnmsql/bse/http/t.o\",\"http_options\" : "
+		"\"http_watchdog_timeout:60,log_level:access_log\",\"os_password\" : "
+		"\"$2S$80EEA66DF8FBAEB005D7210E2372952C\",\"os_user\" : \"ndjonge@infor.com\",\"program\" : "
+		"\"ntbshell.exe\",\"startobject\" : \"\"},\"limits\" : {\"workers_actual\" : 10,\"workers_max\" : "
+		"10,\"workers_min\" : 10,\"workers_pending\" : 0,\"workers_required\" : 10},   \"name\" : "
+		"\"untitled\",\"type\": \"bshells\"}]}");
 
 	auto response = http::client::request<http::method::post>(
-		session, "http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled", error_code, {}, payload);
+		session,
+		"http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled",
+		error_code,
+		{},
+		payload);
 
 	return result;
 }
-
 
 inline bool run()
 {
@@ -2784,9 +2796,9 @@ inline int start_rest_server(int argc, const char** argv)
 											  { "https_enabled", "true" },
 											  { "http_enabled", "true" },
 											  { "http_use_portsharding", "false" } } };
-	
+
 	auto config_file = cmd_args.get_val("config");
-	
+
 	if (cmd_args.flag_set("test"))
 	{
 		auto base_path = config_file.find_last_of("/\\");
@@ -2797,7 +2809,6 @@ inline int start_rest_server(int argc, const char** argv)
 			config_file += "/test.json";
 		}
 	}
-
 
 	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager<http::basic::async::server>>(
 		new cloud::platform::manager<http::basic::async::server>(http_configuration, config_file));
