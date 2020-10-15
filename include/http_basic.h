@@ -1992,9 +1992,11 @@ public:
 
 	void content_length(uint64_t const& length) { headers_base::set("Content-Length", std::to_string(length)); }
 
+	static const std::uint64_t invalid_content_lenght = static_cast<std::uint64_t>(-1);
+
 	std::uint64_t content_length()
 	{
-		if (cached_content_length_ != static_cast<std::uint64_t>(-1))
+		if (cached_content_length_ != invalid_content_lenght)
 			return cached_content_length_;
 		else
 		{
@@ -2004,7 +2006,20 @@ public:
 			if (content_length.empty())
 				cached_content_length_ = 0;
 			else
-				return cached_content_length_ = std::stoul(content_length);
+			{
+				cached_content_length_ = invalid_content_lenght;
+
+				try
+				{
+					if (content_length[0] != '-') 
+						cached_content_length_ = std::stoull(content_length);
+				}
+				catch (std::exception&)
+				{
+				}
+
+				return cached_content_length_;
+			}
 
 			return cached_content_length_;
 		}

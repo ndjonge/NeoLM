@@ -452,14 +452,26 @@ private:
 					asio::buffers_begin(in_packet_.data()), asio::buffers_begin(in_packet_.data()) + bytes_transferred);
 
 				in_packet_.consume(bytes_transferred);
+				session_handler_.request().set("Remote_Addr", this->remote_address_base());
 
 				if (result == http::request_parser::good)
 				{
 					this->cancel_timeout();
+					auto content_length = session_handler_.request().content_length();					
 
-					session_handler_.request().set("Remote_Addr", this->remote_address_base());
-
-					if (session_handler_.request().content_length())
+					if (content_length == http::request_message::invalid_content_lenght)
+					{
+						session_handler_.response().set("Connection", "Close");
+						session_handler_.response().status(http::status::length_required);
+						write_response();
+					}
+					else if (content_length > server_.max_request_content_length())
+					{
+						session_handler_.response().set("Connection", "Close");
+						session_handler_.response().status(http::status::payload_too_large);
+						write_response();
+					}
+					else if (content_length > 0)
 					{
 						this->session_handler_.request().body() += std::string(
 							asio::buffers_begin(in_packet_.data()), asio::buffers_end(in_packet_.data()));
@@ -478,7 +490,8 @@ private:
 				}
 				else if (result == http::request_parser::bad)
 				{
-					session_handler_.request().set("Remote_Addr", this->remote_address_base());
+					this->cancel_timeout();
+					session_handler_.response().set("Connection", "Close");
 					session_handler_.response().status(http::status::bad_request);
 					write_response();
 				}
@@ -957,10 +970,11 @@ public:
 		, https_listen_port_(network::tcp::socket::invalid_socket)
 		, https_listen_address_(configuration.get<std::string>("https_listen_address", "::0"))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
+		, max_request_content_length_(configuration.get<size_t>("gzip_min_length", 1024 * 1024 * 16))
 		, io_context_pool_(thread_count_)
 		, http_acceptor_(io_context_pool_.get_io_context())
 		, https_acceptor_(io_context_pool_.get_io_context())
-		, https_ssl_context_(asio::ssl::context::tlsv13)
+		, https_ssl_context_(asio::ssl::context::tlsv13 )
 	{
 		if (https_enabled_)
 		{
@@ -974,6 +988,15 @@ public:
 				configuration_.get<std::string>("https_certificate_certificate_key", "server.key"),
 				asio::ssl::context::pem,
 				error_code);
+
+			SSL_CTX_set_cipher_list(
+				https_ssl_context_.native_handle(),
+				"ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256");
+
+			https_ssl_context_.set_options(
+				asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2
+				| asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1
+				| asio::ssl::context::single_dh_use | SSL_OP_CIPHER_SERVER_PREFERENCE, error_code);
 
 			if (error_code) std::cout << "https error: " << error_code.message() << "\n";
 		}
@@ -1165,6 +1188,8 @@ private:
 	std::string https_listen_address_;
 
 	size_t gzip_min_length_;
+	size_t max_request_content_length_;
+	size_t max_request_content_length() const { return max_request_content_length_; }
 
 	class io_context_pool
 	{
