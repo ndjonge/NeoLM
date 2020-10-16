@@ -3170,7 +3170,7 @@ public:
 		response_.set("Date", util::return_current_time_and_date());
 		
 		if (protocol_ == http::protocol::https) 
-			response_.set("Strict-Transport-Security", "max-age-315360000; includeSubdomains");
+			response_.set("Strict-Transport-Security", "max-age=315360000; includeSubdomains");
 	
 
 		if (response_.get("Content-Type", std::string{}).empty()) response_.type("text");
