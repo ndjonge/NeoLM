@@ -836,6 +836,25 @@ read_from_disk(const std::string& file_path, const std::function<bool(std::array
 
 } // namespace util
 
+enum protocol
+{
+	http,
+	https
+};
+
+inline std::string to_string(protocol protocol) noexcept
+{
+	switch (protocol)
+	{
+		case http:
+			return "http";
+		case https:
+			return "https";
+		default:
+			return "http";
+	}
+}
+
 namespace method
 {
 
@@ -3125,8 +3144,9 @@ public:
 
 	~session_handler() = default;
 
-	session_handler(http::configuration& configuration)
+	session_handler(http::configuration& configuration, http::protocol protocol)
 		: configuration_(configuration)
+		, protocol_(protocol)
 		, keepalive_count_(configuration.get<int>("keepalive_count", 1024 * 8))
 		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
 		, t0_(std::chrono::steady_clock::now())
@@ -3148,6 +3168,10 @@ public:
 	{
 		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
 		response_.set("Date", util::return_current_time_and_date());
+		
+		if (protocol_ == http::protocol::https) 
+			response_.set("Strict-Transport-Security", "max-age-315360000; includeSubdomains");
+	
 
 		if (response_.get("Content-Type", std::string{}).empty()) response_.type("text");
 
@@ -3277,6 +3301,7 @@ public:
 	const http::api::params& params() const { return *params_; };
 	const http::api::routing& routing() const { return *routing_; };
 	http::api::routing& routing() { return *routing_; };
+	http::protocol protocol() const { return protocol_; };
 
 	void reset()
 	{
@@ -3302,6 +3327,7 @@ private:
 	http::configuration& configuration_;
 	http::api::routing* routing_{ nullptr };
 	http::api::params* params_{ nullptr };
+	http::protocol protocol_{http::protocol::http};
 
 	int keepalive_count_;
 	int keepalive_max_;
@@ -3546,20 +3572,18 @@ public:
 
 	routing(result r = http::api::router_match::no_route) : result_(r) {}
 
-	result& match_result() { return result_; };
-	result match_result() const { return result_; };
+	result& match_result() { return result_; }
+	result match_result() const { return result_; }
 	route& the_route() { return *route_; }
 	void set_route(route* r) { route_ = r; }
 	const route& the_route() const { return *route_; }
-	middlewares& middlewares_vector() { return middlewares_; };
-	const middlewares& middlewares_vector() const { return middlewares_; };
-	// proxy_pass_lambda& proxy_pass() { return proxy_pass_; };
+	middlewares& middlewares_vector() { return middlewares_; }
+	const middlewares& middlewares_vector() const { return middlewares_; }
 
 private:
 	result result_;
 	route* route_{ nullptr };
 	middlewares middlewares_;
-	// proxy_pass_lambda proxy_pass_;
 };
 
 template <
@@ -4874,7 +4898,7 @@ public:
 			http::basic::threaded::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
 			, client_socket_(std::move(client_socket))
-			, session_handler_(server.configuration_)
+			, session_handler_(server.configuration_, http::protocol::http) // for now.
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
 		{

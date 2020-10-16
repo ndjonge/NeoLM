@@ -368,9 +368,12 @@ public:
 	}
 };
 
+
+
 class server : public http::basic::server
 {
-private:
+public:
+
 	template <class connection_handler_derived, class socket_t>
 	class connection_handler_base : public std::enable_shared_from_this<connection_handler_derived>
 	{
@@ -384,21 +387,22 @@ private:
 		http::session_handler session_handler_;
 		server& server_;
 		http::api::routing routing_{};
+		http::protocol protocol_;
 
-	public:
-		connection_handler_base(asio::io_context& service, server& server, http::configuration& configuration)
+		connection_handler_base(
+			asio::io_context& service, server& server, http::configuration& configuration, protocol protocol)
 			: service_(service)
 			, write_strand_(service)
 			, steady_timer_(service)
-			, session_handler_(configuration)
+			, session_handler_(configuration, protocol)
 			, server_(server)
 		{
-			server_.logger_.info("connection_handler: start {u}\n", reinterpret_cast<uintptr_t>(this));
+			server_.logger_.info("{s}connection_handler: start {u}\n", reinterpret_cast<uintptr_t>(this));
 		}
 
 		virtual ~connection_handler_base()
 		{
-			server_.logger_.info("connection_handler: close {u}\n", reinterpret_cast<uintptr_t>(this));
+			server_.logger_.info("{s}connection_handler: close {u}\n", reinterpret_cast<uintptr_t>(this));
 		}
 
 		connection_handler_base(connection_handler_base const&) = delete;
@@ -834,7 +838,8 @@ private:
 	{
 	public:
 		connection_handler_http(asio::io_context& service, server& server, http::configuration& configuration)
-			: connection_handler_base(service, server, configuration), socket_(service)
+			: connection_handler_base(service, server, configuration, http::protocol::http)
+			, socket_(service)
 		{
 		}
 
@@ -892,7 +897,7 @@ private:
 			server& server,
 			http::configuration& configuration,
 			asio::ssl::context& ssl_context)
-			: connection_handler_base(service, server, configuration), socket_(service, ssl_context)
+			: connection_handler_base(service, server, configuration, http::protocol::https), socket_(service, ssl_context)
 		{
 		}
 
@@ -945,8 +950,8 @@ private:
 		asio::ssl::stream<asio::ip::tcp::socket> socket_;
 	};
 
-	using shared_connection_handler_http_t = std::shared_ptr<server::connection_handler_http>;
-	using shared_https_connection_handler_http_t = std::shared_ptr<server::connection_handler_https>;
+	using shared_connection_handler_http = std::shared_ptr<server::connection_handler_http>;
+	using shared_https_connection_handler_https = std::shared_ptr<server::connection_handler_https>;
 
 public:
 	server(http::configuration& configuration)
@@ -989,9 +994,14 @@ public:
 				asio::ssl::context::pem,
 				error_code);
 
+			auto cypher_suite = configuration_.get<std::string>(
+				"https_cypher_list",
+				"ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-"
+				"CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:"
+				"ECDHE-RSA-AES256-SHA384");
+
 			SSL_CTX_set_cipher_list(
-				https_ssl_context_.native_handle(),
-				"ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256");
+				https_ssl_context_.native_handle(), cypher_suite.data());
 
 			https_ssl_context_.set_options(
 				asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2
@@ -1130,7 +1140,7 @@ public:
 	asio::io_context& get_io_context() { return io_context_pool_.get_io_context(); }
 
 private:
-	void handle_new_connection(const shared_connection_handler_http_t& handler, const asio::error_code error)
+	void handle_new_connection(const shared_connection_handler_http& handler, const asio::error_code error)
 	{
 		if (error)
 		{
@@ -1151,7 +1161,7 @@ private:
 	}
 
 	void
-	handle_new_https_connection(const shared_https_connection_handler_http_t& handler, const asio::error_code error)
+	handle_new_https_connection(const shared_https_connection_handler_https& handler, const asio::error_code error)
 	{
 		if (error)
 		{

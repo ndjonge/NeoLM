@@ -24,7 +24,7 @@ int main()
 
 #ifdef _WIN32
 	const char* rest_argv[]
-		= { "appname", "-config", "C:/tmp/pm_root/config.json", /*"-test",*/ "-http_listen_port", "4000", "-logfile", "cout", "-loglevel", "api" };
+		= { "appname", "-config", "C:/tmp/pm_root/config.json", /*"-test",*/ "-http_listen_port", "4000", "-logfile", "cout", "-loglevel", "debug" };
 #else
 	const char* rest_argv[]
 		= { "appname",	"-config", "/home/ndjonge/config.json", /*"-test",*/ "-http_listen_port", "4000", "-logfile", "cout", "-loglevel", "api" };
