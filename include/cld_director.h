@@ -2737,8 +2737,197 @@ inline bool post_test_workgroup_to_empty_workspace()
 	return result;
 }
 
+inline bool rapid7_scan_requests() 
+{ 
+	auto requests = 
+	{
+		"GET /",
+		"GET /console/login/LoginForm.jsp",
+		"GET /Rapid7/JBoss/version-check-Rr7asX.html",
+		"GET /jira/secure/Dashboard.jspa",
+		"GET /secure/Dashboard.jspa",
+		"GET /login.jsp",
+		"GET /spiffymcgee.nsf",
+		"GET /spiffymcgee.cfm",
+		"GET /servlet/",
+		"GET /",
+		"GET /jbossws/",
+		"GET /invoker/",
+		"GET /jbossmq-httpil/",
+		"GET /",
+		"GET /xmldata?item=All",
+		"GET /",
+		"GET /administrator/manifests/files/joomla.xml",
+		"GET /administrator/language/en-GB/en-GB.xml",
+		"GET /language/en-GB/en-GB.xml",
+		"GET /joomla/administrator/manifests/files/joomla.xml",
+		"GET /joomla/administrator/language/en-GB/en-GB.xml",
+		"GET /joomla/language/en-GB/en-GB.xml",
+		"GET /",
+		"GET /reviews",
+		"GET /",
+		"GET /login",
+		"GET /",
+		"GET /login",
+		"GET /",
+		"GET /login.action",
+		"GET /login",
+		"GET /login",
+		"GET /owa/auth/logon.aspx",
+		"GET /owa/auth/logon.aspx",
+		"GET /owa/auth/logon.aspx",
+		"GET /owa/auth/logon.aspx",
+		"GET /console/App.html",
+		"GET /",
+		"GET /php/login.php",
+		"GET /",
+		"GET /CHANGELOG.txt",
+		"GET /wordpress/readme.html",
+		"GET /",
+		"GET /wordpress",
+		"GET /wordpress/wp-login.php",
+		"GET /index.php/login",
+		"GET /",
+		"GET /index.php?title=Main_Page",
+		"GET /mediawiki/index.php?title=Main_Page",
+		"GET /index.php",
+		"GET /version",
+		"GET /version/openshift",
+		"GET /version",
+		"GET /",
+		"GET /configurations.do",
+		"GET /",
+		"GET /web/guest/home",
+		"GET /spiffymcgee.jsp",
+		"GET /",
+		"GET /",
+		"GET /console/faces/com_sun_web_ui/jsp/version/version_30.jsp",
+		"GET /console/faces/com_sun_web_ui/jsp/version/version_4.jsp",
+		"GET /phpmyadmin/",
+		"GET /?Class.classLoader.resources.cacheObjectMaxSize=foo",
+		"GET /cgi-bin/config.exp",
+		"GET /common/index.jsf",
+		"GET /CFIDE/administrator/",
+		"GET /CFIDE/adminiapi/",
+		"POST /index.htm",
+		"POST /flex2gateway/http",
+		"GET /c99.php",
+		"POST /cgi/login",
+		"GET /conf/ssl/apache/integrity.key",
+		"GET /CFIDE/scheduler/",
+		"GET /cgi-bin/awstats.pl?PluginMode=:print+%22x%22%2e(1042+%2b+1099)%2e%22x%22;",
+		"POST /data/login",
+		"GET /CFIDE/servermanager/",
+		"GET /CFIDE/componentutils/cfcexplorer.cfc?method=getcfcinhtml&name=CFIDE.componentutils.cfcexplorer&path=../../../license.txt",
+		"GET /struts2-blank/example/HelloWorld.action",
+		"GET /CFIDE/AIR/",
+		"GET /cgi-bin/htmlscript?../../../../../../../etc/passwd",
+		"GET /phpmyadmin/",
+		"GET /~bin/true",
+		"GET /CFIDE/componentutils/",
+		"POST /CFIDE/adminapi/administrator.cfc?",
+		"GET /CFIDE/adminapi/customtags/soft404validationcheck.cfm",
+		"GET /CFIDE/orm/",
+		"POST /",
+		"GET /README.txt",
+		"GET /CFIDE/adminapi/customtags/l10n.cfm?attributes.id=test&attributes.file=../../administrator/mail/download.cfm&filename=../../lib/password.properties&attributes.locale=it&attributes.var=it&attributes.jscript=false&attributes.type=text/html&attributes.charset=UTF-8&thisTag.executionmode=end&thisTag.generatedContent=test",
+		"GET /_vti_bin/_vti_aut/author.dll",
+		"GET /cgi-bin/htgrep/file=index.html&hdr=/etc/passwd",
+		"GET /cgi-bin/awstats.pl?debug=1",
+		"GET /bb/",
+		"GET /CFIDE/websocket/",
+		"GET /CFIDE/wizards/common/",
+		"GET /CFIDE/portlets/",
+		"GET /CFIDE/appdeployment/",
+		"GET /CFIDE/services/",
+		"GET /?class.classLoader.resources.cacheObjectMaxSize=foo",
+		"GET /struts2-showcase/employee/save.action",
+		"GET /CFIDE/adminapi/base.cfc?wsdl",
+		"GET /cgi-bin/view-source?../../../../../../../etc/passwd",
+		"GET /scripts/tools/newdsn.exe?driver=Microsoft%2BAccess%2BDriver%2B%28*.mdb%29&dsn=Web%20SQL&dbq=c:%5Ctemp%5Cxyz.mdb&newdb=CREATE_DB&attr=",
+		"POST /cgi-bin/test-cgi",
+		"POST /cgi-bin/home.tcl",
+		"GET /jkstatus/",
+		"GET /CFIDE/administrator/enter.cfm?locale=../../../../../../../lib/password.properties%00en",
+		"GET /",
+		"GET /cgi-bin/php.ini",
+		"GET /cgi-bin/htsearch?Exclude=%60/etc/passwd%60",
+		"GET /crossdomain.xml",
+		"POST /flex2gateway/httpsecure",
+		"GET /CFIDE/administrator/enter.cfm",
+		"GET /cgi-bin/awstats/awstats.pl?PluginMode=:print+%22x%22%2e(1042+%2b+1099)%2e%22x%22;",
+		"POST /xmlrpc.php",
+		"GET /AdvWorks/equipment/catalog_type.asp?ProductType=|shell(%22c:cmd.exe%22)|",
+		"GET /CFIDE/wizards/common/utils.cfc?method=verifyldapserver&vserver=localhost&vport=22&vstart=&vusername=&vpassword=&returnformat=json",
+		"GET /conf/ssl/apache/integrity-smartcenter.key",
+		"GET /cgi-bin/faxsurvey?/bin/cat%20/etc/passwd",
+		"GET /tmui/login.jsp/..%3b/tmui/locallb/workspace/fileRead.jsp?fileName=/etc/f5-release",
+		"GET /CFIDE/adminapi/customtags/l10n.cfm?attributes.id=test&attributes.file=../../administrator/mail/download.cfm&filename=../lib/password.properties&attributes.locale=it&attributes.var=it&attributes.jscript=false&attributes.type=text/html&attributes.charset=UTF-8&thisTag.executionmode=end&thisTag.generatedContent=test HTTP/1.1",
+		"GET /CFIDE/soft404validationcheck.cfm",
+		"GET /CFIDE/componentutils/cfcexplorer.cfc?method=getcfcinhtml&name=CFIDE.componentutils.cfcexplorer&path=../../../../license.html",
+		"GET /cgi-bin/awstats/awstats.pl?debug=1",
+		"GET /ASPSamp/AdvWorks/equipment/catalog_type.asp?ProductType=|shell(%22c:cmd.exe%22)|",
+		"GET /CFIDE/adminapi/customtags/fusebox.cfm",
+		"POST /messagebroker/http",
+		"POST /serendipity/serendipity_xmlrpc.php",
+		"POST /messagebroker/httpsecure",
+		"GET /CFIDE/adminapi/customtags/adss.cfm",
+		"GET /cgi-bin/faxquery?/bin/cat%20/etc/passwd",
+		"GET /rest/v1/AccountService/Accounts",
+		"POST /serendipity/xmlrpc.php",
+		"POST /",
+		"POST /struts2-rest-showcase",
+		"POST /blazeds/messagebroker/http",
+		"GET /CFIDE/h.cfm",
+		"POST /drupal/xmlrpc.php",
+		"GET /",
+		"GET /portal/diag/index.jsp",
+		"POST /blazeds/messagebroker/httpsecure",
+		"GET /CFIDE/h9.cfm",
+		"POST /bblog/xmlrpc.php",
+		"POST /samples/messagebroker/http",
+		"GET /CFIDE/help.cfm",
+		"POST /cgi-bin/webcgi/login",
+		"POST /blogs/xmlsrv/xmlrpc.php",
+		"POST /wls-wsat/CoordinatorPortType",
+		"GET /CFIDE/i.cfm",
+		"POST /samples/messagebroker/httpsecure",
+		"POST /xmlsrv/xmlrpc.php",
+		"GET /CFIDE/r.cfm",
+		"POST /lcds/messagebroker/http",
+		"POST /xmlrpc/xmlrpc.php",
+		"POST /lcds/messagebroker/httpsecure",
+		"POST /script/xmlrpc.php",
+		"POST /lcds-samples/messagebroker/http",
+		"POST /lcds-samples/messagebroker/httpsecure"
+	}; 
+
+	bool result = false;
+	http::client::session session;
+	for (auto request : requests)
+	{
+		std::string error_code;
+
+		std::string payload = {};
+
+		auto split_request = http::util::split(request, " ");
+
+		if (split_request[0] == "POST")
+			auto response = http::client::request<http::method::post>(
+				session, "http://localhost:4000/"+ split_request[1], error_code, {}, payload);
+		else
+			auto response = http::client::request<http::method::get>(
+				session, "http://localhost:4000" + split_request[1], error_code, {}, payload);
+
+	}
+	return result;
+
+
+}
+
 inline bool run()
 {
+	std::this_thread::sleep_for(std::chrono::seconds(5));
 	bool result = false;
 
 	result = headers_8kb();
@@ -2748,7 +2937,7 @@ inline bool run()
 	result = post_empty_workspace();
 	result = get_empty_workspace();
 	result = post_test_workgroup_to_empty_workspace();
-
+	result = rapid7_scan_requests();
 	return result;
 }
 

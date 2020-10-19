@@ -397,12 +397,13 @@ public:
 			, session_handler_(configuration, protocol)
 			, server_(server)
 		{
-			server_.logger_.info("{s}connection_handler: start {u}\n", reinterpret_cast<uintptr_t>(this));
+			server_.logger_.info("{s}_connection_handler: start {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
 		}
 
 		virtual ~connection_handler_base()
 		{
-			server_.logger_.info("{s}connection_handler: close {u}\n", reinterpret_cast<uintptr_t>(this));
+			server_.logger_.info(
+				"{s}_connection_handler: close {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
 		}
 
 		connection_handler_base(connection_handler_base const&) = delete;
