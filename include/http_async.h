@@ -396,6 +396,7 @@ public:
 			, steady_timer_(service)
 			, session_handler_(configuration, protocol)
 			, server_(server)
+			, protocol_(protocol)
 		{
 			server_.logger_.info("{s}_connection_handler: start {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
 		}
