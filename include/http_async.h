@@ -14,7 +14,6 @@
 
 #include "http_basic.h"
 
-
 namespace http
 {
 
@@ -264,7 +263,6 @@ public:
 		std::atomic<std::uint16_t> responses_5xx_{ 0 };
 		std::atomic<std::uint16_t> responses_tot_{ 0 };
 
-
 		const std::string& base_url() const { return base_url_; }
 		const std::string& id() const { return id_; }
 		void set_state(upstream::state state) { state_ = state; }
@@ -368,12 +366,9 @@ public:
 	}
 };
 
-
-
 class server : public http::basic::server
 {
 public:
-
 	template <class connection_handler_derived, class socket_t>
 	class connection_handler_base : public std::enable_shared_from_this<connection_handler_derived>
 	{
@@ -398,7 +393,8 @@ public:
 			, server_(server)
 			, protocol_(protocol)
 		{
-			server_.logger_.info("{s}_connection_handler: start {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
+			server_.logger_.info(
+				"{s}_connection_handler: start {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
 		}
 
 		virtual ~connection_handler_base()
@@ -463,7 +459,7 @@ public:
 				if (result == http::request_parser::good)
 				{
 					this->cancel_timeout();
-					auto content_length = session_handler_.request().content_length();					
+					auto content_length = session_handler_.request().content_length();
 
 					if (content_length == http::request_message::content_length_invalid)
 					{
@@ -690,8 +686,7 @@ public:
 
 				auto content_length = session_handler_.response().content_length();
 
-				if (content_length > 0 
-					&& content_length != http::request_message::content_length_invalid)
+				if (content_length > 0 && content_length != http::request_message::content_length_invalid)
 				{
 					auto content_already_received = static_cast<size_t>(
 						upstream_connection.buffer_.data() + upstream_connection.buffer_.size() - c);
@@ -851,8 +846,7 @@ public:
 	{
 	public:
 		connection_handler_http(asio::io_context& service, server& server, http::configuration& configuration)
-			: connection_handler_base(service, server, configuration, http::protocol::http)
-			, socket_(service)
+			: connection_handler_base(service, server, configuration, http::protocol::http), socket_(service)
 		{
 		}
 
@@ -910,7 +904,8 @@ public:
 			server& server,
 			http::configuration& configuration,
 			asio::ssl::context& ssl_context)
-			: connection_handler_base(service, server, configuration, http::protocol::https), socket_(service, ssl_context)
+			: connection_handler_base(service, server, configuration, http::protocol::https)
+			, socket_(service, ssl_context)
 		{
 		}
 
@@ -970,7 +965,7 @@ public:
 	server(http::configuration& configuration)
 		: http::basic::server{ configuration }
 		, thread_count_(configuration.get<std::uint8_t>(
-			  "thread_count", static_cast<std::uint8_t>(std::thread::hardware_concurrency())))
+			  "thread_count", static_cast<std::uint8_t>(2))) // std::thread::hardware_concurrency()
 		, http_watchdog_idle_timeout_(configuration.get<std::int16_t>("http_watchdog_idle_timeout", 0))
 		, http_watchdog_max_requests_concurrent_(
 			  configuration.get<std::int16_t>("http_watchdog_max_requests_concurrent", 0))
@@ -992,7 +987,7 @@ public:
 		, io_context_pool_(thread_count_)
 		, http_acceptor_(io_context_pool_.get_io_context())
 		, https_acceptor_(io_context_pool_.get_io_context())
-		, https_ssl_context_(asio::ssl::context::tlsv13 )
+		, https_ssl_context_(asio::ssl::context::tlsv13)
 	{
 		if (https_enabled_)
 		{
@@ -1013,13 +1008,13 @@ public:
 				"CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:"
 				"ECDHE-RSA-AES256-SHA384");
 
-			SSL_CTX_set_cipher_list(
-				https_ssl_context_.native_handle(), cypher_suite.data());
+			SSL_CTX_set_cipher_list(https_ssl_context_.native_handle(), cypher_suite.data());
 
 			https_ssl_context_.set_options(
-				asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2
-				| asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1
-				| asio::ssl::context::single_dh_use | SSL_OP_CIPHER_SERVER_PREFERENCE, error_code);
+				asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3
+					| asio::ssl::context::no_tlsv1 | asio::ssl::context::single_dh_use
+					| SSL_OP_CIPHER_SERVER_PREFERENCE,
+				error_code);
 
 			if (error_code) std::cout << "https error: " << error_code.message() << "\n";
 		}
@@ -1082,6 +1077,15 @@ public:
 
 		http_acceptor_.listen(asio::socket_base::max_connections);
 		configuration_.set("http_listen_port", std::to_string(http_listen_port_probe));
+
+		if (configuration_.get<std::string>("http_listen_address", "::0") == "::0")
+			configuration_.set(
+				"http_this_server_base_url",
+				"http://" + network::hostname() + ":" + configuration_.get<std::string>("http_listen_port"));
+		else
+			configuration_.set(
+				"http_this_server_base_url", "http://localhost:" + configuration_.get<std::string>("http_listen_port"));
+
 		logger_.info("http listener on port: {d} started\n", http_listen_port_probe);
 		http_listen_port_.store(http_listen_port_probe);
 
@@ -1118,6 +1122,15 @@ public:
 			https_acceptor_.listen(asio::socket_base::max_connections);
 
 			configuration_.set("https_listen_port", std::to_string(https_listen_port_probe));
+			if (configuration_.get<std::string>("https_listen_address", "::0") == "::0")
+				configuration_.set(
+					"https_this_server_base_url",
+					"https://" + network::hostname() + ":" + configuration_.get<std::string>("https_listen_port"));
+			else
+				configuration_.set(
+					"https_this_server_base_url",
+					"https://localhost:" + configuration_.get<std::string>("https_listen_port"));
+
 			logger_.info("https listener on port: {d} started\n", https_listen_port_probe);
 			http_listen_port_.store(https_listen_port_probe);
 		}
@@ -1173,8 +1186,7 @@ private:
 		});
 	}
 
-	void
-	handle_new_https_connection(const shared_https_connection_handler_https& handler, const asio::error_code error)
+	void handle_new_https_connection(const shared_https_connection_handler_https& handler, const asio::error_code error)
 	{
 		if (error)
 		{

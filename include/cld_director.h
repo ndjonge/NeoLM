@@ -44,7 +44,7 @@ namespace bse_utils
 std::mutex m;
 
 static bool create_bse_process_as_user(
-	const std::string& url,
+	const std::string&,
 	const std::string&,
 	const std::string&,
 	const std::string&,
@@ -412,12 +412,8 @@ public:
 	using iterator = container_type::iterator;
 	using const_iterator = container_type::const_iterator;
 
-	workgroups(
-		const std::string& server_endpoint,
-		const std::string& workspace_id,
-		const std::string& tenant_id,
-		const std::string& type)
-		: server_endpoint_(server_endpoint), workspace_id_(workspace_id), type_(type), tenant_id_(tenant_id)
+	workgroups(const std::string& workspace_id, const std::string& tenant_id, const std::string& type)
+		: workspace_id_(workspace_id), type_(type), tenant_id_(tenant_id)
 	{
 	}
 
@@ -785,6 +781,7 @@ public:
 	limits& workgroups_limits() { return limits_; }
 
 	virtual void direct_workers(
+		const http::configuration& configuration,
 		lgr::logger& logger,
 		const std::string& = std::string{},
 		const json& limits_adjustments = json{},
@@ -792,7 +789,6 @@ public:
 		= 0;
 
 protected:
-	std::string server_endpoint_;
 	std::string name_;
 	std::string workspace_id_;
 	std::string type_;
@@ -819,12 +815,8 @@ private:
 	std::string http_options_;
 
 public:
-	bshell_workgroups(
-		const std::string& server_endpoint,
-		const std::string& workspace_id,
-		const std::string& tenant_id,
-		const json& worker_type_json)
-		: workgroups(server_endpoint, workspace_id, tenant_id, worker_type_json["type"])
+	bshell_workgroups(const std::string& workspace_id, const std::string& tenant_id, const json& worker_type_json)
+		: workgroups(workspace_id, tenant_id, worker_type_json["type"])
 	{
 		from_json(worker_type_json);
 	}
@@ -832,6 +824,7 @@ public:
 	virtual void set_tenant(const std::string& t) { tenant_id_ = t; };
 
 	virtual void direct_workers(
+		const http::configuration& configuration,
 		lgr::logger& logger,
 		const std::string& limit_name,
 		const json& limits_adjustments,
@@ -839,6 +832,9 @@ public:
 	{
 		bool rescan{ false };
 		std::string ec{};
+		std::string server_endpoint = configuration.get<std::string>("http_this_server_url", "http://localhost:4000");
+
+		server_endpoint += "/private/infra/workspaces";
 
 		std::unique_lock<std::mutex> lock{ workers_mutex_ };
 
@@ -875,7 +871,7 @@ public:
 			{
 				std::uint32_t process_id = 0;
 				lock.unlock();
-				bool success = create_worker_process(server_endpoint_, workspace_id_, type_, name_, process_id, ec);
+				bool success = create_worker_process(server_endpoint, workspace_id_, type_, name_, process_id, ec);
 				lock.lock();
 				if (!success) // todo
 				{
@@ -1075,7 +1071,7 @@ public:
 		std::stringstream parameters;
 
 		parameters << "-httpserver_options cld_manager_endpoint:" << manager_endpoint
-				   << "cld_workgroup_membership_type:worker,cld_manager_workspace:" << workspace_id
+				   << " cld_workgroup_membership_type:worker,cld_manager_workspace:" << workspace_id
 				   << ",cld_manager_workgroup:" << worker_name << "/" << worker_type;
 
 		if (!http_options_.empty())
@@ -1103,12 +1099,8 @@ private:
 	std::string rootdir;
 
 public:
-	python_workgroups(
-		const std::string& server_endpoint,
-		const std::string& workspace_id,
-		const std::string& tenant_id,
-		const json& worker_type_json)
-		: workgroups(server_endpoint, workspace_id, tenant_id, "python"), rootdir()
+	python_workgroups(const std::string& workspace_id, const std::string& tenant_id, const json& worker_type_json)
+		: workgroups(workspace_id, tenant_id, "python"), rootdir()
 	{
 		from_json(worker_type_json);
 	}
@@ -1128,8 +1120,12 @@ public:
 		j["details"].emplace("PythonRoot", rootdir);
 	}
 
-	virtual void
-	direct_workers(lgr::logger&, const std::string&, const json&, workgroups::limits::from_json_operation) override{};
+	virtual void direct_workers(
+		const http::configuration&,
+		lgr::logger&,
+		const std::string&,
+		const json&,
+		workgroups::limits::from_json_operation) override{};
 
 	virtual bool create_worker_process(
 		const std::string&,
@@ -1163,12 +1159,7 @@ private:
 	container_type workgroups_;
 
 public:
-	workspace(
-		const std::string& server_endpoint,
-		const std::string workspace_id,
-		const json& json_workspace)
-		: server_endpoint_(server_endpoint)
-		, workspace_id_(workspace_id)
+	workspace(const std::string workspace_id, const json& json_workspace) : workspace_id_(workspace_id)
 	{
 		from_json(json_workspace);
 	}
@@ -1208,14 +1199,11 @@ private:
 	create_workgroups_from_json(const std::string& type, const std::string& tenant_id, const json& worker_type_json)
 	{
 		if (type == "bshells")
-			return std::unique_ptr<workgroups>{ new bshell_workgroups{
-				server_endpoint_, workspace_id_, tenant_id, worker_type_json } };
+			return std::unique_ptr<workgroups>{ new bshell_workgroups{ workspace_id_, tenant_id, worker_type_json } };
 		if (type == "ashells")
-			return std::unique_ptr<workgroups>{ new bshell_workgroups{
-				server_endpoint_, workspace_id_, tenant_id, worker_type_json } };
+			return std::unique_ptr<workgroups>{ new bshell_workgroups{ workspace_id_, tenant_id, worker_type_json } };
 		if (type == "python-scripts")
-			return std::unique_ptr<workgroups>{ new python_workgroups{
-				server_endpoint_, workspace_id_, tenant_id, worker_type_json } };
+			return std::unique_ptr<workgroups>{ new python_workgroups{ workspace_id_, tenant_id, worker_type_json } };
 		else
 			return nullptr;
 	}
@@ -1325,7 +1313,7 @@ public:
 	const_iterator cend() const { return workspaces_.cend(); }
 	const_iterator cbegin() const { return workspaces_.cbegin(); }
 
-	void direct_workspaces(lgr::logger& logger)
+	void direct_workspaces(const http::configuration& configuration, lgr::logger& logger)
 	{
 		auto t0 = std::chrono::steady_clock::now();
 		for (auto& workspace : workspaces_)
@@ -1333,7 +1321,7 @@ public:
 			std::unique_lock<mutex_type> l{ workspaces_mutex_ };
 			json empty_limits_adjustments = json::object();
 			for (auto& workgroup : *workspace.second)
-				workgroup.second->direct_workers(logger);
+				workgroup.second->direct_workers(configuration, logger);
 		}
 		auto t1 = std::chrono::steady_clock::now();
 
@@ -1350,8 +1338,7 @@ public:
 
 		if (i == workspaces_.end())
 		{
-			auto new_workspace = workspaces_.insert(container_type::value_type{
-				id, new workspace{ id, manager_workspace, j } });
+			auto new_workspace = workspaces_.insert(container_type::value_type{ id, new workspace{ id, j } });
 
 			if (new_workspace.second)
 			{
@@ -2249,7 +2236,11 @@ public:
 						json limits = json::parse(session.request().body());
 						// TODO split function below:
 						workgroups->second->direct_workers(
-							server_base::logger_, limit_name, limits, workgroups::limits::from_json_operation::set);
+							server_base::configuration_,
+							server_base::logger_,
+							limit_name,
+							limits,
+							workgroups::limits::from_json_operation::set);
 						workgroups->second->workgroups_limits().to_json(limits["limits"]);
 
 						result["limits"] = limits;
@@ -2286,7 +2277,11 @@ public:
 						json limits = json::parse(session.request().body());
 
 						workgroups->second->direct_workers(
-							server_base::logger_, limit_name, limits, workgroups::limits::from_json_operation::add);
+							server_base::configuration_,
+							server_base::logger_,
+							limit_name,
+							limits,
+							workgroups::limits::from_json_operation::add);
 
 						workgroups->second->workgroups_limits().to_json(limits["limits"]);
 
@@ -2391,7 +2386,7 @@ private:
 		{
 			if (server_base::is_active())
 			{
-				workspaces_.direct_workspaces(server_base::logger_);
+				workspaces_.direct_workspaces(server_base::configuration_, server_base::logger_);
 
 				json manager_json = json::object();
 				to_json(manager_json);
