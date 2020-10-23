@@ -44,7 +44,7 @@ namespace bse_utils
 std::mutex m;
 
 static bool create_bse_process_as_user(
-	const std::string&,
+	const std::string& url,
 	const std::string&,
 	const std::string&,
 	const std::string&,
@@ -108,12 +108,37 @@ static bool create_bse_process_as_user(
 	std::string& ec)
 {
 	bool result = false;
+
+	if (!getenv("BSE_SHLIB"))
+	{
+		auto bse_bin = std::string{};
+
+		if (getenv("BSE_BIN"))
+			bse_bin = std::string{} + getenv("BSE_BIN");
+		else
+		{
+			bse_bin = GetBse();
+
+			if (bse_bin.empty())
+			{
+				std::array<char, MAX_PATH> module_path;
+				::GetModuleFileNameA(NULL, module_path.data(), MAX_PATH);
+
+				bse_bin.assign(module_path.data(), module_path.size());
+				bse_bin = bse_bin.substr(0, bse_bin.find_last_of("\\/"));
+			}
+		}
+
+		auto bse_shlib = new std::string{ "BSE_SHLIB=" + bse_bin + "\\..\\shlib" };
+
+		::putenv(bse_shlib->data());
+	}
 #ifndef _WIN32
 	auto user_ok = CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0);
 #else
 	HANDLE requested_user_token = 0;
-	auto user_ok = CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0, &requested_user_token);
-
+	auto user_ok = CheckUserInfo(
+		user.data(), password.data(), NULL, 0, NULL, 0, &requested_user_token, eWindowsLogonType_Default);
 	if (!user_ok)
 	{
 		// TODO more info about failure.
@@ -132,7 +157,7 @@ static bool create_bse_process_as_user(
 
 		ss << "BSE=" << bse << char{ 0 };
 		ss << "BSE_BIN=" << bse_bin << char{ 0 };
-		ss << "BSE_SHLIB=" << bse_bin << "..\\shlib" << char{ 0 };
+		ss << "BSE_SHLIB=" << bse_bin << "\\..\\shlib" << char{ 0 };
 		ss << "TENAND_ID=" << tenand_id << char{ 0 };
 
 		for (auto var : required_environment_vars)
@@ -144,8 +169,8 @@ static bool create_bse_process_as_user(
 		}
 		ss << char{ 0 };
 
-		PROCESS_INFORMATION piProcInfo = {};
-		STARTUPINFO siStartInfo{};
+		PROCESS_INFORMATION piProcInfo = { 0 };
+		STARTUPINFO siStartInfo{ 0 };
 		siStartInfo.cb = sizeof(STARTUPINFO);
 
 		snprintf(desktop, sizeof(desktop), "%s\\%s", BAAN_WINSTATION_NAME, BAAN_DESKTOP_NAME);
@@ -153,11 +178,17 @@ static bool create_bse_process_as_user(
 		siStartInfo.lpDesktop = desktop;
 		auto error = GetLastError();
 
+		std::string command_cpy = command;
+		if (0)
+		{
+			command_cpy = "C:\\Windows\\System32\\notepad.exe";
+		}
+
 		error = 0;
 		result = CreateProcessAsUser(
 			requested_user_token, /* Handle to logged-on user */
 			NULL, /* module name */
-			const_cast<LPSTR>(command.data()), /* command line */
+			const_cast<LPSTR>(command_cpy.data()), /* command line */
 			NULL, /* process security attributes */
 			NULL, /* thread security attributes */
 			FALSE, /* inherits handles */
@@ -307,6 +338,7 @@ public:
 	};
 
 private:
+	std::string manager_endpoint_;
 	std::string base_url_{};
 	std::string version_{};
 	std::int32_t process_id_;
@@ -317,13 +349,18 @@ private:
 
 public:
 	worker() = default;
-	worker(const std::string& base_url, std::string version, std::int32_t process_id)
-		: base_url_(base_url), version_(version), process_id_(process_id), status_(worker::status::initial)
+	worker(std::string manager_endpoint, std::string base_url, std::string version, std::int32_t process_id)
+		: manager_endpoint_(manager_endpoint)
+		, base_url_(base_url)
+		, version_(version)
+		, process_id_(process_id)
+		, status_(worker::status::initial)
 	{
 	}
 
 	worker(const worker& worker)
-		: base_url_(worker.base_url_)
+		: manager_endpoint_(worker.manager_endpoint_)
+		, base_url_(worker.base_url_)
 		, version_(worker.version_)
 		, process_id_(worker.process_id_)
 		, status_(worker.status_)
@@ -332,6 +369,7 @@ public:
 
 	virtual ~worker() { worker_metrics_.clear(); };
 
+	const std::string& get_manager_endpoint() const { return manager_endpoint_; };
 	const std::string& get_base_url() const { return base_url_; };
 	int get_process_id() const { return process_id_; };
 
@@ -374,8 +412,12 @@ public:
 	using iterator = container_type::iterator;
 	using const_iterator = container_type::const_iterator;
 
-	workgroups(const std::string& workspace_id, const std::string& tenant_id, const std::string& type)
-		: workspace_id_(workspace_id), type_(type), tenant_id_(tenant_id)
+	workgroups(
+		const std::string& server_endpoint,
+		const std::string& workspace_id,
+		const std::string& tenant_id,
+		const std::string& type)
+		: server_endpoint_(server_endpoint), workspace_id_(workspace_id), type_(type), tenant_id_(tenant_id)
 	{
 	}
 
@@ -400,11 +442,11 @@ public:
 
 	void add_initial_worker(std::int32_t process_id)
 	{
-		workers_[std::to_string(process_id)] = worker{ "", "", process_id };
+		workers_[std::to_string(process_id)] = worker{ "", "", "", process_id };
 		limits_.workers_pending_upd(1);
 	}
 
-	void add_worker(const json& j, asio::io_context& io_context)
+	void add_worker(const std::string& manager_endpoint, const json& j, asio::io_context& io_context)
 	{
 		std::lock_guard<std::mutex> g{ workers_mutex_ };
 		std::int32_t process_id;
@@ -416,7 +458,7 @@ public:
 		base_url = j.value("base_url", "");
 		version = j.value("version", "");
 
-		workers_[std::to_string(process_id)] = worker{ base_url, version, process_id };
+		workers_[std::to_string(process_id)] = worker{ manager_endpoint, base_url, version, process_id };
 
 		if (base_url.empty() == false)
 		{
@@ -504,6 +546,7 @@ public:
 	}
 
 	virtual bool create_worker_process(
+		const std::string& manager_endpoint,
 		const std::string& workspace_id,
 		const std::string& worker_type,
 		const std::string& worker_name,
@@ -749,6 +792,7 @@ public:
 		= 0;
 
 protected:
+	std::string server_endpoint_;
 	std::string name_;
 	std::string workspace_id_;
 	std::string type_;
@@ -775,8 +819,12 @@ private:
 	std::string http_options_;
 
 public:
-	bshell_workgroups(const std::string& workspace_id, const std::string& tenant_id, const json& worker_type_json)
-		: workgroups(workspace_id, tenant_id, worker_type_json["type"])
+	bshell_workgroups(
+		const std::string& server_endpoint,
+		const std::string& workspace_id,
+		const std::string& tenant_id,
+		const json& worker_type_json)
+		: workgroups(server_endpoint, workspace_id, tenant_id, worker_type_json["type"])
 	{
 		from_json(worker_type_json);
 	}
@@ -827,7 +875,7 @@ public:
 			{
 				std::uint32_t process_id = 0;
 				lock.unlock();
-				bool success = create_worker_process(workspace_id_, type_, name_, process_id, ec);
+				bool success = create_worker_process(server_endpoint_, workspace_id_, type_, name_, process_id, ec);
 				lock.lock();
 				if (!success) // todo
 				{
@@ -1017,6 +1065,7 @@ public:
 
 public:
 	bool create_worker_process(
+		const std::string& manager_endpoint,
 		const std::string& workspace_id,
 		const std::string& worker_type,
 		const std::string& worker_name,
@@ -1025,7 +1074,8 @@ public:
 	{
 		std::stringstream parameters;
 
-		parameters << "-httpserver_options cld_workgroup_membership_type:worker,cld_manager_workspace:" << workspace_id
+		parameters << "-httpserver_options cld_manager_endpoint:" << manager_endpoint
+				   << "cld_workgroup_membership_type:worker,cld_manager_workspace:" << workspace_id
 				   << ",cld_manager_workgroup:" << worker_name << "/" << worker_type;
 
 		if (!http_options_.empty())
@@ -1053,8 +1103,12 @@ private:
 	std::string rootdir;
 
 public:
-	python_workgroups(const std::string& workspace_id, const std::string& tenant_id, const json& worker_type_json)
-		: workgroups(workspace_id, tenant_id, "python"), rootdir()
+	python_workgroups(
+		const std::string& server_endpoint,
+		const std::string& workspace_id,
+		const std::string& tenant_id,
+		const json& worker_type_json)
+		: workgroups(server_endpoint, workspace_id, tenant_id, "python"), rootdir()
 	{
 		from_json(worker_type_json);
 	}
@@ -1078,6 +1132,7 @@ public:
 	direct_workers(lgr::logger&, const std::string&, const json&, workgroups::limits::from_json_operation) override{};
 
 	virtual bool create_worker_process(
+		const std::string&,
 		const std::string&, // workspace_id,
 		const std::string&, // worker_type,
 		const std::string&, // worker_name,
@@ -1100,43 +1155,20 @@ public:
 	using const_iterator_type = container_type::const_iterator;
 
 private:
+	std::string server_endpoint_;
 	std::string workspace_id_{};
 	std::string tenant_id_{};
 	std::string description_{};
-
-	class api_url_configuration
-	{
-	public:
-		api_url_configuration(
-			const std::string& manager_base_url,
-			const std::string manger_base_part,
-			const std::string& manager_workspace_part)
-			: manager_base_url_(manager_base_url)
-			, manger_base_part_(manger_base_part)
-			, manager_workspace_part_(manager_workspace_part)
-		{
-		}
-
-	private:
-		std::string manager_base_url_;
-		std::string manger_base_part_;
-		std::string manager_workspace_part_;
-	};
-
 	std::vector<std::string> errors;
 	container_type workgroups_;
 
-	api_url_configuration api_url_configuration_;
-
 public:
 	workspace(
+		const std::string& server_endpoint,
 		const std::string workspace_id,
-		const std::string& manager_base_url,
-		const std::string manger_base_part,
-		const std::string& manager_workspace_part,
 		const json& json_workspace)
-		: workspace_id_(workspace_id)
-		, api_url_configuration_(manager_base_url, manger_base_part, manager_workspace_part)
+		: server_endpoint_(server_endpoint)
+		, workspace_id_(workspace_id)
 	{
 		from_json(json_workspace);
 	}
@@ -1176,11 +1208,14 @@ private:
 	create_workgroups_from_json(const std::string& type, const std::string& tenant_id, const json& worker_type_json)
 	{
 		if (type == "bshells")
-			return std::unique_ptr<workgroups>{ new bshell_workgroups{ workspace_id_, tenant_id, worker_type_json } };
+			return std::unique_ptr<workgroups>{ new bshell_workgroups{
+				server_endpoint_, workspace_id_, tenant_id, worker_type_json } };
 		if (type == "ashells")
-			return std::unique_ptr<workgroups>{ new bshell_workgroups{ workspace_id_, tenant_id, worker_type_json } };
+			return std::unique_ptr<workgroups>{ new bshell_workgroups{
+				server_endpoint_, workspace_id_, tenant_id, worker_type_json } };
 		if (type == "python-scripts")
-			return std::unique_ptr<workgroups>{ new python_workgroups{ workspace_id_, tenant_id, worker_type_json } };
+			return std::unique_ptr<workgroups>{ new python_workgroups{
+				server_endpoint_, workspace_id_, tenant_id, worker_type_json } };
 		else
 			return nullptr;
 	}
@@ -1316,7 +1351,7 @@ public:
 		if (i == workspaces_.end())
 		{
 			auto new_workspace = workspaces_.insert(container_type::value_type{
-				id, new workspace{ id, "http://127.0.0.1:" + port, base_path, manager_workspace, j } });
+				id, new workspace{ id, manager_workspace, j } });
 
 			if (new_workspace.second)
 			{
@@ -1991,7 +2026,10 @@ public:
 
 						if (workgroups != workspace->second->end())
 						{
-							workgroups->second->add_worker(worker_json, server_base::get_io_context());
+							workgroups->second->add_worker(
+								server_base::config().get("http_this_server_base_url"),
+								worker_json,
+								server_base::get_io_context());
 						}
 
 						session.response().status(http::status::ok);
@@ -2737,197 +2775,8 @@ inline bool post_test_workgroup_to_empty_workspace()
 	return result;
 }
 
-inline bool rapid7_scan_requests() 
-{ 
-	auto requests = 
-	{
-		"GET /",
-		"GET /console/login/LoginForm.jsp",
-		"GET /Rapid7/JBoss/version-check-Rr7asX.html",
-		"GET /jira/secure/Dashboard.jspa",
-		"GET /secure/Dashboard.jspa",
-		"GET /login.jsp",
-		"GET /spiffymcgee.nsf",
-		"GET /spiffymcgee.cfm",
-		"GET /servlet/",
-		"GET /",
-		"GET /jbossws/",
-		"GET /invoker/",
-		"GET /jbossmq-httpil/",
-		"GET /",
-		"GET /xmldata?item=All",
-		"GET /",
-		"GET /administrator/manifests/files/joomla.xml",
-		"GET /administrator/language/en-GB/en-GB.xml",
-		"GET /language/en-GB/en-GB.xml",
-		"GET /joomla/administrator/manifests/files/joomla.xml",
-		"GET /joomla/administrator/language/en-GB/en-GB.xml",
-		"GET /joomla/language/en-GB/en-GB.xml",
-		"GET /",
-		"GET /reviews",
-		"GET /",
-		"GET /login",
-		"GET /",
-		"GET /login",
-		"GET /",
-		"GET /login.action",
-		"GET /login",
-		"GET /login",
-		"GET /owa/auth/logon.aspx",
-		"GET /owa/auth/logon.aspx",
-		"GET /owa/auth/logon.aspx",
-		"GET /owa/auth/logon.aspx",
-		"GET /console/App.html",
-		"GET /",
-		"GET /php/login.php",
-		"GET /",
-		"GET /CHANGELOG.txt",
-		"GET /wordpress/readme.html",
-		"GET /",
-		"GET /wordpress",
-		"GET /wordpress/wp-login.php",
-		"GET /index.php/login",
-		"GET /",
-		"GET /index.php?title=Main_Page",
-		"GET /mediawiki/index.php?title=Main_Page",
-		"GET /index.php",
-		"GET /version",
-		"GET /version/openshift",
-		"GET /version",
-		"GET /",
-		"GET /configurations.do",
-		"GET /",
-		"GET /web/guest/home",
-		"GET /spiffymcgee.jsp",
-		"GET /",
-		"GET /",
-		"GET /console/faces/com_sun_web_ui/jsp/version/version_30.jsp",
-		"GET /console/faces/com_sun_web_ui/jsp/version/version_4.jsp",
-		"GET /phpmyadmin/",
-		"GET /?Class.classLoader.resources.cacheObjectMaxSize=foo",
-		"GET /cgi-bin/config.exp",
-		"GET /common/index.jsf",
-		"GET /CFIDE/administrator/",
-		"GET /CFIDE/adminiapi/",
-		"POST /index.htm",
-		"POST /flex2gateway/http",
-		"GET /c99.php",
-		"POST /cgi/login",
-		"GET /conf/ssl/apache/integrity.key",
-		"GET /CFIDE/scheduler/",
-		"GET /cgi-bin/awstats.pl?PluginMode=:print+%22x%22%2e(1042+%2b+1099)%2e%22x%22;",
-		"POST /data/login",
-		"GET /CFIDE/servermanager/",
-		"GET /CFIDE/componentutils/cfcexplorer.cfc?method=getcfcinhtml&name=CFIDE.componentutils.cfcexplorer&path=../../../license.txt",
-		"GET /struts2-blank/example/HelloWorld.action",
-		"GET /CFIDE/AIR/",
-		"GET /cgi-bin/htmlscript?../../../../../../../etc/passwd",
-		"GET /phpmyadmin/",
-		"GET /~bin/true",
-		"GET /CFIDE/componentutils/",
-		"POST /CFIDE/adminapi/administrator.cfc?",
-		"GET /CFIDE/adminapi/customtags/soft404validationcheck.cfm",
-		"GET /CFIDE/orm/",
-		"POST /",
-		"GET /README.txt",
-		"GET /CFIDE/adminapi/customtags/l10n.cfm?attributes.id=test&attributes.file=../../administrator/mail/download.cfm&filename=../../lib/password.properties&attributes.locale=it&attributes.var=it&attributes.jscript=false&attributes.type=text/html&attributes.charset=UTF-8&thisTag.executionmode=end&thisTag.generatedContent=test",
-		"GET /_vti_bin/_vti_aut/author.dll",
-		"GET /cgi-bin/htgrep/file=index.html&hdr=/etc/passwd",
-		"GET /cgi-bin/awstats.pl?debug=1",
-		"GET /bb/",
-		"GET /CFIDE/websocket/",
-		"GET /CFIDE/wizards/common/",
-		"GET /CFIDE/portlets/",
-		"GET /CFIDE/appdeployment/",
-		"GET /CFIDE/services/",
-		"GET /?class.classLoader.resources.cacheObjectMaxSize=foo",
-		"GET /struts2-showcase/employee/save.action",
-		"GET /CFIDE/adminapi/base.cfc?wsdl",
-		"GET /cgi-bin/view-source?../../../../../../../etc/passwd",
-		"GET /scripts/tools/newdsn.exe?driver=Microsoft%2BAccess%2BDriver%2B%28*.mdb%29&dsn=Web%20SQL&dbq=c:%5Ctemp%5Cxyz.mdb&newdb=CREATE_DB&attr=",
-		"POST /cgi-bin/test-cgi",
-		"POST /cgi-bin/home.tcl",
-		"GET /jkstatus/",
-		"GET /CFIDE/administrator/enter.cfm?locale=../../../../../../../lib/password.properties%00en",
-		"GET /",
-		"GET /cgi-bin/php.ini",
-		"GET /cgi-bin/htsearch?Exclude=%60/etc/passwd%60",
-		"GET /crossdomain.xml",
-		"POST /flex2gateway/httpsecure",
-		"GET /CFIDE/administrator/enter.cfm",
-		"GET /cgi-bin/awstats/awstats.pl?PluginMode=:print+%22x%22%2e(1042+%2b+1099)%2e%22x%22;",
-		"POST /xmlrpc.php",
-		"GET /AdvWorks/equipment/catalog_type.asp?ProductType=|shell(%22c:cmd.exe%22)|",
-		"GET /CFIDE/wizards/common/utils.cfc?method=verifyldapserver&vserver=localhost&vport=22&vstart=&vusername=&vpassword=&returnformat=json",
-		"GET /conf/ssl/apache/integrity-smartcenter.key",
-		"GET /cgi-bin/faxsurvey?/bin/cat%20/etc/passwd",
-		"GET /tmui/login.jsp/..%3b/tmui/locallb/workspace/fileRead.jsp?fileName=/etc/f5-release",
-		"GET /CFIDE/adminapi/customtags/l10n.cfm?attributes.id=test&attributes.file=../../administrator/mail/download.cfm&filename=../lib/password.properties&attributes.locale=it&attributes.var=it&attributes.jscript=false&attributes.type=text/html&attributes.charset=UTF-8&thisTag.executionmode=end&thisTag.generatedContent=test HTTP/1.1",
-		"GET /CFIDE/soft404validationcheck.cfm",
-		"GET /CFIDE/componentutils/cfcexplorer.cfc?method=getcfcinhtml&name=CFIDE.componentutils.cfcexplorer&path=../../../../license.html",
-		"GET /cgi-bin/awstats/awstats.pl?debug=1",
-		"GET /ASPSamp/AdvWorks/equipment/catalog_type.asp?ProductType=|shell(%22c:cmd.exe%22)|",
-		"GET /CFIDE/adminapi/customtags/fusebox.cfm",
-		"POST /messagebroker/http",
-		"POST /serendipity/serendipity_xmlrpc.php",
-		"POST /messagebroker/httpsecure",
-		"GET /CFIDE/adminapi/customtags/adss.cfm",
-		"GET /cgi-bin/faxquery?/bin/cat%20/etc/passwd",
-		"GET /rest/v1/AccountService/Accounts",
-		"POST /serendipity/xmlrpc.php",
-		"POST /",
-		"POST /struts2-rest-showcase",
-		"POST /blazeds/messagebroker/http",
-		"GET /CFIDE/h.cfm",
-		"POST /drupal/xmlrpc.php",
-		"GET /",
-		"GET /portal/diag/index.jsp",
-		"POST /blazeds/messagebroker/httpsecure",
-		"GET /CFIDE/h9.cfm",
-		"POST /bblog/xmlrpc.php",
-		"POST /samples/messagebroker/http",
-		"GET /CFIDE/help.cfm",
-		"POST /cgi-bin/webcgi/login",
-		"POST /blogs/xmlsrv/xmlrpc.php",
-		"POST /wls-wsat/CoordinatorPortType",
-		"GET /CFIDE/i.cfm",
-		"POST /samples/messagebroker/httpsecure",
-		"POST /xmlsrv/xmlrpc.php",
-		"GET /CFIDE/r.cfm",
-		"POST /lcds/messagebroker/http",
-		"POST /xmlrpc/xmlrpc.php",
-		"POST /lcds/messagebroker/httpsecure",
-		"POST /script/xmlrpc.php",
-		"POST /lcds-samples/messagebroker/http",
-		"POST /lcds-samples/messagebroker/httpsecure"
-	}; 
-
-	bool result = false;
-	http::client::session session;
-	for (auto request : requests)
-	{
-		std::string error_code;
-
-		std::string payload = {};
-
-		auto split_request = http::util::split(request, " ");
-
-		if (split_request[0] == "POST")
-			auto response = http::client::request<http::method::post>(
-				session, "http://localhost:4000/"+ split_request[1], error_code, {}, payload);
-		else
-			auto response = http::client::request<http::method::get>(
-				session, "http://localhost:4000" + split_request[1], error_code, {}, payload);
-
-	}
-	return result;
-
-
-}
-
 inline bool run()
 {
-	std::this_thread::sleep_for(std::chrono::seconds(5));
 	bool result = false;
 
 	result = headers_8kb();
@@ -2937,7 +2786,7 @@ inline bool run()
 	result = post_empty_workspace();
 	result = get_empty_workspace();
 	result = post_test_workgroup_to_empty_workspace();
-	result = rapid7_scan_requests();
+
 	return result;
 }
 

@@ -1975,6 +1975,7 @@ public:
 		header<specialization>::clear();
 		attributes_.clear();
 		body_.clear();
+		cached_content_length_ = static_cast<std::uint64_t>(-1);
 	}
 
 	void reset(const std::string& name) { header<specialization>::reset(name); }
@@ -2011,11 +2012,11 @@ public:
 
 	void content_length(uint64_t const& length) { headers_base::set("Content-Length", std::to_string(length)); }
 
-	static const std::uint64_t invalid_content_lenght = static_cast<std::uint64_t>(-1);
+	static const std::uint64_t content_length_invalid = static_cast<std::uint64_t>(-1);
 
 	std::uint64_t content_length()
 	{
-		if (cached_content_length_ != invalid_content_lenght)
+		if (cached_content_length_ != content_length_invalid)
 			return cached_content_length_;
 		else
 		{
@@ -2026,12 +2027,11 @@ public:
 				cached_content_length_ = 0;
 			else
 			{
-				cached_content_length_ = invalid_content_lenght;
+				cached_content_length_ = content_length_invalid;
 
 				try
 				{
-					if (content_length[0] != '-') 
-						cached_content_length_ = std::stoull(content_length);
+					if (content_length[0] != '-') cached_content_length_ = std::stoull(content_length);
 				}
 				catch (std::exception&)
 				{
@@ -3168,10 +3168,9 @@ public:
 	{
 		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
 		response_.set("Date", util::return_current_time_and_date());
-		
-		if (protocol_ == http::protocol::https) 
+
+		if (protocol_ == http::protocol::https)
 			response_.set("Strict-Transport-Security", "max-age=315360000; includeSubdomains");
-	
 
 		if (response_.get("Content-Type", std::string{}).empty()) response_.type("text");
 
@@ -3327,7 +3326,7 @@ private:
 	http::configuration& configuration_;
 	http::api::routing* routing_{ nullptr };
 	http::api::params* params_{ nullptr };
-	http::protocol protocol_{http::protocol::http};
+	http::protocol protocol_{ http::protocol::http };
 
 	int keepalive_count_;
 	int keepalive_max_;
@@ -5045,12 +5044,12 @@ public:
 										std::chrono::steady_clock::now() - t0)
 										.count());
 
+								auto log_msg = server_.manager().log_access(
+												   session_handler_, routing.the_route().route_metrics())
+											   + "\n";
+
 								if (server_.logger_.current_level() >= lgr::level::accesslog)
 								{
-									auto log_msg = server_.manager().log_access(
-													   session_handler_, routing.the_route().route_metrics())
-												   + "\n";
-
 									server_.logger_.accesslog(log_msg);
 								}
 							}

@@ -465,7 +465,7 @@ public:
 					this->cancel_timeout();
 					auto content_length = session_handler_.request().content_length();					
 
-					if (content_length == http::request_message::invalid_content_lenght)
+					if (content_length == http::request_message::content_length_invalid)
 					{
 						session_handler_.response().set("Connection", "Close");
 						session_handler_.response().status(http::status::length_required);
@@ -518,6 +518,7 @@ public:
 				else
 				{
 					stop();
+					server_.logger_.debug("{s}\n", ec.message());
 					// if (ec == asio::error::operation_aborted)
 					//{
 					//	session_handler_.response().status(http::status::request_timeout);
@@ -540,27 +541,31 @@ public:
 					in_packet_,
 					asio::transfer_at_least(1),
 					[me](asio::error_code const& ec, std::size_t bytes_xfer) {
-						auto content_length = me->session_handler_.request().content_length();
-						auto body_size = me->session_handler_.request().body().length();
-
-						size_t chunk_size
-							= asio::buffers_end(me->in_packet_.data()) - asio::buffers_begin(me->in_packet_.data());
-
-						if (content_length - body_size < chunk_size) chunk_size = content_length - body_size;
-
-						std::string chunk = std::string(
-							asio::buffers_begin(me->in_packet_.data()),
-							asio::buffers_begin(me->in_packet_.data()) + chunk_size);
-
-						me->in_packet_.consume(chunk_size);
-
-						me->session_handler_.request().body() += chunk;
-
-						body_size = me->session_handler_.request().body().length();
-
-						if (body_size < content_length)
+						if (!ec)
 						{
-							me->read_request_body();
+							auto content_length = me->session_handler_.request().content_length();
+							auto body_size = me->session_handler_.request().body().length();
+
+							size_t chunk_size
+								= asio::buffers_end(me->in_packet_.data()) - asio::buffers_begin(me->in_packet_.data());
+
+							if (content_length - body_size < chunk_size) chunk_size = content_length - body_size;
+
+							me->session_handler_.request().body().append(
+								asio::buffers_begin(me->in_packet_.data()), asio::buffers_end(me->in_packet_.data()));
+
+							me->in_packet_.consume(chunk_size);
+
+							body_size = me->session_handler_.request().body().length();
+
+							if (body_size < content_length)
+							{
+								me->read_request_body();
+							}
+							else
+							{
+								me->read_request_body_complete(ec, bytes_xfer);
+							}
 						}
 						else
 						{
@@ -611,6 +616,11 @@ public:
 				}
 				else
 					write_response();
+			}
+			else
+			{
+				session_handler_.response().status(http::status::bad_request);
+				write_response();
 			}
 		}
 
@@ -680,7 +690,8 @@ public:
 
 				auto content_length = session_handler_.response().content_length();
 
-				if (content_length)
+				if (content_length > 0 
+					&& content_length != http::request_message::content_length_invalid)
 				{
 					auto content_already_received = static_cast<size_t>(
 						upstream_connection.buffer_.data() + upstream_connection.buffer_.size() - c);
