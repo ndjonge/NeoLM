@@ -338,7 +338,6 @@ public:
 	};
 
 private:
-	std::string manager_endpoint_;
 	std::string base_url_{};
 	std::string version_{};
 	std::int32_t process_id_;
@@ -349,18 +348,13 @@ private:
 
 public:
 	worker() = default;
-	worker(std::string manager_endpoint, std::string base_url, std::string version, std::int32_t process_id)
-		: manager_endpoint_(manager_endpoint)
-		, base_url_(base_url)
-		, version_(version)
-		, process_id_(process_id)
-		, status_(worker::status::initial)
+	worker(std::string base_url, std::string version, std::int32_t process_id)
+		: base_url_(base_url), version_(version), process_id_(process_id), status_(worker::status::initial)
 	{
 	}
 
 	worker(const worker& worker)
-		: manager_endpoint_(worker.manager_endpoint_)
-		, base_url_(worker.base_url_)
+		: base_url_(worker.base_url_)
 		, version_(worker.version_)
 		, process_id_(worker.process_id_)
 		, status_(worker.status_)
@@ -369,7 +363,6 @@ public:
 
 	virtual ~worker() { worker_metrics_.clear(); };
 
-	const std::string& get_manager_endpoint() const { return manager_endpoint_; };
 	const std::string& get_base_url() const { return base_url_; };
 	int get_process_id() const { return process_id_; };
 
@@ -438,11 +431,11 @@ public:
 
 	void add_initial_worker(std::int32_t process_id)
 	{
-		workers_[std::to_string(process_id)] = worker{ "", "", "", process_id };
+		workers_[std::to_string(process_id)] = worker{ "", "", process_id };
 		limits_.workers_pending_upd(1);
 	}
 
-	void add_worker(const std::string& manager_endpoint, const json& j, asio::io_context& io_context)
+	void add_worker(const json& j, asio::io_context& io_context)
 	{
 		std::lock_guard<std::mutex> g{ workers_mutex_ };
 		std::int32_t process_id;
@@ -454,7 +447,7 @@ public:
 		base_url = j.value("base_url", "");
 		version = j.value("version", "");
 
-		workers_[std::to_string(process_id)] = worker{ manager_endpoint, base_url, version, process_id };
+		workers_[std::to_string(process_id)] = worker{ base_url, version, process_id };
 
 		if (base_url.empty() == false)
 		{
@@ -832,7 +825,8 @@ public:
 	{
 		bool rescan{ false };
 		std::string ec{};
-		std::string server_endpoint = configuration.get<std::string>("http_this_server_url", "http://localhost:4000");
+		std::string server_endpoint
+			= configuration.get<std::string>("http_this_server_base_url", "http://localhost:4000");
 
 		server_endpoint += "/private/infra/workspaces";
 
@@ -2013,10 +2007,7 @@ public:
 
 						if (workgroups != workspace->second->end())
 						{
-							workgroups->second->add_worker(
-								server_base::config().get("http_this_server_base_url"),
-								worker_json,
-								server_base::get_io_context());
+							workgroups->second->add_worker(worker_json, server_base::get_io_context());
 						}
 
 						session.response().status(http::status::ok);
