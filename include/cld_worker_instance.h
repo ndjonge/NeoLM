@@ -49,11 +49,14 @@ public:
 
 	virtual result remove(remove_worker_options option) noexcept = 0;
 
-	virtual result fork() const noexcept = 0;
+	virtual result fork() noexcept = 0;
+	virtual bool is_forked() const { return is_forked_; };
+	virtual void set_forked(bool f) { is_forked_ = f; };
 
 protected:
 	const http::basic::server& server_;
 	state state_;
+	bool is_forked_{ false };
 };
 
 namespace implementations
@@ -92,7 +95,7 @@ public:
 		auto pid = getpid();
 
 		put_new_instance_json["process_id"] = pid;
-		put_new_instance_json["base_url"] = server_.config().get("http_this_server_base_url");
+		put_new_instance_json["base_url"] = server_.config().get("http_this_server_local_url");
 		put_new_instance_json["version"] = server_.config().get<std::string>("server", "");
 
 		auto response = http::client::request<http::method::put>(
@@ -127,7 +130,7 @@ public:
 		auto pid = getpid();
 
 		put_new_instance_json["process_id"] = pid;
-		put_new_instance_json["base_url"] = server_.config().get("http_this_server_base_url");
+		put_new_instance_json["base_url"] = server_.config().get("http_this_server_local_url");
 
 		if (option == remove_worker_options::remove_and_decrease_required_limit)
 			put_new_instance_json["limits"]["workers_required"] = -1;
@@ -154,7 +157,7 @@ public:
 		}
 	}
 
-	virtual result fork() const noexcept override
+	virtual result fork() noexcept override
 	{
 		if (state_ != state::added) return result::failed;
 
@@ -175,6 +178,7 @@ public:
 		{
 			if (response.status() == http::status::ok || response.status() == http::status::accepted)
 			{
+				set_forked(true);
 				return result::sucess;
 			}
 			else

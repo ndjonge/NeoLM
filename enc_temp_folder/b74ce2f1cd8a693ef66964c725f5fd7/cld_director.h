@@ -826,7 +826,7 @@ public:
 		bool rescan{ false };
 		std::string ec{};
 		std::string server_endpoint
-			= configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000");
+			= configuration.get<std::string>("http_this_server_base_url", "http://localhost:4000");
 
 		server_endpoint += "/private/infra/workspaces";
 
@@ -1065,7 +1065,7 @@ public:
 		std::stringstream parameters;
 
 		parameters << "-httpserver_options cld_manager_endpoint:" << manager_endpoint
-				   << ",cld_workgroup_membership_type:worker,cld_manager_workspace:" << workspace_id
+				   << " cld_workgroup_membership_type:worker,cld_manager_workspace:" << workspace_id
 				   << ",cld_manager_workgroup:" << worker_name << "/" << worker_type;
 
 		if (!http_options_.empty())
@@ -2792,22 +2792,38 @@ static void Daemonize()
 }
 #endif
 
-inline int
-start_rest_server(std::string config_file, std::string config_options, bool foreground = false, bool selftest = false)
+inline int start_rest_server(int argc, const char** argv)
 {
+	prog_args::arguments_t cmd_args(
+		argc,
+		argv,
+		{ { "config",
+			{ prog_args::arg_t::arg_val, " <config>: filename for the workspace config file or url", "config.json" } },
+		  { "http_server_options", { prog_args::arg_t::arg_val, "see doc.", "" } },
+		  { "foreground", { prog_args::arg_t::flag, "run in foreground" } },
+		  { "selftest", { prog_args::arg_t::flag, "run some tests and quit." } } });
+
+	if (cmd_args.process_args() == false)
+	{
+		std::cout << "error in arguments\n";
+		exit(1);
+	}
+
 	std::string server_version = std::string{ "ln-cld-mgr" };
 
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", "4000" },
 											  { "private_base", "/private/infra/manager" },
-											  { "log_level", "api" },
+											  { "log_level", "api"},
 											  { "log_file", "cout" },
 											  { "https_enabled", "false" },
 											  { "http_enabled", "true" },
 											  { "http_use_portsharding", "false" } },
-											config_options };
+											cmd_args.get_val("http_server_options") };
 
-	if (selftest)
+	auto config_file = cmd_args.get_val("config");
+
+	if (cmd_args.flag_set("test"))
 	{
 		auto base_path = config_file.find_last_of("/\\");
 
@@ -2823,36 +2839,12 @@ start_rest_server(std::string config_file, std::string config_options, bool fore
 
 	cloud::platform::cpm_server_->start();
 
-	if (selftest)
+	if (cmd_args.flag_set("test"))
 	{
 		cloud::platform::selftest::run();
 	}
 
 	return 0;
-}
-
-inline int start_rest_server(int argc, const char** argv)
-{
-	prog_args::arguments_t cmd_args(
-		argc,
-		argv,
-		{ { "cld_config",
-			{ prog_args::arg_t::arg_val, " <config>: filename for the workspace config file or url", "config.json" } },
-		  { "cld_options", { prog_args::arg_t::arg_val, "see doc.", "" } },
-		  { "foreground", { prog_args::arg_t::flag, "run in foreground" } },
-		  { "selftest", { prog_args::arg_t::flag, "run some tests and quit." } } });
-
-	if (cmd_args.process_args() == false)
-	{
-		std::cout << "error in arguments \n";
-		exit(1);
-	}
-
-	return start_rest_server(
-		cmd_args.get_val("cld_config"),
-		cmd_args.get_val("cld_options"),
-		cmd_args.get_val("foreground") == "true",
-		cmd_args.get_val("selftest") == "true");
 }
 
 inline int stop_rest_server()

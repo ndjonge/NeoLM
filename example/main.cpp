@@ -17,21 +17,20 @@
 #include "cld_director.h"
 
 
-int main()
+int main(int argc, const char* argv[])
 {
 	network::init();
 	network::ssl::init();
 
-#ifdef _WIN32
-	const char* rest_argv[]
-		= { "appname", "-config", "C:/tmp/pm_root/config.json", /*"-test",*/ "-http_listen_port", "4000", "-logfile", "cout", "-loglevel", "debug" };
-#else
-	const char* rest_argv[]
-		= { "appname",	"-config", "/home/ndjonge/config.json", /*"-test",*/ "-http_listen_port", "4000", "-logfile", "cout", "-loglevel", "api" };
-#endif
+//#ifdef _WIN32
+//	const char* rest_argv[]
+//		= { "appname", "-config", "C:/tmp/pm_root/config.json", /*"-test",*/ "-http_listen_port", "4000", "-logfile", "cout", "-loglevel", "debug" };
+//#else
+//	const char* rest_argv[]
+//		= { "appname",	"-config", "/home/ndjonge/config.json", /*"-test",*/ "-http_listen_port", "4000", "-logfile", "cout", "-loglevel", "api" };
+//#endif
 
-
-	start_rest_server(sizeof(rest_argv) / sizeof(rest_argv[0]), rest_argv);
+	start_rest_server(argc, argv);
 
 	while (1)
 	{
