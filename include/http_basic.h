@@ -4842,13 +4842,14 @@ public:
 				configuration_.set("http_listen_port", std::to_string(http_listen_port_probe));
 
 				if (configuration_.get<std::string>("http_listen_address", "::0") == "::0")
+				{
 					configuration_.set(
 						"http_this_server_base_url",
 						"http://" + network::hostname() + ":" + configuration_.get<std::string>("http_listen_port"));
-				else
-					configuration_.set(
-						"http_this_server_base_url",
-						"http://localhost:" + configuration_.get<std::string>("http_listen_port"));
+				}
+				configuration_.set(
+					"http_this_server_local_url",
+					"http://localhost:" + configuration_.get<std::string>("http_listen_port"));
 
 				logger_.info("http listener on port: {d} started\n", http_listen_port_probe);
 				http_listen_port_.store(http_listen_port_probe);
