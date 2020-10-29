@@ -3909,21 +3909,26 @@ public:
 					else
 					{
 						// no route found, return proxy_pass if root is proxy_pass
-						auto endpoint = std::find_if(
-							root_->endpoints_->cbegin(),
-							root_->endpoints_->cend(),
-							[](const std::pair<M, std::unique_ptr<routing::route>>& e) {
-								return (e.first == http::method::proxy_pass);
-							});
-
-						if (endpoint != root_->endpoints_->cend())
+						if (root_->endpoints_)
 						{
-							result.match_result() = http::api::router_match::match_found;
-							result.set_route(endpoint->second.get());
-							return result;
-						}
+							auto endpoint = std::find_if(
+								root_->endpoints_->cbegin(),
+								root_->endpoints_->cend(),
+								[](const std::pair<M, std::unique_ptr<routing::route>>& e) {
+									return (e.first == http::method::proxy_pass);
+								});
 
-						return routing(http::api::router_match::no_route);
+							if (endpoint != root_->endpoints_->cend())
+							{
+								result.match_result() = http::api::router_match::match_found;
+								result.set_route(endpoint->second.get());
+								return result;
+							}
+						}
+						else
+						{
+							return routing(http::api::router_match::no_route);
+						}
 					}
 				}
 				else

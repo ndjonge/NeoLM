@@ -108,31 +108,6 @@ static bool create_bse_process_as_user(
 	std::string& ec)
 {
 	bool result = false;
-
-	if (!getenv("BSE_SHLIB"))
-	{
-		auto bse_bin = std::string{};
-
-		if (getenv("BSE_BIN"))
-			bse_bin = std::string{} + getenv("BSE_BIN");
-		else
-		{
-			bse_bin = GetBse();
-
-			if (bse_bin.empty())
-			{
-				std::array<char, MAX_PATH> module_path;
-				::GetModuleFileNameA(NULL, module_path.data(), MAX_PATH);
-
-				bse_bin.assign(module_path.data(), module_path.size());
-				bse_bin = bse_bin.substr(0, bse_bin.find_last_of("\\/"));
-			}
-		}
-
-		auto bse_shlib = new std::string{ "BSE_SHLIB=" + bse_bin + "\\..\\shlib" };
-
-		::putenv(bse_shlib->data());
-	}
 #ifndef _WIN32
 	auto user_ok = CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0);
 #else
