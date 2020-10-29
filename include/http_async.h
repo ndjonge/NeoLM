@@ -647,7 +647,10 @@ public:
 				[me, &upstream_connection](asio::error_code const& ec, std::size_t) {
 					me->write_buffer_.pop_front();
 
-					if (!ec) me->read_forwarded_response_headers(upstream_connection);
+					if (!ec) 
+						me->read_forwarded_response_headers(upstream_connection);
+					else
+						me->read_forwarded_response_body_complete(upstream_connection, ec);
 				});
 		}
 
@@ -662,8 +665,11 @@ public:
 				asio::dynamic_buffer(upstream_connection.buffer_),
 				"\r\n\r\n",
 				[me, &upstream_connection](asio::error_code ec, size_t bytes_red) {
-					// TODO response body complete? no -> st
-					if (!ec) me->read_forwarded_response_headers_complete(upstream_connection, bytes_red);
+
+					if (!ec) 
+						me->read_forwarded_response_headers_complete(upstream_connection, bytes_red);
+					else
+						me->read_forwarded_response_body_complete(upstream_connection, ec);
 				});
 		}
 
@@ -705,18 +711,18 @@ public:
 					}
 					else
 					{
-						read_forwarded_response_body_complete(upstream_connection);
+						read_forwarded_response_body_complete(upstream_connection, asio::error_code{});
 					}
 				}
 				else if (session_handler_.response().chunked())
 				{
 					session_handler_.response().status(http::status::internal_server_error);
 					session_handler_.response().body() = "chunked upstream response received\n";
-					read_forwarded_response_body_complete(upstream_connection);
+					read_forwarded_response_body_complete(upstream_connection, asio::error_code{});
 				}
 				else
 				{
-					read_forwarded_response_body_complete(upstream_connection);
+					read_forwarded_response_body_complete(upstream_connection, asio::error_code{});
 				}
 			}
 		}
@@ -732,37 +738,50 @@ public:
 					upstream_connection.socket(),
 					asio::dynamic_buffer(upstream_connection.buffer_),
 					asio::transfer_at_least(1),
-					[me, &upstream_connection](asio::error_code const&, std::size_t bytes_xfer) {
-						auto content_length = me->session_handler_.response().content_length();
-
-						me->session_handler_.response().body().append(upstream_connection.buffer_.data(), bytes_xfer);
-
-						if (me->session_handler_.response().body().length() < content_length)
+					[me, &upstream_connection](const asio::error_code& ec, std::size_t bytes_xfer) {
+						if (!ec)
 						{
-							me->read_forwarded_response_body(upstream_connection);
+							auto content_length = me->session_handler_.response().content_length();
+
+							me->session_handler_.response().body().append(upstream_connection.buffer_.data(), bytes_xfer);
+
+							if (me->session_handler_.response().body().length() < content_length)
+							{
+								me->read_forwarded_response_body(upstream_connection);
+							}
+							else
+							{
+								me->read_forwarded_response_body_complete(upstream_connection, ec);
+							}
 						}
 						else
 						{
-							me->read_forwarded_response_body_complete(upstream_connection);
+							me->read_forwarded_response_body_complete(upstream_connection, ec);
 						}
 					});
 			}
 			else if (session_handler_.response().body().size() == session_handler_.response().content_length())
 			{
-				read_forwarded_response_body_complete(upstream_connection);
+				read_forwarded_response_body_complete(upstream_connection, ec);
 			}
 			else
 			{
 				assert(1 == 0);
-				read_forwarded_response_body_complete(upstream_connection);
+				read_forwarded_response_body_complete(upstream_connection, ec);
 			}
 		}
 
-		void read_forwarded_response_body_complete(http::basic::async::upstreams::connection_type& upstream_connection)
+		void read_forwarded_response_body_complete(http::basic::async::upstreams::connection_type& upstream_connection, asio::error_code ec)
 		{
-			if (upstream_connection.should_drain())
+			if (upstream_connection.should_drain() || ec)
 			{
 				upstream_connection.drain();
+				if (ec)
+				{
+					session_handler_.response().reset();
+					session_handler_.response().status(http::status::bad_gateway);
+				}
+
 				write_response();
 				return;
 			}
