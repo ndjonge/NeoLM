@@ -5,11 +5,16 @@
 #include <iostream>
 #include <memory>
 #include <string>
-
 #include <deque>
 #include <thread>
 
 #include <asio.hpp>
+#ifdef USE_WOLFSSL
+#ifndef ASIO_USE_WOLFSSL
+#define ASIO_USE_WOLFSSL
+#endif
+#include "infor_ssl.h"
+#endif
 #include <asio/ssl.hpp>
 
 #include "http_basic.h"
@@ -377,6 +382,7 @@ public:
 		asio::io_context::strand write_strand_;
 		asio::streambuf in_packet_{ 8192 };
 		asio::steady_timer steady_timer_;
+		http::transfer_encoding_chunked_parser chunked_parser_{};
 
 		std::deque<std::string> write_buffer_;
 		http::session_handler session_handler_;
@@ -487,7 +493,15 @@ public:
 					}
 					else
 					{
-						read_request_body_complete(asio::error_code{}, 0);
+						if (session_handler_.request().chunked() == false)
+						{
+							read_request_body_complete(asio::error_code{}, 0);
+						}
+						else
+						{
+							chunked_parser_.reset();
+							read_request_chunked_body(bytes_transferred);
+						}
 					}
 				}
 				else if (result == http::request_parser::bad)
@@ -580,6 +594,40 @@ public:
 			}
 		}
 
+		void read_request_chunked_body(size_t bytes_transferred)
+		{
+			http::transfer_encoding_chunked_parser::result_type parse_result;
+			auto buffer_begin = asio::buffers_begin(in_packet_.data());
+			auto buffer_end = asio::buffers_end(in_packet_.data());
+
+			decltype(buffer_begin) c;
+
+			std::tie(parse_result, c) = chunked_parser_.parse(session_handler_.request(), buffer_begin, buffer_end);
+
+			in_packet_.consume(c - asio::buffers_begin(in_packet_.data()));
+
+			if (parse_result == transfer_encoding_chunked_parser::result_type::good)
+				read_request_body_complete(asio::error_code{}, bytes_transferred);
+			else
+			{
+				auto me = this->shared_from_this();
+				asio::async_read(
+					this->socket_base(),
+					in_packet_,
+					asio::transfer_at_least(1),
+					[me](asio::error_code const& ec, std::size_t bytes_xfer) {
+						if (!ec)
+						{
+							me->read_request_chunked_body(bytes_xfer);
+						}
+						else
+						{
+							me->read_request_body_complete(ec, bytes_xfer);
+						}
+					});
+			}
+		}
+
 		void read_request_body_complete(asio::error_code const& ec, std::size_t)
 		{
 			if (!ec)
@@ -647,7 +695,7 @@ public:
 				[me, &upstream_connection](asio::error_code const& ec, std::size_t) {
 					me->write_buffer_.pop_front();
 
-					if (!ec) 
+					if (!ec)
 						me->read_forwarded_response_headers(upstream_connection);
 					else
 						me->read_forwarded_response_body_complete(upstream_connection, ec);
@@ -665,8 +713,7 @@ public:
 				asio::dynamic_buffer(upstream_connection.buffer_),
 				"\r\n\r\n",
 				[me, &upstream_connection](asio::error_code ec, size_t bytes_red) {
-
-					if (!ec) 
+					if (!ec)
 						me->read_forwarded_response_headers_complete(upstream_connection, bytes_red);
 					else
 						me->read_forwarded_response_body_complete(upstream_connection, ec);
@@ -743,7 +790,8 @@ public:
 						{
 							auto content_length = me->session_handler_.response().content_length();
 
-							me->session_handler_.response().body().append(upstream_connection.buffer_.data(), bytes_xfer);
+							me->session_handler_.response().body().append(
+								upstream_connection.buffer_.data(), bytes_xfer);
 
 							if (me->session_handler_.response().body().length() < content_length)
 							{
@@ -771,7 +819,8 @@ public:
 			}
 		}
 
-		void read_forwarded_response_body_complete(http::basic::async::upstreams::connection_type& upstream_connection, asio::error_code ec)
+		void read_forwarded_response_body_complete(
+			http::basic::async::upstreams::connection_type& upstream_connection, asio::error_code ec)
 		{
 			if (upstream_connection.should_drain() || ec)
 			{
@@ -950,10 +999,18 @@ public:
 
 		void start() override
 		{
+			set_timeout();
+			asio::error_code ec;
+			socket_.lowest_layer().set_option(asio::ip::tcp::no_delay(true), ec);
+
 			auto me = shared_from_this();
 			socket_.async_handshake(asio::ssl::stream_base::server, [me](asio::error_code const& ec) {
 				if (ec)
 				{
+					me->server_.logger().error(
+						"{s} when during asyc_handshake\n",
+						ec.message());
+
 				}
 				else
 				{
@@ -1006,13 +1063,13 @@ public:
 		, io_context_pool_(thread_count_)
 		, http_acceptor_(io_context_pool_.get_io_context())
 		, https_acceptor_(io_context_pool_.get_io_context())
-		, https_ssl_context_(asio::ssl::context::tlsv13)
+		, https_ssl_context_(asio::ssl::context::tlsv12)
 	{
 		if (https_enabled_)
 		{
 			asio::error_code error_code;
 			https_ssl_context_.use_certificate_chain_file(
-				configuration_.get<std::string>("https_certificate_file", "server.crt"), error_code);
+				configuration_.get<std::string>("https_certificate", "server.crt"), error_code);
 
 			if (error_code)
 			{
@@ -1027,6 +1084,9 @@ public:
 				asio::ssl::context::pem,
 				error_code);
 
+			//https_ssl_context_.set_verify_mode(
+			//	asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert | asio::ssl::verify_client_once);
+
 			if (error_code)
 			{
 				logger_.error(
@@ -1035,27 +1095,27 @@ public:
 					configuration_.get<std::string>("https_certificate_key", "server.key"));
 			}
 
-			auto cypher_suite = configuration_.get<std::string>(
-				"https_cypher_list",
-				"ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-"
-				"CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:"
-				"ECDHE-RSA-AES256-SHA384");
+			//auto cypher_suite = configuration_.get<std::string>(
+			//	"https_cypher_list",
+			//	"ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-"
+			//	"CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:"
+			//	"ECDHE-RSA-AES256-SHA384");
 
-			SSL_CTX_set_cipher_list(https_ssl_context_.native_handle(), cypher_suite.data());
+			//SSL_CTX_set_cipher_list(https_ssl_context_.native_handle(), cypher_suite.data());
 
-			https_ssl_context_.set_options(
-				asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3
-					| asio::ssl::context::no_tlsv1 | asio::ssl::context::single_dh_use
-					| SSL_OP_CIPHER_SERVER_PREFERENCE,
-				error_code);
+			//https_ssl_context_.set_options(
+			//	asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3
+			//		| asio::ssl::context::no_tlsv1 | asio::ssl::context::single_dh_use
+			//		| SSL_OP_CIPHER_SERVER_PREFERENCE,
+			//	error_code);
 
-			if (error_code)
-			{
-				logger_.error(
-					"{s} when loading https_cypher_list: {s}\n",
-					error_code.message(),
-					configuration_.get<std::string>("https_certificate_key", "server.key"));
-			}
+			//if (error_code)
+			//{
+			//	logger_.error(
+			//		"{s} when loading https_cypher_list: {s}\n",
+			//		error_code.message(),
+			//		configuration_.get<std::string>("https_certificate_key", "server.key"));
+			//}
 
 			if (configuration_.get("https_certificate_verify_file").size() > 0)
 			{

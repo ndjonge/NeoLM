@@ -1511,6 +1511,13 @@ public:
 			session.response().body() = std::string("Ok") + session.request().body();
 		});
 
+		server_base::router_.on_post("/private/infra/manager/mirror", [](http::session_handler& session) {
+
+			session.response().status(http::status::ok);
+			session.response().type(session.response().get<std::string>("Content-Type", "text/plain"));
+			session.response().body() = session.request().body();
+		});
+
 		server_base::router_.on_put("/private/infra/manager/shutdown/{secs}", [this](http::session_handler& session) {
 			auto& ID = session.params().get("secs");
 
@@ -2768,7 +2775,7 @@ static void Daemonize()
 #endif
 
 inline int
-start_rest_server(std::string config_file, std::string config_options, bool foreground = false, bool selftest = false)
+start_cld_manager_server(std::string config_file, std::string config_options, bool, bool selftest = false)
 {
 	std::string server_version = std::string{ "ln-cld-mgr" };
 
@@ -2806,7 +2813,7 @@ start_rest_server(std::string config_file, std::string config_options, bool fore
 	return 0;
 }
 
-inline int start_rest_server(int argc, const char** argv)
+inline int start_cld_manager_server(int argc, const char** argv)
 {
 	prog_args::arguments_t cmd_args(
 		argc,
@@ -2823,7 +2830,7 @@ inline int start_rest_server(int argc, const char** argv)
 		exit(1);
 	}
 
-	return start_rest_server(
+	return start_cld_manager_server(
 		cmd_args.get_val("cld_config"),
 		cmd_args.get_val("cld_options"),
 		cmd_args.get_val("foreground") == "true",

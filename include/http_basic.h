@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <cstdlib>
 
 #include <algorithm>
 #include <array>
@@ -198,8 +199,10 @@ class decompressor
 public:
 	decompressor() noexcept = default;
 
-	template <typename OutputType> void decompress(OutputType& output, const char* data, std::size_t size) const
+	template <typename OutputType>
+	bool decompress(OutputType& output, const char* data, std::size_t size, std::string& error_code) const
 	{
+		bool result = false;
 		z_stream inflate_s{};
 
 		inflate_s.zalloc = nullptr;
@@ -212,7 +215,8 @@ public:
 
 		if (inflateInit2(&inflate_s, window_bits) != Z_OK)
 		{
-			throw std::runtime_error("inflate init failed");
+			error_code = "inflate init failed";
+			return result;
 		}
 
 		inflate_s.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data)); // NOLINT
@@ -231,24 +235,32 @@ public:
 			int ret = inflate(&inflate_s, Z_FINISH);
 			if (ret != Z_STREAM_END && ret != Z_OK && ret != Z_BUF_ERROR)
 			{
-				std::string error_msg = "unkown";
-				if (inflate_s.msg) error_msg = inflate_s.msg;
+				error_code = "unkown";
+
+				if (inflate_s.msg) error_code = inflate_s.msg;
+
 				inflateEnd(&inflate_s);
-				throw std::runtime_error(error_msg);
+				return result;
 			}
 
 			size_uncompressed += (2 * size - inflate_s.avail_out);
 		} while (inflate_s.avail_out == 0);
 		inflateEnd(&inflate_s);
 		output.resize(size_uncompressed);
+		result = true;
+		error_code = "";
+		return result;
 	}
 };
 
-inline std::string decompress(const char* data, std::size_t size)
+inline std::string decompress(const char* data, std::size_t size, std::string& error_code)
 {
 	decompressor decomp;
 	std::string output;
-	decomp.decompress(output, data, size);
+	bool error = decomp.decompress(output, data, size, error_code);
+
+	if (error) output = "";
+
 	return output;
 }
 } // namespace gzip
@@ -2010,7 +2022,11 @@ public:
 	void status(http::status::status_t status) { http::header<specialization>::status(status); }
 	http::status::status_t status() const { return http::header<specialization>::status(); }
 
-	void content_length(uint64_t const& length) { headers_base::set("Content-Length", std::to_string(length)); }
+	void content_length(uint64_t const& length)
+	{
+		headers_base::set("Content-Length", std::to_string(length));
+		cached_content_length_ = length;
+	}
 
 	static const std::uint64_t content_length_invalid = static_cast<std::uint64_t>(-1);
 
@@ -3117,6 +3133,168 @@ public:
 		return true;
 	}
 };
+
+class transfer_encoding_chunked_parser
+{
+public:
+	std::string tmp_chunk_size_;
+	size_t chunk_size_still_to_read_;
+
+	enum state
+	{
+		chunk_header_size,
+		chunk_header_end,
+		chunk_data,
+		chunk_trailer_cr,
+		chunk_trailer_lf,
+		chunk_0,
+		chunk_0_trailer_cr,
+		chunk_0_trailer_lf
+	};
+
+	void reset()
+	{
+		tmp_chunk_size_ = "";
+
+		chunk_size_still_to_read_ = 0;
+		;
+		state_ = chunk_header_size;
+	};
+
+	enum result_type
+	{
+		good,
+		bad,
+		indeterminate
+	};
+
+	state state_{ chunk_header_size };
+
+	template <typename InputIterator>
+	std::tuple<result_type, InputIterator> parse(http::request_message& req, InputIterator begin, InputIterator end)
+	{
+		while (begin != end)
+		{
+			result_type result = consume(req, *begin++);
+
+			if (result == good)
+			{
+				state_ = chunk_header_size;
+				req.content_length(req.body().size());
+				return std::make_tuple(result, begin);
+			}
+			else if (result == bad)
+			{
+				state_ = chunk_header_size;
+				return std::make_tuple(result, begin);
+			}
+		}
+
+		return std::make_tuple(indeterminate, begin);
+	}
+
+private:
+	result_type consume(http::request_message& res, char input)
+	{
+		switch (state_)
+		{
+			case chunk_header_size:
+				if (is_hex_digit(tolower(input)))
+				{
+					tmp_chunk_size_.push_back(input);
+					return indeterminate;
+				}
+				else if (input == '\r')
+				{
+					state_ = chunk_header_end;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case chunk_header_end:
+				if (input == '\n')
+				{
+					state_ = chunk_data;
+					chunk_size_still_to_read_ = strtoull(tmp_chunk_size_.data(), NULL, 16);
+
+					if (chunk_size_still_to_read_ == 0) state_ = chunk_0_trailer_cr;
+
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case chunk_data:
+				res.body().push_back(input);
+				chunk_size_still_to_read_--;
+
+				if (chunk_size_still_to_read_ > 0)
+				{
+					return indeterminate;
+				}
+				else if (chunk_size_still_to_read_ == 0)
+				{
+					state_ = chunk_trailer_cr;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case chunk_trailer_cr:
+				if (input == '\r')
+				{
+					state_ = chunk_trailer_lf;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case chunk_trailer_lf:
+				if (input == '\n')
+				{
+					state_ = chunk_header_size;
+					chunk_size_still_to_read_ = 0;
+					tmp_chunk_size_ = "";
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case chunk_0_trailer_cr:
+				if (input == '\r')
+				{
+					state_ = chunk_0_trailer_lf;
+					return indeterminate;
+				}
+				else
+				{
+					return bad;
+				}
+			case chunk_0_trailer_lf:
+				if (input == '\n')
+				{
+					state_ = chunk_header_size;
+					return good;
+				}
+				else
+				{
+					return bad;
+				}
+			default:
+				return bad;
+		}
+	}
+
+	/// Check if a byte is a digit.
+	static bool is_hex_digit(int c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }
+};
+
 namespace api
 {
 namespace router_match
@@ -3279,7 +3457,16 @@ public:
 
 		if (request_.get("Content-Encoding", std::string{}) == "gzip")
 		{
-			request_.body() = gzip::decompress(request_.body().c_str(), request_.content_length());
+			std::string error_code;
+
+			request_.body() = gzip::decompress(request_.body().c_str(), request_.content_length(), error_code);
+
+			if (error_code.empty() == false)
+			{
+				response_.type("text");
+				response_.status(http::status::bad_request);
+				return typename router_t::request_result_type{};
+			}
 		}
 
 		request_.url_requested_ = request_.target_;
@@ -4968,7 +5155,6 @@ public:
 				}
 
 				http::session_handler::result_type parse_result;
-
 				auto& response = session_handler_.response();
 				auto& request = session_handler_.request();
 

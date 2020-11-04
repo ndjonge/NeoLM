@@ -30,7 +30,7 @@ int main(int argc, const char* argv[])
 //		= { "appname",	"-config", "/home/ndjonge/config.json", /*"-test",*/ "-http_listen_port", "4000", "-logfile", "cout", "-loglevel", "api" };
 //#endif
 
-	start_rest_server(argc, argv);
+	start_cld_manager_server(argc, argv);
 
 	while (1)
 	{
