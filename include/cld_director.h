@@ -38,6 +38,44 @@
 
 using json = nlohmann::json;
 
+namespace os
+{
+inline void run_as_service()
+{
+#ifdef _WIN32
+
+#else
+	pid_t pid;
+
+	int devnull = open("/dev/null", O_RDWR);
+	if (devnull > 0)
+	{
+		close(fileno(stdin));
+		close(fileno(stdout));
+		close(fileno(stderr));
+		dup(devnull);
+		dup(devnull);
+		dup(devnull);
+		close(devnull);
+	}
+
+	if ((pid = fork()) < 0)
+	{
+		return;
+	}
+	else if (pid != 0)
+	{
+		exit(0); /* Parent goes bye-bye. */
+	}
+
+	/* Child continues. */
+	setsid(); /* Become session leader. */
+	chdir("/");
+	umask(0); /* Clear file mode creation mask. */
+#endif
+}
+} // namespace os
+
 namespace bse_utils
 {
 #ifdef LOCAL_TESTING
@@ -93,6 +131,7 @@ static bool create_bse_process_as_user(
 			throw std::runtime_error{ "error sending \"worker\" registration" };
 	}).detach();
 
+	pid = pid + 1;
 	return result;
 }
 
@@ -109,7 +148,8 @@ static bool create_bse_process_as_user(
 {
 	bool result = false;
 #ifndef _WIN32
-	auto user_ok = CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0);
+	// If user is empty then start process as same user
+	auto user_ok = user == "" || CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0);
 #else
 	HANDLE requested_user_token = 0;
 	auto user_ok = CheckUserInfo(
@@ -207,6 +247,8 @@ static bool create_bse_process_as_user(
 	else
 	{
 		auto argv = split_string(command.data());
+
+		// TODO required_environment_vars not needed to start process in (tenant) jail.
 		const char* required_environment_vars[] = { "PATH",		 "CLASSPATH",	 "CLASSPATH", "SLMHOME", "SLM_RUNTIME",
 													"SLM_DEBUG", "SLM_DEBUFILE", "HOSTNAME",  "TMP",	 "TEMP" };
 
@@ -215,21 +257,27 @@ static bool create_bse_process_as_user(
 		std::string environment_block;
 		std::stringstream ss;
 
-		ss << "BSE=" << bse << char{ 0 };
-		envp.push_back(strdup(ss.str().data()));
-		std::stringstream().swap(ss);
+		if (bse != "")
+		{
+			ss << "BSE=" << bse << char{ 0 };
+			envp.push_back(strdup(ss.str().data()));
+			std::stringstream().swap(ss);
+		}
 
-		ss << "BSE_BIN=" << bse_bin << char{ 0 };
-		envp.push_back(strdup(ss.str().data()));
-		std::stringstream().swap(ss);
+		if (bse_bin != "")
+		{
+			ss << "BSE_BIN=" << bse_bin << char{ 0 };
+			envp.push_back(strdup(ss.str().data()));
+			std::stringstream().swap(ss);
 
-		ss << "BSE_SHLIB=" << bse_bin << "/../shlib" << char{ 0 };
-		envp.push_back(strdup(ss.str().data()));
-		std::stringstream().swap(ss);
+			ss << "BSE_SHLIB=" << bse_bin << "/../shlib" << char{ 0 };
+			envp.push_back(strdup(ss.str().data()));
+			std::stringstream().swap(ss);
 
-		ss << "SYSTEMLIBDIR64=" << bse_bin << "/../shlib:" << getenv("SYSTEMLIBDIR64") << char{ 0 };
-		envp.push_back(strdup(ss.str().data()));
-		std::stringstream().swap(ss);
+			ss << "SYSTEMLIBDIR64=" << bse_bin << "/../shlib:" << getenv("SYSTEMLIBDIR64") << char{ 0 };
+			envp.push_back(strdup(ss.str().data()));
+			std::stringstream().swap(ss);
+		}
 
 		for (auto var : required_environment_vars)
 		{
@@ -244,12 +292,21 @@ static bool create_bse_process_as_user(
 		envp.push_back(nullptr);
 
 		pid = fork();
+
 		if (pid == 0)
 		{
-			if (ImpersonateUser(user.data(), NULL, 0, NULL) == -1)
+			// close all fd in the forked child.
+			int fdlimit = (int)sysconf(_SC_OPEN_MAX);
+			for (int i = STDERR_FILENO + 1; i < fdlimit; i++)
+				close(i);
+
+			if (user != "")
 			{
-				printf("error on fork: %d\n", errno);
-				_exit(1);
+				if (ImpersonateUser(user.data(), NULL, 0, NULL) == -1)
+				{
+					printf("error on impersonating user %s, error :%d\n", user.data(), errno);
+					_exit(1);
+				}
 			}
 
 			if (execve(*argv, argv, envp.data()) == -1)
@@ -404,12 +461,6 @@ public:
 		return workers_.find(worker_id);
 	}
 
-	void add_initial_worker(std::int32_t process_id)
-	{
-		workers_[std::to_string(process_id)] = worker{ "", "", process_id };
-		limits_.workers_pending_upd(1);
-	}
-
 	void add_worker(const json& j, asio::io_context& io_context)
 	{
 		std::lock_guard<std::mutex> g{ workers_mutex_ };
@@ -427,7 +478,7 @@ public:
 		if (base_url.empty() == false)
 		{
 			limits_.workers_actual_upd(1);
-			upstreams_.add_upstream(io_context, base_url);
+			upstreams_.add_upstream(io_context, base_url, std::to_string(process_id));
 		}
 	}
 
@@ -778,7 +829,6 @@ private:
 	std::string os_user_;
 	std::string os_password_;
 	std::string program_;
-	std::string startobject_;
 	std::string cli_options_;
 	std::string http_options_;
 
@@ -864,7 +914,7 @@ public:
 						workers_required_to_add,
 						static_cast<int>(process_id));
 
-					add_initial_worker(process_id);
+					limits_.workers_pending_upd(1);
 				}
 			}
 
@@ -891,15 +941,7 @@ public:
 					auto response = http::client::request<http::method::get>(
 						worker->second.get_base_url() + "/private/infra/worker/status/statistics", ec, {});
 
-					// if (worker->second.get_base_url() == "http://localhost:8004")
-					//	random_failure = (rand() % 10) > 2;
-					// else
-					//	random_failure = false;
-
-					if ((ec.empty()
-						 && response.get("Content-type").find("json") != std::string::npos)) /* &&
-																								random_failure
-																								== false)*/
+					if ((ec.empty() && response.get("Content-type").find("json") != std::string::npos))
 					{
 						json ret = json::parse(response.body());
 						std::string link_to_status;
@@ -1004,11 +1046,18 @@ public:
 	void from_json(const json& j) override
 	{
 		workgroups::from_json(j);
-		j["details"].at("bse").get_to(bse_);
-		j["details"].at("bse_bin").get_to(bse_bin_);
-		j["details"].at("bse_user").get_to(bse_user_);
-		j["details"].at("os_user").get_to(os_user_);
-		j["details"].at("os_password").get_to(os_password_);
+		try
+		{ // TODO optional parameters bse, bse_bin, bse_user, os_user and os_password.
+			j["details"].at("bse").get_to(bse_);
+			j["details"].at("bse_bin").get_to(bse_bin_);
+			j["details"].at("bse_user").get_to(bse_user_);
+			j["details"].at("os_user").get_to(os_user_);
+			j["details"].at("os_password").get_to(os_password_);
+		}
+		catch (json::exception&)
+		{
+		}
+
 		j["details"].at("program").get_to(program_);
 		j["details"].at("cli_options").get_to(cli_options_);
 		j["details"].at("http_options").get_to(http_options_);
@@ -1017,13 +1066,18 @@ public:
 	void to_json(json& j) const override
 	{
 		workgroups::to_json(j);
-		j["details"].emplace("bse", bse_);
-		j["details"].emplace("bse_bin", bse_bin_);
-		j["details"].emplace("bse_user", bse_user_);
-		j["details"].emplace("os_user", os_user_);
-		j["details"].emplace("os_password", os_password_);
+
+		if (bse_.empty() == false) j["details"].emplace("bse", bse_);
+
+		if (bse_bin_.empty() == false) j["details"].emplace("bse_bin", bse_bin_);
+
+		if (bse_user_.empty() == false) j["details"].emplace("bse_user", bse_user_);
+
+		if (os_user_.empty() == false) j["details"].emplace("os_user", os_user_);
+
+		if (os_password_.empty() == false) j["details"].emplace("os_password", os_password_);
+
 		j["details"].emplace("program", program_);
-		j["details"].emplace("startobject", startobject_);
 		j["details"].emplace("cli_options", cli_options_);
 		j["details"].emplace("http_options", http_options_);
 	}
@@ -1056,7 +1110,7 @@ public:
 			tenant_id_,
 			os_user_,
 			os_password_,
-			bse_bin_ + "/" + program_ + std::string{ " " } + parameters.str(),
+			bse_bin_ + (bse_bin_ != "" ? "/" : "") + program_ + std::string{ " " } + parameters.str(),
 			pid,
 			ec);
 	}
@@ -1512,7 +1566,6 @@ public:
 		});
 
 		server_base::router_.on_post("/private/infra/manager/mirror", [](http::session_handler& session) {
-
 			session.response().status(http::status::ok);
 			session.response().type(session.response().get<std::string>("Content-Type", "text/plain"));
 			session.response().body() = session.request().body();
@@ -1523,6 +1576,7 @@ public:
 
 			int shutdown = std::stoi(ID);
 			send_json_response(session, http::status::ok, json{ { "time", shutdown } });
+			session.response().set("Connection", "close");
 			// workspaces_.delete_all_workspaces();
 			shutdown_promise.set_value(shutdown);
 		});
@@ -1604,7 +1658,7 @@ public:
 			}
 			else if (section == "access_log")
 			{
-				section_option = http::basic::server::server_manager::json_status_options::accesslog;
+				section_option = http::basic::server::server_manager::json_status_options::access_log;
 			}
 			else
 			{
@@ -2274,10 +2328,17 @@ public:
 		server_base::router_.on_get("/private/infra/manager/upstreams", [this](http::session_handler& session) {
 			for (const auto& workspace : workspaces_)
 			{
+				auto include_connections = session.request().query().get<bool>("connections", false);
+
 				std::stringstream ss;
 				for (const auto& workgroup : *workspace.second)
 				{
-					ss << workgroup.second->upstreams_.to_string(workspace.first);
+					if (include_connections)
+						ss << workgroup.second->upstreams_.to_string(
+							workspace.first, http::basic::async::upstreams::options::include_connections);
+					else
+						ss << workgroup.second->upstreams_.to_string(
+							workspace.first, http::basic::async::upstreams::options::upstreams_only);
 				}
 
 				session.response().body() += ss.str();
@@ -2298,6 +2359,12 @@ public:
 
 			if (workspace != nullptr)
 			{
+				// if ((rand() % 100) == 0)
+				//{
+				//	session.request().set("X-Fail", "yes");
+				//	server_base::logger().access_log("X-Fail set....\n {s}");
+				//}
+
 				auto workgroup = workspace->find_workgroups(workgroup_name, workgroup_type);
 
 				if (workgroup != workspace->end() && workgroup->second->has_workers_available())
@@ -2308,11 +2375,15 @@ public:
 				}
 			}
 
-			if (forwarded == false) session.response().status(http::status::bad_gateway);
+			if (forwarded == false)
+			{
+				server_base::logger().access_log("--------proxy error----------\n {s}", session.response().body());
+				session.response().status(http::status::bad_gateway);
+			}
 		});
 
 		server_base::router_.on_internal_error([this](http::session_handler& session, std::exception& e) {
-			server_base::logger().accesslog(
+			server_base::logger().access_log(
 				"api-error with requested url: \"{s}\", error: \"{s}\", and request body:\n \"{s}\"",
 				session.request().url_requested(),
 				e.what(),
@@ -2774,8 +2845,7 @@ static void Daemonize()
 }
 #endif
 
-inline int
-start_cld_manager_server(std::string config_file, std::string config_options, bool, bool selftest = false)
+inline int start_cld_manager_server(std::string config_file, std::string config_options, bool, bool selftest = false)
 {
 	std::string server_version = std::string{ "ln-cld-mgr" };
 
@@ -2821,8 +2891,7 @@ inline int start_cld_manager_server(int argc, const char** argv)
 		{ { "cld_config",
 			{ prog_args::arg_t::arg_val, " <config>: filename for the workspace config file or url", "config.json" } },
 		  { "cld_options", { prog_args::arg_t::arg_val, "see doc.", "" } },
-		  { "foreground", { prog_args::arg_t::flag, "run in foreground" } },
-		  { "selftest", { prog_args::arg_t::flag, "run some tests and quit." } } });
+		  { "foreground", { prog_args::arg_t::flag, "run in foreground" } } });
 
 	if (cmd_args.process_args() == false)
 	{
@@ -2831,13 +2900,10 @@ inline int start_cld_manager_server(int argc, const char** argv)
 	}
 
 	return start_cld_manager_server(
-		cmd_args.get_val("cld_config"),
-		cmd_args.get_val("cld_options"),
-		cmd_args.get_val("foreground") == "true",
-		cmd_args.get_val("selftest") == "true");
+		cmd_args.get_val("cld_config"), cmd_args.get_val("cld_options"), cmd_args.get_val("foreground") == "true");
 }
 
-inline int stop_rest_server()
+inline int stop_cld_manager_server()
 {
 	cloud::platform::cpm_server_->stop();
 	cloud::platform::cpm_server_.release();

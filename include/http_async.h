@@ -8,6 +8,9 @@
 #include <deque>
 #include <thread>
 
+#pragma warning(push)
+#pragma warning(disable : 4459) // asio / VC2019 issue, disable warning C4459 : Declaration of "query" shadows global
+								// declaration
 #include <asio.hpp>
 #ifdef USE_WOLFSSL
 #ifndef ASIO_USE_WOLFSSL
@@ -16,6 +19,7 @@
 #include "infor_ssl.h"
 #endif
 #include <asio/ssl.hpp>
+#pragma warning(pop)
 
 #include "http_basic.h"
 
@@ -44,19 +48,37 @@ public:
 		{
 			waiting,
 			idle,
-			drain,
-			erase
+			error,
+			drain
 		};
+
+		std::string to_string(state s)
+		{
+			switch (s)
+			{
+				case state::waiting:
+					return "waiting";
+				case state::idle:
+					return "idle";
+				case state::drain:
+					return "drain";
+				case state::error:
+					return "error";
+				default:
+					return "?";
+			}
+		}
 
 		connection(asio::io_context& io_context, const std::string& host, std::string port, upstream_type& owner)
 			: host_(host)
 			, port_(port)
-			, id_(port_ + "-" + owner.id() + "-" + std::to_string(get_static_id()))
+			, id_(port_ + "-" + owner.id())
 			, resolver_(io_context)
 			, socket_(io_context)
 			, owner_(owner)
 		{
-			reopen();
+			asio::error_code error_code;
+			// reopen(error_code);
 		};
 
 		connection(const connection& s) = delete;
@@ -65,7 +87,10 @@ public:
 		connection& operator=(const connection& s) = delete;
 		connection& operator=(connection&& s) = delete;
 
-		bool should_drain() const { return owner_.state_ == upstreams::upstream::state::drain; }
+		bool should_drain() const
+		{
+			return owner_.state_ == upstreams::upstream::state::drain || state_ == state::error;
+		}
 
 		void release()
 		{
@@ -79,29 +104,49 @@ public:
 			state_ = state::drain;
 		}
 
-		void reopen()
+		void error()
 		{
-			asio::error_code error;
+			--(owner_.connections_busy_);
+			owner_.set_state(upstream::state::drain);
+			state_ = state::error;
+		}
+
+		bool is_removable() { return state_ == state::drain || state_ == state::error; }
+
+		void reopen(asio::error_code& error)
+		{
+			asio::error_code error_1;
 			if (socket_.is_open())
 			{
-				socket_.shutdown(asio::socket_base::shutdown_send, error);
+				socket_.shutdown(asio::socket_base::shutdown_send, error_1);
 				socket_.close();
 
 				++owner_.connections_reopened_;
 			}
 
 			asio::ip::tcp::resolver::query query(asio::ip::tcp::v4(), host_, port_);
-			static thread_local auto resolved_endpoints = resolver_.resolve(query, error);
+			auto resolved_endpoints = resolver_.resolve(query, error_1);
 
-			asio::connect(socket_, resolved_endpoints.cbegin(), resolved_endpoints.cend(), error);
+			asio::connect(socket_, resolved_endpoints.cbegin(), resolved_endpoints.cend(), error_1);
 
-			if (error)
+			if (error_1)
 			{
-				std::cout << "not open\n";
+				error = error_1;
+				std::cout << "Error: not open\n";
+			}
+			else
+			{
+				error.clear();
 			}
 		}
 
 		const std::string& id() const { return id_; }
+
+		void to_string(std::ostringstream& ss)
+		{
+			ss << "  +--> " << id_ << " " << to_string(state_) << " "
+			   << static_cast<std::uint16_t>(socket_.lowest_layer().native_handle()) << "\n";
+		}
 
 		asio::ip::tcp::socket& socket() { return socket_; }
 		std::atomic<state>& get_state() { return state_; }
@@ -169,10 +214,10 @@ public:
 		}
 	}
 
-	void add_upstream(asio::io_context& io_context, const std::string& base_url)
+	void add_upstream(asio::io_context& io_context, const std::string& base_url, const std::string& id)
 	{
 		std::unique_lock<std14::shared_mutex> g{ upstreams_lock_ };
-		upstreams_.emplace_back(new upstream(io_context, base_url));
+		upstreams_.emplace_back(new upstream(io_context, base_url, id));
 	}
 
 	void erase_upstream(const std::string& base_url)
@@ -190,8 +235,16 @@ public:
 		}
 	}
 
-	std::string to_string(const std::string& workspace)
+	enum options
 	{
+		upstreams_only,
+		include_connections
+	};
+
+	std::string to_string(const std::string& workspace, options options)
+	{
+		std::unique_lock<std14::shared_mutex> g{ upstreams_lock_ };
+
 		std::ostringstream ss;
 
 		for (auto& upstream : upstreams_)
@@ -207,15 +260,21 @@ public:
 				upstream_state = "down";
 
 			ss << workspace << " : " << upstream->base_url_ << ", " << upstream->id_ << ", " << upstream_state
-			   << ", connections (total/idle/busy/reopend):" << std::to_string(connections_total) << "/"
-			   << std::to_string(connections_idle) << "/" << std::to_string(connections_busy_) << "/"
-			   << std::to_string(upstream->connections_reopened_)
+			   << ", connections(total: " << std::to_string(connections_total) << ", "
+			   << "idle: " << std::to_string(connections_idle) << ", busy: " << std::to_string(connections_busy_)
+			   << ", reopend: " << std::to_string(upstream->connections_reopened_) << ")"
 			   << ", 1xx: " << std::to_string(upstream->responses_1xx_)
 			   << ", 2xx: " << std::to_string(upstream->responses_2xx_)
 			   << ", 3xx: " << std::to_string(upstream->responses_3xx_)
 			   << ", 4xx: " << std::to_string(upstream->responses_4xx_)
 			   << ", 5xx: " << std::to_string(upstream->responses_5xx_)
 			   << ", tot: " << std::to_string(upstream->responses_tot_) << "\n";
+
+			if (options == options::include_connections)
+			{
+				for (const auto& connection : upstream->connections())
+					connection->to_string(ss);
+			}
 		}
 		return ss.str();
 	}
@@ -233,8 +292,8 @@ public:
 			down
 		};
 
-		upstream(asio::io_context& io_context, const std::string& base_url)
-			: base_url_(base_url), io_context_(io_context), id_(std::to_string(get_static_id()))
+		upstream(asio::io_context& io_context, const std::string& base_url, const std::string& id)
+			: base_url_(base_url), io_context_(io_context), id_(id)
 		{
 			// TODO: make more robust client url parsing.
 			auto start_of_port = base_url.find_last_of(':') + 1;
@@ -257,6 +316,8 @@ public:
 			responses_tot_++;
 		}
 
+		containter_type& connections() { return connections_; }
+
 		std::atomic<std::uint16_t> connections_busy_{ 0 };
 		std::atomic<std::size_t> connections_total_{ 0 };
 		std::atomic<std::uint16_t> connections_reopened_{ 0 };
@@ -275,8 +336,20 @@ public:
 		void add_connection()
 		{
 			std::lock_guard<std::mutex> g{ connection_mutex_ };
-			connections_.emplace_back(new connection<upstream>{ io_context_, host_, port_, *this });
-			connections_total_ = connections_.size();
+
+			if (state_ != upstream::state::drain)
+			{
+				connections_.erase(
+					std::remove_if(
+					connections_.begin(),
+					connections_.end(),
+					[](const std::unique_ptr<connection<upstream>>& connection) { return connection->is_removable(); }),
+					connections_.end()
+				);
+
+				connections_.emplace_back(new connection<upstream>{ io_context_, host_, port_, *this });
+				connections_total_ = connections_.size();
+			}
 		}
 
 		std::atomic<state> state_{ state::down };
@@ -296,9 +369,10 @@ public:
 	containter_type upstreams_;
 	std14::shared_mutex upstreams_lock_;
 
-	bool forward(std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
+	bool
+	forward(std::function<void(connection_type&, asio::error_code& error_code)> forward_handler, lgr::logger& logger)
 	{
-		bool result = true;
+		bool result = false;
 		static std::atomic<std::uint8_t> rr{ 0 };
 
 		std14::shared_lock<std14::shared_mutex> upstreams_guard{ upstreams_lock_ };
@@ -335,6 +409,7 @@ public:
 			do
 			{
 				std::unique_lock<std::mutex> connections_guard{ selected_upstream->get()->connection_mutex_ };
+				asio::error_code error_code;
 				for (auto& connection : selected_upstream->get()->connections_)
 				{
 					// Select the least connected upstream
@@ -347,23 +422,39 @@ public:
 						auto selected_connection = connection.get();
 						connections_guard.unlock();
 						++(selected_upstream->get()->connections_busy_);
-						forward_handler(*selected_connection);
-						found = true;
+
+						forward_handler(*selected_connection, error_code);
+
+						if (!error_code)
+							found = true;
+						else
+							found = false;
+
 						break;
 					}
 				}
 
 				if (found == false)
 				{
-					connections_guard.unlock();
-					selected_upstream->get()->add_connection();
 
-					logger.api("new upstream connection to {s}\n", selected_upstream->get()->base_url());
+					if (error_code)
+					{
+						return false;
+					}
+					else
+					{
+						logger.api("new upstream connection to {s}\n", selected_upstream->get()->base_url());
+						connections_guard.unlock();
+						selected_upstream->get()->add_connection();
+					}
 				}
 			} while (found == false);
+
+			result = true;
 		}
 		else
 		{
+
 			logger.api("failed to find a suitable upstream\n");
 			result = false;
 		}
@@ -460,12 +551,16 @@ public:
 					asio::buffers_begin(in_packet_.data()), asio::buffers_begin(in_packet_.data()) + bytes_transferred);
 
 				in_packet_.consume(bytes_transferred);
-				session_handler_.request().set("Remote_Addr", this->remote_address_base());
+				session_handler_.request().set(
+					"X-Forwarded-For", session_handler_.request().get("X-Forwarded-For", this->remote_address_base()));
 
 				if (result == http::request_parser::good)
 				{
 					this->cancel_timeout();
 					auto content_length = session_handler_.request().content_length();
+
+					if (session_handler_.request().get<std::string>("Expect", "") == "100-continue")
+						asio::write(this->socket_base(), asio::buffer("HTTP/1.1 100 Continue\r\n\r\n"));
 
 					if (content_length == http::request_message::content_length_invalid)
 					{
@@ -602,6 +697,12 @@ public:
 
 			decltype(buffer_begin) c;
 
+			if ((buffer_end - buffer_begin) == 0)
+			{
+				// Curl bug? no zero chunk is send when post body is empty?
+				read_request_body_complete(asio::error_code{}, bytes_transferred);
+			}
+
 			std::tie(parse_result, c) = chunked_parser_.parse(session_handler_.request(), buffer_begin, buffer_end);
 
 			in_packet_.consume(c - asio::buffers_begin(in_packet_.data()));
@@ -632,6 +733,9 @@ public:
 		{
 			if (!ec)
 			{
+				session_handler_.request().set(
+					"X-Forwarded-For", session_handler_.request().get("X-Forwarded-For", remote_address_base()));
+
 				routing_ = session_handler_.handle_request(server_.router_);
 
 				if (server_.logger_.current_level() == lgr::level::debug)
@@ -647,8 +751,9 @@ public:
 				if (upstreams)
 				{
 					auto forward_result = upstreams->forward(
-						[this](http::basic::async::upstreams::connection_type& connection) {
-							write_forwarded_request(connection);
+						[this](
+							http::basic::async::upstreams::connection_type& connection, asio::error_code& error_code) {
+							write_forwarded_request(connection, error_code);
 						},
 						server_.logger());
 
@@ -668,10 +773,24 @@ public:
 			}
 		}
 
-		void write_forwarded_request(http::basic::async::upstreams::connection_type& upstream_connection)
+		void write_forwarded_request(
+			http::basic::async::upstreams::connection_type& upstream_connection, asio::error_code& error_code)
 		{
 			asio::error_code error;
 			char peek_buffer[1];
+
+			if (upstream_connection.socket().is_open() == false)
+			{
+				upstream_connection.reopen(error);
+				if (error)
+				{
+					// failed
+					upstream_connection.error();
+					upstream_connection.owner().set_state(upstreams::upstream::state::drain);
+					error_code = error;
+					return;
+				}
+			}
 
 			upstream_connection.socket().non_blocking(true);
 			upstream_connection.socket().receive(asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
@@ -679,9 +798,19 @@ public:
 
 			if (error != asio::error::would_block)
 			{
-				upstream_connection.reopen();
+				upstream_connection.reopen(error);
+
+				if (error)
+				{
+					// failed
+					upstream_connection.error();
+					upstream_connection.owner().set_state(upstreams::upstream::state::drain);
+					error_code = error;
+					return;
+				}
 			}
 
+			session_handler_.request().target(session_handler_.request().url_requested());
 			session_handler_.request().set("Accept-Encoding", "gzip");
 			session_handler_.request().reset_if_exists("Expect");
 
@@ -822,30 +951,44 @@ public:
 		void read_forwarded_response_body_complete(
 			http::basic::async::upstreams::connection_type& upstream_connection, asio::error_code ec)
 		{
-			if (upstream_connection.should_drain() || ec)
+			if (ec)
+			{
+				upstream_connection.error();
+				session_handler_.response().reset();
+				session_handler_.response().status(http::status::bad_gateway);
+				write_response();
+				return;
+			}
+			else if (upstream_connection.should_drain())
 			{
 				upstream_connection.drain();
-				if (ec)
-				{
-					session_handler_.response().reset();
-					session_handler_.response().status(http::status::bad_gateway);
-				}
-
 				write_response();
 				return;
 			}
 
 			if (session_handler_.response().connection_close() == true)
 			{
-				upstream_connection.reopen();
-				upstream_connection.release();
+				asio::error_code error_code;
+				upstream_connection.reopen(error_code);
+
+				if (error_code)
+					upstream_connection.error();
+				else
+					upstream_connection.release();
 			}
 			else
 			{
 				upstream_connection.release();
 			}
 
-			write_response();
+			if (session_handler_.response().status() == http::status::service_unavailable)
+			{
+				// TODO try next upstream
+			}
+			else
+			{
+				write_response();
+			}
 		}
 
 		void write_response()
@@ -876,7 +1019,7 @@ public:
 						std::chrono::steady_clock::now() - session_handler_.t2())
 						.count());
 
-				if (server_.logger_.current_level() >= lgr::level::accesslog)
+				if (server_.logger_.current_level() >= lgr::level::access_log)
 				{
 					if (server_.logger_.current_level() == lgr::level::debug)
 					{
@@ -886,7 +1029,7 @@ public:
 					auto log_msg
 						= server_.manager().log_access(session_handler_, routing_.the_route().route_metrics()) + "\n";
 
-					server_.logger_.accesslog(log_msg);
+					server_.logger_.access_log(log_msg);
 				}
 			}
 			else
@@ -894,7 +1037,7 @@ public:
 				std::string log_msg
 					= server_.manager().log_access(session_handler_, http::api::routing::metrics{}) + "\n";
 
-				server_.logger_.accesslog(log_msg);
+				server_.logger_.access_log(log_msg);
 			}
 
 			if (session_handler_.response().connection_keep_alive())
@@ -1005,12 +1148,14 @@ public:
 
 			auto me = shared_from_this();
 			socket_.async_handshake(asio::ssl::stream_base::server, [me](asio::error_code const& ec) {
-				if (ec)
+				if (ec == asio::ssl::error::stream_truncated)
 				{
-					me->server_.logger().error(
-						"{s} when during asyc_handshake\n",
-						ec.message());
-
+					// some clients terminate the ssl conneciton without shutdown.
+					// ignore and let connection_handler go out of scope to terminate connection.
+				}
+				else if (ec)
+				{
+					me->server_.logger().error("{s} when during asyc_handshake\n", ec.message());
 				}
 				else
 				{
@@ -1074,9 +1219,9 @@ public:
 			if (error_code)
 			{
 				logger_.error(
-					"{s} when loading https_certificate_file: {s}\n",
+					"{s} when loading https_certificate: {s}\n",
 					error_code.message(),
-					configuration_.get<std::string>("https_certificate_file", "server.crt"));
+					configuration_.get<std::string>("https_certificate", "server.crt"));
 			}
 
 			https_ssl_context_.use_private_key_file(
@@ -1084,7 +1229,7 @@ public:
 				asio::ssl::context::pem,
 				error_code);
 
-			//https_ssl_context_.set_verify_mode(
+			// https_ssl_context_.set_verify_mode(
 			//	asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert | asio::ssl::verify_client_once);
 
 			if (error_code)
@@ -1095,34 +1240,31 @@ public:
 					configuration_.get<std::string>("https_certificate_key", "server.key"));
 			}
 
-			//auto cypher_suite = configuration_.get<std::string>(
-			//	"https_cypher_list",
-			//	"ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-"
-			//	"CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:"
-			//	"ECDHE-RSA-AES256-SHA384");
+			auto cypher_suite = configuration_.get<std::string>(
+				"https_cypher_list",
+				"ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-"
+				"CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:"
+				"ECDHE-RSA-AES256-SHA384");
 
-			//SSL_CTX_set_cipher_list(https_ssl_context_.native_handle(), cypher_suite.data());
+			SSL_CTX_set_cipher_list(https_ssl_context_.native_handle(), cypher_suite.data());
 
-			//https_ssl_context_.set_options(
-			//	asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3
-			//		| asio::ssl::context::no_tlsv1 | asio::ssl::context::single_dh_use
-			//		| SSL_OP_CIPHER_SERVER_PREFERENCE,
-			//	error_code);
+			https_ssl_context_.set_options(
+				asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3
+					| asio::ssl::context::no_tlsv1 | asio::ssl::context::single_dh_use
+					| SSL_OP_CIPHER_SERVER_PREFERENCE,
+				error_code);
 
-			//if (error_code)
-			//{
-			//	logger_.error(
-			//		"{s} when loading https_cypher_list: {s}\n",
-			//		error_code.message(),
-			//		configuration_.get<std::string>("https_certificate_key", "server.key"));
-			//}
+			if (error_code)
+			{
+				logger_.error("{s} when loading https_cypher_list: {s}\n", error_code.message(), cypher_suite);
+			}
 
 			if (configuration_.get("https_certificate_verify_file").size() > 0)
 			{
 				logger_.error(
 					"{s} when loading https_certificate_file: {s}\n",
 					error_code.message(),
-					configuration_.get<std::string>("https_certificate_file", "server.crt"));
+					configuration_.get<std::string>("https_certificate_verify_file", "server.chk"));
 			}
 		}
 	}
@@ -1166,7 +1308,10 @@ public:
 				continue;
 			}
 			else
+			{
+				http_listen_port_probe = http_acceptor_.local_endpoint().port();
 				break;
+			}
 		}
 
 		if (ec)
@@ -1181,11 +1326,10 @@ public:
 		{
 			configuration_.set(
 				"http_this_server_base_url",
-				"http://" + network::hostname() + ":" + configuration_.get<std::string>("http_listen_port"));
+				"http://" + network::hostname() + ":" + std::to_string(http_listen_port_probe));
 		}
 
-		configuration_.set(
-			"http_this_server_local_url", "http://localhost:" + configuration_.get<std::string>("http_listen_port"));
+		configuration_.set("http_this_server_local_url", "http://localhost:" + std::to_string(http_listen_port_probe));
 
 		logger_.info("http listener on port: {d} started\n", http_listen_port_probe);
 		http_listen_port_.store(http_listen_port_probe);
@@ -1313,15 +1457,15 @@ private:
 
 	bool http_use_portsharding_;
 	bool http_enabled_;
-	std::int16_t http_listen_port_begin_;
-	std::int16_t http_listen_port_end_;
+	std::uint16_t http_listen_port_begin_;
+	std::uint16_t http_listen_port_end_;
 	std::atomic<network::socket_t> http_listen_port_;
 	std::string http_listen_address_;
 
 	bool https_use_portsharding_;
 	bool https_enabled_;
-	std::int16_t https_listen_port_begin_;
-	std::int16_t https_listen_port_end_;
+	std::uint16_t https_listen_port_begin_;
+	std::uint16_t https_listen_port_end_;
 	std::atomic<network::socket_t> https_listen_port_;
 	std::string https_listen_address_;
 

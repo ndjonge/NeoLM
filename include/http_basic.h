@@ -273,7 +273,7 @@ enum class level
 	none = 0,
 	error,
 	warning,
-	accesslog,
+	access_log,
 	api,
 	info,
 	debug
@@ -284,7 +284,7 @@ namespace prefix
 static const char none[] = "";
 static const char error[] = "[err]: ";
 static const char warning[] = "[war]: ";
-static const char accesslog[] = "[acc]: ";
+static const char access_log[] = "[acc]: ";
 static const char api[] = "[api]: ";
 static const char info[] = "[inf]: ";
 static const char debug[] = "[dbg]: ";
@@ -328,8 +328,8 @@ public:
 	level current_level() const { return level_.load(); }
 	const std::string current_level_to_string() const
 	{
-		if (level_ == level::accesslog)
-			return "accesslog";
+		if (level_ == level::access_log)
+			return "access_log";
 		else if (level_ == level::error)
 			return "error";
 		else if (level_ == level::warning)
@@ -348,8 +348,8 @@ public:
 
 	void set_level(const std::string& level)
 	{
-		if (level == "accesslog")
-			level_ = level::accesslog;
+		if (level == "access_log")
+			level_ = level::access_log;
 		else if (level == "api")
 			level_ = level::api;
 		else if (level == "warning")
@@ -605,9 +605,9 @@ public:
 		}
 	}
 
-	template <typename... A> void accesslog(const char* format, const A&... args) const
+	template <typename... A> void access_log(const char* format, const A&... args) const
 	{
-		log(level::accesslog, logger::format<prefix::accesslog, A...>(format, args...));
+		log(level::access_log, logger::format<prefix::access_log, A...>(format, args...));
 	}
 
 	template <typename... A> void api(const char* format, const A&... args) const
@@ -635,9 +635,9 @@ public:
 		log(level::debug, logger::format<prefix::debug, A...>(format, args...));
 	}
 
-	template <typename... A> void accesslog(const std::string& msg) const
+	template <typename... A> void access_log(const std::string& msg) const
 	{
-		if (level_ >= level::accesslog)
+		if (level_ >= level::access_log)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
 			ostream_->write(msg.data(), msg.size()).flush();
@@ -1809,6 +1809,7 @@ public:
 	{
 		this->fields_.clear();
 		version_nr_ = 0;
+		reason_.clear();
 	}
 
 	std::string header_to_string() const
@@ -4476,7 +4477,7 @@ public:
 		, configuration_(configuration)
 		, logger_(
 			  configuration.get<std::string>("log_file", "cout"),
-			  configuration.get<std::string>("log_level", "acceslog")){};
+			  configuration.get<std::string>("log_level", "access_log")){};
 
 	server(const server&) = delete;
 	server(server&&) = delete;
@@ -4498,6 +4499,7 @@ public:
 
 	void deactivate() { state_.store(state::deactivating); }
 	bool is_active() { return state_.load() == state::active; }
+	bool is_deactivating() { return state_.load() == state::deactivating; }
 	bool is_activating() { return state_.load() == state::activating; }
 
 	virtual server::state start()
@@ -4572,9 +4574,9 @@ public:
 
 			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_) / 1000000;
 
-			std::string msg = lgr::logger::format<lgr::prefix::accesslog>(
+			std::string msg = lgr::logger::format<lgr::prefix::access_log>(
 				"{s} - {s} - '{s} {s}' - {d} - {u} - {u} - {u}",
-				session.request().get("Remote_Addr", std::string{}),
+				session.request().get("X-Forwarded-For", std::string{}),
 				session.request().get("X-Request-ID", std::string{}),
 				http::method::to_string(session.request().method()),
 				session.request().url_requested(),
@@ -4608,7 +4610,7 @@ public:
 			config,
 			server_metrics,
 			router,
-			accesslog
+			access_log
 		};
 
 		std::string to_json_string(json_status_options options, bool main_object = true) const
@@ -4626,7 +4628,7 @@ public:
 					ss << to_json_string(json_status_options::config, false) << ", "
 					   << to_json_string(json_status_options::server_metrics, false) << ", "
 					   << to_json_string(json_status_options::router, false) << ","
-					   << to_json_string(json_status_options::accesslog, false);
+					   << to_json_string(json_status_options::access_log, false);
 					g.lock();
 					break;
 				}
@@ -4658,7 +4660,7 @@ public:
 					ss << "\"router\": {" << router_information_ << "}";
 					break;
 				}
-				case json_status_options::accesslog:
+				case json_status_options::access_log:
 				{
 					ss << "\"access_log\": [";
 					for (auto access_log_entry = access_log_.cbegin(); access_log_entry != access_log_.cend();
@@ -5199,7 +5201,7 @@ public:
 						if (server_.is_active())
 						{
 							session_handler_.request().set(
-								"Remote_Addr",
+								"X-Forwarded-For",
 								session_handler_.request().get(
 									"X-Forwarded-For", network::get_client_info(client_socket_)));
 
@@ -5257,9 +5259,9 @@ public:
 												   session_handler_, routing.the_route().route_metrics())
 											   + "\n";
 
-								if (server_.logger_.current_level() >= lgr::level::accesslog)
+								if (server_.logger_.current_level() >= lgr::level::access_log)
 								{
-									server_.logger_.accesslog(log_msg);
+									server_.logger_.access_log(log_msg);
 								}
 							}
 							else
@@ -5268,7 +5270,7 @@ public:
 									= server_.manager().log_access(session_handler_, http::api::routing::metrics{})
 									  + "\n";
 
-								server_.logger_.accesslog(log_msg);
+								server_.logger_.access_log(log_msg);
 							}
 
 							if (server_.logger_.current_level() == lgr::level::debug)
