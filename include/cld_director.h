@@ -926,118 +926,82 @@ public:
 
 			if (limits_adjustments.contains("limits") == false)
 			{
-				std::int16_t workers_ok = 0;
+				//std::int16_t workers_ok = 0;
 
-				for (auto worker = workers_.begin(); worker != workers_.end();)
+				for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
 				{
-					if (worker->second.get_base_url().empty()) // TODO change to status?
+					if (worker_it->second.get_base_url().empty()) // TODO change to status?
 					{
-						++worker;
+						++worker_it;
 						continue;
 					}
+					auto& worker = worker_it;
 
-					ec.clear();
-
-					auto response = http::client::request<http::method::get>(
-						worker->second.get_base_url() + "/private/infra/worker/status/statistics", ec, {});
-
-					if ((ec.empty() && response.get("Content-type").find("json") != std::string::npos))
-					{
-						json ret = json::parse(response.body());
-						std::string link_to_status;
-						worker->second.set_worker_metrics(ret);
-						logger.api(
-							"managing: /{s}/{s}/{s} worker {s}({s}) is healthy\n",
-							workspace_id_,
-							type_,
-							name_,
-							worker->first,
-							worker->second.get_base_url());
-
-						if (workers_ok < limits_.workers_min())
+					upstreams_.async_upstream_request<http::method::post>(
+						worker->second.get_base_url(),
+						"/private/infra/worker/healthcheck",
+						[this, &logger, worker](http::response_message& response, asio::error_code& error_code) 
 						{
-							ec.clear();
-							response.clear();
-							response = http::client::request<http::method::post>(
-								worker->second.get_base_url() + "/private/infra/worker/status/watchdog", ec, {});
-
-							if (ec.empty() && response.status() == http::status::no_content)
+							if (error_code || response.status() != http::status::ok)
 							{
-								workers_ok++;
+								if (worker->second.get_status() == worker::status::running)
+								{
+									upstreams_.drain(worker->second.get_base_url());
+
+									worker->second.set_status(worker::status::error);
+									logger.api(
+										"managing: /{s}/{s}/{s} worker {d}({s}) is _not_ healthy : socket_error:{s}, "
+										"status:{d}\n",
+										workspace_id_,
+										type_,
+										name_,
+										worker->second.get_process_id(),
+										worker->second.get_base_url(),
+										error_code.value(),
+										http::status::to_int(response.status()));
+
+									// rescan = true;
+								}
+								else
+								{
+									logger.api(
+										"managing: /{s}/{s}/{s} worker {d}({s}) is _not_ healthy : socket_error:{s}, "
+										"status:{d} --> to be removed from its workgroup\n",
+										workspace_id_,
+										type_,
+										name_,
+										worker->second.get_process_id(),
+										worker->second.get_base_url(),
+										error_code.value(),
+										http::status::to_int(response.status()));
+
+									upstreams_.down(worker->second.get_base_url());
+									upstreams_.erase_upstream(worker->second.get_base_url());
+									workers_.erase(workers_.find(worker->first));
+									limits_.workers_actual_upd(-1);
+								}
+							}
+							else if (response.status() == http::status::ok)
+							{
+								if (worker->second.get_status() != worker::status::running)
+								{
+									// assert upstream state is drain/down
+									upstreams_.up(worker->second.get_base_url());
+
+									if (worker->second.get_status() == worker::status::initial)
+										limits().workers_actual_upd(1);
+
+									worker->second.set_status(worker::status::running);
+								}
+								else
+								{
+									// nothing to do ... worker still running.
+								}
 							}
 						}
+					);
 
-						if (worker->second.get_status() != worker::status::running)
-						{
-							// assert upstream state is drain/down
-							upstreams_.up(worker->second.get_base_url());
-
-							if (worker->second.get_status() == worker::status::initial) limits().workers_actual_upd(1);
-
-							worker->second.set_status(worker::status::running);
-						}
-						else
-						{
-							// nothing to do ... worker still running.
-						}
-					}
-					else if (ec.empty() && response.body().find("HTTP server has been stopped") != std::string::npos)
-					{
-						logger.debug(
-							"managing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy\n",
-							workspace_id_,
-							type_,
-							name_,
-							worker->first,
-							worker->second.get_base_url());
-						worker->second.set_status(worker::status::running);
-						// special case, wait until next loop, server is started or stopped
-					}
-					else
-					{
-						if (worker->second.get_status() == worker::status::running)
-						{
-							upstreams_.drain(worker->second.get_base_url());
-							if (ec.empty()) ec = "none";
-							worker->second.set_status(worker::status::error);
-							logger.api(
-								"managing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy : socket_error:{s}, "
-								"status:{d}\n",
-								workspace_id_,
-								type_,
-								name_,
-								worker->first,
-								worker->second.get_base_url(),
-								ec,
-								http::status::to_int(response.status()));
-
-							// rescan = true;
-						}
-						else
-						{
-							if (ec.empty()) ec = "none";
-							logger.api(
-								"managing: /{s}/{s}/{s} worker {s}({s}) is _not_ healthy : socket_error:{s}, "
-								"status:{d} --> to be removed from its workgroup\n",
-								workspace_id_,
-								type_,
-								name_,
-								worker->first,
-								worker->second.get_base_url(),
-								ec,
-								http::status::to_int(response.status()));
-
-							upstreams_.down(worker->second.get_base_url());
-							upstreams_.erase_upstream(worker->second.get_base_url());
-							worker = workers_.erase(workers_.find(worker->first));
-							limits_.workers_actual_upd(-1);
-
-							rescan = true;
-							continue;
-						}
-					}
-
-					++worker;
+					++worker_it;
 				}
 			}
 		} while (rescan);
