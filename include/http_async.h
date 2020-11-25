@@ -8,11 +8,9 @@
 #include <deque>
 #include <thread>
 
-#ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 4459) // asio / VC2019 issue, disable warning C4459 : Declaration of "query" shadows global
-#endif
-// declaration
+								// declaration
 #include <asio.hpp>
 #ifdef USE_WOLFSSL
 #ifndef ASIO_USE_WOLFSSL
@@ -21,9 +19,8 @@
 #include "infor_ssl.h"
 #endif
 #include <asio/ssl.hpp>
-#ifdef _WIN32
 #pragma warning(pop)
-#endif
+
 #include "http_basic.h"
 
 namespace http
@@ -372,58 +369,6 @@ public:
 
 	containter_type upstreams_;
 	std14::shared_mutex upstreams_lock_;
-
-	template <http::method::method_t method> void async_upstream_request(
-		//const std::string& base_url, const std::string& specific_url, std::function<void(http::response_message&, const asio::error_code )> on_completion) 
-		const std::string& , const std::string& , std::function<void(http::response_message&, asio::error_code& )> on_completion) 
-	{
-		bool found = false;
-		do
-		{
-			std::unique_lock<std::mutex> connections_guard{ selected_upstream->get()->connection_mutex_ };
-			asio::error_code error_code;
-			for (auto& connection : selected_upstream->get()->connections_)
-			{
-				// Select the least connected upstream
-				auto expected_state = http::basic::async::upstreams::connection_type::state::idle;
-
-				if (connection->get_state().compare_exchange_strong(
-						expected_state, http::basic::async::upstreams::connection_type::state::waiting)
-					== true)
-				{
-					auto selected_connection = connection.get();
-					connections_guard.unlock();
-					++(selected_upstream->get()->connections_busy_);
-
-					forward_handler(*selected_connection, error_code);
-
-					if (!error_code)
-						found = true;
-					else
-						found = false;
-
-					break;
-				}
-			}
-
-			if (found == false)
-			{
-
-				if (error_code)
-				{
-					return false;
-				}
-				else
-				{
-					logger.api("new upstream connection to {s}\n", selected_upstream->get()->base_url());
-					connections_guard.unlock();
-					selected_upstream->get()->add_connection();
-				}
-			}
-		} while (found == false);
-
-		result = true;
-	}
 
 	bool
 	forward(std::function<void(connection_type&, asio::error_code& error_code)> forward_handler, lgr::logger& logger)
@@ -828,228 +773,6 @@ public:
 				write_response();
 			}
 		}
-
-		void write_health_check_request(
-			http::basic::async::upstreams::connection_type& upstream_connection,
-			std::function<void(http::response_message&, const asio::error_code)> on_completion)
-		{
-			asio::error_code error;
-			char peek_buffer[1];
-
-			if (upstream_connection.socket().is_open() == false)
-			{
-				upstream_connection.reopen(error);
-				if (error)
-				{
-					// failed
-					upstream_connection.error();
-					upstream_connection.owner().set_state(upstreams::upstream::state::drain);
-					error_code = error;
-					return;
-				}
-			}
-
-			upstream_connection.socket().non_blocking(true);
-			upstream_connection.socket().receive(asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
-			upstream_connection.socket().non_blocking(false);
-
-			if (error != asio::error::would_block)
-			{
-				upstream_connection.reopen(error);
-
-				if (error)
-				{
-					// failed
-					upstream_connection.error();
-					upstream_connection.owner().set_state(upstreams::upstream::state::drain);
-					error_code = error;
-					return;
-				}
-			}
-
-			session_handler_.request().target(session_handler_.request().url_requested());
-			session_handler_.request().set("Accept-Encoding", "gzip");
-			session_handler_.request().reset_if_exists("Expect");
-
-			write_buffer_.emplace_back(http::to_string(session_handler_.request()));
-
-			auto me = this->shared_from_this();
-
-			asio::async_write(
-				upstream_connection.socket(),
-				asio::buffer(write_buffer_.front()),
-				[me, &upstream_connection, on_complete](asio::error_code const& ec, std::size_t) {
-					me->write_buffer_.pop_front();
-
-					if (!ec)
-						me->read_health_check_response_headers(upstream_connection, on_complete);
-					else
-						me->read_health_check_response_body_complete(upstream_connection, ec);
-				});
-		}
-
-		void read_forwarded_response_headers(http::basic::async::upstreams::connection_type& upstream_connection)
-		{
-			auto me = this->shared_from_this();
-
-			upstream_connection.buffer_.clear();
-
-			asio::async_read_until(
-				upstream_connection.socket(),
-				asio::dynamic_buffer(upstream_connection.buffer_),
-				"\r\n\r\n",
-				[me, &upstream_connection](asio::error_code ec, size_t bytes_red) {
-					if (!ec)
-						me->read_forwarded_response_headers_complete(upstream_connection, bytes_red);
-					else
-						me->read_forwarded_response_body_complete(upstream_connection, ec);
-				});
-		}
-
-		void read_health_check_yresponse_headers_complete(
-			http::basic::async::upstreams::connection_type& upstream_connection, size_t bytes_red)
-		{
-			http::response_parser response_parser;
-			http::response_parser::result_type result;
-			const char* c = nullptr;
-
-			std::tie(result, c) = response_parser.parse(
-				session_handler_.response(),
-				upstream_connection.buffer_.data(),
-				upstream_connection.buffer_.data() + bytes_red);
-
-			if (result == http::response_parser::result_type::good)
-			{
-				session_handler_.request().set("X-Request-ID", upstream_connection.id());
-				session_handler_.response().set("X-Upstream-Server", upstream_connection.id());
-
-				auto content_length = session_handler_.response().content_length();
-
-				if (content_length > 0 && content_length != http::request_message::content_length_invalid)
-				{
-					auto content_already_received = static_cast<size_t>(
-						upstream_connection.buffer_.data() + upstream_connection.buffer_.size() - c);
-
-					auto status_code = http::status::to_int(session_handler_.response().status());
-
-					upstream_connection.owner().update_status_code_metrics(status_code);
-
-					session_handler_.response().body().reserve(content_length);
-
-					session_handler_.response().body().assign(c, content_already_received);
-
-					if (content_already_received < content_length)
-					{
-						read_forwarded_response_body(upstream_connection);
-					}
-					else
-					{
-						read_forwarded_response_body_complete(upstream_connection, asio::error_code{});
-					}
-				}
-				else if (session_handler_.response().chunked())
-				{
-					session_handler_.response().status(http::status::internal_server_error);
-					session_handler_.response().body() = "chunked upstream response received\n";
-					read_forwarded_response_body_complete(upstream_connection, asio::error_code{});
-				}
-				else
-				{
-					read_forwarded_response_body_complete(upstream_connection, asio::error_code{});
-				}
-			}
-		}
-
-		void read_forwarded_response_body(http::basic::async::upstreams::connection_type& upstream_connection)
-		{
-			asio::error_code ec;
-			if (session_handler_.response().body().size() < session_handler_.response().content_length())
-			{
-				auto me = this->shared_from_this();
-				upstream_connection.buffer_.clear();
-				asio::async_read(
-					upstream_connection.socket(),
-					asio::dynamic_buffer(upstream_connection.buffer_),
-					asio::transfer_at_least(1),
-					[me, &upstream_connection](const asio::error_code& ec, std::size_t bytes_xfer) {
-						if (!ec)
-						{
-							auto content_length = me->session_handler_.response().content_length();
-
-							me->session_handler_.response().body().append(
-								upstream_connection.buffer_.data(), bytes_xfer);
-
-							if (me->session_handler_.response().body().length() < content_length)
-							{
-								me->read_forwarded_response_body(upstream_connection);
-							}
-							else
-							{
-								me->read_forwarded_response_body_complete(upstream_connection, ec);
-							}
-						}
-						else
-						{
-							me->read_forwarded_response_body_complete(upstream_connection, ec);
-						}
-					});
-			}
-			else if (session_handler_.response().body().size() == session_handler_.response().content_length())
-			{
-				read_forwarded_response_body_complete(upstream_connection, ec);
-			}
-			else
-			{
-				assert(1 == 0);
-				read_forwarded_response_body_complete(upstream_connection, ec);
-			}
-		}
-
-		void read_forwarded_response_body_complete(
-			http::basic::async::upstreams::connection_type& upstream_connection, asio::error_code ec)
-		{
-			if (ec)
-			{
-				upstream_connection.error();
-				session_handler_.response().reset();
-				session_handler_.response().status(http::status::bad_gateway);
-				write_response();
-				return;
-			}
-			else if (upstream_connection.should_drain())
-			{
-				upstream_connection.drain();
-				write_response();
-				return;
-			}
-
-			if (session_handler_.response().connection_close() == true)
-			{
-				asio::error_code error_code;
-				upstream_connection.reopen(error_code);
-
-				if (error_code)
-					upstream_connection.error();
-				else
-					upstream_connection.release();
-			}
-			else
-			{
-				upstream_connection.release();
-			}
-
-			if (session_handler_.response().status() == http::status::service_unavailable)
-			{
-				// TODO try next upstream
-			}
-			else
-			{
-				write_response();
-			}
-		}
-
-		//--------------------------------------------------------------------------------------------------------------------------------------------------
-
 
 		void write_forwarded_request(
 			http::basic::async::upstreams::connection_type& upstream_connection, asio::error_code& error_code)
@@ -1800,4 +1523,17 @@ private:
 
 } // namespace async
 } // namespace basic
+namespace client
+{
+
+template <http::method::method_t method>
+void async_request(
+	asio::io_context& io_context,
+	const std::string& url,
+	std::initializer_list<std::string> hdrs,
+	const std::string& body,
+	std::function<void(http::response_message& response, asio::error_code& error_code)>& on_complete)
+{
+}
+
 } // namespace http

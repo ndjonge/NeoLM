@@ -375,13 +375,16 @@ private:
 	std::int32_t process_id_;
 	status status_{ status::initial };
 	json worker_metrics_{};
-
-	// std::vector<http::client::session> sessions_to_worker_;
+	asio::io_context& io_context_;
 
 public:
 	worker() = default;
-	worker(std::string base_url, std::string version, std::int32_t process_id)
-		: base_url_(base_url), version_(version), process_id_(process_id), status_(worker::status::initial)
+	worker(std::string base_url, std::string version, std::int32_t process_id, asio::io_context& io_context)
+		: base_url_(base_url)
+		, version_(version)
+		, process_id_(process_id)
+		, status_(worker::status::initial)
+		, io_context_(io_context)
 	{
 	}
 
@@ -390,6 +393,7 @@ public:
 		, version_(worker.version_)
 		, process_id_(worker.process_id_)
 		, status_(worker.status_)
+		, io_context_(worker.io_context_)
 	{
 	}
 
@@ -397,6 +401,8 @@ public:
 
 	const std::string& get_base_url() const { return base_url_; };
 	int get_process_id() const { return process_id_; };
+
+	asio::io_context& io_context() { return io_context_; }
 
 	status get_status() const { return status_; }
 
@@ -473,7 +479,8 @@ public:
 		base_url = j.value("base_url", "");
 		version = j.value("version", "");
 
-		workers_[std::to_string(process_id)] = worker{ base_url, version, process_id };
+		workers_.emplace(std::pair<const std::string, worker>(
+			std::to_string(process_id), worker{ base_url, version, process_id, io_context }));
 
 		if (base_url.empty() == false)
 		{
@@ -937,9 +944,11 @@ public:
 					}
 					auto& worker = worker_it;
 
-					upstreams_.async_upstream_request<http::method::post>(
-						worker->second.get_base_url(),
-						"/private/infra/worker/healthcheck",
+					http::client::async_request<http::method::post>(
+						worker->second.io_context(),
+						worker->second.get_base_url() + "/private/infra/worker/healthcheck",
+						{}, /* headers */
+						{}, /* body */
 						[this, &logger, worker](http::response_message& response, asio::error_code& error_code) 
 						{
 							if (error_code || response.status() != http::status::ok)
