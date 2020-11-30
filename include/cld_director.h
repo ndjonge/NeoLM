@@ -363,27 +363,45 @@ class worker
 public:
 	enum class status
 	{
-		initial = 0,
-		running = 1,
-		deleted = 2,
-		error = 3
+		up,
+		down,
+		drain
 	};
+
+	static std::string to_string(worker::status status) 
+	{ 
+		switch (status)
+		{
+			case status::down:
+				return "down";
+			case status::up:
+				return "up";
+			case status::drain:
+				return "drain";
+			default:
+				return "-";
+		}
+	}
+
 
 private:
 	std::string base_url_{};
 	std::string version_{};
 	std::int32_t process_id_;
-	status status_{ status::initial };
+	std::chrono::steady_clock::time_point startup_t0_;
+	std::chrono::steady_clock::time_point startup_t1_{};
+
+	status status_{ status::down };
 	json worker_metrics_{};
 	asio::io_context& io_context_;
 
 public:
-	worker() = default;
 	worker(std::string base_url, std::string version, std::int32_t process_id, asio::io_context& io_context)
 		: base_url_(base_url)
 		, version_(version)
 		, process_id_(process_id)
-		, status_(worker::status::initial)
+		, startup_t0_(std::chrono::steady_clock::now())
+		, status_(worker::status::down)
 		, io_context_(io_context)
 	{
 	}
@@ -391,7 +409,8 @@ public:
 	worker(const worker& worker)
 		: base_url_(worker.base_url_)
 		, version_(worker.version_)
-		, process_id_(worker.process_id_)
+		, process_id_(worker.process_id_) 
+		, startup_t0_(worker.startup_t0_)
 		, status_(worker.status_)
 		, io_context_(worker.io_context_)
 	{
@@ -406,7 +425,11 @@ public:
 
 	status get_status() const { return status_; }
 
-	void set_status(status s) { status_ = s; };
+	void set_status(status s) 
+	{ 
+		if (s == status::up && status_ == status::down) startup_t1_ = std::chrono::steady_clock::now();
+		status_ = s; 
+	};
 
 	void to_json(json& worker_json) const
 	{
@@ -422,9 +445,17 @@ public:
 					 metric++)
 					worker_json["metrics"][metric.key()] = metric.value();
 		}
-		worker_json["status"] = get_status();
+		worker_json["status"] = worker::to_string(get_status());
 		worker_json["process_id"] = process_id_;
-		worker_json["started_at"] = std::time(nullptr);
+
+		if (status_ != status::down)
+		{
+			worker_json["startup_latency"]
+				= std::chrono::duration_cast<std::chrono::milliseconds>(startup_t1_ - startup_t0_).count();
+
+			worker_json["runtime"]
+				= std::chrono::duration_cast<std::chrono::minutes>(std::chrono::steady_clock::now() - startup_t1_).count();
+		}
 	}
 
 	json get_worker_metrics(void) { return worker_metrics_; }
@@ -479,13 +510,14 @@ public:
 		base_url = j.value("base_url", "");
 		version = j.value("version", "");
 
-		workers_.emplace(std::pair<const std::string, worker>(
+		auto new_worker = workers_.emplace(std::pair<const std::string, worker>(
 			std::to_string(process_id), worker{ base_url, version, process_id, io_context }));
 
 		if (base_url.empty() == false)
 		{
 			limits_.workers_actual_upd(1);
-			upstreams_.add_upstream(io_context, base_url, std::to_string(process_id));
+			upstreams_.add_upstream(io_context, base_url, std::to_string(process_id));	
+			new_worker.first->second.set_status(worker::status::up);
 		}
 	}
 
@@ -522,16 +554,7 @@ public:
 			auto response = http::client::request<http::method::delete_>(
 				worker->second.get_base_url() + "/private/infra/worker/shutdown", ec, {});
 
-			if (!ec.empty())
-			{
-				worker->second.set_status(worker::status::deleted);
-				result = true;
-			}
-			else
-			{
-				worker->second.set_status(worker::status::error);
-				result = false;
-			}
+			worker->second.set_status(worker::status::down);
 		}
 		return result;
 	}
@@ -583,49 +606,7 @@ public:
 		auto response = http::client::request<http::method::delete_>(
 			worker.get_base_url() + "/private/infra/worker/shutdown", ec, {});
 
-		if (!ec.empty())
-		{
-			worker.set_status(worker::status::deleted); // mark as deleted
-		}
-		else
-		{
-			worker.set_status(worker::status::error);
-		}
-	}
-
-	void keep_worker_alive(worker& worker)
-	{
-		std::lock_guard<std::mutex> g{ workers_mutex_ };
-		std::string ec;
-
-		auto response = http::client::request<http::method::post>(
-			worker.get_base_url() + "/private/infra/worker/status/idle_since", ec, {}, "0");
-
-		if (ec.empty())
-		{
-		}
-		else
-		{
-			worker.set_status(worker::status::error);
-		}
-	}
-
-	void request_worker_status_(worker& worker) const
-	{
-		std::lock_guard<std::mutex> g{ workers_mutex_ };
-		std::string ec;
-		auto response = http::client::request<http::method::get>(
-			worker.get_base_url() + "/private/infra/worker/status/statistics", ec, {});
-
-		if (ec.empty())
-		{
-			json ret = json::parse(response.body());
-			worker.set_worker_metrics(ret["metrics"]);
-		}
-		else
-		{
-			worker.set_status(worker::status::error);
-		}
+		worker.set_status(worker::status::drain);
 	}
 
 	// remove all
@@ -649,7 +630,7 @@ public:
 	{
 		for (auto in = workers_.begin(); in != workers_.end();)
 		{
-			if (in->second.get_status() == worker::status::deleted)
+			if (in->second.get_status() == worker::status::drain)
 			{
 				in = workers_.erase(in);
 			}
@@ -942,74 +923,27 @@ public:
 						++worker_it;
 						continue;
 					}
-					auto& worker = worker_it;
 
+					auto& worker = worker_it->second;
 					http::client::async_request<http::method::post>(
-						worker->second.io_context(),
-						worker->second.get_base_url() + "/private/infra/worker/healthcheck",
-						{}, /* headers */
-						{}, /* body */
-						[this, &logger, worker](http::response_message& response, asio::error_code& error_code) 
+						upstreams_.get_upstream(worker_it->second.get_base_url()),
+						"/private/infra/worker/status/statistics",
+						{ { "Host", "localhost" } },
+						std::string{},
+						[this, &worker](http::response_message& response, asio::error_code& error_code) 
 						{
-							if (error_code || response.status() != http::status::ok)
+							if (!error_code && response.status() == http::status::ok && worker.get_status() != worker::status::up)
 							{
-								if (worker->second.get_status() == worker::status::running)
-								{
-									upstreams_.drain(worker->second.get_base_url());
-
-									worker->second.set_status(worker::status::error);
-									logger.api(
-										"managing: /{s}/{s}/{s} worker {d}({s}) is _not_ healthy : socket_error:{s}, "
-										"status:{d}\n",
-										workspace_id_,
-										type_,
-										name_,
-										worker->second.get_process_id(),
-										worker->second.get_base_url(),
-										error_code.value(),
-										http::status::to_int(response.status()));
-
-									// rescan = true;
-								}
-								else
-								{
-									logger.api(
-										"managing: /{s}/{s}/{s} worker {d}({s}) is _not_ healthy : socket_error:{s}, "
-										"status:{d} --> to be removed from its workgroup\n",
-										workspace_id_,
-										type_,
-										name_,
-										worker->second.get_process_id(),
-										worker->second.get_base_url(),
-										error_code.value(),
-										http::status::to_int(response.status()));
-
-									upstreams_.down(worker->second.get_base_url());
-									upstreams_.erase_upstream(worker->second.get_base_url());
-									workers_.erase(workers_.find(worker->first));
-									limits_.workers_actual_upd(-1);
-								}
+								worker.set_status(worker::status::up);
 							}
-							else if (response.status() == http::status::ok)
+							else if (error_code || response.status() != http::status::ok)
 							{
-								if (worker->second.get_status() != worker::status::running)
-								{
-									// assert upstream state is drain/down
-									upstreams_.up(worker->second.get_base_url());
-
-									if (worker->second.get_status() == worker::status::initial)
-										limits().workers_actual_upd(1);
-
-									worker->second.set_status(worker::status::running);
-								}
-								else
-								{
-									// nothing to do ... worker still running.
-								}
+								worker.set_status(worker::status::down);
 							}
+
+							return;
 						}
 					);
-
 					++worker_it;
 				}
 			}

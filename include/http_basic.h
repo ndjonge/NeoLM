@@ -1879,6 +1879,8 @@ static std::string extension_to_type(const std::string& extension)
 }
 } // namespace mime_types
 
+using headers = http::request_header::fields_base;
+
 template <message_specializations specialization> class message : public header<specialization>
 {
 public:
@@ -1906,10 +1908,14 @@ public:
 	message(const http::session_handler& session) : session_handler_(&session){};
 
 	// TODO use enableif....
-	message(const std::string& method, const std::string& target, const int version_nr = 11)
+	message(const http::method::method_t method, const std::string& target, const http::headers& headers, const std::string& body, const int version_nr = 11) 
+		: body_(body)
 	{
+		for (auto& header : headers.as_vector())
+			set(header.name, header.value);
+
 		header<specialization>::version_nr_ = version_nr;
-		header<specialization>::method_ = http::method::to_method(method);
+		header<specialization>::method_ = method;
 		header<specialization>::target_ = target;
 	}
 
