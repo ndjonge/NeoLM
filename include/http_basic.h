@@ -1911,8 +1911,8 @@ public:
 	message(const http::method::method_t method, const std::string& target, const http::headers& headers, const std::string& body, const int version_nr = 11) 
 		: body_(body)
 	{
-		for (auto& header : headers.as_vector())
-			set(header.name, header.value);
+		for (auto& h : headers.as_vector())
+			header<specialization>::set(h.name, h.value);
 
 		header<specialization>::version_nr_ = version_nr;
 		header<specialization>::method_ = method;

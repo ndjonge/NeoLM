@@ -67,11 +67,14 @@ template <typename T> class worker : public worker_base
 
 protected:
 	std::string manager_endpoint_url_;
+	std::string cld_worker_id_;
 	using json = T;
 
 public:
 	worker(const http::basic::server& server) : worker_base(server)
 	{
+		cld_worker_id_ = server_.config().get<std::string>("cld_worker_id", "no_id");
+
 		manager_endpoint_url_ = server_.config().get<std::string>(
 									"cld_manager_endpoint", "http://localhost:4000/private/infra/workspaces")
 								+ "/" + server_.config().get<std::string>("cld_manager_workspace", "workspace-000")
@@ -99,7 +102,7 @@ public:
 		put_new_instance_json["version"] = server_.config().get<std::string>("server", "");
 
 		auto response = http::client::request<http::method::put>(
-			manager_endpoint_url_ + "/workers/" + std::to_string(pid), ec, {}, put_new_instance_json.dump());
+			manager_endpoint_url_ + "/workers/" + cld_worker_id_, ec, {}, put_new_instance_json.dump());
 
 		if (ec.empty())
 		{
@@ -136,7 +139,7 @@ public:
 			put_new_instance_json["limits"]["workers_required"] = -1;
 
 		auto response = http::client::request<http::method::delete_>(
-			manager_endpoint_url_ + "/workers/" + std::to_string(pid), ec, {}, put_new_instance_json.dump());
+			manager_endpoint_url_ + "/workers/" + cld_worker_id_, ec, {}, put_new_instance_json.dump());
 
 		if (ec.empty())
 		{

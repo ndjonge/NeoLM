@@ -1096,4 +1096,5 @@ inline std::string hostname()
 	return std::string{ hostname_buffer.data() };
 }
 
+
 } // namespace network

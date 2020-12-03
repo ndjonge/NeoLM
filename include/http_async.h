@@ -26,6 +26,36 @@
 namespace http
 {
 
+std::string fully_qualified_hostname()
+{
+	std::array<char, 256> hostname_buffer;
+	::gethostname(&hostname_buffer[0], sizeof(hostname_buffer));
+
+	asio::ip::tcp::resolver::query q("localhost", "80", asio::ip::tcp::resolver::query::canonical_name);
+
+	asio::error_code ec;
+	asio::io_service io_service;
+	asio::ip::tcp::resolver resolver(io_service);
+
+	auto hostnames = resolver.resolve(q, ec);
+	std::string result;
+
+	if (!ec)
+	{
+		result = std::string{ hostname_buffer.data() };
+		for (auto hostname : hostnames)
+		{
+			result =  hostname.host_name();
+		}
+	}
+	else
+	{
+		result = std::string{ hostname_buffer.data() };
+	}
+
+	return result;
+}
+
 namespace basic
 {
 
@@ -72,7 +102,7 @@ public:
 		connection(asio::io_context& io_context, const std::string& host, std::string port, upstream_type& owner)
 			: host_(host)
 			, port_(port)
-			, id_(port_ + "-" + owner.id())
+			, id_(owner.id() + "-" +port_)
 			, resolver_(io_context)
 			, socket_(io_context)
 			, owner_(owner)
@@ -97,7 +127,6 @@ public:
 			--(owner_.connections_busy_);
 			state_ = state::idle;
 			owner_.set_state(upstream::state::up);
-
 		}
 
 		void drain()
@@ -249,7 +278,8 @@ public:
 			   << ", 3xx: " << std::to_string(upstream->responses_3xx_)
 			   << ", 4xx: " << std::to_string(upstream->responses_4xx_)
 			   << ", 5xx: " << std::to_string(upstream->responses_5xx_)
-			   << ", tot: " << std::to_string(upstream->responses_tot_) << "\n";
+			   << ", tot: " << std::to_string(upstream->responses_tot_)
+			   << ", health: " << std::to_string(upstream->responses_health_) << "\n";
 
 			if (options == options::include_connections)
 			{
@@ -297,6 +327,8 @@ public:
 			responses_tot_++;
 		}
 
+		void update_health_check_metrics() { responses_health_++; }
+
 		containter_type& connections() { return connections_; }
 
 		std::atomic<std::uint16_t> connections_busy_{ 0 };
@@ -309,6 +341,7 @@ public:
 		std::atomic<std::uint16_t> responses_4xx_{ 0 };
 		std::atomic<std::uint16_t> responses_5xx_{ 0 };
 		std::atomic<std::uint16_t> responses_tot_{ 0 };
+		std::atomic<std::uint16_t> responses_health_{ 0 };
 
 		const std::string& base_url() const { return base_url_; }
 		const std::string& id() const { return id_; }
@@ -351,13 +384,12 @@ public:
 	containter_type upstreams_;
 	std14::shared_mutex upstreams_lock_;
 
-	upstream& get_upstream(const std::string& base_url) 
-	{ 
+	upstream& get_upstream(const std::string& base_url)
+	{
 		auto result
 			= std::find_if(upstreams_.begin(), upstreams_.end(), [base_url](const std::unique_ptr<upstream>& rhs) {
 				  return (rhs->base_url_ == base_url);
 			  });
-
 
 		return *result->get();
 	}
@@ -385,10 +417,8 @@ public:
 		}
 	}
 
-
-
-	bool
-	forward(std::function<void(connection_type&, asio::error_code& error_code)> forward_handler, lgr::logger& logger)
+	bool async_upstream_request(
+		std::function<void(connection_type&, asio::error_code& error_code)> forward_handler, lgr::logger& logger)
 	{
 		bool result = false;
 		static std::atomic<std::uint8_t> rr{ 0 };
@@ -506,7 +536,7 @@ public:
 			, steady_timer_(service)
 			, session_handler_(configuration, protocol)
 			, server_(server)
-			, protocol_(protocol)
+			, protocol_(protocol) 
 		{
 			server_.logger_.info(
 				"{s}_connection_handler: start {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
@@ -768,14 +798,14 @@ public:
 
 				if (upstreams)
 				{
-					auto forward_result = upstreams->forward(
+					auto start_async_result = upstreams->async_upstream_request(
 						[this](
 							http::basic::async::upstreams::connection_type& connection, asio::error_code& error_code) {
-							write_forwarded_request(connection, error_code);
+							write_upstream_request(connection, error_code);
 						},
 						server_.logger());
 
-					if (forward_result == false)
+					if (start_async_result == false)
 					{
 						session_handler_.response().status(http::status::bad_gateway);
 						write_response();
@@ -791,16 +821,22 @@ public:
 			}
 		}
 
-		void write_forwarded_request(
+		void write_upstream_request(
 			http::basic::async::upstreams::connection_type& upstream_connection, asio::error_code& error_code)
 		{
 			asio::error_code error;
 			char peek_buffer[1];
+#ifdef LOCAL_TESTING_WITH_RANDOM_FAILURES
+			bool random_failure = 1 + (rand() % 100) == 5;
+#else
+			bool random_failure = false;
+#endif
 
-			if (upstream_connection.socket().is_open() == false)
+			if (upstream_connection.socket().is_open() == false || random_failure)
 			{
-				upstream_connection.reopen(error);
-				if (error)
+				if (!random_failure) upstream_connection.reopen(error);
+
+				if (error || random_failure)
 				{
 					// failed
 					upstream_connection.error();
@@ -843,13 +879,13 @@ public:
 					me->write_buffer_.pop_front();
 
 					if (!ec)
-						me->read_forwarded_response_headers(upstream_connection);
+						me->read_upstream_response_headers(upstream_connection);
 					else
-						me->read_forwarded_response_body_complete(upstream_connection, ec);
+						me->read_upstream_response_body_complete(upstream_connection, ec);
 				});
 		}
 
-		void read_forwarded_response_headers(http::basic::async::upstreams::connection_type& upstream_connection)
+		void read_upstream_response_headers(http::basic::async::upstreams::connection_type& upstream_connection)
 		{
 			auto me = this->shared_from_this();
 
@@ -861,13 +897,13 @@ public:
 				"\r\n\r\n",
 				[me, &upstream_connection](asio::error_code ec, size_t bytes_red) {
 					if (!ec)
-						me->read_forwarded_response_headers_complete(upstream_connection, bytes_red);
+						me->read_upstream_response_headers_complete(upstream_connection, bytes_red);
 					else
-						me->read_forwarded_response_body_complete(upstream_connection, ec);
+						me->read_upstream_response_body_complete(upstream_connection, ec);
 				});
 		}
 
-		void read_forwarded_response_headers_complete(
+		void read_upstream_response_headers_complete(
 			http::basic::async::upstreams::connection_type& upstream_connection, size_t bytes_red)
 		{
 			http::response_parser response_parser;
@@ -891,37 +927,33 @@ public:
 					auto content_already_received = static_cast<size_t>(
 						upstream_connection.buffer_.data() + upstream_connection.buffer_.size() - c);
 
-					auto status_code = http::status::to_int(session_handler_.response().status());
-
-					upstream_connection.owner().update_status_code_metrics(status_code);
-
 					session_handler_.response().body().reserve(content_length);
 
 					session_handler_.response().body().assign(c, content_already_received);
 
 					if (content_already_received < content_length)
 					{
-						read_forwarded_response_body(upstream_connection);
+						read_upstream_response_body(upstream_connection);
 					}
 					else
 					{
-						read_forwarded_response_body_complete(upstream_connection, asio::error_code{});
+						read_upstream_response_body_complete(upstream_connection, asio::error_code{});
 					}
 				}
 				else if (session_handler_.response().chunked())
 				{
 					session_handler_.response().status(http::status::internal_server_error);
 					session_handler_.response().body() = "chunked upstream response received\n";
-					read_forwarded_response_body_complete(upstream_connection, asio::error_code{});
+					read_upstream_response_body_complete(upstream_connection, asio::error_code{});
 				}
 				else
 				{
-					read_forwarded_response_body_complete(upstream_connection, asio::error_code{});
+					read_upstream_response_body_complete(upstream_connection, asio::error_code{});
 				}
 			}
 		}
 
-		void read_forwarded_response_body(http::basic::async::upstreams::connection_type& upstream_connection)
+		void read_upstream_response_body(http::basic::async::upstreams::connection_type& upstream_connection)
 		{
 			asio::error_code ec;
 			if (session_handler_.response().body().size() < session_handler_.response().content_length())
@@ -942,31 +974,31 @@ public:
 
 							if (me->session_handler_.response().body().length() < content_length)
 							{
-								me->read_forwarded_response_body(upstream_connection);
+								me->read_upstream_response_body(upstream_connection);
 							}
 							else
 							{
-								me->read_forwarded_response_body_complete(upstream_connection, ec);
+								me->read_upstream_response_body_complete(upstream_connection, ec);
 							}
 						}
 						else
 						{
-							me->read_forwarded_response_body_complete(upstream_connection, ec);
+							me->read_upstream_response_body_complete(upstream_connection, ec);
 						}
 					});
 			}
 			else if (session_handler_.response().body().size() == session_handler_.response().content_length())
 			{
-				read_forwarded_response_body_complete(upstream_connection, ec);
+				read_upstream_response_body_complete(upstream_connection, ec);
 			}
 			else
 			{
 				assert(1 == 0);
-				read_forwarded_response_body_complete(upstream_connection, ec);
+				read_upstream_response_body_complete(upstream_connection, ec);
 			}
 		}
 
-		void read_forwarded_response_body_complete(
+		void read_upstream_response_body_complete(
 			http::basic::async::upstreams::connection_type& upstream_connection, asio::error_code ec)
 		{
 			if (ec)
@@ -983,6 +1015,10 @@ public:
 				write_response();
 				return;
 			}
+
+			auto status_code = http::status::to_int(session_handler_.response().status());
+
+			upstream_connection.owner().update_status_code_metrics(status_code);
 
 			if (session_handler_.response().connection_close() == true)
 			{
@@ -1342,9 +1378,15 @@ public:
 
 		if (configuration_.get<std::string>("http_listen_address", "::0") == "::0")
 		{
+			http_this_server_base_host_
+				= network::hostname() + (http_listen_port_probe == 80 ? "" : ":" + std::to_string(http_listen_port_probe));
+
 			configuration_.set(
-				"http_this_server_base_url",
-				"http://" + network::hostname() + ":" + std::to_string(http_listen_port_probe));
+				"http_this_server_base_host",
+				http_this_server_base_host_);
+
+			configuration_.set("http_this_server_base_url", "http://" + http_this_server_base_host_);
+
 		}
 
 		configuration_.set("http_this_server_local_url", "http://localhost:" + std::to_string(http_listen_port_probe));
@@ -1387,14 +1429,18 @@ public:
 			configuration_.set("https_listen_port", std::to_string(https_listen_port_probe));
 			if (configuration_.get<std::string>("https_listen_address", "::0") == "::0")
 			{
-				configuration_.set(
-					"https_this_server_base_url",
-					"https://" + network::hostname() + ":" + configuration_.get<std::string>("https_listen_port"));
+				https_this_server_base_host_ = network::hostname() + (https_listen_port_probe == 443
+												  ? ""
+												  : ":" + std::to_string(https_listen_port_probe));
+
+				configuration_.set("https_this_server_base_host", https_this_server_base_host_);
+
+				configuration_.set("https_this_server_base_url", "https://" + https_this_server_base_host_);
 			}
 
 			configuration_.set(
 				"https_this_server_local_url",
-				"http://localhost:" + configuration_.get<std::string>("https_listen_port"));
+				"https://localhost:" + configuration_.get<std::string>("https_listen_port"));
 
 			logger_.info("https listener on port: {d} started\n", https_listen_port_probe);
 			http_listen_port_.store(https_listen_port_probe);
@@ -1536,6 +1582,9 @@ private:
 	asio::ip::tcp::acceptor http_acceptor_;
 	asio::ip::tcp::acceptor https_acceptor_;
 	asio::ssl::context https_ssl_context_;
+
+	std::string http_this_server_base_host_;
+	std::string https_this_server_base_host_;
 };
 
 } // namespace async
@@ -1544,48 +1593,50 @@ private:
 namespace client
 {
 
-class async_session :  public std::enable_shared_from_this<async_session>
+class async_session : public std::enable_shared_from_this<async_session>
 {
 public:
 	async_session(
 		http::basic::async::upstreams::upstream& upstream,
 		http::basic::async::upstreams::connection_type& upstream_connection,
 		std::function<void(http::response_message& response, asio::error_code& error_code)>&& on_complete)
-		: upstream_(upstream)
-		, upstream_connection_(upstream_connection)
-		, on_complete_(on_complete)
+		: upstream_(upstream), upstream_connection_(upstream_connection), on_complete_(on_complete)
 	{
 	}
 
 	async_session(const async_session& rhs)
-		: upstream_(rhs.upstream_)
-		, upstream_connection_(rhs.upstream_connection_)
-		, on_complete_(rhs.on_complete_)
+		: upstream_(rhs.upstream_), upstream_connection_(rhs.upstream_connection_), on_complete_(rhs.on_complete_)
 	{
 	}
 
 	async_session(const async_session&& rhs)
-		: upstream_(rhs.upstream_)
-		, upstream_connection_(rhs.upstream_connection_)
-		, on_complete_(rhs.on_complete_)
+		: upstream_(rhs.upstream_), upstream_connection_(rhs.upstream_connection_), on_complete_(rhs.on_complete_)
 	{
 	}
-
 
 	void write_request(http::request_message& request, asio::error_code& error_code)
 	{
 		asio::error_code error;
 		char peek_buffer[1];
 
-		if (upstream_connection_.socket().is_open() == false)
+#ifdef LOCAL_TESTING_WITH_RANDOM_FAILURES
+		bool random_failure = 1 + (rand() % 100) == 5;
+#else
+		bool random_failure = false;
+#endif
+
+		if (upstream_connection_.socket().is_open() == false || random_failure)
 		{
-			upstream_connection_.reopen(error);
-			if (error)
+			if (!random_failure) upstream_connection_.reopen(error);
+
+			if (error || random_failure)
 			{
 				// failed
 				upstream_connection_.error();
 				upstream_connection_.owner().set_state(http::basic::async::upstreams::upstream::state::drain);
 				error_code = error;
+				if (random_failure) error_code = asio::error::broken_pipe;
+
 				return;
 			}
 		}
@@ -1604,6 +1655,7 @@ public:
 				upstream_connection_.error();
 				upstream_connection_.owner().set_state(http::basic::async::upstreams::upstream::state::drain);
 				error_code = error;
+
 				return;
 			}
 		}
@@ -1650,9 +1702,7 @@ public:
 		const char* c = nullptr;
 
 		std::tie(result, c) = response_parser.parse(
-			response_,
-			upstream_connection_.buffer_.data(),
-			upstream_connection_.buffer_.data() + bytes_red);
+			response_, upstream_connection_.buffer_.data(), upstream_connection_.buffer_.data() + bytes_red);
 
 		if (result == http::response_parser::result_type::good)
 		{
@@ -1660,12 +1710,8 @@ public:
 
 			if (content_length > 0 && content_length != http::request_message::content_length_invalid)
 			{
-				auto content_already_received
-					= static_cast<size_t>(upstream_connection_.buffer_.data() + upstream_connection_.buffer_.size() - c);
-
-				auto status_code = http::status::to_int(response_.status());
-
-				upstream_connection_.owner().update_status_code_metrics(status_code);
+				auto content_already_received = static_cast<size_t>(
+					upstream_connection_.buffer_.data() + upstream_connection_.buffer_.size() - c);
 
 				response_.body().reserve(content_length);
 
@@ -1737,8 +1783,7 @@ public:
 		}
 	}
 
-	void read_response_body_complete(
-		asio::error_code ec)
+	void read_response_body_complete(asio::error_code ec)
 	{
 		if (ec)
 		{
@@ -1753,6 +1798,8 @@ public:
 			return;
 		}
 
+		upstream_connection_.owner().update_health_check_metrics();
+
 		on_complete_(response_, ec);
 
 		if (response_.connection_close() == true)
@@ -1764,17 +1811,12 @@ public:
 				upstream_connection_.error();
 			else
 				upstream_connection_.release();
-
 		}
 		else
 		{
 			upstream_connection_.release();
 		}
-
 	}
-
-
-
 
 private:
 	http::response_message response_;
@@ -1793,7 +1835,7 @@ void async_request(
 	const std::string& body,
 	std::function<void(http::response_message& response, asio::error_code& error_code)>&& on_complete)
 {
-	auto request = http::request_message{ method, request_url, headers, body};
+	auto request = http::request_message{ method, request_url, headers, body };
 	bool found = false;
 
 	do
@@ -1801,29 +1843,37 @@ void async_request(
 		std::unique_lock<std::mutex> connections_guard{ upstream.connection_mutex_ };
 		asio::error_code error_code;
 
-		for (auto& connection : upstream.connections_)
+		if (upstream.state_ == http::basic::async::upstreams::upstream::state::drain)
 		{
-			// Select the least connected upstream
-			auto expected_state = http::basic::async::upstreams::connection_type::state::idle;
-
-			if (connection->get_state().compare_exchange_strong(
-					expected_state, http::basic::async::upstreams::connection_type::state::waiting)
-				== true)
+			error_code = asio::error::connection_refused;
+		}
+		else
+		{
+			for (auto& connection : upstream.connections_)
 			{
-				auto selected_connection = connection.get();
-				connections_guard.unlock();
-				++(upstream.connections_busy_);
+				// Select the least connected upstream
+				auto expected_state = http::basic::async::upstreams::connection_type::state::idle;
 
-				std::shared_ptr<async_session> session{ new async_session(upstream, *selected_connection, std::move(on_complete)) };
+				if (connection->get_state().compare_exchange_strong(
+						expected_state, http::basic::async::upstreams::connection_type::state::waiting)
+					== true)
+				{
+					auto selected_connection = connection.get();
+					connections_guard.unlock();
+					++(upstream.connections_busy_);
 
-				session->write_request(request, error_code );
+					std::shared_ptr<async_session> session{ new async_session(
+						upstream, *selected_connection, std::move(on_complete)) };
 
-				if (!error_code)
-					found = true;
-				else
-					found = false;
+					session->write_request(request, error_code);
 
-				break;
+					if (!error_code)
+						found = true;
+					else
+						found = false;
+
+					break;
+				}
 			}
 		}
 
@@ -1832,6 +1882,8 @@ void async_request(
 
 			if (error_code)
 			{
+				http::response_message response{};
+				on_complete(response, error_code);
 				return;
 			}
 			else

@@ -78,8 +78,58 @@ inline void run_as_service()
 
 namespace bse_utils
 {
+
 #ifdef LOCAL_TESTING
+namespace local_testing
+{
 std::mutex m;
+
+template <typename S> struct test_sockets
+{
+public:
+	std::queue<S> available_sockets_;
+	std::mutex m_;
+
+	test_sockets(S b, size_t nr)
+	{
+		std::lock_guard<std::mutex> g{ m_ };
+		for (S i = 0; i < nr; i++)
+			available_sockets_.push(b + i);
+	}
+
+	S aquire()
+	{
+		std::lock_guard<std::mutex> g{ m_ };
+		S s = available_sockets_.front();
+		available_sockets_.pop();
+
+		return s;
+	}
+
+	void release(const std::string& url)
+	{
+		// scheme
+		// host
+		// port
+		// resource
+
+		// std::tie<> http::util::url_split(url, )
+
+		auto port = url.substr(1 + url.find_last_of(':'));
+
+		std::lock_guard<std::mutex> g{ m_ };
+		available_sockets_.push(stoul(port));
+	}
+
+	void release(S s)
+	{
+		std::lock_guard<std::mutex> g{ m_ };
+		available_sockets_.push(s);
+	}
+};
+
+static test_sockets<std::uint32_t> _test_sockets{ 8000, 16 };
+} // namespace local_testing
 
 static bool create_bse_process_as_user(
 	const std::string&,
@@ -91,18 +141,16 @@ static bool create_bse_process_as_user(
 	std::uint32_t& pid,
 	std::string& ec)
 {
+	static std::atomic<std::uint32_t> worker_ids{ 0 };
+
 	bool result = true;
 
-	static std::atomic<std::uint32_t> pids{ 8000 };
-
-	pid = pids;
-	pids++;
-	if (pids > 8015) pids = 8000;
+	pid = local_testing::_test_sockets.aquire();
 
 	ec = "";
 
 	std::thread([pid]() {
-		std::lock_guard<std::mutex> g{ m };
+		std::lock_guard<std::mutex> g{ local_testing::m };
 		json put_new_instance_json = json::object();
 		std::string ec;
 		put_new_instance_json["process_id"] = pid;
@@ -110,8 +158,8 @@ static bool create_bse_process_as_user(
 		put_new_instance_json["version"] = "test_bshell";
 
 		auto response = http::client::request<http::method::put>(
-			"http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/workers/"
-				+ std::to_string(pid),
+			"http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/workers/worker_"
+				+ std::to_string(worker_ids++),
 			ec,
 			{},
 			put_new_instance_json.dump()); //,std::cerr, true);
@@ -363,15 +411,18 @@ class worker
 public:
 	enum class status
 	{
+		starting,
 		up,
-		down,
-		drain
+		drain,
+		down
 	};
 
-	static std::string to_string(worker::status status) 
-	{ 
+	static std::string to_string(worker::status status)
+	{
 		switch (status)
 		{
+			case status::starting:
+				return "starting";
 			case status::down:
 				return "down";
 			case status::up:
@@ -383,8 +434,8 @@ public:
 		}
 	}
 
-
 private:
+	std::string worker_id_{};
 	std::string base_url_{};
 	std::string version_{};
 	std::int32_t process_id_;
@@ -393,26 +444,29 @@ private:
 
 	status status_{ status::down };
 	json worker_metrics_{};
-	asio::io_context& io_context_;
 
 public:
-	worker(std::string base_url, std::string version, std::int32_t process_id, asio::io_context& io_context)
-		: base_url_(base_url)
+	worker(
+		std::string worker_id,
+		std::string base_url = "",
+		std::string version = "",
+		std::int32_t process_id = 0)
+		: worker_id_(worker_id)
+		, base_url_(base_url)
 		, version_(version)
 		, process_id_(process_id)
 		, startup_t0_(std::chrono::steady_clock::now())
-		, status_(worker::status::down)
-		, io_context_(io_context)
+		, status_(worker::status::starting)
 	{
 	}
 
 	worker(const worker& worker)
-		: base_url_(worker.base_url_)
+		: worker_id_(worker.worker_id_)
+		, base_url_(worker.base_url_)
 		, version_(worker.version_)
-		, process_id_(worker.process_id_) 
+		, process_id_(worker.process_id_)
 		, startup_t0_(worker.startup_t0_)
 		, status_(worker.status_)
-		, io_context_(worker.io_context_)
 	{
 	}
 
@@ -421,15 +475,24 @@ public:
 	const std::string& get_base_url() const { return base_url_; };
 	int get_process_id() const { return process_id_; };
 
-	asio::io_context& io_context() { return io_context_; }
-
 	status get_status() const { return status_; }
 
-	void set_status(status s) 
-	{ 
-		if (s == status::up && status_ == status::down) startup_t1_ = std::chrono::steady_clock::now();
-		status_ = s; 
+	void set_status(status s)
+	{
+		if (s == status::up && status_ == status::starting) 
+		{
+			startup_t1_ = std::chrono::steady_clock::now();
+		}
+		status_ = s;
 	};
+
+
+	void from_json(const json& worker_json)
+	{
+		process_id_ = worker_json.value("process_id", 0);
+		base_url_ = worker_json.value("base_url", "");
+		version_ = worker_json.value("version", "");
+	}
 
 	void to_json(json& worker_json) const
 	{
@@ -447,6 +510,7 @@ public:
 		}
 		worker_json["status"] = worker::to_string(get_status());
 		worker_json["process_id"] = process_id_;
+		worker_json["worker_id"] = worker_id_;
 
 		if (status_ != status::down)
 		{
@@ -454,7 +518,8 @@ public:
 				= std::chrono::duration_cast<std::chrono::milliseconds>(startup_t1_ - startup_t0_).count();
 
 			worker_json["runtime"]
-				= std::chrono::duration_cast<std::chrono::minutes>(std::chrono::steady_clock::now() - startup_t1_).count();
+				= std::chrono::duration_cast<std::chrono::minutes>(std::chrono::steady_clock::now() - startup_t1_)
+					  .count();
 		}
 	}
 
@@ -498,25 +563,33 @@ public:
 		return workers_.find(worker_id);
 	}
 
-	void add_worker(const json& j, asio::io_context& io_context)
+	void add_pending_worker(const std::string& worker_id) 
+	{
+		workers_.emplace(
+			std::pair<const std::string, worker>(worker_id, worker{ worker_id }));
+	}
+
+	void add_worker(const std::string& worker_id, const json& j, asio::io_context& io_context)
 	{
 		std::lock_guard<std::mutex> g{ workers_mutex_ };
 		std::int32_t process_id;
 		std::string base_url;
 		std::string version;
 
-		j.at("process_id").get_to(process_id);
-
+		process_id = j.value("process_id", 0);
 		base_url = j.value("base_url", "");
 		version = j.value("version", "");
 
 		auto new_worker = workers_.emplace(std::pair<const std::string, worker>(
-			std::to_string(process_id), worker{ base_url, version, process_id, io_context }));
+			worker_id, worker{ worker_id, base_url, version, process_id }));
+		
+		if (new_worker.second == false)
+			new_worker.first->second.from_json(j);
 
 		if (base_url.empty() == false)
 		{
 			limits_.workers_actual_upd(1);
-			upstreams_.add_upstream(io_context, base_url, std::to_string(process_id));	
+			upstreams_.add_upstream(io_context, base_url, worker_id);
 			new_worker.first->second.set_status(worker::status::up);
 		}
 	}
@@ -596,6 +669,7 @@ public:
 		const std::string& worker_type,
 		const std::string& worker_name,
 		std::uint32_t& pid,
+		std::string& worker_id,
 		std::string& ec)
 		= 0;
 
@@ -877,8 +951,10 @@ public:
 			for (std::int16_t n = 0; n < workers_required_to_add; n++)
 			{
 				std::uint32_t process_id = 0;
+				std::string worker_id;
 				lock.unlock();
-				bool success = create_worker_process(server_endpoint, workspace_id_, type_, name_, process_id, ec);
+				bool success
+					= create_worker_process(server_endpoint, workspace_id_, type_, name_, process_id, worker_id, ec);
 				lock.lock();
 				if (!success) // todo
 				{
@@ -894,13 +970,16 @@ public:
 				else
 				{
 					logger.api(
-						"managing: /{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}\n",
+						"managing: /{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
 						workspace_id_,
 						type_,
 						name_,
 						1 + n,
 						workers_required_to_add,
-						static_cast<int>(process_id));
+						static_cast<int>(process_id),
+						worker_id);
+
+					add_pending_worker(worker_id);
 
 					limits_.workers_pending_upd(1);
 				}
@@ -914,7 +993,7 @@ public:
 
 			if (limits_adjustments.contains("limits") == false)
 			{
-				//std::int16_t workers_ok = 0;
+				std::int16_t watchdogs_feeded = 0;
 
 				for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
 				{
@@ -925,26 +1004,65 @@ public:
 					}
 
 					auto& worker = worker_it->second;
-					http::client::async_request<http::method::post>(
-						upstreams_.get_upstream(worker_it->second.get_base_url()),
-						"/private/infra/worker/status/statistics",
-						{ { "Host", "localhost" } },
-						std::string{},
-						[this, &worker](http::response_message& response, asio::error_code& error_code) 
-						{
-							if (!error_code && response.status() == http::status::ok && worker.get_status() != worker::status::up)
-							{
-								worker.set_status(worker::status::up);
-							}
-							else if (error_code || response.status() != http::status::ok)
-							{
-								worker.set_status(worker::status::down);
-							}
 
-							return;
-						}
-					);
+					if (worker_it->second.get_status() == worker::status::up)
+					{
+						auto feed_Watchdog = watchdogs_feeded++ < limits_.workers_min();
+
+						http::headers watchdog_headers{ { "Host", "localhost" },
+														{ "X-Feed-Watchdog", feed_Watchdog ? "true" : "false" } };
+
+						http::client::async_request<http::method::post>(
+							upstreams_.get_upstream(worker_it->second.get_base_url()),
+							"/private/infra/worker/watchdog",
+							watchdog_headers,
+							std::string{},
+							[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
+								if (!error_code && response.status() == http::status::ok
+									&& worker.get_status() != worker::status::up)
+								{
+									worker.set_status(worker::status::up);
+								}
+								else if (error_code || response.status() != http::status::ok)
+								{
+									worker.set_status(worker::status::drain);
+									logger.api(
+										"managing: /{s}/{s}/{s}: failed health check for worker {s}\n",
+										workspace_id_,
+										type_,
+										name_,
+										worker.get_base_url());
+								}
+
+								return;
+							});
+					}
+
 					++worker_it;
+				}
+
+				for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+				{
+					if ((worker_it->second.get_status() == worker::status::drain)
+						|| worker_it->second.get_status() == worker::status::down)
+					{
+						logger.api(
+							"managing: /{s}/{s}/{s}: delete {s}\n",
+							workspace_id_,
+							type_,
+							name_,
+							worker_it->second.get_base_url());
+
+						upstreams_.erase_upstream(worker_it->second.get_base_url());
+#ifdef LOCAL_TESTING
+						bse_utils::local_testing::_test_sockets.release(worker_it->second.get_base_url());
+#endif
+						worker_it = workers_.erase(workers_.find(worker_it->first));
+
+						limits_.workers_actual_upd(-1);
+					}
+					else
+						worker_it++;
 				}
 			}
 		} while (rescan);
@@ -996,12 +1114,17 @@ public:
 		const std::string& worker_type,
 		const std::string& worker_name,
 		std::uint32_t& pid,
+		std::string& worker_id,
 		std::string& ec) override
 	{
+		static std::atomic<std::uint32_t> worker_ids{ 0 };
 		std::stringstream parameters;
+
+		worker_id = "worker_" + std::to_string(worker_ids++);
 
 		parameters << "-httpserver_options cld_manager_endpoint:" << manager_endpoint
 				   << ",cld_workgroup_membership_type:worker,cld_manager_workspace:" << workspace_id
+				   << ",cld_worker_id:" << worker_id
 				   << ",cld_manager_workgroup:" << worker_name << "/" << worker_type;
 
 		if (!http_options_.empty())
@@ -1063,6 +1186,7 @@ public:
 		const std::string&, // worker_type,
 		const std::string&, // worker_name,
 		std::uint32_t&, // pid,
+		std::string&,
 		std::string&) override
 	{
 		return false;
@@ -1939,6 +2063,7 @@ public:
 				{
 					auto& name = session.params().get("name");
 					auto& type = session.params().get("type");
+					auto& worker_id = session.params().get("worker_id");
 
 					auto i = workspace->second->find_workgroups(name, type);
 
@@ -1950,7 +2075,7 @@ public:
 
 						if (workgroups != workspace->second->end())
 						{
-							workgroups->second->add_worker(worker_json, server_base::get_io_context());
+							workgroups->second->add_worker(worker_id, worker_json, server_base::get_io_context());
 						}
 
 						session.response().status(http::status::ok);
@@ -2256,26 +2381,28 @@ public:
 
 		server_base::router_.on_proxy_pass("/", [this](http::session_handler& session) {
 			auto tenant_id = session.request().get<std::string>("X-Infor-TenantId", "tenant000_prd");
-
 			auto workgroup_name = session.request().get<std::string>("X-WorkGroup-Name", "untitled");
 			auto workgroup_type = session.request().get<std::string>("X-WorkGroup-Type", "bshells");
-
 			auto workspace = workspaces_.get_tenant_workspace(tenant_id);
+
 
 			bool forwarded = false;
 
 			if (workspace != nullptr)
 			{
-				// if ((rand() % 100) == 0)
-				//{
-				//	session.request().set("X-Fail", "yes");
-				//	server_base::logger().access_log("X-Fail set....\n {s}");
-				//}
-
 				auto workgroup = workspace->find_workgroups(workgroup_name, workgroup_type);
 
 				if (workgroup != workspace->end() && workgroup->second->has_workers_available())
 				{
+					if (session.protocol() == http::protocol::https)
+					{
+						session.request().set("X-Forwarded-Proto", "https");
+						
+						session.request().set(
+							"X-Forwarded-Host",
+							session.request().get<std::string>("X-Forwarded-Host", server_base::configuration_.get<std::string>("https_this_server_base_host", "")));
+					}
+
 					forwarded = true;
 					session.request().set_attribute<http::basic::async::upstreams*>(
 						"proxy_pass", &workgroup->second->upstreams_);

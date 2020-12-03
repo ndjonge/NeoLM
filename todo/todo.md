@@ -1,18 +1,20 @@
 # todo:
-	- leastcon round robin when no least conn worker.
 	- gzip short cicuit for proxypass.
-	- TLS/https certificate config options and TLS version configuration.
 	- TLS std X- headers
-	- TLS thread-sanitizer check
-	- check for concurrency issues
-	- start in tenant BSE context
-	- start in tenant jail
+	- chunked gzip [request, response]-body reader.
+	- http::util::url::split
+	- proxy / body reader timeouts
+	- retry_once on 502/503
+	- std proxy headers:
+		- X-ForwardedFor
+		- Remote_Addr
+	- ip-whitelist
+#tests
 	- workspace interface tests
 	- reverse proxy tests
 
 # optional
-	- chunked gzip [request, response]-body reader.
-	- reverse-proxy metrics (connections etc)
+	- reverse-proxy metrics (latency)
 	- hardening (kali, metasploit)
 	- build with fips/wolfssl
 

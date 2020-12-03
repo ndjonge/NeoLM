@@ -1,8 +1,8 @@
 #pragma once
 
-#include <chrono>
 #include <memory>
 #include <string>
+#include <chrono>
 
 #include "http_basic.h"
 
@@ -55,10 +55,9 @@ class upstream_controller_nginx : public upstream_controller_base
 public:
 	upstream_controller_nginx(const http::basic::server& server) : upstream_controller_base(server)
 	{
-		endpoint_base_url_ = server.config().get<std::string>(
-								 "upstream_node_nginx_endpoint", "http://localhost:7777/dynamic-upstreams?upstream=")
-							 + server.config().get<std::string>("upstream_node_nginx_group", "bshell-workers")
-							 + "-zone";
+		auto group = server.config().get<std::string>("upstream_node_nginx_group", "bshell-workers");
+		endpoint_base_url_ = server.config().get<std::string>("upstream_node_nginx_endpoint", "http://localhost:8080/")
+							 + group + "?upstream=" + group + "-zone";
 	};
 
 	result add() const noexcept
