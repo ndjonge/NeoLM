@@ -1989,6 +1989,20 @@ public:
 	const std::vector<http::field<std::string>>& headers() const { return header<specialization>::fields_; }
 	std::vector<http::field<std::string>>& headers() { return header<specialization>::fields_; }
 
+	void assign(
+		http::status::status_t status,
+		std::string&& body = std::string{},
+		const std::string& content_type = std::string{ "text/plain" },
+		const http::headers& headers = http::headers{}) 
+	{ 
+		http::header<specialization>::status(status);
+		headers_base::set("Content-Type", mime_types::extension_to_type(content_type));
+		body_ = std::move(body);
+
+		for (auto& h : headers.as_vector())
+			header<specialization>::set(h.name, h.value);
+	}
+
 	void reset()
 	{
 		header<specialization>::clear();
@@ -3413,7 +3427,7 @@ public:
 
 	template <typename router_t> typename router_t::request_result_type handle_request(router_t& router_)
 	{
-		response_.status(http::status::bad_request);
+		response_.status(http::status::not_found);
 
 		std::string request_path;
 
@@ -3805,29 +3819,32 @@ public:
 		std::unique_ptr<routing::middlewares> middlewares_;
 
 	public:
+
 		route_part() = default;
 
-		bool match_param(const std::string& url_part, params& params) const
+		using const_iterator = typename std::vector<std::pair<T, std::unique_ptr<route_part>>>::const_iterator;
+
+		const_iterator match_param(const std::string& url_part, params& params) const
 		{
-			for (const auto& i : link_)
+			for (auto i = link_.cbegin(); i != link_.cend(); i++)
 			{
-				if (i.first == "*")
+				if (i->first == "*")
 				{
-					return true;
+					return i;
 				}
-				else if (*(i.first.begin()) == '{' && *(i.first.rbegin()) == '}')
+				else if (*(i->first.begin()) == '{' && *(i->first.rbegin()) == '}')
 				{
-					params.insert(i.first.substr(1, i.first.size() - 2), http::request_parser::url_decode(url_part));
-					return true;
+					params.insert(i->first.substr(1, i->first.size() - 2), http::request_parser::url_decode(url_part));
+					return i;
 				}
-				else if (*(i.first.begin()) == ':')
+				else if (*(i->first.begin()) == ':')
 				{
-					params.insert(i.first.substr(1, i.first.size() - 1), http::request_parser::url_decode(url_part));
-					return true;
+					params.insert(i->first.substr(1, i->first.size() - 1), http::request_parser::url_decode(url_part));
+					return i;
 				}
 			}
 
-			return false;
+			return link_.cend();
 		}
 
 		void to_string_stream_json(std::stringstream& s, std::vector<std::string>& path)
@@ -4080,7 +4097,8 @@ public:
 
 			if (l == std::end(it->link_))
 			{
-				if (!it->match_param(part, params))
+				auto parameter_route = it->match_param(part, params);
+				if (parameter_route == it->link_.cend())
 				{
 					if (it->endpoints_)
 					{
@@ -4129,24 +4147,29 @@ public:
 				{
 					l = it->link_.begin();
 
-					// /url/* matching is work in progress. If no other route exists with the same prefix it seems
-					// to work.
-					if (l->first == "*")
 					{
-						std::string url_remainder{};
-
-						for (auto i = part_index; i < parts.size(); i++)
+						// /url/* matching is work in progress. If no other route exists with the same prefix it seems
+						// to work.
+						if (l->first == "*")
 						{
-							url_remainder += parts[i];
-
-							if (i < (parts.size() - 1))
+							std::string url_remainder{};
+							for (auto i = part_index; i < parts.size(); i++)
 							{
-								url_remainder += "/";
+								url_remainder += parts[i];
+
+								if (i < (parts.size() - 1))
+								{
+									url_remainder += "/";
+								}
 							}
+							params.insert("*", url_remainder); // Unencoded (?)
+							it = l->second.get(); // make sure endpoint can be found and we can continue;
+							break;
 						}
-						params.insert("*", url_remainder); // Unencoded (?)
-						it = l->second.get(); // make sure endpoint can be found and we can continue;
-						break;
+						else
+						{
+							l = parameter_route;
+						}
 					}
 				}
 			}

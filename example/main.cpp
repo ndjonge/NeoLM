@@ -22,13 +22,13 @@ int main(int argc, const char* argv[])
 	network::init();
 	network::ssl::init();
 
-//#ifdef _WIN32
-//	const char* rest_argv[]
-//		= { "appname", "-config", "C:/tmp/pm_root/config.json", /*"-test",*/ "-http_listen_port", "4000", "-logfile", "cout", "-loglevel", "debug" };
-//#else
-//	const char* rest_argv[]
-//		= { "appname",	"-config", "/home/ndjonge/config.json", /*"-test",*/ "-http_listen_port", "4000", "-logfile", "cout", "-loglevel", "api" };
-//#endif
+
+	http::client::async_request<http::method::get>(
+		"http://info.cern.ch/", { { "Host", "nlbalcc" } }, "", [](http::response_message& response, asio::error_code& ec) 
+		{
+			if (!ec)
+				std::cout << "body:" << response.body() << "\n";
+		});
 
 	start_cld_manager_server(argc, argv);
 

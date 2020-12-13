@@ -38,44 +38,6 @@
 
 using json = nlohmann::json;
 
-namespace os
-{
-inline void run_as_service()
-{
-#ifdef _WIN32
-
-#else
-	pid_t pid;
-
-	int devnull = open("/dev/null", O_RDWR);
-	if (devnull > 0)
-	{
-		close(fileno(stdin));
-		close(fileno(stdout));
-		close(fileno(stderr));
-		dup(devnull);
-		dup(devnull);
-		dup(devnull);
-		close(devnull);
-	}
-
-	if ((pid = fork()) < 0)
-	{
-		return;
-	}
-	else if (pid != 0)
-	{
-		exit(0); /* Parent goes bye-bye. */
-	}
-
-	/* Child continues. */
-	setsid(); /* Become session leader. */
-	chdir("/");
-	umask(0); /* Clear file mode creation mask. */
-#endif
-}
-} // namespace os
-
 namespace bse_utils
 {
 
@@ -446,11 +408,7 @@ private:
 	json worker_metrics_{};
 
 public:
-	worker(
-		std::string worker_id,
-		std::string base_url = "",
-		std::string version = "",
-		std::int32_t process_id = 0)
+	worker(std::string worker_id, std::string base_url = "", std::string version = "", std::int32_t process_id = 0)
 		: worker_id_(worker_id)
 		, base_url_(base_url)
 		, version_(version)
@@ -479,13 +437,12 @@ public:
 
 	void set_status(status s)
 	{
-		if (s == status::up && status_ == status::starting) 
+		if (s == status::up && status_ == status::starting)
 		{
 			startup_t1_ = std::chrono::steady_clock::now();
 		}
 		status_ = s;
 	};
-
 
 	void from_json(const json& worker_json)
 	{
@@ -563,10 +520,9 @@ public:
 		return workers_.find(worker_id);
 	}
 
-	void add_pending_worker(const std::string& worker_id) 
+	void add_pending_worker(const std::string& worker_id)
 	{
-		workers_.emplace(
-			std::pair<const std::string, worker>(worker_id, worker{ worker_id }));
+		workers_.emplace(std::pair<const std::string, worker>(worker_id, worker{ worker_id }));
 	}
 
 	void add_worker(const std::string& worker_id, const json& j, asio::io_context& io_context)
@@ -580,11 +536,10 @@ public:
 		base_url = j.value("base_url", "");
 		version = j.value("version", "");
 
-		auto new_worker = workers_.emplace(std::pair<const std::string, worker>(
-			worker_id, worker{ worker_id, base_url, version, process_id }));
-		
-		if (new_worker.second == false)
-			new_worker.first->second.from_json(j);
+		auto new_worker = workers_.emplace(
+			std::pair<const std::string, worker>(worker_id, worker{ worker_id, base_url, version, process_id }));
+
+		if (new_worker.second == false) new_worker.first->second.from_json(j);
 
 		if (base_url.empty() == false)
 		{
@@ -1124,8 +1079,7 @@ public:
 
 		parameters << "-httpserver_options cld_manager_endpoint:" << manager_endpoint
 				   << ",cld_workgroup_membership_type:worker,cld_manager_workspace:" << workspace_id
-				   << ",cld_worker_id:" << worker_id
-				   << ",cld_manager_workgroup:" << worker_name << "/" << worker_type;
+				   << ",cld_worker_id:" << worker_id << ",cld_manager_workgroup:" << worker_name << "/" << worker_type;
 
 		if (!http_options_.empty())
 			parameters << "," << http_options_ << " ";
@@ -1544,16 +1498,11 @@ private:
 	applications applications_;
 	std::thread director_thread_;
 
-	std::promise<int> shutdown_promise;
-	std::future<int> shutdown_future;
 	std::string configuration_file_;
 
 public:
 	manager(http::configuration& http_configuration, const std::string& configuration_file)
-		: http::basic::async::server(http_configuration)
-		, shutdown_promise()
-		, shutdown_future()
-		, configuration_file_(configuration_file)
+		: http::basic::async::server(http_configuration), configuration_file_(configuration_file)
 	{
 		std::ifstream configuration_stream{ configuration_file_ };
 
@@ -1581,16 +1530,8 @@ public:
 			applications_.from_json(json::object());
 			workspaces_.from_json(json::object());
 		}
-		//#ifdef REST_ENABLED_LOGIC_SERVICE
-		//				server_base::router_.on_post("/private/infra/logicservice/debug",
-		//					[this](http::session_handler& session) {
-		//
-		//						EnableDebugLogging(session.request().body() == "debug");
-		//
-		//						session.response().status(http::status::ok);
-		//					});
-		//#endif
-		server_base::router_.on_get("/private/infra/manager/healthcheck", [](http::session_handler& session) {
+
+		server_base::router_.on_get("/health", [](http::session_handler& session) {
 			session.response().status(http::status::ok);
 			session.response().type("text");
 			session.response().body() = std::string("Ok") + session.request().body();
@@ -1600,16 +1541,6 @@ public:
 			session.response().status(http::status::ok);
 			session.response().type(session.response().get<std::string>("Content-Type", "text/plain"));
 			session.response().body() = session.request().body();
-		});
-
-		server_base::router_.on_put("/private/infra/manager/shutdown/{secs}", [this](http::session_handler& session) {
-			auto& ID = session.params().get("secs");
-
-			int shutdown = std::stoi(ID);
-			send_json_response(session, http::status::ok, json{ { "time", shutdown } });
-			session.response().set("Connection", "close");
-			// workspaces_.delete_all_workspaces();
-			shutdown_promise.set_value(shutdown);
 		});
 
 		server_base::router_.on_post("/private/infra/manager/log_level", [this](http::session_handler& session) {
@@ -1706,10 +1637,10 @@ public:
 			json workspaces_json{};
 			workspaces_.to_json(workspaces_json);
 
-			json result_json = json::object();
-
+			json result_json= json::object();
 			result_json["workspaces"] = workspaces_json;
-			send_json_response(session, http::status::ok, result_json);
+
+			session.response().assign(http::status::ok, result_json.dump(), "application/json");
 		});
 
 		server_base::router_.on_get("/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
@@ -1718,14 +1649,13 @@ public:
 
 			if (w != workspaces_.end())
 			{
-				//				w->second.remove_deleted_workers();
-				json j;
-				j["workspace"] = (*(w->second));
-				send_json_response(session, http::status::ok, j);
+				json result_json;
+				result_json["workspace"] = (*(w->second));
+				session.response().assign(http::status::ok, result_json.dump(), "application/json");
 			}
 			else
 			{
-				send_illegal_workspace_response(session, id);
+				session.response().assign(http::status::not_found, error_json("404", "workspace_id " + id + " not found").dump(), "application/json");
 			}
 		});
 
@@ -1736,7 +1666,8 @@ public:
 
 				if (workspace != workspaces_.end())
 				{
-					send_response(session, http::status::conflict);
+					session.response().assign(http::status::conflict);
+
 					return;
 				}
 
@@ -1748,19 +1679,22 @@ public:
 					workspaces_.add_workspace(workspace_id, workspaces.value());
 				}
 
-				send_response(session, http::status::ok);
+				session.response().assign(http::status::ok);
 			});
 
 		server_base::router_.on_delete(
 			"/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
-				auto& id = session.params().get("workspace_id");
-				if (workspaces_.delete_workspace(id))
+				auto& workspace_id = session.params().get("workspace_id");
+				if (workspaces_.delete_workspace(workspace_id))
 				{
-					session.response().status(http::status::ok);
+					session.response().assign(http::status::conflict);
 				}
 				else
 				{
-					send_illegal_workspace_response(session, id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -1771,22 +1705,25 @@ public:
 
 				if (w != workspaces_.end())
 				{
-					json result_json;
-					result_json["workgroups"] = json::array();
+					json result;
+					result["workgroups"] = json::array();
 
 					for (auto i = w->second->cbegin(); i != w->second->cend(); ++i)
 					{
 						json workgroups_json;
 						i->second->to_json(workgroups_json);
 
-						result_json["workgroups"].emplace_back(workgroups_json);
+						result["workgroups"].emplace_back(workgroups_json);
 					}
 
-					send_json_response(session, http::status::ok, result_json);
+					session.response().assign(http::status::ok, result.dump(), "application/json");
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -1809,11 +1746,14 @@ public:
 
 						if ((name == i->first.first)) result_json["workgroups"].emplace_back(workgroups_json);
 					}
-					send_json_response(session, http::status::ok, result_json);
+					session.response().assign(http::status::ok, result_json.dump(), "application/json");
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -1831,7 +1771,7 @@ public:
 					{
 						if ((name == i->first.first))
 						{
-							send_response(session, http::status::conflict);
+							session.response().assign(http::status::conflict);
 							return;
 						}
 					}
@@ -1839,11 +1779,14 @@ public:
 					json workgroups_json = json::parse(session.request().body());
 					workspace->second->add_workgroups(name, "", workgroups_json["workgroups"]);
 
-					send_response(session, http::status::ok);
+					session.response().assign(http::status::ok);
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -1869,13 +1812,16 @@ public:
 							++i;
 					}
 					if (deleted_somthing)
-						send_response(session, http::status::accepted);
+						session.response().assign(http::status::accepted);
 					else
-						send_response(session, http::status::not_found);
+						session.response().assign(http::status::not_found);
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -1901,11 +1847,14 @@ public:
 						if ((name == i->first.first) && (type == i->first.second))
 							result_json["workgroups"].emplace_back(workgroups_json);
 					}
-					send_json_response(session, http::status::ok, result_json);
+					session.response().assign(http::status::ok, result_json.dump(), "application/json");
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -1925,7 +1874,7 @@ public:
 					{
 						if ((name == i->first.first) && (type == i->first.second))
 						{
-							send_response(session, http::status::conflict);
+							session.response().assign(http::status::conflict);
 							return;
 						}
 					}
@@ -1933,11 +1882,14 @@ public:
 					json workgroups_json = json::parse(session.request().body());
 					workspace->second->add_workgroups(name, type, workgroups_json["workgroups"]);
 
-					send_response(session, http::status::ok);
+					session.response().assign(http::status::ok);
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -1966,13 +1918,16 @@ public:
 							++i;
 					}
 					if (deleted_somthing)
-						send_response(session, http::status::accepted);
+						session.response().assign(http::status::accepted);
 					else
-						send_response(session, http::status::not_found);
+						session.response().assign(http::status::not_found);
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -2001,7 +1956,7 @@ public:
 
 						json result;
 						result["worker"] = worker_json;
-						send_json_response(session, http::status::ok, result);
+						session.response().assign(http::status::ok, result.dump(), "application/json");
 					}
 					else
 					{
@@ -2009,7 +1964,10 @@ public:
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -2040,15 +1998,23 @@ public:
 
 							result["workers"].emplace_back(worker_json);
 						}
-						send_json_response(session, http::status::ok, result);
+						session.response().assign(http::status::ok, result.dump(), "application/json");
 					}
 					else
 					{
+						session.response().assign(
+							http::status::not_found,
+							error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+							"application/json");
+
 					}
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -2078,19 +2044,19 @@ public:
 							workgroups->second->add_worker(worker_id, worker_json, server_base::get_io_context());
 						}
 
-						session.response().status(http::status::ok);
-
-						send_no_content_response(session);
+						session.response().assign(http::status::no_content);
 					}
 					else
 					{
-						session.response().status(http::status::not_found);
-						send_not_found_response(session);
+						session.response().assign(http::status::not_found);
 					}
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -2112,18 +2078,19 @@ public:
 					{
 
 						i->second->cleanup_all_workers();
-						send_response(session, http::status::accepted);
+						session.response().assign(http::status::accepted);
 					}
 					else
 					{
-
-						session.response().status(http::status::not_found);
-						send_not_found_response(session);
+						session.response().assign(http::status::not_found);
 					}
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -2158,23 +2125,24 @@ public:
 
 						if (i->second->delete_worker(worker_id) == false)
 						{
-							session.response().status(http::status::not_found);
-							send_not_found_response(session);
+							session.response().assign(http::status::not_found);
 						}
 						else
 						{
-							send_no_content_response(session);
+							session.response().assign(http::status::no_content);
 						}
 					}
 					else
 					{
-						session.response().status(http::status::not_found);
-						send_not_found_response(session);
+						session.response().assign(http::status::not_found);
 					}
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -2197,7 +2165,7 @@ public:
 						json limits;
 						workgroups->second->workgroups_limits().to_json(limits);
 						result["limits"] = limits;
-						send_json_response(session, http::status::ok, result);
+						session.response().assign(http::status::ok, result.dump(), "application/json");
 					}
 					else
 					{
@@ -2205,7 +2173,10 @@ public:
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -2230,7 +2201,7 @@ public:
 						json limits;
 						workgroups->second->workgroups_limits().to_json(limits, limit_name);
 						result["limits"] = limits;
-						send_json_response(session, http::status::ok, result);
+						session.response().assign(http::status::ok, result.dump(), "application/json");
 					}
 					else
 					{
@@ -2238,7 +2209,10 @@ public:
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -2261,7 +2235,7 @@ public:
 
 						workgroups->second->workgroups_limits().from_json(limits["limits"]);
 
-						send_no_content_response(session);
+						session.response().assign(http::status::no_content);
 					}
 					else
 					{
@@ -2269,7 +2243,10 @@ public:
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -2303,7 +2280,7 @@ public:
 						workgroups->second->workgroups_limits().to_json(limits["limits"]);
 
 						result["limits"] = limits;
-						send_json_response(session, http::status::ok, result);
+						session.response().assign(http::status::ok, result.dump(), "application/json");
 					}
 					else
 					{
@@ -2311,7 +2288,10 @@ public:
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -2345,7 +2325,7 @@ public:
 						workgroups->second->workgroups_limits().to_json(limits["limits"]);
 
 						result = limits;
-						send_json_response(session, http::status::ok, result);
+						session.response().assign(http::status::ok, result.dump(), "application/json");
 					}
 					else
 					{
@@ -2353,7 +2333,10 @@ public:
 				}
 				else
 				{
-					send_illegal_workspace_response(session, workspace_id);
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
 				}
 			});
 
@@ -2385,7 +2368,6 @@ public:
 			auto workgroup_type = session.request().get<std::string>("X-WorkGroup-Type", "bshells");
 			auto workspace = workspaces_.get_tenant_workspace(tenant_id);
 
-
 			bool forwarded = false;
 
 			if (workspace != nullptr)
@@ -2397,10 +2379,12 @@ public:
 					if (session.protocol() == http::protocol::https)
 					{
 						session.request().set("X-Forwarded-Proto", "https");
-						
+
 						session.request().set(
 							"X-Forwarded-Host",
-							session.request().get<std::string>("X-Forwarded-Host", server_base::configuration_.get<std::string>("https_this_server_base_host", "")));
+							session.request().get<std::string>(
+								"X-Forwarded-Host",
+								server_base::configuration_.get<std::string>("https_this_server_base_host", "")));
 					}
 
 					forwarded = true;
@@ -2422,13 +2406,12 @@ public:
 				session.request().url_requested(),
 				e.what(),
 				http::to_string(session.request()));
-			set_error_response(session, http::status::bad_request, "", e.what());
+
+			session.response().assign(http::status::internal_server_error, e.what());
 		});
 	}
 
 	virtual ~manager() {}
-
-	// const http::configuration& configuration() { return configuration_; }
 
 	http::basic::server::state start() override
 	{
@@ -2488,79 +2471,12 @@ private:
 	}
 
 public:
-	virtual void set_error_response(
-		http::session_handler& session,
-		http::status::status_t status,
-		const std::string& code,
-		const std::string& message)
+	static json error_json(const std::string& code, const std::string& message)
 	{
+		json error_json;
+		error_json["error"].emplace_back(json{ { "code", code }, { "message", message } });
 
-		session.response().status(status);
-		session.response().type("application/json");
-		json error{
-			{ "code", status },
-		};
-		error["error"].emplace_back(json{ { "code", code }, { "message", message } });
-
-		session.response().body() = error.dump();
-		server_base::logger().error("{s}, json{s}\n", session.request().url_requested(), session.response().body());
-	}
-
-	virtual void set_json_response_catch(http::session_handler& session, const json::type_error& error)
-	{
-		set_error_response(session, http::status::bad_request, std::to_string(error.id), error.what());
-	}
-	virtual void set_json_response_catch(http::session_handler& session, const json::exception& error)
-	{
-		set_error_response(session, http::status::bad_request, std::to_string(error.id), error.what());
-	}
-
-	virtual void set_json_response_catch(http::session_handler& session, const std::exception& error)
-	{
-		set_error_response(session, http::status::bad_request, "general error", error.what());
-	}
-
-	virtual void send_response(http::session_handler& session, http::status::status_t status)
-	{
-		session.response().status(status);
-		session.response().body();
-	}
-
-	virtual void send_json_response(http::session_handler& session, http::status::status_t status, json j)
-	{
-		session.response().status(status);
-		session.response().type("application/json");
-		session.response().body() = j.dump();
-	}
-
-	virtual void send_no_content_response(http::session_handler& session)
-	{
-		session.response().status(http::status::no_content);
-		session.response().body() = std::string("");
-		// session.response().set("Connection","close");
-	}
-
-	virtual void send_not_found_response(http::session_handler& session)
-	{
-		session.response().status(http::status::not_found);
-		session.response().body() = std::string("");
-		// session.response().set("Connection","close");
-	}
-
-	virtual void wait4shutdown(void)
-	{
-		shutdown_future = shutdown_promise.get_future();
-		int shutdown = shutdown_future.get();
-		std::this_thread::sleep_for(std::chrono::seconds(shutdown));
-		server_base::deactivate();
-	}
-
-	virtual void send_illegal_workspace_response(
-		http::session_handler& session,
-		const std::string& w_id,
-		http::status::status_t status = http::status::not_found)
-	{
-		set_error_response(session, status, "null", "workspace_id " + w_id + " not found");
+		return error_json;
 	}
 };
 
