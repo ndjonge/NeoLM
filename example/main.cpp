@@ -22,13 +22,16 @@ int main(int argc, const char* argv[])
 	network::init();
 	network::ssl::init();
 
-
 	http::client::async_request<http::method::get>(
-		"http://info.cern.ch/", { { "Host", "nlbalcc" } }, "", [](http::response_message& response, asio::error_code& ec) 
+		"http://info.cern.ch/",
+		{},
+		"",
+		[](http::response_message& response, asio::error_code& ec) 
 		{
 			if (!ec)
 				std::cout << "body:" << response.body() << "\n";
-		});
+		}
+	);
 
 	start_cld_manager_server(argc, argv);
 
