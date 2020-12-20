@@ -70,13 +70,6 @@ public:
 
 	void release(const std::string& url)
 	{
-		// scheme
-		// host
-		// port
-		// resource
-
-		// std::tie<> http::util::url_split(url, )
-
 		auto port = url.substr(1 + url.find_last_of(':'));
 
 		std::lock_guard<std::mutex> g{ m_ };
@@ -510,7 +503,7 @@ public:
 
 	void cleanup(){};
 
-	http::basic::async::upstreams upstreams_;
+	http::async::upstreams upstreams_;
 
 	bool has_workers_available() { return limits_.workers_actual() > 0; }
 
@@ -1502,7 +1495,7 @@ private:
 
 public:
 	manager(http::configuration& http_configuration, const std::string& configuration_file)
-		: http::basic::async::server(http_configuration), configuration_file_(configuration_file)
+		: http::async::server(http_configuration), configuration_file_(configuration_file)
 	{
 		std::ifstream configuration_stream{ configuration_file_ };
 
@@ -1546,7 +1539,7 @@ public:
 		server_base::router_.on_post("/private/infra/manager/log_level", [this](http::session_handler& session) {
 			server_base::logger_.set_level(session.request().body());
 			auto new_level = server_base::logger_.current_level_to_string();
-			http::basic::server::configuration_.set("log_level", new_level);
+			http::server::configuration_.set("log_level", new_level);
 			session.response().body() = server_base::logger_.current_level_to_string();
 			session.response().status(http::status::ok);
 		});
@@ -1564,7 +1557,7 @@ public:
 
 			if (format.find("application/json") != std::string::npos)
 			{
-				session.response().body() = "{ \"version\" : \"" + http::util::escape_json(version) + "\"}";
+				session.response().body() = "{ \"version\" : \"" + util::escape_json(version) + "\"}";
 				session.response().type("json");
 			}
 			else
@@ -1581,15 +1574,15 @@ public:
 
 			if (format.find("application/json") != std::string::npos)
 			{
-				server_base::manager().server_information(http::basic::server::configuration_.to_json_string());
+				server_base::manager().server_information(http::server::configuration_.to_json_string());
 				server_base::manager().router_information(server_base::router_.to_json_string());
 				session.response().body() = server_base::manager().to_json_string(
-					http::basic::server::server_manager::json_status_options::full);
+					http::server::server_manager::json_status_options::full);
 				session.response().type("json");
 			}
 			else
 			{
-				server_base::manager().server_information(http::basic::server::configuration_.to_string());
+				server_base::manager().server_information(http::server::configuration_.to_string());
 				server_base::manager().router_information(server_base::router_.to_string());
 				session.response().body() = server_base::manager().to_string();
 				session.response().type("text");
@@ -1599,28 +1592,28 @@ public:
 		});
 
 		server_base::router_.on_get("/private/infra/manager/status/{section}", [this](http::session_handler& session) {
-			server_base::manager().server_information(http::basic::server::configuration_.to_json_string());
+			server_base::manager().server_information(http::server::configuration_.to_json_string());
 			server_base::manager().router_information(server_base::router_.to_json_string());
 
-			auto section_option = http::basic::server::server_manager::json_status_options::full;
+			auto section_option = http::server::server_manager::json_status_options::full;
 
 			const auto& section = session.params().get("section");
 
 			if (section == "metrics")
 			{
-				section_option = http::basic::server::server_manager::json_status_options::server_metrics;
+				section_option = http::server::server_manager::json_status_options::server_metrics;
 			}
 			else if (section == "configuration")
 			{
-				section_option = http::basic::server::server_manager::json_status_options::config;
+				section_option = http::server::server_manager::json_status_options::config;
 			}
 			else if (section == "router")
 			{
-				section_option = http::basic::server::server_manager::json_status_options::router;
+				section_option = http::server::server_manager::json_status_options::router;
 			}
 			else if (section == "access_log")
 			{
-				section_option = http::basic::server::server_manager::json_status_options::access_log;
+				section_option = http::server::server_manager::json_status_options::access_log;
 			}
 			else
 			{
@@ -2350,10 +2343,10 @@ public:
 				{
 					if (include_connections)
 						ss << workgroup.second->upstreams_.to_string(
-							workspace.first, http::basic::async::upstreams::options::include_connections);
+							workspace.first, http::async::upstreams::options::include_connections);
 					else
 						ss << workgroup.second->upstreams_.to_string(
-							workspace.first, http::basic::async::upstreams::options::upstreams_only);
+							workspace.first, http::async::upstreams::options::upstreams_only);
 				}
 
 				session.response().body() += ss.str();
@@ -2388,7 +2381,7 @@ public:
 					}
 
 					forwarded = true;
-					session.request().set_attribute<http::basic::async::upstreams*>(
+					session.request().set_attribute<http::async::upstreams*>(
 						"proxy_pass", &workgroup->second->upstreams_);
 				}
 			}
@@ -2413,7 +2406,7 @@ public:
 
 	virtual ~manager() {}
 
-	http::basic::server::state start() override
+	http::server::state start() override
 	{
 		auto ret = server_base::start();
 
@@ -2480,7 +2473,7 @@ public:
 	}
 };
 
-static std::unique_ptr<manager<http::basic::async::server>> cpm_server_;
+static std::unique_ptr<manager<http::async::server>> cpm_server_;
 
 //namespace selftest
 //{
@@ -2820,8 +2813,8 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 		}
 	}
 
-	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager<http::basic::async::server>>(
-		new cloud::platform::manager<http::basic::async::server>(http_configuration, config_file));
+	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager<http::async::server>>(
+		new cloud::platform::manager<http::async::server>(http_configuration, config_file));
 
 	cloud::platform::cpm_server_->start();
 

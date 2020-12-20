@@ -59,9 +59,6 @@ inline std::string fully_qualified_hostname()
 	return result;
 }
 
-namespace basic
-{
-
 namespace async
 {
 
@@ -211,7 +208,7 @@ public:
 
 		if (upstream_to_change_state != upstreams_.cend())
 		{
-			upstream_to_change_state->get()->set_state(http::basic::async::upstreams::upstream::state::up);
+			upstream_to_change_state->get()->set_state(http::async::upstreams::upstream::state::up);
 		}
 	}
 
@@ -226,7 +223,7 @@ public:
 
 		if (upstream_to_change_state != upstreams_.cend())
 		{
-			upstream_to_change_state->get()->set_state(http::basic::async::upstreams::upstream::state::drain);
+			upstream_to_change_state->get()->set_state(http::async::upstreams::upstream::state::drain);
 		}
 	}
 
@@ -245,7 +242,7 @@ public:
 			{
 				std::this_thread::yield();
 			}
-			upstream_to_change_state->get()->set_state(http::basic::async::upstreams::upstream::state::down);
+			upstream_to_change_state->get()->set_state(http::async::upstreams::upstream::state::down);
 		}
 	}
 
@@ -297,7 +294,7 @@ public:
 	class upstream
 	{
 	public:
-		using containter_type = std::vector<std::unique_ptr<http::basic::async::upstreams::connection<upstream>>>;
+		using containter_type = std::vector<std::unique_ptr<http::async::upstreams::connection<upstream>>>;
 		using iterator = containter_type::iterator;
 
 		enum class state
@@ -405,7 +402,7 @@ public:
 
 	using containter_type = std::vector<std::unique_ptr<upstream>>;
 	using iterator = containter_type::iterator;
-	using connection_type = http::basic::async::upstreams::connection<upstream>;
+	using connection_type = http::async::upstreams::connection<upstream>;
 
 	containter_type upstreams_;
 	std14::shared_mutex upstreams_lock_;
@@ -515,10 +512,10 @@ public:
 				for (auto& connection : selected_upstream->get()->connections_)
 				{
 					// Select the least connected upstream
-					auto expected_state = http::basic::async::upstreams::connection_type::state::idle;
+					auto expected_state = http::async::upstreams::connection_type::state::idle;
 
 					if (connection->get_state().compare_exchange_strong(
-							expected_state, http::basic::async::upstreams::connection_type::state::waiting)
+							expected_state, http::async::upstreams::connection_type::state::waiting)
 						== true)
 					{
 						auto selected_connection = connection.get();
@@ -564,7 +561,7 @@ public:
 	}
 };
 
-class server : public http::basic::server
+class server : public http::server
 {
 public:
 	template <class connection_handler_derived, class socket_t>
@@ -858,14 +855,14 @@ public:
 
 				session_handler_.t2() = std::chrono::steady_clock::now();
 
-				auto upstreams = session_handler_.request().template get_attribute<http::basic::async::upstreams*>(
+				auto upstreams = session_handler_.request().template get_attribute<http::async::upstreams*>(
 					"proxy_pass", nullptr);
 
 				if (upstreams)
 				{
 					auto start_async_result = upstreams->async_upstream_request(
 						[this](
-							http::basic::async::upstreams::connection_type& connection, asio::error_code& error_code) {
+							http::async::upstreams::connection_type& connection, asio::error_code& error_code) {
 							write_upstream_request(connection, error_code);
 						},
 						server_.logger());
@@ -887,7 +884,7 @@ public:
 		}
 
 		void write_upstream_request(
-			http::basic::async::upstreams::connection_type& upstream_connection, asio::error_code& error_code)
+			http::async::upstreams::connection_type& upstream_connection, asio::error_code& error_code)
 		{
 			asio::error_code error;
 			char peek_buffer[1];
@@ -950,7 +947,7 @@ public:
 				});
 		}
 
-		void read_upstream_response_headers(http::basic::async::upstreams::connection_type& upstream_connection)
+		void read_upstream_response_headers(http::async::upstreams::connection_type& upstream_connection)
 		{
 			auto me = this->shared_from_this();
 
@@ -969,7 +966,7 @@ public:
 		}
 
 		void read_upstream_response_headers_complete(
-			http::basic::async::upstreams::connection_type& upstream_connection, size_t bytes_red)
+			http::async::upstreams::connection_type& upstream_connection, size_t bytes_red)
 		{
 			http::response_parser response_parser;
 			http::response_parser::result_type result;
@@ -1018,7 +1015,7 @@ public:
 			}
 		}
 
-		void read_upstream_response_body(http::basic::async::upstreams::connection_type& upstream_connection)
+		void read_upstream_response_body(http::async::upstreams::connection_type& upstream_connection)
 		{
 			asio::error_code ec;
 			if (session_handler_.response().body().size() < session_handler_.response().content_length())
@@ -1064,7 +1061,7 @@ public:
 		}
 
 		void read_upstream_response_body_complete(
-			http::basic::async::upstreams::connection_type& upstream_connection, asio::error_code ec)
+			http::async::upstreams::connection_type& upstream_connection, asio::error_code ec)
 		{
 			if (ec)
 			{
@@ -1310,7 +1307,7 @@ public:
 
 public:
 	server(http::configuration& configuration)
-		: http::basic::server{ configuration }
+		: http::server{ configuration }
 		, thread_count_(configuration.get<std::uint8_t>(
 			  "thread_count", static_cast<std::uint8_t>(2))) // std::thread::hardware_concurrency()
 		, http_watchdog_idle_timeout_(configuration.get<std::int16_t>("http_watchdog_idle_timeout", 0))
@@ -1531,7 +1528,7 @@ public:
 
 		io_context_pool_.run();
 
-		state_.store(http::basic::server::state::active);
+		state_.store(http::server::state::active);
 		return state_;
 	}
 
@@ -1658,8 +1655,6 @@ private:
 };
 
 } // namespace async
-} // namespace basic
-
 
 class url
 {
@@ -1718,8 +1713,8 @@ class async_session : public std::enable_shared_from_this<async_session>
 {
 public:
 	async_session(
-		http::basic::async::upstreams::upstream& upstream,
-		http::basic::async::upstreams::connection_type& upstream_connection,
+		http::async::upstreams::upstream& upstream,
+		http::async::upstreams::connection_type& upstream_connection,
 		std::function<void(http::response_message& response, asio::error_code& error_code)>&& on_complete)
 		: upstream_(upstream), upstream_connection_(upstream_connection), on_complete_(on_complete)
 	{
@@ -1754,7 +1749,7 @@ public:
 			{
 				// failed
 				upstream_connection_.error();
-				upstream_connection_.owner().set_state(http::basic::async::upstreams::upstream::state::drain);
+				upstream_connection_.owner().set_state(http::async::upstreams::upstream::state::drain);
 				error_code = error;
 				if (random_failure) error_code = asio::error::broken_pipe;
 
@@ -1774,7 +1769,7 @@ public:
 			{
 				// failed
 				upstream_connection_.error();
-				upstream_connection_.owner().set_state(http::basic::async::upstreams::upstream::state::drain);
+				upstream_connection_.owner().set_state(http::async::upstreams::upstream::state::drain);
 				error_code = error;
 
 				return;
@@ -1941,8 +1936,8 @@ public:
 
 private:
 	http::response_message response_;
-	http::basic::async::upstreams::upstream& upstream_;
-	http::basic::async::upstreams::connection_type& upstream_connection_;
+	http::async::upstreams::upstream& upstream_;
+	http::async::upstreams::connection_type& upstream_connection_;
 	std::deque<std::string> write_buffer_;
 
 	std::function<void(http::response_message& response, asio::error_code& error_code)> on_complete_;
@@ -1957,9 +1952,9 @@ void request(
 {
 	asio::io_context io_context;
 
-	http::basic::async::upstreams::upstream local_upstream(io_context, request_url, "");
+	http::async::upstreams::upstream local_upstream(io_context, request_url, "");
 	
-	local_upstream.set_state(http::basic::async::upstreams::upstream::state::up);
+	local_upstream.set_state(http::async::upstreams::upstream::state::up);
 
 	async_request<method>(local_upstream, request_url, additional_headers, body, std::move(on_complete));
 
@@ -1976,12 +1971,12 @@ http::response_message request(
 	http::response_message result;
 	asio::io_context io_context;
 
-	http::basic::async::upstreams::upstream local_upstream(
+	http::async::upstreams::upstream local_upstream(
 		io_context, 
 		http::url::make_url(request_url).base_url(), 
 		"");
 	
-	local_upstream.set_state(http::basic::async::upstreams::upstream::state::up);
+	local_upstream.set_state(http::async::upstreams::upstream::state::up);
 
 	async_request<method>(
 		local_upstream,
@@ -2005,7 +2000,7 @@ http::response_message request(
 
 template <http::method::method_t method>
 void async_request(
-	http::basic::async::upstreams::upstream& upstream,
+	http::async::upstreams::upstream& upstream,
 	const std::string& request_url,
 	const http::headers& headers,
 	const std::string& body,
@@ -2020,7 +2015,7 @@ void async_request(
 		std::unique_lock<std::mutex> connections_guard{ upstream.connection_mutex_ };
 		asio::error_code error_code;
 
-		if (upstream.state_ == http::basic::async::upstreams::upstream::state::drain)
+		if (upstream.state_ == http::async::upstreams::upstream::state::drain)
 		{
 			error_code = asio::error::connection_refused;
 		}
@@ -2029,10 +2024,10 @@ void async_request(
 			for (auto& connection : upstream.connections_)
 			{
 				// Select the least connected upstream
-				auto expected_state = http::basic::async::upstreams::connection_type::state::idle;
+				auto expected_state = http::async::upstreams::connection_type::state::idle;
 
 				if (connection->get_state().compare_exchange_strong(
-						expected_state, http::basic::async::upstreams::connection_type::state::waiting)
+						expected_state, http::async::upstreams::connection_type::state::waiting)
 					== true)
 				{
 					auto selected_connection = connection.get();

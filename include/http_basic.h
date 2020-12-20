@@ -658,18 +658,6 @@ private:
 
 } // namespace lgr
 
-namespace http
-{
-class request_parser;
-class response_parser;
-class session_handler;
-
-namespace api
-{
-class routing;
-class params;
-} // namespace api
-
 namespace util
 {
 
@@ -824,31 +812,20 @@ split(const std::string& str, const std::string& delimiters, split_options optio
 	return output;
 }
 
-inline bool
-read_from_disk(const std::string& file_path, const std::function<bool(std::array<char, 4096>&, size_t)>& read)
-{
-	std::array<char, 4096> buffer{};
-	std::ifstream is(file_path.c_str(), std::ios::in | std::ios::binary);
-
-	is.seekg(0, std::ifstream::ios_base::beg);
-	is.rdbuf()->pubsetbuf(buffer.data(), buffer.size());
-
-	std::streamsize bytes_in = is.read(buffer.data(), buffer.size()).gcount();
-
-	bool result = false;
-
-	while (bytes_in > 0)
-	{
-
-		if (!read(buffer, static_cast<size_t>(bytes_in))) break;
-
-		bytes_in = is.read(buffer.data(), buffer.size()).gcount();
-	}
-
-	return result;
-}
-
 } // namespace util
+
+
+namespace http
+{
+class request_parser;
+class response_parser;
+class session_handler;
+
+namespace api
+{
+class routing;
+class params;
+} // namespace api
 
 enum protocol
 {
@@ -1491,12 +1468,12 @@ public:
 	configuration(std::initializer_list<configuration::value_type> init_list, const std::string& string_options = "")
 		: fields_(init_list)
 	{
-		const auto& split_string_options = http::util::split(string_options, ",");
+		const auto& split_string_options = util::split(string_options, ",");
 
 		for (const auto& string_option : split_string_options)
 		{
-			const auto& split_string_option{ http::util::split(
-				string_option, ":", http::util::split_options::stop_on_first_delimiter_found) };
+			const auto& split_string_option{ util::split(
+				string_option, ":", util::split_options::stop_on_first_delimiter_found) };
 			if (split_string_option.size() == 2) set(split_string_option[0], split_string_option[1]);
 		}
 	};
@@ -1566,7 +1543,7 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return http::util::case_sensitive::equal_to<std::string>()(f.name, name);
+			return util::case_sensitive::equal_to<std::string>()(f.name, name);
 		});
 
 		if (i != std::end(fields_)) returnvalue = i->value == "true";
@@ -1582,7 +1559,7 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return (http::util::case_sensitive::equal_to<std::string>()(f.name, name));
+			return (util::case_sensitive::equal_to<std::string>()(f.name, name));
 		});
 
 		if (i != std::end(fields_))
@@ -1599,7 +1576,7 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return (http::util::case_sensitive::equal_to<std::string>()(f.name, name));
+			return (util::case_sensitive::equal_to<std::string>()(f.name, name));
 		});
 
 		if (i != std::end(fields_)) returnvalue = i->value;
@@ -1613,7 +1590,7 @@ public:
 		static const std::string not_found = "";
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) {
-			return (http::util::case_insensitive::equal_to<std::string>()(f.name, name));
+			return (util::case_insensitive::equal_to<std::string>()(f.name, name));
 		});
 
 		if (i == std::end(fields_))
@@ -1631,7 +1608,7 @@ public:
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) {
-			return http::util::case_sensitive::equal_to<std::string>()(f.name, name);
+			return util::case_sensitive::equal_to<std::string>()(f.name, name);
 		});
 
 		if (i != std::end(fields_))
@@ -1665,14 +1642,14 @@ enum message_specializations
 template <message_specializations> class header;
 
 template <>
-class header<request_specialization> : public fields<std::string, http::util::case_insensitive::equal_to<std::string>>
+class header<request_specialization> : public fields<std::string, util::case_insensitive::equal_to<std::string>>
 {
 	using query_params = http::fields<std::string, util::case_sensitive::equal_to<std::string>>;
 	friend class session_handler;
 	friend class request_parser;
 
 public:
-	using fields_base = fields<std::string, http::util::case_insensitive::equal_to<std::string>>;
+	using fields_base = fields<std::string, util::case_insensitive::equal_to<std::string>>;
 
 protected:
 	http::method::method_t method_{ method::unknown };
@@ -1778,7 +1755,7 @@ public:
 };
 
 template <>
-class header<response_specialization> : public fields<std::string, http::util::case_insensitive::equal_to<std::string>>
+class header<response_specialization> : public fields<std::string, util::case_insensitive::equal_to<std::string>>
 {
 private:
 	std::string reason_;
@@ -1789,7 +1766,7 @@ private:
 	friend class response_parser;
 
 public:
-	using fields_base = fields<std::string, http::util::case_insensitive::equal_to<std::string>>;
+	using fields_base = fields<std::string, util::case_insensitive::equal_to<std::string>>;
 
 public:
 	header() = default;
@@ -2094,7 +2071,7 @@ public:
 
 	bool connection_close() const
 	{
-		if (http::util::case_insensitive::equal_to<std::string>()(
+		if (util::case_insensitive::equal_to<std::string>()(
 				headers_base::get("Connection", std::string{}), "close"))
 			return true;
 		else
@@ -2103,7 +2080,7 @@ public:
 
 	bool connection_keep_alive() const
 	{
-		if (http::util::case_insensitive::equal_to<std::string>()(
+		if (util::case_insensitive::equal_to<std::string>()(
 				headers_base::get("Connection", std::string{}), "Keep-Alive"))
 			return true;
 		else
@@ -3467,12 +3444,12 @@ public:
 
 		if (query_pos != std::string::npos)
 		{
-			std::vector<std::string> tokens = http::util::split(request_path.substr(query_pos + 1), "&");
+			std::vector<std::string> tokens = util::split(request_path.substr(query_pos + 1), "&");
 
 			request_path = request_path.substr(0, query_pos);
 			for (auto& token : tokens)
 			{
-				std::vector<std::string> name_value = http::util::split(token, "=");
+				std::vector<std::string> name_value = util::split(token, "=");
 
 				std::string name_decoded
 					= http::request_parser::url_decode(name_value[0], http::request_parser::url_decode_options::query);
@@ -4012,7 +3989,7 @@ public:
 	{
 		auto it = root_.get();
 
-		auto parts = http::util::split(route, "/");
+		auto parts = util::split(route, "/");
 
 		for (const auto& part : parts)
 		{
@@ -4043,7 +4020,7 @@ public:
 	{
 		auto it = root_.get();
 
-		auto parts = http::util::split(route, "/");
+		auto parts = util::split(route, "/");
 
 		for (auto part : parts)
 		{
@@ -4095,7 +4072,7 @@ public:
 			}
 		}
 
-		auto parts = http::util::split(url, "/");
+		auto parts = util::split(url, "/");
 		auto part_index = size_t(0);
 		for (const auto& part : parts)
 		{
@@ -4279,9 +4256,6 @@ public:
 };
 
 } // namespace api
-
-namespace basic
-{
 
 //namespace client
 //{
@@ -4769,13 +4743,13 @@ protected:
 namespace threaded
 {
 
-class server : public http::basic::server
+class server : public http::server
 {
 	using socket_t = SOCKET;
 
 public:
 	server(const http::configuration& configuration)
-		: http::basic::server{ configuration }
+		: http::server{ configuration }
 		, http_watchdog_idle_timeout_(configuration.get<std::int16_t>("http_watchdog_idle_timeout", 0))
 		, http_watchdog_max_requests_concurrent_(
 			  configuration.get<std::int16_t>("http_watchdog_max_requests_concurrent", 0))
@@ -4812,7 +4786,7 @@ public:
 	server& operator=(const server&) = delete;
 	server& operator=(const server&&) = delete;
 
-	http::basic::server::state start() override
+	http::server::state start() override
 	{
 		http_connection_thread_ = std::thread{ [this]() { http_listener_handler(); } };
 		https_connection_thread_ = std::thread{ [this]() { https_listener_handler(); } };
@@ -4835,7 +4809,7 @@ public:
 
 		if (http_enabled_ && (http_listen_port_.load() == network::tcp::socket::invalid_socket))
 		{
-			state_.store(http::basic::server::state::deactivating);
+			state_.store(http::server::state::deactivating);
 
 			if (this->http_listen_port_end_)
 				logger_.error(
@@ -4850,7 +4824,7 @@ public:
 
 		if (https_enabled_ && (https_listen_port_.load() == network::tcp::socket::invalid_socket))
 		{
-			state_.store(http::basic::server::state::deactivating);
+			state_.store(http::server::state::deactivating);
 
 			if (this->http_listen_port_end_)
 				logger_.error(
@@ -4866,16 +4840,16 @@ public:
 		logger_.info("routes: \n{s}", router_.to_string());
 
 		// before takeoff checklist complete....
-		state_.store(http::basic::server::state::active);
+		state_.store(http::server::state::active);
 		// takeoff....
 		logger_.info("start: state set to active\n");
 
 		return state_.load();
 	}
 
-	virtual http::basic::server::state stop() override
+	virtual http::server::state stop() override
 	{
-		http::basic::server::state_.store(state::deactivating);
+		http::server::state_.store(state::deactivating);
 		logger_.info("stop: state set to deactivating\n");
 
 		if (http_connection_thread_.joinable()) http_connection_thread_.join();
@@ -5145,7 +5119,7 @@ public:
 	{
 	public:
 		connection_handler(
-			http::basic::threaded::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
+			http::threaded::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
 			, client_socket_(std::move(client_socket))
 			, session_handler_(server.configuration_, http::protocol::http) // for now.
@@ -5367,7 +5341,7 @@ public:
 		}
 
 	protected:
-		http::basic::threaded::server& server_;
+		http::threaded::server& server_;
 		S client_socket_;
 		http::session_handler session_handler_;
 		int connection_timeout_;
@@ -5405,8 +5379,6 @@ private:
 
 } // namespace threaded
 
-} // namespace basic
-
 using middleware = http::api::router<>::middleware_type;
 
 //namespace client
@@ -5417,10 +5389,10 @@ using middleware = http::api::router<>::middleware_type;
 //public:
 //	session() = default;
 //
-//	const http::basic::client::curl_session& as_session() const { return session_; }
+//	const http::client::curl_session& as_session() const { return session_; }
 //
 //private:
-//	const http::basic::client::curl_session session_;
+//	const http::client::curl_session session_;
 //};
 //
 //template <http::method::method_t method>
@@ -5433,7 +5405,7 @@ using middleware = http::api::router<>::middleware_type;
 //	std::ostream& s = std::clog,
 //	bool verbose = false)
 //{
-//	http::basic::client::curl curl{
+//	http::client::curl curl{
 //		session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s
 //	};
 //
@@ -5450,7 +5422,7 @@ using middleware = http::api::router<>::middleware_type;
 //	bool verbose = false)
 //{
 //	http::client::session session;
-//	http::basic::client::curl curl{
+//	http::client::curl curl{
 //		session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s
 //	};
 //
@@ -5465,7 +5437,7 @@ using middleware = http::api::router<>::middleware_type;
 //	std::ostream& s = std::clog,
 //	bool verbose = false)
 //{
-//	http::basic::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
+//	http::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
 //
 //	return curl.call(ec); // RVO
 //}
@@ -5475,7 +5447,7 @@ using middleware = http::api::router<>::middleware_type;
 //request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bool verbose = false)
 //{
 //	http::client::session session;
-//	http::basic::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
+//	http::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
 //
 //	return curl.call(ec); // RVO
 //}
