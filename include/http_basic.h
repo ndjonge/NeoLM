@@ -29,8 +29,10 @@
 #include <vector>
 #include <zlib.h>
 
+#if defined (USE_CURL)
 #define CURL_STATICLIB
 #include <curl/curl.h>
+#endif
 
 #if defined(_WIN32) && !defined(gmtime_r)
 #define gmtime_r(X, Y) gmtime_s(Y, X)
@@ -1418,7 +1420,7 @@ public:
 	inline bool has(const char* name) const
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-			return (compare_field_name(f.name, name));
+			return (compare_field_name()(f.name, name));
 		});
 
 		return i != std::end(fields_);
@@ -1908,15 +1910,20 @@ public:
 	message(const http::session_handler& session) : session_handler_(&session){};
 
 	// TODO use enableif....
-	message(const http::method::method_t method, const std::string& target, const http::headers& headers, const std::string& body, const int version_nr = 11) 
+	message(const http::method::method_t method, const std::string& host, const std::string& target, const http::headers& headers, const std::string& body, const int version_nr = 11) 
 		: body_(body)
 	{
 		for (auto& h : headers.as_vector())
 			header<specialization>::set(h.name, h.value);
 
+		if (header<specialization>::has("Host") == false)
+			header<specialization>::set("Host", host);
+
 		header<specialization>::version_nr_ = version_nr;
 		header<specialization>::method_ = method;
 		header<specialization>::target_ = target;
+
+		content_length(body.size());
 	}
 
 	const http::session_handler& session() const
@@ -2001,6 +2008,8 @@ public:
 
 		for (auto& h : headers.as_vector())
 			header<specialization>::set(h.name, h.value);
+
+		content_length(body.size());
 	}
 
 	void reset()
@@ -4274,229 +4283,230 @@ public:
 namespace basic
 {
 
-namespace client
-{
+//namespace client
+//{
+//
+//class curl_session
+//{
+//public:
+//	curl_session() : hnd_(curl_easy_init()) { static curl_global c; }
+//
+//	~curl_session()
+//	{
+//		curl_easy_cleanup(hnd_);
+//		hnd_ = nullptr;
+//	}
+//
+//	CURL* as_handle() const { return hnd_; }
+//
+//private:
+//	CURL* hnd_;
+//
+//	class curl_global
+//	{
+//	public:
+//		curl_global() { curl_global_init(CURL_GLOBAL_ALL); }
+//
+//		~curl_global() { curl_global_cleanup(); }
+//	};
+//};
+//
+//class curl
+//{
+//	const curl_session& session_;
+//	std::ostringstream buffer_;
+//	char error_buf_[CURL_ERROR_SIZE];
+//	curl_slist* headers_;
+//	http::response_message response_message_;
+//	http::response_parser response_message_parser_;
+//	http::response_parser::result_type response_message_parser_result_;
+//	std::string verb_;
+//	std::string url_;
+//
+//	// needed by cURL to read the data from the http(s) connection
+//	static size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp)
+//	{
+//		auto* str = static_cast<std::ostringstream*>(userp);
+//		char* buf = static_cast<char*>(contents);
+//		str->write(buf, size * nmemb);
+//
+//		return size * nmemb;
+//	}
+//
+//	static size_t recv_header_callback(char* buffer, size_t size, size_t nmemb, void* userp)
+//	{
+//		std::string headerline(buffer);
+//		char* c = nullptr;
+//		auto this_curl = static_cast<curl*>(userp);
+//
+//		std::tie(this_curl->response_message_parser_result_, c)
+//			= this_curl->response_message_parser_.parse(this_curl->response_message_, buffer, buffer + (size * nmemb));
+//
+//		return size * nmemb;
+//	}
+//
+//	// debugger callback for cURL tracing.
+//	static int debug_callback(CURL*, curl_infotype type, char* data, size_t size, void* userptr)
+//	{
+//		std::ostream& out = *static_cast<std::ostream*>(userptr);
+//		std::string data_str{ data, size };
+//
+//		switch (type)
+//		{
+//			case CURLINFO_TEXT:
+//				out << "== Info: " << data_str;
+//				return 0;
+//			default: /* in case a new one is introduced to shock us */
+//				return 0;
+//			case CURLINFO_HEADER_OUT:
+//				out << "=> Send header\n";
+//				break;
+//			case CURLINFO_DATA_OUT:
+//				out << "=> Send data";
+//				break;
+//			case CURLINFO_SSL_DATA_OUT:
+//				out << "=> Send SSL data\n";
+//				break;
+//			case CURLINFO_HEADER_IN:
+//				out << "<= Recv header\n";
+//				break;
+//			case CURLINFO_DATA_IN:
+//				out << "<= Recv data\n";
+//				break;
+//			case CURLINFO_SSL_DATA_IN:
+//				out << "<= Recv SSL data";
+//				break;
+//		}
+//
+//		out << "==start==\n" << data_str << "\n==end==\n";
+//
+//		return 0;
+//	}
+//
+//public:
+//	curl(
+//		const curl_session& session,
+//		const std::string& verb,
+//		const std::string& url,
+//		std::initializer_list<std::string> hdrs,
+//		const std::string& body,
+//		bool verbose = false,
+//		std::ostream& verbose_output_stream = std::clog)
+//		: session_(session), buffer_(), headers_(nullptr), verb_(verb), url_(url)
+//	{
+//		strcpy(error_buf_, "");
+//
+//		if (verbose)
+//		{
+//			curl_easy_setopt(session_.as_handle(), CURLOPT_VERBOSE, 1);
+//			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGFUNCTION, debug_callback);
+//			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
+//		}
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEFUNCTION, write_callback);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEDATA, (void*)&buffer_);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_ERRORBUFFER, error_buf_);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 1000L);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 1000L);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
+//
+//		for (const auto& a : hdrs)
+//		{
+//			headers_ = curl_slist_append(headers_, a.c_str());
+//		}
+//		headers_ = curl_slist_append(headers_, std::string{ "Expect: " }.c_str());
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb.c_str());
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url.c_str());
+//
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, body.data());
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDSIZE, body.size());
+//	}
+//
+//	curl(
+//		const curl_session& session,
+//		const std::string host,
+//		const http::request_message& request,
+//		bool verbose = false,
+//		std::ostream& verbose_output_stream = std::clog)
+//		: session_(session)
+//		, buffer_()
+//		, headers_(nullptr)
+//		, verb_(http::method::to_string(request.method()))
+//		, url_(host + request.url_requested())
+//	{
+//		strcpy(error_buf_, "");
+//
+//		if (verbose)
+//		{
+//			curl_easy_setopt(session_.as_handle(), CURLOPT_VERBOSE, 1);
+//			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGFUNCTION, debug_callback);
+//			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
+//		}
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEFUNCTION, write_callback);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEDATA, (void*)&buffer_);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_ERRORBUFFER, error_buf_);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 1000L);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 1000L);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
+//
+//		for (const auto& header : request.headers())
+//		{
+//			headers_ = curl_slist_append(headers_, std::string{ header.name + ": " + header.value }.c_str());
+//		}
+//		headers_ = curl_slist_append(headers_, std::string{ "Expect: " }.c_str());
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb_.c_str());
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url_.c_str());
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, request.body().data());
+//		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDSIZE, request.body().size());
+//	}
+//
+//	~curl() { curl_slist_free_all(headers_); }
+//
+//	http::response_message call(std::string& error) noexcept
+//	{
+//		CURLcode ret = curl_easy_perform(session_.as_handle());
+//		curl_easy_reset(session_.as_handle());
+//		if (ret != CURLE_OK)
+//		{
+//			error = std::string{ curl_easy_strerror(ret) } + " when requesting " + verb_ + " on url: " + url_;
+//			return response_message_;
+//		}
+//		else
+//		{
+//			response_message_.body() = buffer_.str();
+//			return response_message_;
+//		}
+//	}
+//
+//	http::response_message call()
+//	{
+//		CURLcode ret = curl_easy_perform(session_.as_handle());
+//
+//		if (ret != CURLE_OK)
+//		{
+//			throw std::runtime_error{ std::string{ curl_easy_strerror(ret) } + " request:" + verb_ + " " + url_ };
+//		}
+//		else
+//		{
+//			response_message_.body() = buffer_.str();
+//			return response_message_;
+//		}
+//	}
+//};
 
-class curl_session
-{
-public:
-	curl_session() : hnd_(curl_easy_init()) { static curl_global c; }
 
-	~curl_session()
-	{
-		curl_easy_cleanup(hnd_);
-		hnd_ = nullptr;
-	}
-
-	CURL* as_handle() const { return hnd_; }
-
-private:
-	CURL* hnd_;
-
-	class curl_global
-	{
-	public:
-		curl_global() { curl_global_init(CURL_GLOBAL_ALL); }
-
-		~curl_global() { curl_global_cleanup(); }
-	};
-};
-
-class curl
-{
-	const curl_session& session_;
-	std::ostringstream buffer_;
-	char error_buf_[CURL_ERROR_SIZE];
-	curl_slist* headers_;
-	http::response_message response_message_;
-	http::response_parser response_message_parser_;
-	http::response_parser::result_type response_message_parser_result_;
-	std::string verb_;
-	std::string url_;
-
-	// needed by cURL to read the data from the http(s) connection
-	static size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp)
-	{
-		auto* str = static_cast<std::ostringstream*>(userp);
-		char* buf = static_cast<char*>(contents);
-		str->write(buf, size * nmemb);
-
-		return size * nmemb;
-	}
-
-	static size_t recv_header_callback(char* buffer, size_t size, size_t nmemb, void* userp)
-	{
-		std::string headerline(buffer);
-		char* c = nullptr;
-		auto this_curl = static_cast<curl*>(userp);
-
-		std::tie(this_curl->response_message_parser_result_, c)
-			= this_curl->response_message_parser_.parse(this_curl->response_message_, buffer, buffer + (size * nmemb));
-
-		return size * nmemb;
-	}
-
-	// debugger callback for cURL tracing.
-	static int debug_callback(CURL*, curl_infotype type, char* data, size_t size, void* userptr)
-	{
-		std::ostream& out = *static_cast<std::ostream*>(userptr);
-		std::string data_str{ data, size };
-
-		switch (type)
-		{
-			case CURLINFO_TEXT:
-				out << "== Info: " << data_str;
-				return 0;
-			default: /* in case a new one is introduced to shock us */
-				return 0;
-			case CURLINFO_HEADER_OUT:
-				out << "=> Send header\n";
-				break;
-			case CURLINFO_DATA_OUT:
-				out << "=> Send data";
-				break;
-			case CURLINFO_SSL_DATA_OUT:
-				out << "=> Send SSL data\n";
-				break;
-			case CURLINFO_HEADER_IN:
-				out << "<= Recv header\n";
-				break;
-			case CURLINFO_DATA_IN:
-				out << "<= Recv data\n";
-				break;
-			case CURLINFO_SSL_DATA_IN:
-				out << "<= Recv SSL data";
-				break;
-		}
-
-		out << "==start==\n" << data_str << "\n==end==\n";
-
-		return 0;
-	}
-
-public:
-	curl(
-		const curl_session& session,
-		const std::string& verb,
-		const std::string& url,
-		std::initializer_list<std::string> hdrs,
-		const std::string& body,
-		bool verbose = false,
-		std::ostream& verbose_output_stream = std::clog)
-		: session_(session), buffer_(), headers_(nullptr), verb_(verb), url_(url)
-	{
-		strcpy(error_buf_, "");
-
-		if (verbose)
-		{
-			curl_easy_setopt(session_.as_handle(), CURLOPT_VERBOSE, 1);
-			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGFUNCTION, debug_callback);
-			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
-		}
-		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEFUNCTION, write_callback);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEDATA, (void*)&buffer_);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_ERRORBUFFER, error_buf_);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 1000L);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 1000L);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
-
-		for (const auto& a : hdrs)
-		{
-			headers_ = curl_slist_append(headers_, a.c_str());
-		}
-		headers_ = curl_slist_append(headers_, std::string{ "Expect: " }.c_str());
-		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb.c_str());
-		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url.c_str());
-
-		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, body.data());
-		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDSIZE, body.size());
-	}
-
-	curl(
-		const curl_session& session,
-		const std::string host,
-		const http::request_message& request,
-		bool verbose = false,
-		std::ostream& verbose_output_stream = std::clog)
-		: session_(session)
-		, buffer_()
-		, headers_(nullptr)
-		, verb_(http::method::to_string(request.method()))
-		, url_(host + request.url_requested())
-	{
-		strcpy(error_buf_, "");
-
-		if (verbose)
-		{
-			curl_easy_setopt(session_.as_handle(), CURLOPT_VERBOSE, 1);
-			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGFUNCTION, debug_callback);
-			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
-		}
-		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEFUNCTION, write_callback);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEDATA, (void*)&buffer_);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_ERRORBUFFER, error_buf_);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 1000L);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 1000L);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
-
-		for (const auto& header : request.headers())
-		{
-			headers_ = curl_slist_append(headers_, std::string{ header.name + ": " + header.value }.c_str());
-		}
-		headers_ = curl_slist_append(headers_, std::string{ "Expect: " }.c_str());
-		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
-		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb_.c_str());
-		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url_.c_str());
-		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, request.body().data());
-		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDSIZE, request.body().size());
-	}
-
-	~curl() { curl_slist_free_all(headers_); }
-
-	http::response_message call(std::string& error) noexcept
-	{
-		CURLcode ret = curl_easy_perform(session_.as_handle());
-		curl_easy_reset(session_.as_handle());
-		if (ret != CURLE_OK)
-		{
-			error = std::string{ curl_easy_strerror(ret) } + " when requesting " + verb_ + " on url: " + url_;
-			return response_message_;
-		}
-		else
-		{
-			response_message_.body() = buffer_.str();
-			return response_message_;
-		}
-	}
-
-	http::response_message call()
-	{
-		CURLcode ret = curl_easy_perform(session_.as_handle());
-
-		if (ret != CURLE_OK)
-		{
-			throw std::runtime_error{ std::string{ curl_easy_strerror(ret) } + " request:" + verb_ + " " + url_ };
-		}
-		else
-		{
-			response_message_.body() = buffer_.str();
-			return response_message_;
-		}
-	}
-};
-
-} // namespace client
+//} // namespace client
 
 class server
 {
@@ -5399,77 +5409,77 @@ private:
 
 using middleware = http::api::router<>::middleware_type;
 
-namespace client
-{
-
-class session
-{
-public:
-	session() = default;
-
-	const http::basic::client::curl_session& as_session() const { return session_; }
-
-private:
-	const http::basic::client::curl_session session_;
-};
-
-template <http::method::method_t method>
-http::response_message request(
-	const http::client::session& session,
-	const std::string& url,
-	std::string& ec,
-	std::initializer_list<std::string> hdrs = {},
-	const std::string& body = std::string{},
-	std::ostream& s = std::clog,
-	bool verbose = false)
-{
-	http::basic::client::curl curl{
-		session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s
-	};
-
-	return curl.call(ec); // RVO
-}
-
-template <http::method::method_t method>
-http::response_message request(
-	const std::string& url,
-	std::string& ec,
-	std::initializer_list<std::string> hdrs = {},
-	const std::string& body = std::string{},
-	std::ostream& s = std::clog,
-	bool verbose = false)
-{
-	http::client::session session;
-	http::basic::client::curl curl{
-		session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s
-	};
-
-	return curl.call(ec); // RVO
-}
-
-template <http::method::method_t method>
-http::response_message request(
-	const http::client::session& session,
-	const std::string& url,
-	std::string& ec,
-	std::ostream& s = std::clog,
-	bool verbose = false)
-{
-	http::basic::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
-
-	return curl.call(ec); // RVO
-}
-
-template <http::method::method_t method>
-http::response_message
-request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bool verbose = false)
-{
-	http::client::session session;
-	http::basic::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
-
-	return curl.call(ec); // RVO
-}
-
-} // namespace client
+//namespace client
+//{
+//
+//class session
+//{
+//public:
+//	session() = default;
+//
+//	const http::basic::client::curl_session& as_session() const { return session_; }
+//
+//private:
+//	const http::basic::client::curl_session session_;
+//};
+//
+//template <http::method::method_t method>
+//http::response_message request(
+//	const http::client::session& session,
+//	const std::string& url,
+//	std::string& ec,
+//	std::initializer_list<std::string> hdrs = {},
+//	const std::string& body = std::string{},
+//	std::ostream& s = std::clog,
+//	bool verbose = false)
+//{
+//	http::basic::client::curl curl{
+//		session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s
+//	};
+//
+//	return curl.call(ec); // RVO
+//}
+//
+//template <http::method::method_t method>
+//http::response_message request(
+//	const std::string& url,
+//	std::string& ec,
+//	std::initializer_list<std::string> hdrs = {},
+//	const std::string& body = std::string{},
+//	std::ostream& s = std::clog,
+//	bool verbose = false)
+//{
+//	http::client::session session;
+//	http::basic::client::curl curl{
+//		session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s
+//	};
+//
+//	return curl.call(ec); // RVO
+//}
+//
+//template <http::method::method_t method>
+//http::response_message request(
+//	const http::client::session& session,
+//	const std::string& url,
+//	std::string& ec,
+//	std::ostream& s = std::clog,
+//	bool verbose = false)
+//{
+//	http::basic::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
+//
+//	return curl.call(ec); // RVO
+//}
+//
+//template <http::method::method_t method>
+//http::response_message
+//request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bool verbose = false)
+//{
+//	http::client::session session;
+//	http::basic::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
+//
+//	return curl.call(ec); // RVO
+//}
+//
+//} // namespace client
 
 } // namespace http

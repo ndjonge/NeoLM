@@ -320,7 +320,7 @@ public:
 
 			if (start_of_port != std::string::npos)
 			{
-				port_ = base_url.substr(start_of_port + 1, start_of_path - start_of_host);
+				port_ = base_url.substr(start_of_port + 1, start_of_path - (start_of_port + 1));
 			}
 			else
 			{
@@ -1660,6 +1660,57 @@ private:
 } // namespace async
 } // namespace basic
 
+
+class url
+{
+public:
+	url(const std::string& url)
+	{
+		auto end_of_scheme = url.find_first_of(':');
+		scheme_ = url.substr(0, end_of_scheme);
+
+		auto start_of_host = end_of_scheme + 3;
+
+		auto start_of_port = url.find_first_of(':', start_of_host);
+		auto start_of_path = url.find_first_of('/', start_of_host);
+
+		if (start_of_path == std::string::npos) start_of_path = url.size();
+
+		if (start_of_port != std::string::npos)
+		{
+			port_ = url.substr(start_of_port + 1, start_of_path - (start_of_port + 1));
+		}
+		else
+		{
+			port_ = "80";
+			start_of_port = start_of_path;
+		}
+
+		host_ = url.substr(start_of_host, start_of_port - start_of_host);
+		target_ = url.substr(start_of_path);
+	}
+
+	const std::string& scheme() const { return scheme_; };
+	const std::string& host() const { return host_; };
+	const std::string& port() const { return port_; };
+	const std::string& target() const { return target_; };
+
+	std::string data() const { return std::string{ scheme_ + "://" + host_ + ":" + port_ + target_ }; }
+
+	std::string base_url() const
+	{
+		return std::string { scheme_ + "://" + host_ + ":" + port_ };
+	}
+
+	static url make_url(const std::string& url) { return http::url{ url }; }
+
+private:
+	std::string scheme_;
+	std::string host_;
+	std::string port_;
+	std::string target_;
+};
+
 namespace client
 {
 
@@ -1898,7 +1949,7 @@ private:
 };
 
 template <http::method::method_t method>
-void async_request(
+void request(
 	const std::string& request_url,
 	const http::headers& additional_headers,
 	const std::string& body,
@@ -1915,6 +1966,41 @@ void async_request(
 	io_context.run();
 }
 
+template <http::method::method_t method>
+http::response_message request(
+	const std::string& request_url,
+	std::string& error_code,
+	const http::headers& additional_headers,
+	const std::string& body = std::string{})
+{
+	http::response_message result;
+	asio::io_context io_context;
+
+	http::basic::async::upstreams::upstream local_upstream(
+		io_context, 
+		http::url::make_url(request_url).base_url(), 
+		"");
+	
+	local_upstream.set_state(http::basic::async::upstreams::upstream::state::up);
+
+	async_request<method>(
+		local_upstream,
+		http::url::make_url(request_url).target(),
+		additional_headers,
+		body,
+		[&result, &error_code](http::response_message& response, asio::error_code& error_code_asio) 
+	{ 			
+			if (error_code_asio)
+				error_code = error_code_asio.message();
+			else
+				result = response;
+	});
+
+	io_context.run();
+
+	return result;
+}
+
 
 
 template <http::method::method_t method>
@@ -1925,7 +2011,7 @@ void async_request(
 	const std::string& body,
 	std::function<void(http::response_message& response, asio::error_code& error_code)>&& on_complete)
 {
-	auto request = http::request_message{ method, request_url, headers, body };
+	auto request = http::request_message{ method, upstream.host(), request_url, headers, body };
 
 	bool found = false;
 
