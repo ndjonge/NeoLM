@@ -596,6 +596,25 @@ public:
 			server_.logger_.info(
 				"{s}_connection_handler: start {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
 
+			for (const auto& allowed_range_spec : util::split(configuration.get("private_ip_white_list"), ";"))
+			{
+				auto spec = util::split(allowed_range_spec, "/");
+
+				auto allowed_network = asio::ip::network_v6(asio::ip::address_v6::from_string(spec[0]), std::atoi(spec[1].data()));
+
+				private_ip_white_list_.emplace_back(allowed_network);
+			}
+
+			for (const auto& allowed_range_spec : util::split(configuration.get("public_ip_white_list"), ";"))
+			{
+				auto spec = util::split(allowed_range_spec, "/");
+
+				auto allowed_network
+					= asio::ip::network_v6(asio::ip::address_v6::from_string(spec[0]), std::atoi(spec[1].data()));
+
+				private_ip_white_list_.emplace_back(allowed_network);
+			}
+
 		}
 
 		virtual ~connection_handler_base()
@@ -1214,31 +1233,25 @@ public:
 		}
 
 
-		bool is_remote_address_allowed() const { 
+		bool is_remote_address_allowed_to_private_access() const { 
 			auto address = socket_.remote_endpoint().address();
+			bool result = false;
+
 			if (address.is_v4())
 			{
-				auto x = asio::ip::network_v4(address.to_v4(),24);
-
-				//auto network = asio::ip::network_v4{ asio::ip::address_v4{ asio::ip::address_v4::from_string("129.168.2.0")} };
-
 			}
 			else
 			{
-				//
-				// vector of allowed network objects
-				// return true if client ip converted to network with same width as allowed is same canononical network.
-				std::string allowed_spec = std::string{"::ffff:127.0.0.1/128"};
-				auto spec = util::split(allowed_spec, "/");
-				auto allowed_address = asio::ip::address_v6::from_string(spec[0]);
-				auto x = asio::ip::network_v6(allowed_address, std::atoi(spec[1].data()));
+				auto z = asio::ip::network_v6(address.to_v6(), 128);
 
-				auto z = asio::ip::network_v6( address.to_v6(), 128 );
-				auto is_host = z.is_host();
+				for ()
+				std::cout << "ip:" << address.to_string() << " network1:" << x.canonical().to_string()
+						  << " network2:" << z.canonical().to_string()
+						  << " result1:" << (x.canonical() == z.canonical())
+						  << " result2:" << z.is_subnet_of(x.canonical()) << "\n";
 
-				bool result = (x == z.canonical());
 			}
-			return false; 
+			return result; 
 		}
 
 		void start() override
