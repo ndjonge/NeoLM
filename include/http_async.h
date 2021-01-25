@@ -23,7 +23,7 @@
 
 #include "http_basic.h"
 
-namespace http
+namespace util
 {
 
 inline std::string fully_qualified_hostname()
@@ -58,6 +58,10 @@ inline std::string fully_qualified_hostname()
 
 	return result;
 }
+} // namespace util
+
+namespace http
+{
 
 namespace async
 {
@@ -71,7 +75,6 @@ inline std::size_t get_static_id() noexcept
 class upstreams
 {
 public:
-
 	template <typename upstream_type> class connection
 	{
 	public:
@@ -164,7 +167,7 @@ public:
 			if (error_1)
 			{
 				error = error_1;
-				//std::cout << "Error: not open\n";
+				// std::cout << "Error: not open\n";
 			}
 			else
 			{
@@ -312,7 +315,7 @@ public:
 
 			auto start_of_port = base_url.find_first_of(':', start_of_host);
 			auto start_of_path = base_url.find_first_of('/', start_of_host);
-		
+
 			if (start_of_path == std::string::npos) start_of_path = base_url_.size();
 
 			if (start_of_port != std::string::npos)
@@ -358,7 +361,7 @@ public:
 		std::atomic<std::uint16_t> responses_tot_{ 0 };
 		std::atomic<std::uint16_t> responses_health_{ 0 };
 
-		std::string host() const 
+		std::string host() const
 		{
 			if (port_ == "80" || port_ == "443")
 				return host_;
@@ -464,9 +467,6 @@ public:
 		reason next_upstream_reason() const { return reason_; };
 		reason reason_{ reason::not_applicable };
 	};
-
-
-
 
 	bool async_upstream_request(
 		std::function<void(connection_type&, asio::error_code& error_code)> forward_handler, lgr::logger& logger)
@@ -580,6 +580,10 @@ public:
 		http::api::routing routing_{};
 		http::protocol protocol_;
 
+		std::vector<asio::ip::network_v6> private_ip_white_list_;
+		std::vector<asio::ip::network_v6> public_ip_white_list_;
+
+
 		connection_handler_base(
 			asio::io_context& service, server& server, http::configuration& configuration, protocol protocol)
 			: service_(service)
@@ -591,6 +595,7 @@ public:
 		{
 			server_.logger_.info(
 				"{s}_connection_handler: start {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
+
 		}
 
 		virtual ~connection_handler_base()
@@ -609,6 +614,11 @@ public:
 
 		socket_t& socket_base() { return static_cast<connection_handler_derived*>(this)->socket(); };
 		std::string remote_address_base() { return static_cast<connection_handler_derived*>(this)->remote_address(); };
+
+		bool is_remote_address_allowed_base()
+		{
+			return static_cast<connection_handler_derived*>(this)->is_remote_address_allowed();
+		};
 
 		virtual void start(){};
 		virtual void stop() { --server_.manager().connections_current(); }
@@ -652,6 +662,9 @@ public:
 				in_packet_.consume(bytes_transferred);
 				session_handler_.request().set(
 					"X-Forwarded-For", session_handler_.request().get("X-Forwarded-For", this->remote_address_base()));
+
+				auto not_allowed = is_remote_address_allowed_base();
+
 
 				if (result == http::request_parser::good)
 				{
@@ -712,8 +725,6 @@ public:
 			}
 			else
 			{
-				session_handler_.request().set("Remote_Addr", this->remote_address_base());
-
 				if (ec == asio::error::not_found)
 				{
 					session_handler_.response().status(http::status::payload_too_large);
@@ -848,21 +859,20 @@ public:
 				else
 				{
 					session_handler_.response().clear();
-					
+
 					server_.logger_.error(
 						"{s} failed. retry using another upstream.\n", next_upstream.previous_upstream().id());
 				}
 
 				session_handler_.t2() = std::chrono::steady_clock::now();
 
-				auto upstreams = session_handler_.request().template get_attribute<http::async::upstreams*>(
-					"proxy_pass", nullptr);
+				auto upstreams
+					= session_handler_.request().template get_attribute<http::async::upstreams*>("proxy_pass", nullptr);
 
 				if (upstreams)
 				{
 					auto start_async_result = upstreams->async_upstream_request(
-						[this](
-							http::async::upstreams::connection_type& connection, asio::error_code& error_code) {
+						[this](http::async::upstreams::connection_type& connection, asio::error_code& error_code) {
 							write_upstream_request(connection, error_code);
 						},
 						server_.logger());
@@ -1105,8 +1115,7 @@ public:
 					upstreams::next_upstream{
 						upstreams::next_upstream::reason::error_503,
 						&upstream_connection.owner(),
-					}
-				);
+					});
 			}
 			else
 			{
@@ -1204,6 +1213,34 @@ public:
 			}
 		}
 
+
+		bool is_remote_address_allowed() const { 
+			auto address = socket_.remote_endpoint().address();
+			if (address.is_v4())
+			{
+				auto x = asio::ip::network_v4(address.to_v4(),24);
+
+				//auto network = asio::ip::network_v4{ asio::ip::address_v4{ asio::ip::address_v4::from_string("129.168.2.0")} };
+
+			}
+			else
+			{
+				//
+				// vector of allowed network objects
+				// return true if client ip converted to network with same width as allowed is same canononical network.
+				std::string allowed_spec = std::string{"::ffff:127.0.0.1/128"};
+				auto spec = util::split(allowed_spec, "/");
+				auto allowed_address = asio::ip::address_v6::from_string(spec[0]);
+				auto x = asio::ip::network_v6(allowed_address, std::atoi(spec[1].data()));
+
+				auto z = asio::ip::network_v6( address.to_v6(), 128 );
+				auto is_host = z.is_host();
+
+				bool result = (x == z.canonical());
+			}
+			return false; 
+		}
+
 		void start() override
 		{
 			set_timeout();
@@ -1263,6 +1300,10 @@ public:
 			}
 		}
 
+		bool is_remote_address_allowed() const 
+		{ return false;
+		}
+
 		void start() override
 		{
 			set_timeout();
@@ -1309,7 +1350,7 @@ public:
 	server(http::configuration& configuration)
 		: http::server{ configuration }
 		, thread_count_(configuration.get<std::uint8_t>(
-			  "thread_count", static_cast<std::uint8_t>(2))) // std::thread::hardware_concurrency()
+			  "thread_count", static_cast<std::uint8_t>(4)))
 		, http_watchdog_idle_timeout_(configuration.get<std::int16_t>("http_watchdog_idle_timeout", 0))
 		, http_watchdog_max_requests_concurrent_(
 			  configuration.get<std::int16_t>("http_watchdog_max_requests_concurrent", 0))
@@ -1448,7 +1489,7 @@ public:
 		if (configuration_.get<std::string>("http_listen_address", "::0") == "::0")
 		{
 			http_this_server_base_host_
-				= http::fully_qualified_hostname()
+				= util::fully_qualified_hostname()
 				  + (http_listen_port_probe == 80 ? "" : ":" + std::to_string(http_listen_port_probe));
 
 			configuration_.set("http_this_server_base_host", http_this_server_base_host_);
@@ -1497,7 +1538,7 @@ public:
 			if (configuration_.get<std::string>("https_listen_address", "::0") == "::0")
 			{
 				https_this_server_base_host_
-					= http::fully_qualified_hostname()
+					= util::fully_qualified_hostname()
 					  + (https_listen_port_probe == 443 ? "" : ":" + std::to_string(https_listen_port_probe));
 
 				configuration_.set("https_this_server_base_host", https_this_server_base_host_);
@@ -1655,56 +1696,6 @@ private:
 };
 
 } // namespace async
-
-class url
-{
-public:
-	url(const std::string& url)
-	{
-		auto end_of_scheme = url.find_first_of(':');
-		scheme_ = url.substr(0, end_of_scheme);
-
-		auto start_of_host = end_of_scheme + 3;
-
-		auto start_of_port = url.find_first_of(':', start_of_host);
-		auto start_of_path = url.find_first_of('/', start_of_host);
-
-		if (start_of_path == std::string::npos) start_of_path = url.size();
-
-		if (start_of_port != std::string::npos)
-		{
-			port_ = url.substr(start_of_port + 1, start_of_path - (start_of_port + 1));
-		}
-		else
-		{
-			port_ = "80";
-			start_of_port = start_of_path;
-		}
-
-		host_ = url.substr(start_of_host, start_of_port - start_of_host);
-		target_ = url.substr(start_of_path);
-	}
-
-	const std::string& scheme() const { return scheme_; };
-	const std::string& host() const { return host_; };
-	const std::string& port() const { return port_; };
-	const std::string& target() const { return target_; };
-
-	std::string data() const { return std::string{ scheme_ + "://" + host_ + ":" + port_ + target_ }; }
-
-	std::string base_url() const
-	{
-		return std::string { scheme_ + "://" + host_ + ":" + port_ };
-	}
-
-	static url make_url(const std::string& url) { return http::url{ url }; }
-
-private:
-	std::string scheme_;
-	std::string host_;
-	std::string port_;
-	std::string target_;
-};
 
 namespace client
 {
@@ -1953,7 +1944,7 @@ void request(
 	asio::io_context io_context;
 
 	http::async::upstreams::upstream local_upstream(io_context, request_url, "");
-	
+
 	local_upstream.set_state(http::async::upstreams::upstream::state::up);
 
 	async_request<method>(local_upstream, request_url, additional_headers, body, std::move(on_complete));
@@ -1971,11 +1962,8 @@ http::response_message request(
 	http::response_message result;
 	asio::io_context io_context;
 
-	http::async::upstreams::upstream local_upstream(
-		io_context, 
-		http::url::make_url(request_url).base_url(), 
-		"");
-	
+	http::async::upstreams::upstream local_upstream(io_context, http::url::make_url(request_url).base_url(), "");
+
 	local_upstream.set_state(http::async::upstreams::upstream::state::up);
 
 	async_request<method>(
@@ -1983,20 +1971,17 @@ http::response_message request(
 		http::url::make_url(request_url).target(),
 		additional_headers,
 		body,
-		[&result, &error_code](http::response_message& response, asio::error_code& error_code_asio) 
-	{ 			
+		[&result, &error_code](http::response_message& response, asio::error_code& error_code_asio) {
 			if (error_code_asio)
 				error_code = error_code_asio.message();
 			else
 				result = response;
-	});
+		});
 
 	io_context.run();
 
 	return result;
 }
-
-
 
 template <http::method::method_t method>
 void async_request(

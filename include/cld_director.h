@@ -1497,6 +1497,56 @@ public:
 	manager(http::configuration& http_configuration, const std::string& configuration_file)
 		: http::async::server(http_configuration), configuration_file_(configuration_file)
 	{
+		server_base::logger().api("load registry\n");
+
+		server_base::router().use_registry(
+			"/",
+			"C:/tmp/pm_root/route_registry/ttwebcontexts.json", // TODO
+			[this](const std::string& error) {
+				server_base::logger().api("{s}\n", error);
+				return false;
+			},
+			[this](
+				const std::string& service,
+				const std::string& name,
+				const std::string& path,
+				const std::string& type,
+				const std::string& pre_attribute,
+				const std::string& post_attribute) {
+				server_base::logger().api(
+					"\\--middleware--> {s} {s} {s} {s} {s} {s}\n",
+					service,
+					name,
+					path,
+					type,
+					pre_attribute,
+					pre_attribute);
+
+				server_base::router().use_middleware(service, name, path, type, pre_attribute, post_attribute);
+			},
+			[this](
+				const std::string& service,
+				const std::string& name,
+				http::method::method_t method,
+				const std::string& route,
+				const std::vector<std::string>& consumes,
+				const std::vector<std::string>& produces) {
+				server_base::logger().api(
+					"\\--route---{s}-{s}->{s}|{s} [{s}/{s}]\n",
+					service,
+					name,
+					route,
+					http::method::to_string(method),
+					"",
+					"");
+
+				server_base::router().on_http_method(
+					service, name, method, route, consumes, produces, [](http::session_handler&) {});
+			}
+
+		);
+		auto search_result = server_base::router().search("library-v1", "members");
+
 		std::ifstream configuration_stream{ configuration_file_ };
 
 		auto configfile_available = configuration_stream.fail() == false;
@@ -1576,8 +1626,8 @@ public:
 			{
 				server_base::manager().server_information(http::server::configuration_.to_json_string());
 				server_base::manager().router_information(server_base::router_.to_json_string());
-				session.response().body() = server_base::manager().to_json_string(
-					http::server::server_manager::json_status_options::full);
+				session.response().body()
+					= server_base::manager().to_json_string(http::server::server_manager::json_status_options::full);
 				session.response().type("json");
 			}
 			else
@@ -1593,7 +1643,7 @@ public:
 
 		server_base::router_.on_get("/private/infra/manager/status/{section}", [this](http::session_handler& session) {
 			server_base::manager().server_information(http::server::configuration_.to_json_string());
-			server_base::manager().router_information(server_base::router_.to_json_string());
+			server_base::manager().router_information(server_base::router_.to_json().dump());
 
 			auto section_option = http::server::server_manager::json_status_options::full;
 
@@ -1621,7 +1671,7 @@ public:
 				return;
 			}
 
-			session.response().body() = server_base::manager().to_json_string(section_option);
+			session.response().body() = server_base::manager().to_json_string(section_option, false);
 			session.response().type("json");
 			session.response().status(http::status::ok);
 		});
@@ -1630,7 +1680,7 @@ public:
 			json workspaces_json{};
 			workspaces_.to_json(workspaces_json);
 
-			json result_json= json::object();
+			json result_json = json::object();
 			result_json["workspaces"] = workspaces_json;
 
 			session.response().assign(http::status::ok, result_json.dump(), "application/json");
@@ -1648,7 +1698,10 @@ public:
 			}
 			else
 			{
-				session.response().assign(http::status::not_found, error_json("404", "workspace_id " + id + " not found").dump(), "application/json");
+				session.response().assign(
+					http::status::not_found,
+					error_json("404", "workspace_id " + id + " not found").dump(),
+					"application/json");
 			}
 		});
 
@@ -1999,7 +2052,6 @@ public:
 							http::status::not_found,
 							error_json("404", "workspace_id " + workspace_id + " not found").dump(),
 							"application/json");
-
 					}
 				}
 				else
@@ -2377,7 +2429,8 @@ public:
 							"X-Forwarded-Host",
 							session.request().get<std::string>(
 								"X-Forwarded-Host",
-								server_base::configuration_.template get<std::string>("https_this_server_base_host", "")));
+								server_base::configuration_.template get<std::string>(
+									"https_this_server_base_host", "")));
 					}
 
 					forwarded = true;
@@ -2475,9 +2528,9 @@ public:
 
 static std::unique_ptr<manager<http::async::server>> cpm_server_;
 
-//namespace selftest
+// namespace selftest
 //{
-//inline bool headers_8kb()
+// inline bool headers_8kb()
 //{
 //	bool result = false;
 //	std::string error_code;
@@ -2546,7 +2599,7 @@ static std::unique_ptr<manager<http::async::server>> cpm_server_;
 //	return result;
 //}
 //
-//inline bool headers_16kb()
+// inline bool headers_16kb()
 //{
 //	bool result = false;
 //	std::string error_code;
@@ -2680,7 +2733,7 @@ static std::unique_ptr<manager<http::async::server>> cpm_server_;
 //	return result;
 //}
 //
-//inline bool body_1mb()
+// inline bool body_1mb()
 //{
 //	bool result = false;
 //	std::string error_code;
@@ -2696,7 +2749,7 @@ static std::unique_ptr<manager<http::async::server>> cpm_server_;
 //	return result;
 //}
 //
-//inline bool post_empty_workspace()
+// inline bool post_empty_workspace()
 //{
 //	bool result = false;
 //	std::string error_code;
@@ -2714,7 +2767,7 @@ static std::unique_ptr<manager<http::async::server>> cpm_server_;
 //	return result;
 //}
 //
-//inline bool get_empty_workspace()
+// inline bool get_empty_workspace()
 //{
 //	bool result = false;
 //	std::string error_code;
@@ -2728,7 +2781,7 @@ static std::unique_ptr<manager<http::async::server>> cpm_server_;
 //	return result;
 //}
 //
-//inline bool post_test_workgroup_to_empty_workspace()
+// inline bool post_test_workgroup_to_empty_workspace()
 //{
 //	bool result = false;
 //	std::string error_code;
@@ -2757,7 +2810,7 @@ static std::unique_ptr<manager<http::async::server>> cpm_server_;
 //	return result;
 //}
 //
-//inline bool run()
+// inline bool run()
 //{
 //	bool result = false;
 //
@@ -2795,6 +2848,8 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", "4000" },
 											  { "private_base", "/private/infra/manager" },
+											  { "private_ip_white_list", "::ffff:127.0.0.0/120;::ffff:127.1.0.0/120" },
+											  { "public_ip_white_list", "::ffff:192.168.1.0/120;::ffff:127.0.0.1/128" },
 											  { "log_level", "api" },
 											  { "log_file", "cout" },
 											  { "https_enabled", "false" },
@@ -2839,6 +2894,13 @@ inline int start_cld_manager_server(int argc, const char** argv)
 
 	return start_cld_manager_server(
 		cmd_args.get_val("cld_config"), cmd_args.get_val("cld_options"), cmd_args.get_val("foreground") == "true");
+}
+
+inline void run_cld_manager_server()
+{
+	while (cloud::platform::cpm_server_->is_active())
+		;
+	std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
 inline int stop_cld_manager_server()

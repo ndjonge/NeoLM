@@ -29,7 +29,10 @@
 #include <vector>
 #include <zlib.h>
 
-#if defined (USE_CURL)
+#include "nlohmann/json.hpp"
+using json = nlohmann::json;
+
+#if !defined(HTTP_DO_NOT_USE_CURL)
 #define CURL_STATICLIB
 #include <curl/curl.h>
 #endif
@@ -661,6 +664,24 @@ private:
 namespace util
 {
 
+std::string to_lower(std::string input)
+{
+	std::transform(input.begin(), input.end(), input.begin(), [](char c) {
+		return static_cast<char>(std::tolower(c));
+	});	
+
+	return input;
+}
+
+std::string to_upper(std::string input)
+{
+	std::transform(input.begin(), input.end(), input.begin(), [](char c) {
+		return static_cast<char>(std::toupper(c));
+	});	
+
+	return input;
+}
+
 inline std::string escape_json(const std::string& s)
 {
 	std::ostringstream ss;
@@ -813,7 +834,6 @@ split(const std::string& str, const std::string& delimiters, split_options optio
 }
 
 } // namespace util
-
 
 namespace http
 {
@@ -1205,6 +1225,53 @@ namespace misc_strings
 const char name_value_separator[] = { ':', ' ' };
 const char crlf[] = { '\r', '\n' };
 } // namespace misc_strings
+
+class url
+{
+public:
+	url(const std::string& url)
+	{
+		auto end_of_scheme = url.find_first_of(':');
+		scheme_ = url.substr(0, end_of_scheme);
+
+		auto start_of_host = end_of_scheme + 3;
+
+		auto start_of_port = url.find_first_of(':', start_of_host);
+		auto start_of_path = url.find_first_of('/', start_of_host);
+
+		if (start_of_path == std::string::npos) start_of_path = url.size();
+
+		if (start_of_port != std::string::npos)
+		{
+			port_ = url.substr(start_of_port + 1, start_of_path - (start_of_port + 1));
+		}
+		else
+		{
+			port_ = "80";
+			start_of_port = start_of_path;
+		}
+
+		host_ = url.substr(start_of_host, start_of_port - start_of_host);
+		target_ = url.substr(start_of_path);
+	}
+
+	const std::string& scheme() const { return scheme_; };
+	const std::string& host() const { return host_; };
+	const std::string& port() const { return port_; };
+	const std::string& target() const { return target_; };
+
+	std::string data() const { return std::string{ scheme_ + "://" + host_ + ":" + port_ + target_ }; }
+
+	std::string base_url() const { return std::string{ scheme_ + "://" + host_ + ":" + port_ }; }
+
+	static url make_url(const std::string& url) { return http::url{ url }; }
+
+private:
+	std::string scheme_;
+	std::string host_;
+	std::string port_;
+	std::string target_;
+};
 
 template <typename T> class field
 {
@@ -1887,14 +1954,19 @@ public:
 	message(const http::session_handler& session) : session_handler_(&session){};
 
 	// TODO use enableif....
-	message(const http::method::method_t method, const std::string& host, const std::string& target, const http::headers& headers, const std::string& body, const int version_nr = 11) 
+	message(
+		const http::method::method_t method,
+		const std::string& host,
+		const std::string& target,
+		const http::headers& headers,
+		const std::string& body,
+		const int version_nr = 11)
 		: body_(body)
 	{
 		for (auto& h : headers.as_vector())
 			header<specialization>::set(h.name, h.value);
 
-		if (header<specialization>::has("Host") == false)
-			header<specialization>::set("Host", host);
+		if (header<specialization>::has("Host") == false) header<specialization>::set("Host", host);
 
 		header<specialization>::version_nr_ = version_nr;
 		header<specialization>::method_ = method;
@@ -1977,8 +2049,8 @@ public:
 		http::status::status_t status,
 		std::string&& body = std::string{},
 		const std::string& content_type = std::string{ "text/plain" },
-		const http::headers& headers = http::headers{}) 
-	{ 
+		const http::headers& headers = http::headers{})
+	{
 		http::header<specialization>::status(status);
 		headers_base::set("Content-Type", mime_types::extension_to_type(content_type));
 		body_ = std::move(body);
@@ -2071,8 +2143,7 @@ public:
 
 	bool connection_close() const
 	{
-		if (util::case_insensitive::equal_to<std::string>()(
-				headers_base::get("Connection", std::string{}), "close"))
+		if (util::case_insensitive::equal_to<std::string>()(headers_base::get("Connection", std::string{}), "close"))
 			return true;
 		else
 			return false;
@@ -3369,6 +3440,7 @@ public:
 			}
 			case http::api::router_match::no_method:
 			{
+				response_.set("Allow", route_result.allowed_methods());
 				response_.status(http::status::method_not_allowed);
 				break;
 			}
@@ -3676,6 +3748,15 @@ public:
 		std::atomic<std::uint64_t> active_count_{ 0 };
 		std::atomic<std::uint64_t> response_latency_{ 0 };
 
+		void to_json(json& result)
+		{
+			result["request_latency"] = request_latency_.load() / 1000000.0;
+			result["processing_duration"] = processing_duration_.load() / 1000000.0;
+			result["response_latency"] = response_latency_.load() / 1000000.0;
+			result["active_count"] = active_count_.load();
+			result["hit_count"] = hit_count_.load();
+		}
+
 		std::string to_string()
 		{
 			std::ostringstream ss;
@@ -3732,9 +3813,9 @@ public:
 		route() = default;
 
 		route(const route& rhs) = default;
-		route& operator=(const route&) = default;
+		route& operator=(const route&){};
 
-		route(const endpoint_lambda& endpoint) : endpoint_(endpoint) {}
+		route(const endpoint_lambda& endpoint, const std::vector<std::string>& consumes, const std::vector<std::string>& produces) : endpoint_(endpoint), produces_(produces), consumes_(consumes) {}
 
 		const endpoint_lambda& endpoint() { return endpoint_; };
 
@@ -3756,9 +3837,14 @@ public:
 
 		metrics& route_metrics() { return metrics_; };
 
+		const std::vector<std::string>& produces() const {return produces_;}
+		const std::vector<std::string>& consumes() const {return consumes_;}
+
 	private:
 		endpoint_lambda endpoint_;
 		metrics metrics_;
+		std::vector<std::string> produces_;
+		std::vector<std::string> consumes_;
 	};
 
 	using middlewares = std::vector<std::pair<middleware, middleware>>;
@@ -3769,14 +3855,18 @@ public:
 	result match_result() const { return result_; }
 	route& the_route() { return *route_; }
 	void set_route(route* r) { route_ = r; }
+
 	const route& the_route() const { return *route_; }
 	middlewares& middlewares_vector() { return middlewares_; }
 	const middlewares& middlewares_vector() const { return middlewares_; }
 
+	std::string& allowed_methods() {return allowed_methods_;}
+	const std::string& allowed_methods() const {return allowed_methods_;}
 private:
 	result result_;
 	route* route_{ nullptr };
 	middlewares middlewares_;
+	std::string allowed_methods_;
 };
 
 template <
@@ -3804,9 +3894,15 @@ public:
 		std::unique_ptr<std::vector<std::pair<M, std::unique_ptr<routing::route>>>> endpoints_;
 		std::unique_ptr<routing::middlewares> middlewares_;
 
-	public:
+		std::string name_;
+		std::string service_;
 
-		route_part() = default;
+	public:
+		route_part(const std::string& service, const std::string& name)
+			: name_(name)
+			, service_(service)
+		{
+		};
 
 		using const_iterator = typename std::vector<std::pair<T, std::unique_ptr<route_part>>>::const_iterator;
 
@@ -3831,6 +3927,94 @@ public:
 			}
 
 			return link_.cend();
+		}
+
+		void to_json(json& result, std::vector<std::string>& path, json middleware_stack = json{})
+		{
+			if (endpoints_)
+			{
+				for (auto endpoint = endpoints_.get()->cbegin(); endpoint != endpoints_.get()->cend(); ++endpoint)
+				{
+					std::stringstream s;
+					for (auto& element : path)
+						s << "/" << element;
+				
+					s << "|" << util::to_lower(http::method::to_string(endpoint->first));
+
+					auto endpoint_json = json::object();
+
+					if (middlewares_)
+					{
+						for (auto& middleware : *middlewares_.get())
+						{	
+							json middleware_json = json::object();
+							if (middleware.first.middleware_attribute().empty() == false)
+								middleware_json["pre"] = middleware.first.type() + "::" + middleware.first.middleware_attribute();
+
+							if (middleware.second.middleware_attribute().empty()  == false)
+								middleware_json["post"] = middleware.second.type() + "::" + middleware.second.middleware_attribute();
+
+							endpoint_json["middlewares"].emplace_back(middleware_json);
+						}
+					}
+
+					for (auto& middleware_stack_item : middleware_stack)
+					{
+						endpoint_json["middlewares"].emplace_back(middleware_stack_item);
+					}
+					
+					json metrics_json;
+					endpoint->second->route_metrics().to_json(metrics_json);
+
+					if (endpoint->second->produces().size())
+					{
+						for(const auto& produce_entry : endpoint->second->produces())
+							endpoint_json["produces"].emplace_back(produce_entry);
+					}
+
+					if (endpoint->second->consumes().size())
+					{
+						for(const auto& consumes_entry : endpoint->second->consumes())
+							endpoint_json["consumes"].emplace_back(consumes_entry);
+					}
+
+					endpoint_json["details"] = metrics_json;
+					endpoint_json["service"] = service_;
+					endpoint_json["name"] = name_;
+
+					result[s.str()] = endpoint_json;
+
+				}
+			}
+
+			auto middleware_stack_org = middleware_stack;
+
+			for (auto link = link_.cbegin(); link != link_.cend(); ++link)
+			{
+				path.push_back(link->first);
+
+				if (middlewares_)
+				{
+					json middleware_json = json::object();
+					for (auto& middleware : *middlewares_.get())
+					{
+						if (middleware.first.middleware_attribute().empty() == false)
+							middleware_json["pre"] = middleware.first.type() + "::" + middleware.first.middleware_attribute();
+
+						if (middleware.second.middleware_attribute().empty()  == false)
+							middleware_json["post"] = middleware.second.type() + "::" + middleware.second.middleware_attribute();
+
+						middleware_stack.emplace_back(middleware_json);
+					}
+
+				}
+
+
+				link->second->to_json(result, path, middleware_stack);
+
+				middleware_stack = middleware_stack_org;
+				path.pop_back();
+			}
 		}
 
 		void to_string_stream_json(std::stringstream& s, std::vector<std::string>& path)
@@ -3899,13 +4083,7 @@ public:
 	std::string private_base_;
 
 public:
-	router(std::string private_base) : root_(new router::route_part{}), private_base_(private_base)
-	{
-		// std::cout << "sizeof(endpoint)" << std::to_string(sizeof(R)) << "\n";
-		// std::cout << "sizeof(router::route_part)" << std::to_string(sizeof(router::route_part)) << "\n";
-		// std::cout << "sizeof(router::route)" << std::to_string(sizeof(router::route)) << "\n";
-		// std::cout << "sizeof(router::metrics)" << std::to_string(sizeof(router::metrics)) << "\n";
-	}
+	router(std::string private_base) : root_(new router::route_part{"root", "root"}), private_base_(private_base) {}
 
 	enum class middleware_type
 	{
@@ -3914,8 +4092,296 @@ public:
 		both
 	};
 
+	std::map<std::string, std::pair<std::string, routing::route*>> service_lookup_;
+	std::map<std::string, json> middleware_definiton_cache_;
+
+	using search_result = std::tuple<bool, std::string, routing::route*>;
+
+	search_result search(const std::string& service, const std::string& name)
+	{
+		auto result = service_lookup_.find(service + "/" + name);
+		if (result != service_lookup_.end())
+			return search_result{true, result->second.first, result->second.second };
+		else
+			return search_result{false, "", nullptr };
+	}
+
+	using on_error = std::function<bool(const std::string& message)>;
+	using on_use_middleware = std::function<void(const std::string& service, const std::string& name, const std::string& path, const std::string& type, const std::string& pre_attribute, const std::string& post_attribute)>;
+	using on_use_endpoint = std::function<void(const std::string& service, const std::string& name, http::method::method_t method, const std::string& route, const std::vector<std::string>& consumes, const std::vector<std::string>& produces)>;
+	using on_use_include_file = std::function<std::string(const std::string&)>;
+
+	void use_registry(const std::string& route_path, const std::string& registry_file, on_error on_error, on_use_middleware on_use_middleware, on_use_endpoint on_use_endpoint)
+	{
+		use_registry(route_path, registry_file, on_error, [](const std::string& file_path) { return file_path; }, on_use_middleware, on_use_endpoint);
+	}
+
+	void use_middleware_from_registry(
+		const std::string& route_path,
+		const std::string& registry_file,
+		const std::string& service,
+		json middleware_entry,
+		on_error on_error,
+		on_use_include_file file_path_conversion,
+		on_use_middleware on_use_middleware,
+		on_use_endpoint on_use_endpoint)
+	{
+		auto registry_base_path = registry_file.substr(0, registry_file.find_last_of('/') + 1);
+
+		if (middleware_entry.is_object())
+		{
+			auto type = middleware_entry.value("type", "");
+			auto pre = middleware_entry.value("pre", ""); 
+			auto post = middleware_entry.value("post", ""); 
+
+			on_use_middleware(service, "", route_path, type, pre, post);
+		}
+		else
+			for (auto& middlewares : middleware_entry)
+			{
+				for (auto& middleware : middlewares.items())
+				{
+					if (middleware.key() == "$ref")
+					{
+						auto tokens = util::split(middleware.value(), "#");
+
+						auto middleware_json = middleware_definiton_cache_.find(tokens[1]);
+
+						if (middleware_json == middleware_definiton_cache_.end())
+						{
+							use_registry(route_path, registry_base_path + tokens[0], on_error, file_path_conversion, on_use_middleware, on_use_endpoint);
+
+							middleware_json = middleware_definiton_cache_.find(tokens[1]);
+
+							if (middleware_json == middleware_definiton_cache_.cend())
+							{
+								on_error("error when reading router registry file "+registry_file+" : "+ tokens[1] +" is not defined");
+
+								break;
+							}
+						}
+
+						auto type = middleware_json->second.value("type", "");
+						auto pre = middleware_json->second.value("pre", ""); 
+						auto post = middleware_json->second.value("post", ""); 
+
+						on_use_middleware(service, "", route_path, type, pre, post);
+					}
+					else 
+					{
+						// local definition of the middleware
+						// as we are in an entrys() loop we hit this for each object property
+						auto type = middlewares.value("type", "");
+						auto pre = middlewares.value("pre", ""); 
+						auto post = middlewares.value("post", ""); 
+
+						on_use_middleware(service, "", route_path, type, pre, post);
+
+						break; // NDJ --> do not enumerate this is a no-name middleware;
+					}
+				}
+			}
+	}
+
+	void use_route_path_from_registry(
+		const std::string& route_path,
+		const std::string& registry_file,
+		const std::string& service,
+		json path_entry,
+		on_error on_error,
+		on_use_include_file file_path_conversion,
+		on_use_endpoint on_use_endpoint)
+	{
+		auto registry_base_path = registry_file.substr(0, registry_file.find_last_of('/') + 1);
+
+		for (auto& path : path_entry.items())
+		{
+			std::string route_path_new = route_path == "/" ? path.key() : route_path + path.key();
+			std::string name = path.value().value("name","");
+
+			for (auto& path_elements : path.value().items())
+			{
+				auto key = path_elements.key();
+				std::transform(key.begin(), key.end(), key.begin(), [](char c) {
+					return static_cast<char>(std::toupper(c));
+				});
+
+				auto method = http::method::to_method(key);
+				if (method != http::method::unknown)
+				{
+					std::string handler = path_elements.value().at("endpoint").at("handler");
+					std::string type = path_elements.value().at("endpoint").at("type");
+
+					std::vector<std::string> produces;
+					std::vector<std::string> consumes;
+
+					if (path_elements.value().contains("produces"))
+						for (auto& produces_entry : path_elements.value().at("produces").items())
+						{
+							produces.emplace_back(produces_entry.value());
+						}
+
+					if (path_elements.value().contains("consumes"))
+						for (auto& consumes_entry : path_elements.value().at("consumes").items())
+						{
+							consumes.emplace_back(consumes_entry.value());
+						}
+
+					on_use_endpoint(service, name, method, route_path_new, produces, consumes);
+
+				}
+				else if (path_elements.key() == "paths")
+				{
+					use_route_path_from_registry(route_path_new, registry_file, service, path_elements.value(), on_error, file_path_conversion, on_use_endpoint);
+				}
+
+				auto value = path_elements.value();
+			}
+		}
+
+
+
+
+		//if (path_entry.key() == "paths")
+		//{
+		//	for (auto& path : path_entry.items())
+		//	{
+		//		std::string route_path_new = route_path == "/" ? path.key() : route_path_new + path.key();
+		//		use_route_path_from_registry(route_path_new, registry_file, path.value(), logger, file_path_conversion);
+		//	}
+		//}
+		//else
+		//{
+
+		//}
+	}
+
+	void use_registry(
+		const std::string& route_path,
+		const std::string& registry_file,
+		on_error on_error,
+		on_use_include_file on_use_include_file,
+		on_use_middleware on_use_middleware,
+		on_use_endpoint on_use_endpoint)
+	{
+		try
+		{
+			auto registry_base_path = registry_file.substr(0, registry_file.find_last_of('/') + 1);
+			auto root_registry_json = load_registry_file(registry_file, on_error, on_use_include_file);
+
+			std::string registry_version = root_registry_json["httpreg"];
+			std::string date = root_registry_json.at("info").at("date");
+			std::string name = root_registry_json.at("info").at("name");
+
+			if (root_registry_json.at("data").contains("middlewares"))
+				for (auto& entry : root_registry_json.at("data").at("middlewares").items())
+				{
+					auto key = entry.key();
+					auto value = entry.value();
+
+					middleware_definiton_cache_["/middlewares/" + key] = value;
+				}
+
+			if (root_registry_json.at("data").contains("paths"))
+				for (auto& entry : root_registry_json.at("data").at("paths").items())
+				{
+					auto key = entry.key();
+					auto value = entry.value();
+
+					if (value.is_array() && key == "middlewares")
+					{
+						use_middleware_from_registry(route_path, registry_file, "", value, on_error, on_use_include_file, on_use_middleware, on_use_endpoint);
+					}
+					else if (value.is_array() && key[0] == '/')
+					{
+						std::string route_path_new = route_path == "/" ? key : route_path_new + key;
+//						auto service = "";//entry.value("service", "");
+
+						for (auto& path_entry : value.items())
+						{
+							for (auto& path : path_entry.value().items())
+							{
+								auto route = path.key();
+								auto details = path.value();
+
+								if (route == "$ref")
+								{
+									use_registry(
+										route_path_new,
+										registry_base_path + std::string{ details },
+										on_error,
+										on_use_include_file, on_use_middleware, on_use_endpoint);
+								}
+							}
+						}
+					}
+					else if (value.is_object() && key[0] == '/')
+					{
+						std::string route_path_new = route_path == "/" ? key : route_path + key;
+						std::string service = value.value("service", "");
+
+						if (value.contains("middlewares"))
+						{
+							use_middleware_from_registry(
+								route_path_new, registry_file, service, value.at("middlewares"), on_error, on_use_include_file, on_use_middleware, on_use_endpoint);
+						}
+
+						if (value.contains("paths"))
+						{
+							for (auto& path : value.at("paths").items())
+							{
+								use_route_path_from_registry(
+									route_path_new, registry_file, service, path, on_error, on_use_include_file, on_use_endpoint);
+							}
+						}
+					}
+					else if (value.is_null())
+					{
+					}
+					else
+					{
+						on_error("warning: wrong json type found in path object" + registry_file + " : " + key);
+					}
+				}
+		}
+		catch (json::exception& e)
+		{
+			on_error("error when reading router registry file: " + registry_file + " : " + e.what());
+		}
+	}
+
+	json load_registry_file(
+		const std::string& registry_file,
+		on_error on_error,
+		on_use_include_file on_use_include_file)
+	{
+		std::string real_registry_file = on_use_include_file(registry_file);
+
+		std::ifstream registry_stream{ real_registry_file };
+
+		auto registry_stream_available = registry_stream.fail() == false;
+
+		if (registry_stream_available)
+		{
+			try
+			{
+				return json::parse(registry_stream);
+			}
+			catch (json::exception& e)
+			{
+				on_error("error when reading router registry file: " + registry_file + " : " + e.what());
+			}
+		}
+
+		on_error("error when reading router registry file: " + registry_file + " : file not found");
+
+		return json{};
+	}
+
 	void use_middleware(
 		const std::string& path,
+		const std::string& service,
+		const std::string& name,
 		const std::string& type,
 		const std::string& pre_middleware_attribute,
 		const std::string& post_middleware_attribute)
@@ -3925,7 +4391,7 @@ public:
 		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>(
 			{ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty });
 
-		on_middleware(path, middleware_pair);
+		on_middleware(path, service, name, middleware_pair);
 	}
 
 	void use_middleware(
@@ -3985,7 +4451,7 @@ public:
 		on_http_method(method::proxy_pass, route, std::move(api_method));
 	}
 
-	void on_middleware(const T& route, const std::pair<routing::middleware, routing::middleware>& middleware_pair)
+	void on_middleware(const std::string& service, const std::string& name, const T& route, const std::pair<routing::middleware, routing::middleware>& middleware_pair)
 	{
 		auto it = root_.get();
 
@@ -4005,7 +4471,7 @@ public:
 				l = it->link_.insert(
 					it->link_.end(),
 					std::pair<T, std::unique_ptr<router::route_part>>{
-						T{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
+					T{ part }, std::unique_ptr<router::route_part>{ new router::route_part{service, name} } });
 			}
 
 			it = l->second.get();
@@ -4018,14 +4484,29 @@ public:
 
 	void on_http_method(const M method, const T& route, R&& end_point)
 	{
+		auto split_route = util::split(route, "/");
+		auto last_part = std::string{};
+
+		if (split_route.size())
+		{
+			last_part = *(split_route.crbegin());
+
+			if (last_part[0] == '{')
+				if (split_route.size() > 2)
+					last_part = *(split_route.crbegin()+1);
+		}
+
+		on_http_method("root", last_part, method, route, {}, {}, std::move(end_point));
+	}
+
+	void on_http_method(const std::string& service, const std::string& name, const M method, const T& route, const std::vector<std::string>& produces, const std::vector<std::string>& consumes, R&& end_point)
+	{
 		auto it = root_.get();
 
 		auto parts = util::split(route, "/");
 
 		for (auto part : parts)
 		{
-			// auto& l = it->link_[part];
-
 			auto l = std::find_if(
 				it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
 					return (l.first == part);
@@ -4033,14 +4514,11 @@ public:
 
 			if (l == it->link_.end())
 			{
-				std::pair<std::string, std::unique_ptr<router::route_part>> yy{
-					std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part }
-				};
-
 				l = it->link_.insert(
 					it->link_.end(),
 					std::pair<T, std::unique_ptr<router::route_part>>{
-						std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part } });
+					std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part{service, name} } });
+				
 			}
 
 			it = l->second.get();
@@ -4050,13 +4528,12 @@ public:
 
 		if (!it->endpoints_) it->endpoints_.reset(new std::vector<std::pair<M, std::unique_ptr<routing::route>>>);
 
-		it->endpoints_->insert(
+		auto new_endpoint = it->endpoints_->insert(
 			it->endpoints_->end(),
 			std::pair<M, std::unique_ptr<routing::route>>{
-				M{ method }, std::unique_ptr<routing::route>{ new routing::route{ end_point } } });
+				M{ method }, std::unique_ptr<routing::route>{ new routing::route{ end_point, consumes, produces } } });
 
-		/*		(*it->endpoints_)[method]
-					.reset(new router::route{ end_point });*/
+		service_lookup_[service + "/" + name] = std::pair<std::string, routing::route*>{route, new_endpoint->second.get()};
 	}
 
 	routing match_route(const http::method::method_t& method, const std::string& url, params& params) const noexcept
@@ -4187,9 +4664,30 @@ public:
 		}
 		else
 		{
+			for (const auto& endpoint_entry : *(it->endpoints_))
+			{
+				if (result.allowed_methods().empty() == false)
+					result.allowed_methods() = http::method::to_string(endpoint_entry.first) + ", " + result.allowed_methods();
+				else
+					result.allowed_methods() = http::method::to_string(endpoint_entry.first);
+			}
+
 			result.match_result() = http::api::router_match::no_method;
 			return result;
 		}
+	}
+
+	json to_json()
+	{
+		json result;
+		std::vector<std::string> path_stack;
+		root_->to_json(result["endpoints"], path_stack);
+
+		for (const auto& service : service_lookup_)
+			result["services"][service.first] = service.second.first;
+
+
+		return result;
 	}
 
 	std::string to_json_string()
@@ -4257,230 +4755,231 @@ public:
 
 } // namespace api
 
-//namespace client
-//{
-//
-//class curl_session
-//{
-//public:
-//	curl_session() : hnd_(curl_easy_init()) { static curl_global c; }
-//
-//	~curl_session()
-//	{
-//		curl_easy_cleanup(hnd_);
-//		hnd_ = nullptr;
-//	}
-//
-//	CURL* as_handle() const { return hnd_; }
-//
-//private:
-//	CURL* hnd_;
-//
-//	class curl_global
-//	{
-//	public:
-//		curl_global() { curl_global_init(CURL_GLOBAL_ALL); }
-//
-//		~curl_global() { curl_global_cleanup(); }
-//	};
-//};
-//
-//class curl
-//{
-//	const curl_session& session_;
-//	std::ostringstream buffer_;
-//	char error_buf_[CURL_ERROR_SIZE];
-//	curl_slist* headers_;
-//	http::response_message response_message_;
-//	http::response_parser response_message_parser_;
-//	http::response_parser::result_type response_message_parser_result_;
-//	std::string verb_;
-//	std::string url_;
-//
-//	// needed by cURL to read the data from the http(s) connection
-//	static size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp)
-//	{
-//		auto* str = static_cast<std::ostringstream*>(userp);
-//		char* buf = static_cast<char*>(contents);
-//		str->write(buf, size * nmemb);
-//
-//		return size * nmemb;
-//	}
-//
-//	static size_t recv_header_callback(char* buffer, size_t size, size_t nmemb, void* userp)
-//	{
-//		std::string headerline(buffer);
-//		char* c = nullptr;
-//		auto this_curl = static_cast<curl*>(userp);
-//
-//		std::tie(this_curl->response_message_parser_result_, c)
-//			= this_curl->response_message_parser_.parse(this_curl->response_message_, buffer, buffer + (size * nmemb));
-//
-//		return size * nmemb;
-//	}
-//
-//	// debugger callback for cURL tracing.
-//	static int debug_callback(CURL*, curl_infotype type, char* data, size_t size, void* userptr)
-//	{
-//		std::ostream& out = *static_cast<std::ostream*>(userptr);
-//		std::string data_str{ data, size };
-//
-//		switch (type)
-//		{
-//			case CURLINFO_TEXT:
-//				out << "== Info: " << data_str;
-//				return 0;
-//			default: /* in case a new one is introduced to shock us */
-//				return 0;
-//			case CURLINFO_HEADER_OUT:
-//				out << "=> Send header\n";
-//				break;
-//			case CURLINFO_DATA_OUT:
-//				out << "=> Send data";
-//				break;
-//			case CURLINFO_SSL_DATA_OUT:
-//				out << "=> Send SSL data\n";
-//				break;
-//			case CURLINFO_HEADER_IN:
-//				out << "<= Recv header\n";
-//				break;
-//			case CURLINFO_DATA_IN:
-//				out << "<= Recv data\n";
-//				break;
-//			case CURLINFO_SSL_DATA_IN:
-//				out << "<= Recv SSL data";
-//				break;
-//		}
-//
-//		out << "==start==\n" << data_str << "\n==end==\n";
-//
-//		return 0;
-//	}
-//
-//public:
-//	curl(
-//		const curl_session& session,
-//		const std::string& verb,
-//		const std::string& url,
-//		std::initializer_list<std::string> hdrs,
-//		const std::string& body,
-//		bool verbose = false,
-//		std::ostream& verbose_output_stream = std::clog)
-//		: session_(session), buffer_(), headers_(nullptr), verb_(verb), url_(url)
-//	{
-//		strcpy(error_buf_, "");
-//
-//		if (verbose)
-//		{
-//			curl_easy_setopt(session_.as_handle(), CURLOPT_VERBOSE, 1);
-//			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGFUNCTION, debug_callback);
-//			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
-//		}
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEFUNCTION, write_callback);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEDATA, (void*)&buffer_);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_ERRORBUFFER, error_buf_);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 1000L);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 1000L);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
-//
-//		for (const auto& a : hdrs)
-//		{
-//			headers_ = curl_slist_append(headers_, a.c_str());
-//		}
-//		headers_ = curl_slist_append(headers_, std::string{ "Expect: " }.c_str());
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb.c_str());
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url.c_str());
-//
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, body.data());
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDSIZE, body.size());
-//	}
-//
-//	curl(
-//		const curl_session& session,
-//		const std::string host,
-//		const http::request_message& request,
-//		bool verbose = false,
-//		std::ostream& verbose_output_stream = std::clog)
-//		: session_(session)
-//		, buffer_()
-//		, headers_(nullptr)
-//		, verb_(http::method::to_string(request.method()))
-//		, url_(host + request.url_requested())
-//	{
-//		strcpy(error_buf_, "");
-//
-//		if (verbose)
-//		{
-//			curl_easy_setopt(session_.as_handle(), CURLOPT_VERBOSE, 1);
-//			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGFUNCTION, debug_callback);
-//			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
-//		}
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEFUNCTION, write_callback);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEDATA, (void*)&buffer_);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_ERRORBUFFER, error_buf_);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 1000L);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 1000L);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
-//
-//		for (const auto& header : request.headers())
-//		{
-//			headers_ = curl_slist_append(headers_, std::string{ header.name + ": " + header.value }.c_str());
-//		}
-//		headers_ = curl_slist_append(headers_, std::string{ "Expect: " }.c_str());
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb_.c_str());
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url_.c_str());
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, request.body().data());
-//		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDSIZE, request.body().size());
-//	}
-//
-//	~curl() { curl_slist_free_all(headers_); }
-//
-//	http::response_message call(std::string& error) noexcept
-//	{
-//		CURLcode ret = curl_easy_perform(session_.as_handle());
-//		curl_easy_reset(session_.as_handle());
-//		if (ret != CURLE_OK)
-//		{
-//			error = std::string{ curl_easy_strerror(ret) } + " when requesting " + verb_ + " on url: " + url_;
-//			return response_message_;
-//		}
-//		else
-//		{
-//			response_message_.body() = buffer_.str();
-//			return response_message_;
-//		}
-//	}
-//
-//	http::response_message call()
-//	{
-//		CURLcode ret = curl_easy_perform(session_.as_handle());
-//
-//		if (ret != CURLE_OK)
-//		{
-//			throw std::runtime_error{ std::string{ curl_easy_strerror(ret) } + " request:" + verb_ + " " + url_ };
-//		}
-//		else
-//		{
-//			response_message_.body() = buffer_.str();
-//			return response_message_;
-//		}
-//	}
-//};
+#if !defined(HTTP_DO_NOT_USE_CURL)
+namespace client
+{
 
+class curl_session
+{
+public:
+	curl_session() : hnd_(curl_easy_init()) { static curl_global c; }
 
-//} // namespace client
+	~curl_session()
+	{
+		curl_easy_cleanup(hnd_);
+		hnd_ = nullptr;
+	}
+
+	CURL* as_handle() const { return hnd_; }
+
+private:
+	CURL* hnd_;
+
+	class curl_global
+	{
+	public:
+		curl_global() { curl_global_init(CURL_GLOBAL_ALL); }
+
+		~curl_global() { curl_global_cleanup(); }
+	};
+};
+
+class curl
+{
+	const curl_session& session_;
+	std::ostringstream buffer_;
+	char error_buf_[CURL_ERROR_SIZE];
+	curl_slist* headers_;
+	http::response_message response_message_;
+	http::response_parser response_message_parser_;
+	http::response_parser::result_type response_message_parser_result_;
+	std::string verb_;
+	std::string url_;
+
+	// needed by cURL to read the data from the http(s) connection
+	static size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp)
+	{
+		auto* str = static_cast<std::ostringstream*>(userp);
+		char* buf = static_cast<char*>(contents);
+		str->write(buf, size * nmemb);
+
+		return size * nmemb;
+	}
+
+	static size_t recv_header_callback(char* buffer, size_t size, size_t nmemb, void* userp)
+	{
+		std::string headerline(buffer);
+		char* c = nullptr;
+		auto this_curl = static_cast<curl*>(userp);
+
+		std::tie(this_curl->response_message_parser_result_, c)
+			= this_curl->response_message_parser_.parse(this_curl->response_message_, buffer, buffer + (size * nmemb));
+
+		return size * nmemb;
+	}
+
+	// debugger callback for cURL tracing.
+	static int debug_callback(CURL*, curl_infotype type, char* data, size_t size, void* userptr)
+	{
+		std::ostream& out = *static_cast<std::ostream*>(userptr);
+		std::string data_str{ data, size };
+
+		switch (type)
+		{
+			case CURLINFO_TEXT:
+				out << "== Info: " << data_str;
+				return 0;
+			default: /* in case a new one is introduced to shock us */
+				return 0;
+			case CURLINFO_HEADER_OUT:
+				out << "=> Send header\n";
+				break;
+			case CURLINFO_DATA_OUT:
+				out << "=> Send data";
+				break;
+			case CURLINFO_SSL_DATA_OUT:
+				out << "=> Send SSL data\n";
+				break;
+			case CURLINFO_HEADER_IN:
+				out << "<= Recv header\n";
+				break;
+			case CURLINFO_DATA_IN:
+				out << "<= Recv data\n";
+				break;
+			case CURLINFO_SSL_DATA_IN:
+				out << "<= Recv SSL data";
+				break;
+		}
+
+		out << "==start==\n" << data_str << "\n==end==\n";
+
+		return 0;
+	}
+
+public:
+	curl(
+		const curl_session& session,
+		const std::string& verb,
+		const std::string& url,
+		std::initializer_list<std::string> hdrs,
+		const std::string& body,
+		bool verbose = false,
+		std::ostream& verbose_output_stream = std::clog)
+		: session_(session), buffer_(), headers_(nullptr), verb_(verb), url_(url)
+	{
+		strcpy(error_buf_, "");
+
+		if (verbose)
+		{
+			curl_easy_setopt(session_.as_handle(), CURLOPT_VERBOSE, 1);
+			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGFUNCTION, debug_callback);
+			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
+		}
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEFUNCTION, write_callback);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEDATA, (void*)&buffer_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_ERRORBUFFER, error_buf_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 1000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 1000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
+
+		for (const auto& a : hdrs)
+		{
+			headers_ = curl_slist_append(headers_, a.c_str());
+		}
+		headers_ = curl_slist_append(headers_, std::string{ "Expect: " }.c_str());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb.c_str());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url.c_str());
+
+		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, body.data());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDSIZE, body.size());
+	}
+
+	curl(
+		const curl_session& session,
+		const std::string host,
+		const http::request_message& request,
+		bool verbose = false,
+		std::ostream& verbose_output_stream = std::clog)
+		: session_(session)
+		, buffer_()
+		, headers_(nullptr)
+		, verb_(http::method::to_string(request.method()))
+		, url_(host + request.url_requested())
+	{
+		strcpy(error_buf_, "");
+
+		if (verbose)
+		{
+			curl_easy_setopt(session_.as_handle(), CURLOPT_VERBOSE, 1);
+			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGFUNCTION, debug_callback);
+			curl_easy_setopt(session_.as_handle(), CURLOPT_DEBUGDATA, reinterpret_cast<void*>(&verbose_output_stream));
+		}
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEFUNCTION, write_callback);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_WRITEDATA, (void*)&buffer_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_ERRORBUFFER, error_buf_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOSIGNAL, 1);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERFUNCTION, recv_header_callback);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HEADERDATA, (void*)this);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TIMEOUT_MS, 1000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CONNECTTIMEOUT_MS, 1000L);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_TCP_NODELAY, 0);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_NOPROGRESS, 1L);
+
+		for (const auto& header : request.headers())
+		{
+			headers_ = curl_slist_append(headers_, std::string{ header.name + ": " + header.value }.c_str());
+		}
+		headers_ = curl_slist_append(headers_, std::string{ "Expect: " }.c_str());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_HTTPHEADER, headers_);
+		curl_easy_setopt(session_.as_handle(), CURLOPT_CUSTOMREQUEST, verb_.c_str());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_URL, url_.c_str());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDS, request.body().data());
+		curl_easy_setopt(session_.as_handle(), CURLOPT_POSTFIELDSIZE, request.body().size());
+	}
+
+	~curl() { curl_slist_free_all(headers_); }
+
+	http::response_message call(std::string& error) noexcept
+	{
+		CURLcode ret = curl_easy_perform(session_.as_handle());
+		curl_easy_reset(session_.as_handle());
+		if (ret != CURLE_OK)
+		{
+			error = std::string{ curl_easy_strerror(ret) } + " when requesting " + verb_ + " on url: " + url_;
+			return response_message_;
+		}
+		else
+		{
+			response_message_.body() = buffer_.str();
+			return response_message_;
+		}
+	}
+
+	http::response_message call()
+	{
+		CURLcode ret = curl_easy_perform(session_.as_handle());
+
+		if (ret != CURLE_OK)
+		{
+			throw std::runtime_error{ std::string{ curl_easy_strerror(ret) } + " request:" + verb_ + " " + url_ };
+		}
+		else
+		{
+			response_message_.body() = buffer_.str();
+			return response_message_;
+		}
+	}
+};
+
+} // namespace client
+#endif
 
 class server
 {
@@ -4670,7 +5169,9 @@ public:
 				}
 				case json_status_options::router:
 				{
-					ss << "\"router\": {" << router_information_ << "}";
+					//ss << "\"router\": {" << router_information_ << "}";
+
+					ss << router_information_;
 					break;
 				}
 				case json_status_options::access_log:
@@ -4731,6 +5232,7 @@ public:
 	server_manager& manager() { return manager_; }
 	lgr::logger& logger() { return logger_; }
 	const lgr::logger& logger() const { return logger_; }
+	http::api::router<>& router() { return router_; }
 
 protected:
 	server_manager manager_;
@@ -4740,7 +5242,7 @@ protected:
 	std::atomic<state> state_{ state::activating };
 }; // namespace basic
 
-namespace threaded
+namespace sync
 {
 
 class server : public http::server
@@ -5119,7 +5621,7 @@ public:
 	{
 	public:
 		connection_handler(
-			http::threaded::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
+			http::sync::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
 			, client_socket_(std::move(client_socket))
 			, session_handler_(server.configuration_, http::protocol::http) // for now.
@@ -5226,9 +5728,13 @@ public:
 							}
 
 							if (private_base_request == false)
+							{
 								++server_.manager().requests_current(private_base_request);
+							}
 							else
+							{
 								server_.manager().requests_current(private_base_request);
+							}
 
 							http::api::router<>::request_result_type routing
 								= session_handler_.handle_request(server_.router_);
@@ -5341,7 +5847,7 @@ public:
 		}
 
 	protected:
-		http::threaded::server& server_;
+		http::sync::server& server_;
 		S client_socket_;
 		http::session_handler session_handler_;
 		int connection_timeout_;
@@ -5377,81 +5883,79 @@ private:
 	std::thread https_connection_thread_;
 };
 
-} // namespace threaded
+} // namespace sync
 
 using middleware = http::api::router<>::middleware_type;
 
-//namespace client
-//{
-//
-//class session
-//{
-//public:
-//	session() = default;
-//
-//	const http::client::curl_session& as_session() const { return session_; }
-//
-//private:
-//	const http::client::curl_session session_;
-//};
-//
-//template <http::method::method_t method>
-//http::response_message request(
-//	const http::client::session& session,
-//	const std::string& url,
-//	std::string& ec,
-//	std::initializer_list<std::string> hdrs = {},
-//	const std::string& body = std::string{},
-//	std::ostream& s = std::clog,
-//	bool verbose = false)
-//{
-//	http::client::curl curl{
-//		session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s
-//	};
-//
-//	return curl.call(ec); // RVO
-//}
-//
-//template <http::method::method_t method>
-//http::response_message request(
-//	const std::string& url,
-//	std::string& ec,
-//	std::initializer_list<std::string> hdrs = {},
-//	const std::string& body = std::string{},
-//	std::ostream& s = std::clog,
-//	bool verbose = false)
-//{
-//	http::client::session session;
-//	http::client::curl curl{
-//		session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s
-//	};
-//
-//	return curl.call(ec); // RVO
-//}
-//
-//template <http::method::method_t method>
-//http::response_message request(
-//	const http::client::session& session,
-//	const std::string& url,
-//	std::string& ec,
-//	std::ostream& s = std::clog,
-//	bool verbose = false)
-//{
-//	http::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
-//
-//	return curl.call(ec); // RVO
-//}
-//
-//template <http::method::method_t method>
-//http::response_message
-//request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bool verbose = false)
-//{
-//	http::client::session session;
-//	http::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
-//
-//	return curl.call(ec); // RVO
-//}
-//
-//} // namespace client
+#if !defined(HTTP_DO_NOT_USE_CURL)
+namespace client
+{
+
+class session
+{
+public:
+	session() = default;
+
+	const http::client::curl_session& as_session() const { return session_; }
+
+private:
+	const http::client::curl_session session_;
+};
+
+template <http::method::method_t method>
+http::response_message request(
+	const http::client::session& session,
+	const std::string& url,
+	std::string& ec,
+	std::initializer_list<std::string> hdrs = {},
+	const std::string& body = std::string{},
+	std::ostream& s = std::clog,
+	bool verbose = false)
+{
+	http::client::curl curl{ session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s };
+
+	return curl.call(ec); // RVO
+}
+
+template <http::method::method_t method>
+http::response_message request(
+	const std::string& url,
+	std::string& ec,
+	std::initializer_list<std::string> hdrs = {},
+	const std::string& body = std::string{},
+	std::ostream& s = std::clog,
+	bool verbose = false)
+{
+	http::client::session session;
+	http::client::curl curl{ session.as_session(), http::method::to_string(method), url, hdrs, body, verbose, s };
+
+	return curl.call(ec); // RVO
+}
+
+template <http::method::method_t method>
+http::response_message request(
+	const http::client::session& session,
+	const std::string& url,
+	std::string& ec,
+	std::ostream& s = std::clog,
+	bool verbose = false)
+{
+	http::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
+
+	return curl.call(ec); // RVO
+}
+
+template <http::method::method_t method>
+http::response_message
+request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bool verbose = false)
+{
+	http::client::session session;
+	http::client::curl curl{ session.as_session(), http::method::to_string(method), url, {}, {}, verbose, s };
+
+	return curl.call(ec); // RVO
+}
+
+} // namespace client
+#endif
 
 } // namespace http

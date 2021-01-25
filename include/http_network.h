@@ -1096,5 +1096,17 @@ inline std::string hostname()
 	return std::string{ hostname_buffer.data() };
 }
 
+bool is_in_network(std::uint32_t allowed_range, std::uint32_t allowed_netmask, std::uint32_t ip)
+{
+	uint32_t netstart = (allowed_range & allowed_netmask); // first ip in subnet
+	uint32_t netend = (allowed_range | ~allowed_netmask); // last ip in subnet
+
+	if ((ip >= netstart) && (ip <= netend))
+		return true;
+	else
+		return false;
+}
+
+
 
 } // namespace network

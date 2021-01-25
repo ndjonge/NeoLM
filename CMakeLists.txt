@@ -53,6 +53,8 @@ target_link_libraries( ${PROJECT_NAME} OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB)
 
 if(WIN32)
     add_definitions(-DLOCAL_TESTING)
+    add_definitions(-DHTTP_DO_NOT_USE_CURL)
+
 else()
     add_definitions(-DLOCAL_TESTING -std=c++11 -Wreorder -O3 -march=native -mtune=native)  
 #    add_definitions(-DLOCAL_TESTING -std=c++11 -Wreorder -g -fsanitize=thread -fno-omit-frame-pointer) 
