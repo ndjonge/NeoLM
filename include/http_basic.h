@@ -3406,6 +3406,7 @@ public:
 		, keepalive_count_(configuration.get<int>("keepalive_count", 1024 * 8))
 		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
 		, t0_(std::chrono::steady_clock::now())
+		, is_client_allowed_(true)
 	{
 	}
 
@@ -3488,6 +3489,12 @@ public:
 		response_.status(http::status::not_found);
 
 		std::string request_path;
+
+		if (is_client_allowed() == false)
+		{
+			response_.assign(http::status::forbidden, "", "application/text");
+			return typename router_t::request_result_type{};
+		}
 
 		if (!http::request_parser::url_decode(request_.target(), request_path))
 		{
@@ -3584,6 +3591,8 @@ public:
 public:
 	void routing(http::api::routing& r) { routing_ = &r; }
 	void params(http::api::params& p) { params_ = &p; }
+	bool is_client_allowed() const { return is_client_allowed_; }
+	void client_allowed(bool value) { is_client_allowed_ = value; };
 
 private:
 	http::request_message request_{ *this };
@@ -3594,8 +3603,10 @@ private:
 	http::api::params* params_{ nullptr };
 	http::protocol protocol_{ http::protocol::http };
 
+
 	int keepalive_count_;
 	int keepalive_max_;
+	bool is_client_allowed_;
 
 	std::chrono::steady_clock::time_point t0_;
 	std::chrono::steady_clock::time_point t1_;

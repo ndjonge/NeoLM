@@ -2848,8 +2848,8 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", "4000" },
 											  { "private_base", "/private/infra/manager" },
-											  { "private_ip_white_list", "::ffff:127.0.0.0/120;::ffff:127.1.0.0/120" },
-											  { "public_ip_white_list", "::ffff:192.168.1.0/120;::ffff:127.0.0.1/128" },
+											  { "private_ip_white_list", "::1/128;::ffff:127.0.0.0/120;::ffff:127.1.0.0/120" },
+											  { "public_ip_white_list", "::1/128;::ffff:192.168.1.0/120;::ffff:127.0.0.1/128" },
 											  { "log_level", "api" },
 											  { "log_file", "cout" },
 											  { "https_enabled", "false" },
@@ -2899,8 +2899,9 @@ inline int start_cld_manager_server(int argc, const char** argv)
 inline void run_cld_manager_server()
 {
 	while (cloud::platform::cpm_server_->is_active())
-		;
-	std::this_thread::sleep_for(std::chrono::seconds(1));
+	{
+		std::this_thread::sleep_for(std::chrono::seconds(1));
+	}
 }
 
 inline int stop_cld_manager_server()

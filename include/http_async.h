@@ -600,7 +600,8 @@ public:
 			{
 				auto spec = util::split(allowed_range_spec, "/");
 
-				auto allowed_network = asio::ip::network_v6(asio::ip::address_v6::from_string(spec[0]), std::atoi(spec[1].data()));
+				auto allowed_network
+					= asio::ip::network_v6(asio::ip::address_v6::from_string(spec[0]), static_cast<std::uint16_t>(std::strtoul(spec[1].data(), nullptr, 10)));
 
 				private_ip_white_list_.emplace_back(allowed_network);
 			}
@@ -609,10 +610,10 @@ public:
 			{
 				auto spec = util::split(allowed_range_spec, "/");
 
-				auto allowed_network
-					= asio::ip::network_v6(asio::ip::address_v6::from_string(spec[0]), std::atoi(spec[1].data()));
+				auto allowed_network = asio::ip::network_v6(
+					asio::ip::address_v6::from_string(spec[0]), static_cast<std::uint16_t>(std::strtoul(spec[1].data(), nullptr, 0)));
 
-				private_ip_white_list_.emplace_back(allowed_network);
+				public_ip_white_list_.emplace_back(allowed_network);
 			}
 
 		}
@@ -634,9 +635,9 @@ public:
 		socket_t& socket_base() { return static_cast<connection_handler_derived*>(this)->socket(); };
 		std::string remote_address_base() { return static_cast<connection_handler_derived*>(this)->remote_address(); };
 
-		bool is_remote_address_allowed_base()
+		bool is_remote_address_allowed_base(const std::vector<asio::ip::network_v6>& networks) const
 		{
-			return static_cast<connection_handler_derived*>(this)->is_remote_address_allowed();
+			return static_cast<const connection_handler_derived*>(this)->is_remote_address_allowed(networks);
 		};
 
 		virtual void start(){};
@@ -682,8 +683,19 @@ public:
 				session_handler_.request().set(
 					"X-Forwarded-For", session_handler_.request().get("X-Forwarded-For", this->remote_address_base()));
 
-				auto not_allowed = is_remote_address_allowed_base();
+				bool private_base_request
+					= session_handler_.request().target().find(server_.router_.private_base_, 0) == 0;
 
+				if (private_base_request == true)
+				{
+					//++server_.manager().requests_current(private_base_request);
+					session_handler_.client_allowed(is_remote_address_allowed_base(private_ip_white_list_));
+				}
+				else
+				{
+					//server_.manager().requests_current(private_base_request);
+					session_handler_.client_allowed(is_remote_address_allowed_base(public_ip_white_list_));
+				}
 
 				if (result == http::request_parser::good)
 				{
@@ -1232,24 +1244,33 @@ public:
 			}
 		}
 
-
-		bool is_remote_address_allowed_to_private_access() const { 
+		bool is_remote_address_allowed(const std::vector<asio::ip::network_v6>& networks) const { 
 			auto address = socket_.remote_endpoint().address();
 			bool result = false;
 
 			if (address.is_v4())
 			{
+				auto address_as_network = asio::ip::network_v4(address.to_v4(), 32);
+
+				//for (const auto& network : networks)
+				//{
+				//	if (address_as_network.canonical() == network.canonical()) return true;
+
+				//	if (address_as_network.is_subnet_of(network.canonical()) == true) return true;
+				//}
 			}
 			else
 			{
-				auto z = asio::ip::network_v6(address.to_v6(), 128);
+				auto address_as_network = asio::ip::network_v6(address.to_v6(), 128);
 
-				for ()
-				std::cout << "ip:" << address.to_string() << " network1:" << x.canonical().to_string()
-						  << " network2:" << z.canonical().to_string()
-						  << " result1:" << (x.canonical() == z.canonical())
-						  << " result2:" << z.is_subnet_of(x.canonical()) << "\n";
+				for (const auto& network : networks)
+				{
+					if (address_as_network.canonical() == network.canonical()) 
+						return true;
 
+					if (address_as_network.is_subnet_of(network.canonical()) == true) 
+						return true;
+				}
 			}
 			return result; 
 		}
@@ -1313,8 +1334,9 @@ public:
 			}
 		}
 
-		bool is_remote_address_allowed() const 
-		{ return false;
+		bool is_remote_address_allowed(const std::vector<asio::ip::network_v6>&) const 
+		{ 
+			return false;
 		}
 
 		void start() override
