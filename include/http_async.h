@@ -688,12 +688,10 @@ public:
 
 				if (private_base_request == true)
 				{
-					//++server_.manager().requests_current(private_base_request);
 					session_handler_.client_allowed(is_remote_address_allowed_base(private_ip_white_list_));
 				}
 				else
 				{
-					//server_.manager().requests_current(private_base_request);
 					session_handler_.client_allowed(is_remote_address_allowed_base(public_ip_white_list_));
 				}
 

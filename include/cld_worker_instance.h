@@ -68,12 +68,15 @@ template <typename T> class worker : public worker_base
 protected:
 	std::string manager_endpoint_url_;
 	std::string cld_worker_id_;
+	std::string cld_worker_level_;
+
 	using json = T;
 
 public:
 	worker(const http::basic::server& server) : worker_base(server)
 	{
 		cld_worker_id_ = server_.config().get<std::string>("cld_worker_id", "no_id");
+		cld_worker_level_ = server_.config().get<std::string>("cld_worker_level", "no_level");
 
 		manager_endpoint_url_ = server_.config().get<std::string>(
 									"cld_manager_endpoint", "http://localhost:4000/private/infra/workspaces")
@@ -98,6 +101,7 @@ public:
 		auto pid = getpid();
 
 		put_new_instance_json["process_id"] = pid;
+		put_new_instance_json["worker_level"] = cld_worker_level_;
 		put_new_instance_json["base_url"] = server_.config().get("http_this_server_local_url");
 		put_new_instance_json["version"] = server_.config().get<std::string>("server", "");
 
@@ -133,6 +137,7 @@ public:
 		auto pid = getpid();
 
 		put_new_instance_json["process_id"] = pid;
+		put_new_instance_json["worker_level"] = cld_worker_level_;
 		put_new_instance_json["base_url"] = server_.config().get("http_this_server_local_url");
 
 		if (option == remove_worker_options::remove_and_decrease_required_limit)
