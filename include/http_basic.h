@@ -3404,9 +3404,9 @@ public:
 		: configuration_(configuration)
 		, protocol_(protocol)
 		, keepalive_count_(configuration.get<int>("keepalive_count", 1024 * 8))
-		, keepalive_max_(configuration.get<int>("keepalive_timeout", 5))
-		, t0_(std::chrono::steady_clock::now())
+		, keepalive_max_(configuration.get<int>("keepalive_timeout", 120))
 		, is_client_allowed_(true)
+		, t0_(std::chrono::steady_clock::now())
 	{
 	}
 
@@ -3822,9 +3822,8 @@ public:
 
 	public:
 		route() = default;
-
 		route(const route& rhs) = default;
-		route& operator=(const route&){};
+		route& operator=(const route&) = default;
 
 		route(const endpoint_lambda& endpoint, const std::vector<std::string>& consumes, const std::vector<std::string>& produces) : endpoint_(endpoint), produces_(produces), consumes_(consumes) {}
 
@@ -4305,7 +4304,7 @@ public:
 					}
 					else if (value.is_array() && key[0] == '/')
 					{
-						std::string route_path_new = route_path == "/" ? key : route_path_new + key;
+						std::string route_path_new = route_path == "/" ? key : route_path + key;
 //						auto service = "";//entry.value("service", "");
 
 						for (auto& path_entry : value.items())

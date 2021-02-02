@@ -1291,19 +1291,19 @@ public:
 
 	void to_json(json& j, const std::string& detail) const override 
 	{
-		if (detail.empty() || (detail == "bse") && (bse_.empty() == false)) 
+		if (detail.empty() || ((detail == "bse") && (bse_.empty() == false))) 
 			j["parameters"].emplace("bse", bse_);
 
-		if (detail.empty() || (detail == "bse_user") && (bse_bin_.empty() == false))
+		if (detail.empty() || ((detail == "bse_user") && (bse_bin_.empty() == false)))
 			j["parameters"].emplace("bse_bin", bse_bin_);
 
-		if (detail.empty() || (detail == "bse_user") && (bse_user_.empty() == false)) 
+		if (detail.empty() || ((detail == "bse_user") && (bse_user_.empty() == false))) 
 			j["parameters"].emplace("bse_user", bse_user_);
 
-		if (detail.empty() || (detail == "os_user") && (os_user_.empty() == false))
+		if (detail.empty() || ((detail == "os_user") && (os_user_.empty() == false)))
 			j["parameters"].emplace("os_user", os_user_);
 
-		if (detail.empty() || (detail == "os_password") && (os_password_.empty() == false)) 
+		if (detail.empty() || ((detail == "os_password") && (os_password_.empty() == false))) 
 			j["parameters"].emplace("os_password", os_password_);
 
 		if (detail.empty() || detail == "program") 

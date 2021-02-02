@@ -1248,7 +1248,7 @@ public:
 
 			if (address.is_v4())
 			{
-				auto address_as_network = asio::ip::network_v4(address.to_v4(), 32);
+				//auto address_as_network = asio::ip::network_v4(address.to_v4(), 32);
 
 				//for (const auto& network : networks)
 				//{
