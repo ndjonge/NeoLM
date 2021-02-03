@@ -4305,7 +4305,6 @@ public:
 					else if (value.is_array() && key[0] == '/')
 					{
 						std::string route_path_new = route_path == "/" ? key : route_path + key;
-//						auto service = "";//entry.value("service", "");
 
 						for (auto& path_entry : value.items())
 						{

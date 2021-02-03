@@ -566,12 +566,12 @@ public:
 		}
 	}
 
-	bool delete_worker(const std::string& pid)
+	bool delete_worker(const std::string& id)
 	{
 		std::lock_guard<std::mutex> g{ workers_mutex_ };
 		bool result = false;
 
-		auto worker = workers_.find(pid);
+		auto worker = workers_.find(id);
 
 		if (worker != workers_.end())
 		{
@@ -586,20 +586,24 @@ public:
 		return result;
 	}
 
-	bool shutdown_worker_by_pid(const std::string& pid)
+	bool delete_worker_process(const std::string& id)
 	{
 		std::lock_guard<std::mutex> g{ workers_mutex_ };
 		bool result = false;
 
-		auto worker = workers_.find(pid);
+		auto worker = workers_.find(id);
 
 		if (worker != workers_.end())
 		{
 			std::string ec;
 			auto response = http::client::request<http::method::delete_>(
-				worker->second.get_base_url() + "/private/infra/worker/shutdown", ec, {});
+				worker->second.get_base_url() + "/private/infra/worker/process", ec, {});
 
-			worker->second.set_status(worker::status::down);
+			if (response.status() == http::status::no_content) 
+			{
+				worker->second.set_status(worker::status::down);
+				result = true;
+			}
 		}
 		return result;
 	}
@@ -2563,6 +2567,47 @@ public:
 						}
 
 						if (i->second->delete_worker(worker_id) == false)
+						{
+							session.response().assign(http::status::not_found);
+						}
+						else
+						{
+							session.response().assign(http::status::no_content);
+						}
+					}
+					else
+					{
+						session.response().assign(http::status::not_found);
+					}
+				}
+				else
+				{
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
+				}
+			});
+
+		// remove specific worker process {worker_id} of worker {type} in workspace {workspace_id}
+		server_base::router_.on_delete(
+			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}/process",
+			[this](http::session_handler& session) {
+				auto& workspace_id = session.params().get("workspace_id");
+				auto workspace = workspaces_.get_workspace(workspace_id);
+
+				if (workspace != workspaces_.end())
+				{
+					auto& name = session.params().get("name");
+					auto& type = session.params().get("type");
+
+					auto i = workspace->second->find_workgroups(name, type);
+
+					if (i != workspace->second->end())
+					{
+						auto& worker_id = session.params().get("worker_id");
+
+						if (i->second->delete_worker_process(worker_id) == false)
 						{
 							session.response().assign(http::status::not_found);
 						}
