@@ -1855,7 +1855,10 @@ public:
 			try
 			{
 				json manager_configuration_json = json::parse(configuration_stream);
-				applications_.from_json(manager_configuration_json.at("applications"));
+				
+				if (manager_configuration_json.contains("applications") == true)
+					applications_.from_json(manager_configuration_json.at("applications"));
+
 				workspaces_.from_json(manager_configuration_json.at("workspaces"));
 			}
 			catch (json::exception& e)
