@@ -666,18 +666,16 @@ namespace util
 
 std::string to_lower(std::string input)
 {
-	std::transform(input.begin(), input.end(), input.begin(), [](char c) {
-		return static_cast<char>(std::tolower(c));
-	});	
+	std::transform(
+		input.begin(), input.end(), input.begin(), [](char c) { return static_cast<char>(std::tolower(c)); });
 
 	return input;
 }
 
 std::string to_upper(std::string input)
 {
-	std::transform(input.begin(), input.end(), input.begin(), [](char c) {
-		return static_cast<char>(std::toupper(c));
-	});	
+	std::transform(
+		input.begin(), input.end(), input.begin(), [](char c) { return static_cast<char>(std::toupper(c)); });
 
 	return input;
 }
@@ -3603,7 +3601,6 @@ private:
 	http::api::params* params_{ nullptr };
 	http::protocol protocol_{ http::protocol::http };
 
-
 	int keepalive_count_;
 	int keepalive_max_;
 	bool is_client_allowed_;
@@ -3825,7 +3822,13 @@ public:
 		route(const route& rhs) = default;
 		route& operator=(const route&) = default;
 
-		route(const endpoint_lambda& endpoint, const std::vector<std::string>& consumes, const std::vector<std::string>& produces) : endpoint_(endpoint), produces_(produces), consumes_(consumes) {}
+		route(
+			const endpoint_lambda& endpoint,
+			const std::vector<std::string>& consumes,
+			const std::vector<std::string>& produces)
+			: endpoint_(endpoint), produces_(produces), consumes_(consumes)
+		{
+		}
 
 		const endpoint_lambda& endpoint() { return endpoint_; };
 
@@ -3847,8 +3850,8 @@ public:
 
 		metrics& route_metrics() { return metrics_; };
 
-		const std::vector<std::string>& produces() const {return produces_;}
-		const std::vector<std::string>& consumes() const {return consumes_;}
+		const std::vector<std::string>& produces() const { return produces_; }
+		const std::vector<std::string>& consumes() const { return consumes_; }
 
 	private:
 		endpoint_lambda endpoint_;
@@ -3870,8 +3873,9 @@ public:
 	middlewares& middlewares_vector() { return middlewares_; }
 	const middlewares& middlewares_vector() const { return middlewares_; }
 
-	std::string& allowed_methods() {return allowed_methods_;}
-	const std::string& allowed_methods() const {return allowed_methods_;}
+	std::string& allowed_methods() { return allowed_methods_; }
+	const std::string& allowed_methods() const { return allowed_methods_; }
+
 private:
 	result result_;
 	route* route_{ nullptr };
@@ -3908,11 +3912,7 @@ public:
 		std::string service_;
 
 	public:
-		route_part(const std::string& service, const std::string& name)
-			: name_(name)
-			, service_(service)
-		{
-		};
+		route_part(const std::string& service, const std::string& name) : name_(name), service_(service){};
 
 		using const_iterator = typename std::vector<std::pair<T, std::unique_ptr<route_part>>>::const_iterator;
 
@@ -3948,7 +3948,7 @@ public:
 					std::stringstream s;
 					for (auto& element : path)
 						s << "/" << element;
-				
+
 					s << "|" << util::to_lower(http::method::to_string(endpoint->first));
 
 					auto endpoint_json = json::object();
@@ -3956,13 +3956,15 @@ public:
 					if (middlewares_)
 					{
 						for (auto& middleware : *middlewares_.get())
-						{	
+						{
 							json middleware_json = json::object();
 							if (middleware.first.middleware_attribute().empty() == false)
-								middleware_json["pre"] = middleware.first.type() + "::" + middleware.first.middleware_attribute();
+								middleware_json["pre"]
+									= middleware.first.type() + "::" + middleware.first.middleware_attribute();
 
-							if (middleware.second.middleware_attribute().empty()  == false)
-								middleware_json["post"] = middleware.second.type() + "::" + middleware.second.middleware_attribute();
+							if (middleware.second.middleware_attribute().empty() == false)
+								middleware_json["post"]
+									= middleware.second.type() + "::" + middleware.second.middleware_attribute();
 
 							endpoint_json["middlewares"].emplace_back(middleware_json);
 						}
@@ -3972,19 +3974,19 @@ public:
 					{
 						endpoint_json["middlewares"].emplace_back(middleware_stack_item);
 					}
-					
+
 					json metrics_json;
 					endpoint->second->route_metrics().to_json(metrics_json);
 
 					if (endpoint->second->produces().size())
 					{
-						for(const auto& produce_entry : endpoint->second->produces())
+						for (const auto& produce_entry : endpoint->second->produces())
 							endpoint_json["produces"].emplace_back(produce_entry);
 					}
 
 					if (endpoint->second->consumes().size())
 					{
-						for(const auto& consumes_entry : endpoint->second->consumes())
+						for (const auto& consumes_entry : endpoint->second->consumes())
 							endpoint_json["consumes"].emplace_back(consumes_entry);
 					}
 
@@ -3993,7 +3995,6 @@ public:
 					endpoint_json["name"] = name_;
 
 					result[s.str()] = endpoint_json;
-
 				}
 			}
 
@@ -4009,16 +4010,16 @@ public:
 					for (auto& middleware : *middlewares_.get())
 					{
 						if (middleware.first.middleware_attribute().empty() == false)
-							middleware_json["pre"] = middleware.first.type() + "::" + middleware.first.middleware_attribute();
+							middleware_json["pre"]
+								= middleware.first.type() + "::" + middleware.first.middleware_attribute();
 
-						if (middleware.second.middleware_attribute().empty()  == false)
-							middleware_json["post"] = middleware.second.type() + "::" + middleware.second.middleware_attribute();
+						if (middleware.second.middleware_attribute().empty() == false)
+							middleware_json["post"]
+								= middleware.second.type() + "::" + middleware.second.middleware_attribute();
 
 						middleware_stack.emplace_back(middleware_json);
 					}
-
 				}
-
 
 				link->second->to_json(result, path, middleware_stack);
 
@@ -4093,7 +4094,7 @@ public:
 	std::string private_base_;
 
 public:
-	router(std::string private_base) : root_(new router::route_part{"root", "root"}), private_base_(private_base) {}
+	router(std::string private_base) : root_(new router::route_part{ "root", "root" }), private_base_(private_base) {}
 
 	enum class middleware_type
 	{
@@ -4111,19 +4112,42 @@ public:
 	{
 		auto result = service_lookup_.find(service + "/" + name);
 		if (result != service_lookup_.end())
-			return search_result{true, result->second.first, result->second.second };
+			return search_result{ true, result->second.first, result->second.second };
 		else
-			return search_result{false, "", nullptr };
+			return search_result{ false, "", nullptr };
 	}
 
 	using on_error = std::function<bool(const std::string& message)>;
-	using on_use_middleware = std::function<void(const std::string& service, const std::string& name, const std::string& path, const std::string& type, const std::string& pre_attribute, const std::string& post_attribute)>;
-	using on_use_endpoint = std::function<void(const std::string& service, const std::string& name, http::method::method_t method, const std::string& route, const std::vector<std::string>& consumes, const std::vector<std::string>& produces)>;
+	using on_use_middleware = std::function<void(
+		const std::string& service,
+		const std::string& name,
+		const std::string& path,
+		const std::string& type,
+		const std::string& pre_attribute,
+		const std::string& post_attribute)>;
+	using on_use_endpoint = std::function<void(
+		const std::string& service,
+		const std::string& name,
+		http::method::method_t method,
+		const std::string& route,
+		const std::vector<std::string>& consumes,
+		const std::vector<std::string>& produces)>;
 	using on_use_include_file = std::function<std::string(const std::string&)>;
 
-	void use_registry(const std::string& route_path, const std::string& registry_file, on_error on_error, on_use_middleware on_use_middleware, on_use_endpoint on_use_endpoint)
+	void use_registry(
+		const std::string& route_path,
+		const std::string& registry_file,
+		on_error on_error,
+		on_use_middleware on_use_middleware,
+		on_use_endpoint on_use_endpoint)
 	{
-		use_registry(route_path, registry_file, on_error, [](const std::string& file_path) { return file_path; }, on_use_middleware, on_use_endpoint);
+		use_registry(
+			route_path,
+			registry_file,
+			on_error,
+			[](const std::string& file_path) { return file_path; },
+			on_use_middleware,
+			on_use_endpoint);
 	}
 
 	void use_middleware_from_registry(
@@ -4141,8 +4165,8 @@ public:
 		if (middleware_entry.is_object())
 		{
 			auto type = middleware_entry.value("type", "");
-			auto pre = middleware_entry.value("pre", ""); 
-			auto post = middleware_entry.value("post", ""); 
+			auto pre = middleware_entry.value("pre", "");
+			auto post = middleware_entry.value("post", "");
 
 			on_use_middleware(service, "", route_path, type, pre, post);
 		}
@@ -4159,31 +4183,39 @@ public:
 
 						if (middleware_json == middleware_definiton_cache_.end())
 						{
-							use_registry(route_path, registry_base_path + tokens[0], on_error, file_path_conversion, on_use_middleware, on_use_endpoint);
+							use_registry(
+								route_path,
+								registry_base_path + tokens[0],
+								on_error,
+								file_path_conversion,
+								on_use_middleware,
+								on_use_endpoint);
 
 							middleware_json = middleware_definiton_cache_.find(tokens[1]);
 
 							if (middleware_json == middleware_definiton_cache_.cend())
 							{
-								on_error("error when reading router registry file "+registry_file+" : "+ tokens[1] +" is not defined");
+								on_error(
+									"error when reading router registry file " + registry_file + " : " + tokens[1]
+									+ " is not defined");
 
 								break;
 							}
 						}
 
 						auto type = middleware_json->second.value("type", "");
-						auto pre = middleware_json->second.value("pre", ""); 
-						auto post = middleware_json->second.value("post", ""); 
+						auto pre = middleware_json->second.value("pre", "");
+						auto post = middleware_json->second.value("post", "");
 
 						on_use_middleware(service, "", route_path, type, pre, post);
 					}
-					else 
+					else
 					{
 						// local definition of the middleware
 						// as we are in an entrys() loop we hit this for each object property
 						auto type = middlewares.value("type", "");
-						auto pre = middlewares.value("pre", ""); 
-						auto post = middlewares.value("post", ""); 
+						auto pre = middlewares.value("pre", "");
+						auto post = middlewares.value("post", "");
 
 						on_use_middleware(service, "", route_path, type, pre, post);
 
@@ -4207,14 +4239,13 @@ public:
 		for (auto& path : path_entry.items())
 		{
 			std::string route_path_new = route_path == "/" ? path.key() : route_path + path.key();
-			std::string name = path.value().value("name","");
+			std::string name = path.value().value("name", "");
 
 			for (auto& path_elements : path.value().items())
 			{
 				auto key = path_elements.key();
-				std::transform(key.begin(), key.end(), key.begin(), [](char c) {
-					return static_cast<char>(std::toupper(c));
-				});
+				std::transform(
+					key.begin(), key.end(), key.begin(), [](char c) { return static_cast<char>(std::toupper(c)); });
 
 				auto method = http::method::to_method(key);
 				if (method != http::method::unknown)
@@ -4238,21 +4269,24 @@ public:
 						}
 
 					on_use_endpoint(service, name, method, route_path_new, produces, consumes);
-
 				}
 				else if (path_elements.key() == "paths")
 				{
-					use_route_path_from_registry(route_path_new, registry_file, service, path_elements.value(), on_error, file_path_conversion, on_use_endpoint);
+					use_route_path_from_registry(
+						route_path_new,
+						registry_file,
+						service,
+						path_elements.value(),
+						on_error,
+						file_path_conversion,
+						on_use_endpoint);
 				}
 
 				auto value = path_elements.value();
 			}
 		}
 
-
-
-
-		//if (path_entry.key() == "paths")
+		// if (path_entry.key() == "paths")
 		//{
 		//	for (auto& path : path_entry.items())
 		//	{
@@ -4260,7 +4294,7 @@ public:
 		//		use_route_path_from_registry(route_path_new, registry_file, path.value(), logger, file_path_conversion);
 		//	}
 		//}
-		//else
+		// else
 		//{
 
 		//}
@@ -4300,7 +4334,15 @@ public:
 
 					if (value.is_array() && key == "middlewares")
 					{
-						use_middleware_from_registry(route_path, registry_file, "", value, on_error, on_use_include_file, on_use_middleware, on_use_endpoint);
+						use_middleware_from_registry(
+							route_path,
+							registry_file,
+							"",
+							value,
+							on_error,
+							on_use_include_file,
+							on_use_middleware,
+							on_use_endpoint);
 					}
 					else if (value.is_array() && key[0] == '/')
 					{
@@ -4319,7 +4361,9 @@ public:
 										route_path_new,
 										registry_base_path + std::string{ details },
 										on_error,
-										on_use_include_file, on_use_middleware, on_use_endpoint);
+										on_use_include_file,
+										on_use_middleware,
+										on_use_endpoint);
 								}
 							}
 						}
@@ -4332,7 +4376,14 @@ public:
 						if (value.contains("middlewares"))
 						{
 							use_middleware_from_registry(
-								route_path_new, registry_file, service, value.at("middlewares"), on_error, on_use_include_file, on_use_middleware, on_use_endpoint);
+								route_path_new,
+								registry_file,
+								service,
+								value.at("middlewares"),
+								on_error,
+								on_use_include_file,
+								on_use_middleware,
+								on_use_endpoint);
 						}
 
 						if (value.contains("paths"))
@@ -4340,7 +4391,13 @@ public:
 							for (auto& path : value.at("paths").items())
 							{
 								use_route_path_from_registry(
-									route_path_new, registry_file, service, path, on_error, on_use_include_file, on_use_endpoint);
+									route_path_new,
+									registry_file,
+									service,
+									path,
+									on_error,
+									on_use_include_file,
+									on_use_endpoint);
 							}
 						}
 					}
@@ -4359,10 +4416,8 @@ public:
 		}
 	}
 
-	json load_registry_file(
-		const std::string& registry_file,
-		on_error on_error,
-		on_use_include_file on_use_include_file)
+	json
+	load_registry_file(const std::string& registry_file, on_error on_error, on_use_include_file on_use_include_file)
 	{
 		std::string real_registry_file = on_use_include_file(registry_file);
 
@@ -4460,7 +4515,11 @@ public:
 		on_http_method(method::proxy_pass, route, std::move(api_method));
 	}
 
-	void on_middleware(const std::string& service, const std::string& name, const T& route, const std::pair<routing::middleware, routing::middleware>& middleware_pair)
+	void on_middleware(
+		const std::string& service,
+		const std::string& name,
+		const T& route,
+		const std::pair<routing::middleware, routing::middleware>& middleware_pair)
 	{
 		auto it = root_.get();
 
@@ -4480,7 +4539,7 @@ public:
 				l = it->link_.insert(
 					it->link_.end(),
 					std::pair<T, std::unique_ptr<router::route_part>>{
-					T{ part }, std::unique_ptr<router::route_part>{ new router::route_part{service, name} } });
+						T{ part }, std::unique_ptr<router::route_part>{ new router::route_part{ service, name } } });
 			}
 
 			it = l->second.get();
@@ -4501,14 +4560,20 @@ public:
 			last_part = *(split_route.crbegin());
 
 			if (last_part[0] == '{')
-				if (split_route.size() > 2)
-					last_part = *(split_route.crbegin()+1);
+				if (split_route.size() > 2) last_part = *(split_route.crbegin() + 1);
 		}
 
 		on_http_method("root", last_part, method, route, {}, {}, std::move(end_point));
 	}
 
-	void on_http_method(const std::string& service, const std::string& name, const M method, const T& route, const std::vector<std::string>& produces, const std::vector<std::string>& consumes, R&& end_point)
+	void on_http_method(
+		const std::string& service,
+		const std::string& name,
+		const M method,
+		const T& route,
+		const std::vector<std::string>& produces,
+		const std::vector<std::string>& consumes,
+		R&& end_point)
 	{
 		auto it = root_.get();
 
@@ -4526,8 +4591,8 @@ public:
 				l = it->link_.insert(
 					it->link_.end(),
 					std::pair<T, std::unique_ptr<router::route_part>>{
-					std::string{ part }, std::unique_ptr<router::route_part>{ new router::route_part{service, name} } });
-				
+						std::string{ part },
+						std::unique_ptr<router::route_part>{ new router::route_part{ service, name } } });
 			}
 
 			it = l->second.get();
@@ -4542,7 +4607,8 @@ public:
 			std::pair<M, std::unique_ptr<routing::route>>{
 				M{ method }, std::unique_ptr<routing::route>{ new routing::route{ end_point, consumes, produces } } });
 
-		service_lookup_[service + "/" + name] = std::pair<std::string, routing::route*>{route, new_endpoint->second.get()};
+		service_lookup_[service + "/" + name]
+			= std::pair<std::string, routing::route*>{ route, new_endpoint->second.get() };
 	}
 
 	routing match_route(const http::method::method_t& method, const std::string& url, params& params) const noexcept
@@ -4676,7 +4742,8 @@ public:
 			for (const auto& endpoint_entry : *(it->endpoints_))
 			{
 				if (result.allowed_methods().empty() == false)
-					result.allowed_methods() = http::method::to_string(endpoint_entry.first) + ", " + result.allowed_methods();
+					result.allowed_methods()
+						= http::method::to_string(endpoint_entry.first) + ", " + result.allowed_methods();
 				else
 					result.allowed_methods() = http::method::to_string(endpoint_entry.first);
 			}
@@ -4694,7 +4761,6 @@ public:
 
 		for (const auto& service : service_lookup_)
 			result["services"][service.first] = service.second.first;
-
 
 		return result;
 	}
@@ -5178,7 +5244,7 @@ public:
 				}
 				case json_status_options::router:
 				{
-					//ss << "\"router\": {" << router_information_ << "}";
+					// ss << "\"router\": {" << router_information_ << "}";
 
 					ss << router_information_;
 					break;
