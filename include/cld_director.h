@@ -102,18 +102,18 @@ static bool create_bse_process_as_user(
 
 	auto parameters_as_configuration = http::configuration({}, parameters);	
 
-	auto worker_level = parameters_as_configuration.get("cld_worker_level");
+	auto worker_label = parameters_as_configuration.get("cld_worker_label");
 
 	pid = local_testing::_test_sockets.aquire();
 
 	ec = "";
 
-	std::thread([pid, worker_level]() {
+	std::thread([pid, worker_label]() {
 		std::lock_guard<std::mutex> g{ local_testing::m };
 		json put_new_instance_json = json::object();
 		std::string ec;
 		put_new_instance_json["process_id"] = pid;
-		put_new_instance_json["worker_level"] = worker_level;
+		put_new_instance_json["worker_label"] = worker_label;
 		put_new_instance_json["base_url"] = "http://localhost:" + std::to_string(pid);
 		put_new_instance_json["version"] = "test_bshell";
 
@@ -396,7 +396,7 @@ public:
 
 private:
 	std::string worker_id_{};
-	std::string worker_level_{};
+	std::string worker_label_{};
 	std::string base_url_{};
 	std::string version_{};
 	std::int32_t process_id_;
@@ -409,12 +409,12 @@ private:
 public:
 	worker(
 		std::string worker_id,
-		std::string worker_level,
+		std::string worker_label,
 		std::string base_url = "",
 		std::string version = "",
 		std::int32_t process_id = 0)
 		: worker_id_(worker_id)
-		, worker_level_(worker_level)
+		, worker_label_(worker_label)
 		, base_url_(base_url)
 		, version_(version)
 		, process_id_(process_id)
@@ -425,7 +425,7 @@ public:
 
 	worker(const worker& worker)
 		: worker_id_(worker.worker_id_)
-		, worker_level_(worker.worker_level_)
+		, worker_label_(worker.worker_label_)
 		, base_url_(worker.base_url_)
 		, version_(worker.version_)
 		, process_id_(worker.process_id_)
@@ -437,12 +437,15 @@ public:
 	virtual ~worker() { worker_metrics_.clear(); };
 
 	const std::string& get_base_url() const { return base_url_; };
-	const std::string& worker_level() const { return worker_level_; };
+	const std::string& worker_label() const { return worker_label_; };
+	void worker_label(const std::string& level)
+	{ 
+		worker_label_ = level;
+	}
 
 	int get_process_id() const { return process_id_; };
 
 	status get_status() const { return status_; }
-
 	void set_status(status s)
 	{
 		if (s == status::up && status_ == status::starting)
@@ -457,7 +460,7 @@ public:
 		process_id_ = worker_json.value("process_id", 0);
 		base_url_ = worker_json.value("base_url", "");
 		version_ = worker_json.value("version", "");
-		worker_level_ = worker_json.value("worker_level", "");
+		worker_label_ = worker_json.value("worker_label", "");
 	}
 
 	void to_json(json& worker_json) const
@@ -477,7 +480,7 @@ public:
 		worker_json["status"] = worker::to_string(get_status());
 		worker_json["process_id"] = process_id_;
 		worker_json["worker_id"] = worker_id_;
-		worker_json["worker_level"] = worker_level_;
+		worker_json["worker_label"] = worker_label_;
 
 		if (status_ != status::down)
 		{
@@ -536,13 +539,13 @@ public:
 		return workers_.find(worker_id);
 	}
 
-	void add_pending_worker(const std::string& worker_id, const std::string& worker_level_selected)
+	void add_pending_worker(const std::string& worker_id, const std::string& worker_label_selected)
 	{
-		workers_.emplace(std::pair<const std::string, worker>(worker_id, worker{ worker_id, worker_level_selected }));
+		workers_.emplace(std::pair<const std::string, worker>(worker_id, worker{ worker_id, worker_label_selected }));
 	}
 
 	void
-	add_worker(const std::string& worker_id, const std::string& worker_level, const json& j, asio::io_context& io_context)
+	add_worker(const std::string& worker_id, const std::string& worker_label, const json& j, asio::io_context& io_context)
 	{
 		std::lock_guard<std::mutex> g{ workers_mutex_ };
 		std::int32_t process_id;
@@ -554,14 +557,14 @@ public:
 		version = j.value("version", "");
 
 		auto new_worker = workers_.emplace(std::pair<const std::string, worker>(
-			worker_id, worker{ worker_id, worker_level, base_url, version, process_id }));
+			worker_id, worker{ worker_id, worker_label, base_url, version, process_id }));
 
 		if (new_worker.second == false) new_worker.first->second.from_json(j);
 
 		if (base_url.empty() == false)
 		{
 			limits_.workers_actual_upd(1);
-			upstreams_.add_upstream(io_context, base_url, worker_id + "/" + worker_level);
+			upstreams_.add_upstream(io_context, base_url, worker_id + "/" + worker_label);
 			new_worker.first->second.set_status(worker::status::up);
 		}
 	}
@@ -649,7 +652,7 @@ public:
 		const std::string& worker_name,
 		std::uint32_t& pid,
 		std::string& worker_id,
-		const std::string& worker_level,		
+		const std::string& worker_label,		
 		std::string& ec)
 		= 0;
 
@@ -739,15 +742,15 @@ public:
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			return workers_max_;
 		}
-		const std::string& workers_level_actual() const
+		const std::string& workers_label_actual() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
-			return workers_level_actual_;
+			return workers_label_actual_;
 		}
-		const std::string& workers_level_selected() const
+		const std::string& workers_label_required() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
-			return workers_level_selected_;
+			return workers_label_required_;
 		}
 
 		void workers_pending_upd(std::int16_t value)
@@ -789,15 +792,20 @@ public:
 			workers_max_ = value;
 		}
 
-		void workers_level_selected(const std::string& value)
+		void workers_label_required(const std::string& value)
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
-			workers_level_selected_ = value;
+			workers_label_required_ = value;
 		}
-		void workers_level_actual(const std::string& value)
+		void workers_label_actual(const std::string& value)
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
-			workers_level_actual_ = value;
+			workers_label_actual_ = value;
+		}
+
+		void workers_not_on_label_required(std::int16_t value) 
+		{ 
+			workers_not_on_label_required_ = value;
 		}
 
 		void workers_start_at_once_max(std::int16_t value)
@@ -836,8 +844,8 @@ public:
 				if (limit_name.empty() || limit_name == "workers_requests_max")
 					workers_requests_max_ = j.value("workers_requests_max", std::int16_t{ 0 });
 
-				if (limit_name.empty() || limit_name == "workers_level_selected")
-					workers_level_selected_ = j.value("workers_level_selected", "unknown");
+				if (limit_name.empty() || limit_name == "workers_label_required")
+					workers_label_required_ = j.value("workers_label_required", "unknown");
 
 				if (limit_name.empty() || limit_name == "workers_start_at_once_max")
 					workers_start_at_once_max_ = j.value("workers_start_at_once_max", std::int16_t{ 4 });
@@ -859,8 +867,8 @@ public:
 				if (limit_name.empty() || limit_name == "workers_requests_max")
 					workers_requests_max_ += j.value("workers_requests_max", std::int16_t{ 0 });
 
-				if (limit_name.empty() || limit_name == "workers_level_selected")
-					workers_level_selected_ = j.value("workers_level_selected", "unknown");
+				if (limit_name.empty() || limit_name == "workers_label_required")
+					workers_label_required_ = j.value("workers_label_required", "unknown");
 
 				if (limit_name.empty() || limit_name == "workers_start_at_once_max")
 					workers_start_at_once_max_ += j.value("workers_start_at_once_max", std::int16_t{4});
@@ -895,6 +903,10 @@ public:
 			{
 				j["workers_pending"] = workers_pending_;
 			}
+			if (limit_name.empty() || limit_name == "workers_not_at_label_required")
+			{
+				j["workers_not_at_label_required"] = workers_not_on_label_required_;
+			}
 			if (limit_name.empty() || limit_name == "workers_runtime_max")
 			{
 				j["workers_runtime_max"] = workers_runtime_max_;
@@ -903,13 +915,13 @@ public:
 			{
 				j["workers_requests_max"] = workers_requests_max_;
 			}
-			if (limit_name.empty() || limit_name == "workers_level_selected")
+			if (limit_name.empty() || limit_name == "workers_label_required")
 			{
-				j["workers_level_selected"] = workers_level_selected_;
+				j["workers_label_required"] = workers_label_required_;
 			}
 			if (limit_name.empty() || limit_name == "workers_requests_max")
 			{
-				j["workers_level_actual"] = workers_level_actual_;
+				j["workers_label_actual"] = workers_label_actual_;
 			}
 			if (limit_name.empty() || limit_name == "workers_start_at_once_max")
 			{
@@ -921,12 +933,13 @@ public:
 		std::int16_t workers_pending_{ 0 };
 		std::int16_t workers_required_{ 0 };
 		std::int16_t workers_actual_{ 0 };
+		std::int16_t workers_not_on_label_required_{ 0 };
 
 		std::int16_t workers_min_{ 0 };
 		std::int16_t workers_max_{ 0 };
 
-		std::string workers_level_selected_{ };
-		std::string workers_level_actual_{ };
+		std::string workers_label_required_{ };
+		std::string workers_label_actual_{ };
 
 		std::int16_t workers_runtime_max_{ 0 };
 		std::int16_t workers_requests_max_{ 0 };
@@ -1010,11 +1023,11 @@ public:
 		do
 		{
 			auto workers_required_to_add = limits_.workers_required_to_add();
-			auto workers_level_selected = limits_.workers_level_selected();
+			auto workers_label_required = limits_.workers_label_required();
 			auto workers_runtime_max = limits_.workers_runtime_max();
 
 			logger.api(
-				"managing: /{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, level_selected: {s}, level_actual: {s}\n",
+				"managing: /{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_required: {s}, label_actual: {s}\n",
 				workspace_id_,
 				type_,
 				name_,
@@ -1023,8 +1036,8 @@ public:
 				limits_.workers_required(),
 				limits_.workers_min(),
 				limits_.workers_max(),
-				limits_.workers_level_actual(),
-				workers_level_selected);
+				limits_.workers_label_actual(),
+				workers_label_required);
 
 
 			if (rescan) rescan = false;
@@ -1035,7 +1048,7 @@ public:
 				std::string worker_id;
 				lock.unlock();
 				bool success = create_worker_process(
-					server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_level_selected, ec);
+					server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_label_required, ec);
 				lock.lock();
 				if (!success) // todo
 				{
@@ -1060,7 +1073,7 @@ public:
 						static_cast<int>(process_id),
 						worker_id);
 
-					add_pending_worker(worker_id, workers_level_selected);
+					add_pending_worker(worker_id, workers_label_required);
 
 					limits_.workers_pending_upd(1);
 				}
@@ -1077,11 +1090,11 @@ public:
 						continue;
 					}
 					auto& worker = worker_it->second;
-					auto worker_level = worker_it->second.worker_level();
+					auto worker_label = worker_it->second.worker_label();
 					auto worker_runtime = worker_it->second.runtime();
 
 
-					if (worker_level != workers_level_selected)
+					if (worker_label != workers_label_required)
 					{
 						worker.set_status(worker::status::drain);
 						workers_required_to_add++;
@@ -1108,8 +1121,8 @@ public:
 			if (limits_adjustments.contains("limits") == false)
 			{
 				std::int16_t workers_watchdogs_feeded = 0;
-				std::int16_t workers_on_selected_level = 0;
-				std::int16_t workers_not_on_selected_level = 0;
+				std::int16_t workers_on_label_required = 0;
+				std::int16_t workers_not_on_label_required = 0;
 				std::int16_t workers_runtime_max_reached = 0;
 
 				for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
@@ -1122,22 +1135,22 @@ public:
 
 					auto& worker = worker_it->second;
 
-					auto worker_level = worker_it->second.worker_level();
+					auto worker_label = worker_it->second.worker_label();
 
 					if (worker_it->second.get_status() == worker::status::up
 						|| worker_it->second.get_status() == worker::status::starting)
 					{
-						if (worker_level != workers_level_selected)
+						if (worker_label != workers_label_required)
 						{
-							workers_not_on_selected_level++;
+							workers_not_on_label_required++;
 						}
 						else
 						{
-							workers_on_selected_level++;
+							workers_on_label_required++;
 							if (worker.runtime() >= workers_runtime_max) workers_runtime_max_reached++;
 						}
 
-						if (worker_level != limits_.workers_level_actual()) limits_.workers_level_actual(worker_level);
+						if (worker_label != limits_.workers_label_actual()) limits_.workers_label_actual(worker_label);
 					}
 
 					if (worker_it->second.get_status() == worker::status::up)
@@ -1176,12 +1189,13 @@ public:
 					++worker_it;
 				}
 
-//				limits_.workers_refresh_actual(workers_on_selected_level);
-				auto workers_to_start = workers_not_on_selected_level;
+//				limits_.workers_refresh_actual(workers_on_label_required);
+				auto workers_to_start = workers_not_on_label_required;
+				limits_.workers_not_on_label_required(workers_not_on_label_required);
 
-				if (workers_on_selected_level + limits_.workers_pending() != limits_.workers_required())
+				if (workers_on_label_required + limits_.workers_pending() != limits_.workers_required())
 				{
-					workers_to_start = workers_not_on_selected_level;
+					workers_to_start = workers_not_on_label_required;
 				}
 				else if (workers_runtime_max_reached > 0)
 				{
@@ -1203,7 +1217,7 @@ public:
 						name_,
 						process_id,
 						worker_id,
-						workers_level_selected,
+						workers_label_required,
 						ec);
 
 					lock.lock();
@@ -1230,7 +1244,7 @@ public:
 							static_cast<int>(process_id),
 							worker_id);
 
-						add_pending_worker(worker_id, workers_level_selected);
+						add_pending_worker(worker_id, workers_label_required);
 					}
 				}
 
@@ -1258,6 +1272,7 @@ public:
 						worker_it++;
 				}
 			}
+
 		} while (rescan);
 	};
 
@@ -1347,7 +1362,7 @@ public:
 		const std::string& worker_name,
 		std::uint32_t& pid,
 		std::string& worker_id,
-		const std::string& worker_level,
+		const std::string& worker_label,
 		std::string& ec) override
 	{
 		static std::atomic<std::uint32_t> worker_ids{ 0 };
@@ -1357,7 +1372,7 @@ public:
 
 		parameters << "-httpserver_options cld_manager_endpoint:" << manager_endpoint
 				   << ",cld_workgroup_membership_type:worker,cld_manager_workspace:" << workspace_id
-				   << ",cld_worker_id:" << worker_id << ",cld_worker_level:" << worker_level
+				   << ",cld_worker_id:" << worker_id << ",cld_worker_label:" << worker_label
 				   << ",cld_manager_workgroup:" << worker_name << "/" << worker_type;
 
 		if (!http_options_.empty())
@@ -1455,6 +1470,8 @@ private:
 	std::string workspace_id_{};
 	std::string tenant_id_{};
 	std::string description_{};
+	std::string default_group_{};
+
 	std::vector<std::string> errors;
 	container_type workgroups_;
 
@@ -1465,6 +1482,9 @@ public:
 	}
 
 	workspace(const workspace&) = delete;
+
+	const std::string& default_group() const { return default_group_; }
+	void default_group(const std::string& default_group) { default_group_ = default_group; }
 
 	const std::string& get_workspace_id(void) const { return workspace_id_; };
 	void set_workspace_id(const std::string& workspace_id) { workspace_id_ = workspace_id; };
@@ -1480,6 +1500,7 @@ public:
 		workspace["id"] = workspace_id_;
 		workspace["tenant_id"] = tenant_id_;
 		workspace["description"] = description_;
+		workspace["default_group"] = default_group_;
 
 		json workgroups_json;
 
@@ -1559,8 +1580,9 @@ public:
 
 	void from_json(const json& j)
 	{
-		j.at("description").get_to(description_);
-		j.at("tenant_id").get_to(tenant_id_);
+		description_ = j.value("description", "");
+		tenant_id_ = j.value("tenant_id", "");
+		default_group_ = j.value("default_group", "untitled");
 
 		if (j.find("workgroups") != j.end())
 		{
@@ -1944,11 +1966,7 @@ public:
 		});
 
 		server_base::router_.on_get("/private/infra/manager/status/{section}", [this](http::session_handler& session) {
-			server_base::manager().server_information(http::server::configuration_.to_json_string());
-			server_base::manager().router_information(server_base::router_.to_json().dump());
-
 			auto section_option = http::server::server_manager::json_status_options::full;
-
 			const auto& section = session.params().get("section");
 
 			if (section == "metrics")
@@ -1957,10 +1975,12 @@ public:
 			}
 			else if (section == "configuration")
 			{
+				server_base::manager().server_information(http::server::configuration_.to_json_string());
 				section_option = http::server::server_manager::json_status_options::config;
 			}
 			else if (section == "router")
 			{
+				server_base::manager().router_information(server_base::router_.to_json().dump());
 				section_option = http::server::server_manager::json_status_options::router;
 			}
 			else if (section == "access_log")
@@ -2469,14 +2489,14 @@ public:
 					if (i != workspace->second->end())
 					{
 						json worker_json = json::parse(session.request().body());
-						const std::string& worker_level = worker_json["worker_level"];
+						const std::string& worker_label = worker_json["worker_label"];
 
 						auto workgroups = workspace->second->find_workgroups(name, type);
 
 						if (workgroups != workspace->second->end())
 						{
 							workgroups->second->add_worker(
-								worker_id, worker_level, worker_json, server_base::get_io_context());
+								worker_id, worker_label, worker_json, server_base::get_io_context());
 						}
 
 						session.response().assign(http::status::no_content);
@@ -2494,6 +2514,7 @@ public:
 						"application/json");
 				}
 			});
+
 
 		// remove specific worker {worker_id} of worker {type} in workspace {workspace_id}
 		server_base::router_.on_delete(
@@ -2592,7 +2613,50 @@ public:
 				}
 			});
 
-		// remove specific worker process {worker_id} of worker {type} in workspace {workspace_id}
+		server_base::router_.on_put(
+			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}/label",
+			[this](http::session_handler& session) {
+				auto& workspace_id = session.params().get("workspace_id");
+				auto workspace = workspaces_.get_workspace(workspace_id);
+
+				if (workspace != workspaces_.end())
+				{
+					auto& name = session.params().get("name");
+					auto& type = session.params().get("type");
+
+					auto i = workspace->second->find_workgroups(name, type);
+
+					if (i != workspace->second->end())
+					{
+						auto& worker_id = session.params().get("worker_id");
+
+						auto worker = i->second->find_worker(worker_id);
+
+						if (worker != i->second->end())
+						{
+							//worker->second.set_status(worker::status::drain);
+							worker->second.worker_label("");
+							session.response().assign(http::status::no_content);
+						}
+						else
+						{
+							session.response().assign(http::status::not_found);
+						}
+					}
+					else
+					{
+						session.response().assign(http::status::not_found);
+					}
+				}
+				else
+				{
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						"application/json");
+				}
+			});
+
 		server_base::router_.on_delete(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}/process",
 			[this](http::session_handler& session) {
@@ -2850,15 +2914,17 @@ public:
 		});
 
 		server_base::router_.on_proxy_pass("/", [this](http::session_handler& session) {
-			auto tenant_id = session.request().get<std::string>("X-Infor-TenantId", "tenant000_prd");
-			auto workgroup_name = session.request().get<std::string>("X-WorkGroup-Name", "untitled");
-			auto workgroup_type = session.request().get<std::string>("X-WorkGroup-Type", "bshells");
+			auto tenant_id = session.request().get<std::string>("X-Infor-TenantId", "");
 			auto workspace = workspaces_.get_tenant_workspace(tenant_id);
 
 			bool forwarded = false;
 
 			if (workspace != nullptr)
 			{
+				auto workgroup_name
+					= session.request().get<std::string>("X-Infor-Upstream-Group", workspace->default_group());
+
+				auto workgroup_type = session.request().get<std::string>("X-Infor-Upstream-Type", "bshells");
 				auto workgroup = workspace->find_workgroups(workgroup_name, workgroup_type);
 
 				if (workgroup != workspace->end() && workgroup->second->has_workers_available())

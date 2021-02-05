@@ -29,7 +29,12 @@
 #include <vector>
 #include <zlib.h>
 
+#ifndef LOCAL_TESTING
+#include "nlohmann_json.hpp"
+#else
 #include "nlohmann/json.hpp"
+#endif
+
 using json = nlohmann::json;
 
 #if !defined(HTTP_DO_NOT_USE_CURL)
@@ -664,7 +669,7 @@ private:
 namespace util
 {
 
-std::string to_lower(std::string input)
+inline std::string to_lower(std::string input)
 {
 	std::transform(
 		input.begin(), input.end(), input.begin(), [](char c) { return static_cast<char>(std::tolower(c)); });
@@ -672,7 +677,7 @@ std::string to_lower(std::string input)
 	return input;
 }
 
-std::string to_upper(std::string input)
+inline std::string to_upper(std::string input)
 {
 	std::transform(
 		input.begin(), input.end(), input.begin(), [](char c) { return static_cast<char>(std::toupper(c)); });
@@ -4354,6 +4359,7 @@ public:
 							{
 								auto route = path.key();
 								auto details = path.value();
+								std::string service = path_entry.value().value("service", "");
 
 								if (route == "$ref")
 								{
@@ -4363,6 +4369,17 @@ public:
 										on_error,
 										on_use_include_file,
 										on_use_middleware,
+										on_use_endpoint);
+								}
+								else if (route == "paths")
+								{
+									use_route_path_from_registry(
+										route_path_new,
+										registry_file,
+										service,
+										details,
+										on_error,
+										on_use_include_file,
 										on_use_endpoint);
 								}
 							}
