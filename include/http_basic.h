@@ -146,6 +146,179 @@ private:
 } // namespace std14
 #endif
 
+namespace util
+{
+
+inline std::string to_lower(std::string input)
+{
+	std::transform(
+		input.begin(), input.end(), input.begin(), [](char c) { return static_cast<char>(std::tolower(c)); });
+
+	return input;
+}
+
+inline std::string to_upper(std::string input)
+{
+	std::transform(
+		input.begin(), input.end(), input.begin(), [](char c) { return static_cast<char>(std::toupper(c)); });
+
+	return input;
+}
+
+inline std::string escape_json(const std::string& s)
+{
+	std::ostringstream ss;
+
+	for (const auto& c : s)
+	{
+		switch (c)
+		{
+			case '"':
+				ss << "\\\"";
+				break;
+			case '\\':
+				ss << "\\\\";
+				break;
+			case '\b':
+				ss << "\\b";
+				break;
+			case '\f':
+				ss << "\\f";
+				break;
+			case '\n':
+				ss << "\\n";
+				break;
+			case '\r':
+				ss << "\\r";
+				break;
+			case '\t':
+				ss << "\\t";
+				break;
+			default:
+				if (static_cast<signed char>(c) >= 0x00 && static_cast<signed char>(c) <= 0x1f)
+				{
+					ss << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)c;
+				}
+				else
+				{
+					ss << c;
+				}
+		}
+	}
+	return ss.str();
+}
+
+namespace case_insensitive
+{
+
+template <typename T> struct equal_to
+{
+	bool operator()(const T& lhs, const T& rhs) const
+	{
+		return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin(), [](char a, char b) {
+				   return ((a > 96) && (a < 123) ? a ^= 0x20 : a) == ((b > 96) && (b < 123) ? b ^= 0x20 : b);
+			   });
+	}
+};
+
+} // namespace case_insensitive
+
+namespace case_sensitive
+{
+template <typename T> struct equal_to
+{
+	bool operator()(const T& lhs, const T& rhs) const { return lhs == rhs; }
+};
+} // namespace case_sensitive
+
+inline std::string return_current_time_and_date()
+{
+	std::string result;
+	auto now = std::chrono::system_clock::now();
+	auto in_time_t = std::chrono::system_clock::to_time_t(now);
+	auto tmp_tm = std::tm{};
+	(void)gmtime_r(&in_time_t, &tmp_tm);
+	std::array<char, 32> tmp{ char{ 0 } };
+	auto size = strftime(&tmp[0], sizeof(tmp), "%a, %d %b %Y %H:%M:%S GMT", &tmp_tm);
+	assert(size <= tmp.size());
+	result.assign(&tmp[0], size);
+
+	return result;
+}
+
+namespace split_opt
+{
+enum empties_t
+{
+	empties_ok,
+	no_empties
+};
+};
+
+template <typename T>
+T& split_(
+	T& result,
+	const typename T::value_type& s,
+	const typename T::value_type& delimiters,
+	split_opt::empties_t empties = split_opt::empties_ok)
+{
+	result.clear();
+	typename T::size_type next = T::value_type::npos;
+	auto current = next;
+
+	do
+	{
+		if (empties == split_opt::no_empties)
+		{
+			next = s.find_first_not_of(delimiters, next + 1);
+			if (next == T::value_type::npos) break;
+			next -= 1;
+		}
+		current = next + 1;
+		next = s.find_first_of(delimiters, current);
+		result.push_back(s.substr(current, next - current));
+	} while (next != T::value_type::npos);
+	return result;
+}
+
+enum split_options
+{
+	all_tokens,
+	stop_on_first_delimiter_found
+};
+
+inline std::vector<std::string>
+split(const std::string& str, const std::string& delimiters, split_options options = split_options::all_tokens)
+{
+	std::vector<std::string> output;
+
+	// output.reserve(str.size() / 2);
+
+	auto first = str.cbegin();
+
+	while (first != str.cend())
+	{
+		const auto second = std::find_first_of(first, str.cend(), delimiters.cbegin(), delimiters.cend());
+
+		if (first != second) output.emplace_back(first, second);
+
+		if (options == stop_on_first_delimiter_found)
+		{
+			output.emplace_back(second + 1, str.cend());
+			break;
+		}
+
+		if (second == str.cend()) break;
+
+		first = std::next(second);
+	}
+
+	return output;
+}
+
+} // namespace util
+
+
 namespace gzip
 {
 
@@ -284,6 +457,7 @@ enum class level
 	error,
 	warning,
 	access_log,
+	access_log_all,
 	api,
 	info,
 	debug
@@ -295,6 +469,7 @@ static const char none[] = "";
 static const char error[] = "[err]: ";
 static const char warning[] = "[war]: ";
 static const char access_log[] = "[acc]: ";
+static const char access_log_all[] = "[aca]: ";
 static const char api[] = "[api]: ";
 static const char info[] = "[inf]: ";
 static const char debug[] = "[dbg]: ";
@@ -311,17 +486,25 @@ inline std::size_t get_thread_id() noexcept
 class logger
 {
 public:
-	logger(const std::string& file, const std::string& level) : ostream_(&std::cout)
+	logger(const std::string& file, const std::string& level) : admin_ostream_(&std::cout), trafic_ostream_(&std::cout)
 	{
 		set_level(level);
+		set_file(file);
 
-		if (level_ != level::none && file != "cout")
+		if (admin_level_ != level::none && admin_file_ != "console")
 		{
-			redirected_ostream_.open(file, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
-			ostream_ = &redirected_ostream_;
+			redirected_admin_ostream_.open(admin_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
+			admin_ostream_ = &redirected_admin_ostream_;
 		}
 
-		if (level_ != level::none)
+		if (trafic_level_ != level::none && trafic_file_ != "console")
+		{
+			redirected_trafic_ostream_.open(
+				trafic_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
+			trafic_ostream_ = &redirected_trafic_ostream_;
+		}
+
+		if (admin_level_ != level::none)
 		{
 			info("logger started\n");
 		}
@@ -329,49 +512,130 @@ public:
 
 	~logger()
 	{
-		if (level_ != level::none)
+		if (admin_level_ != level::none)
 		{
 			info("logger stopped\n");
 		}
 	}
 
-	level current_level() const { return level_.load(); }
+	level current_admin_level() const { return admin_level_.load(); }
+	level current_trafic_level() const { return trafic_level_.load(); }
+
 	const std::string current_level_to_string() const
 	{
-		if (level_ == level::access_log)
-			return "access_log";
-		else if (level_ == level::error)
-			return "error";
-		else if (level_ == level::warning)
-			return "warning";
-		else if (level_ == level::api)
-			return "api";
-		else if (level_ == level::info)
-			return "info";
-		else if (level_ == level::debug)
-			return "debug";
+		std::string ret="admin:";
+
+		if (admin_level_ == level::access_log)
+			ret += "access_log";
+		else if (admin_level_ == level::access_log_all)
+			ret += "access_log_all";
+		else if (admin_level_ == level::error)
+			ret += "error";
+		else if (admin_level_ == level::warning)
+			ret += "warning";
+		else if (admin_level_ == level::api)
+			ret += "api";
+		else if (admin_level_ == level::info)
+			ret += "info";
+		else if (admin_level_ == level::debug)
+			ret += "debug";
 		else
-			return "none";
+			ret += "none";
+
+		ret += ";trafic:";
+		if (trafic_level_ == level::access_log) 
+			ret += "access_log";
+		else if (trafic_level_ == level::access_log_all)
+			ret += "access_log_all";
+		else if (trafic_level_ == level::error)
+			ret += "error";
+		else if (trafic_level_ == level::warning)
+			ret += "warning";
+		else if (trafic_level_ == level::api)
+			ret += "api";
+		else if (trafic_level_ == level::info)
+			ret += "info";
+		else if (trafic_level_ == level::debug)
+			ret += "debug";
+		else
+			ret += "none";
+
+		return ret;
 	}
 
-	void set_level(level l) { level_.store(l); }
+	void set_file(const std::string& file)
+	{
+		auto levels = util::split(file, ":;");
 
-	void set_level(const std::string& level)
+		if (levels.size() == 4)
+		{
+			if (levels[0] == "trafic") trafic_file_ = levels[1];
+
+			if (levels[2] == "trafic") trafic_file_ = levels[3];
+
+			if (levels[0] == "admin") admin_file_ = levels[1];
+
+			if (levels[2] == "admin") admin_file_ = levels[3];
+		}
+	}
+
+	void set_level(const std::string& level) 
+	{
+		auto levels = util::split(level, ":;");
+
+		if (levels.size() == 4)
+		{
+			if (levels[0] == "trafic") set_trafic_level(levels[1]);
+
+			if (levels[2] == "trafic") set_trafic_level(levels[3]);
+
+			if (levels[0] == "admin") set_admin_level(levels[1]);
+
+			if (levels[2] == "admin") set_admin_level(levels[3]);
+		}
+	}
+
+	void set_admin_level(level l) { admin_level_.store(l); }
+	void set_trafic_level(level l) { trafic_level_.store(l); }
+
+	void set_admin_level(const std::string& level)
 	{
 		if (level == "access_log")
-			level_ = level::access_log;
+			admin_level_ = level::access_log;
+		else if (level == "access_log_all")
+			admin_level_ = level::access_log_all;
 		else if (level == "api")
-			level_ = level::api;
+			admin_level_ = level::api;
 		else if (level == "warning")
-			level_ = level::warning;
+			admin_level_ = level::warning;
 		else if (level == "error")
-			level_ = level::error;
+			admin_level_ = level::error;
 		else if (level == "info")
-			level_ = level::info;
+			admin_level_ = level::info;
 		else if (level == "debug")
-			level_ = level::debug;
+			admin_level_ = level::debug;
 		else
-			level_ = level::none;
+			admin_level_ = level::none;
+	}
+
+	void set_trafic_level(const std::string& level)
+	{
+		if (level == "access_log")
+			trafic_level_ = level::access_log;
+		else if (level == "access_log_all")
+			trafic_level_ = level::access_log_all;
+		else if (level == "api")
+			trafic_level_ = level::api;
+		else if (level == "warning")
+			trafic_level_ = level::warning;
+		else if (level == "error")
+			trafic_level_ = level::error;
+		else if (level == "info")
+			trafic_level_ = level::info;
+		else if (level == "debug")
+			trafic_level_ = level::debug;
+		else
+			trafic_level_ = level::none;
 	}
 
 	template <const char* P, typename... A> static const std::string format(const std::string& msg)
@@ -595,24 +859,19 @@ public:
 		return buffer;
 	}
 
-	/*
-
-	off = 0,
-	error,
-	warning,
-	info,
-	debug,
-	trace
-
-	*/
-
 	inline void log(const level l, const std::string& msg) const
 	{
-		if (level_ >= l)
+		if (admin_level_ >= l)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			ostream_->write(msg.data(), msg.size()).flush();
+			admin_ostream_->write(msg.data(), msg.size()).flush();
 		}
+		if (trafic_level_ >= l)
+		{
+			std::lock_guard<std::mutex> g{ lock_ };
+			trafic_ostream_->write(msg.data(), msg.size()).flush();
+		}
+
 	}
 
 	template <typename... A> void access_log(const char* format, const A&... args) const
@@ -647,196 +906,53 @@ public:
 
 	template <typename... A> void access_log(const std::string& msg) const
 	{
-		if (level_ >= level::access_log)
+		if (trafic_level_ >= level::access_log)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			ostream_->write(msg.data(), msg.size()).flush();
+			trafic_ostream_->write(msg.data(), msg.size()).flush();
+		}
+		if (admin_level_ >= level::access_log)
+		{
+			std::lock_guard<std::mutex> g{ lock_ };
+			admin_ostream_->write(msg.data(), msg.size()).flush();
+		}
+
+	}
+
+	template <typename... A> void access_log_all(const std::string& msg) const
+	{
+		if (trafic_level_ >= level::access_log_all)
+		{
+			std::lock_guard<std::mutex> g{ lock_ };
+			trafic_ostream_->write(msg.data(), msg.size()).flush();
+		}
+		if (admin_level_ >= level::access_log_all)
+		{
+			std::lock_guard<std::mutex> g{ lock_ };
+			admin_ostream_->write(msg.data(), msg.size()).flush();
 		}
 	}
 
-	std::ostream& as_stream() { return *ostream_; }
-	const std::ostream& as_stream() const { return *ostream_; }
+	std::ostream& as_stream() { return *admin_ostream_; }
+	const std::ostream& as_stream() const { return *admin_ostream_; }
 
 private:
 	mutable std::mutex lock_;
-	std::ostream* ostream_;
-	std::ofstream redirected_ostream_;
-	std::atomic<level> level_;
+	std::ostream* admin_ostream_;
+	std::ostream* trafic_ostream_;
+
+	std::ofstream redirected_admin_ostream_;
+	std::ofstream redirected_trafic_ostream_;
+
+	std::atomic<level> admin_level_;
+	std::atomic<level> trafic_level_;
+
+	std::string admin_file_;
+	std::string trafic_file_;
 };
 
 } // namespace lgr
 
-namespace util
-{
-
-inline std::string to_lower(std::string input)
-{
-	std::transform(
-		input.begin(), input.end(), input.begin(), [](char c) { return static_cast<char>(std::tolower(c)); });
-
-	return input;
-}
-
-inline std::string to_upper(std::string input)
-{
-	std::transform(
-		input.begin(), input.end(), input.begin(), [](char c) { return static_cast<char>(std::toupper(c)); });
-
-	return input;
-}
-
-inline std::string escape_json(const std::string& s)
-{
-	std::ostringstream ss;
-
-	for (const auto& c : s)
-	{
-		switch (c)
-		{
-			case '"':
-				ss << "\\\"";
-				break;
-			case '\\':
-				ss << "\\\\";
-				break;
-			case '\b':
-				ss << "\\b";
-				break;
-			case '\f':
-				ss << "\\f";
-				break;
-			case '\n':
-				ss << "\\n";
-				break;
-			case '\r':
-				ss << "\\r";
-				break;
-			case '\t':
-				ss << "\\t";
-				break;
-			default:
-				if (static_cast<signed char>(c) >= 0x00 && static_cast<signed char>(c) <= 0x1f)
-				{
-					ss << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)c;
-				}
-				else
-				{
-					ss << c;
-				}
-		}
-	}
-	return ss.str();
-}
-
-namespace case_insensitive
-{
-
-template <typename T> struct equal_to
-{
-	bool operator()(const T& lhs, const T& rhs) const
-	{
-		return lhs.size() == rhs.size() && std::equal(lhs.begin(), lhs.end(), rhs.begin(), [](char a, char b) {
-				   return ((a > 96) && (a < 123) ? a ^= 0x20 : a) == ((b > 96) && (b < 123) ? b ^= 0x20 : b);
-			   });
-	}
-};
-
-} // namespace case_insensitive
-
-namespace case_sensitive
-{
-template <typename T> struct equal_to
-{
-	bool operator()(const T& lhs, const T& rhs) const { return lhs == rhs; }
-};
-} // namespace case_sensitive
-
-inline std::string return_current_time_and_date()
-{
-	std::string result;
-	auto now = std::chrono::system_clock::now();
-	auto in_time_t = std::chrono::system_clock::to_time_t(now);
-	auto tmp_tm = std::tm{};
-	(void)gmtime_r(&in_time_t, &tmp_tm);
-	std::array<char, 32> tmp{ char{ 0 } };
-	auto size = strftime(&tmp[0], sizeof(tmp), "%a, %d %b %Y %H:%M:%S GMT", &tmp_tm);
-	assert(size <= tmp.size());
-	result.assign(&tmp[0], size);
-
-	return result;
-}
-
-namespace split_opt
-{
-enum empties_t
-{
-	empties_ok,
-	no_empties
-};
-};
-
-template <typename T>
-T& split_(
-	T& result,
-	const typename T::value_type& s,
-	const typename T::value_type& delimiters,
-	split_opt::empties_t empties = split_opt::empties_ok)
-{
-	result.clear();
-	typename T::size_type next = T::value_type::npos;
-	auto current = next;
-
-	do
-	{
-		if (empties == split_opt::no_empties)
-		{
-			next = s.find_first_not_of(delimiters, next + 1);
-			if (next == T::value_type::npos) break;
-			next -= 1;
-		}
-		current = next + 1;
-		next = s.find_first_of(delimiters, current);
-		result.push_back(s.substr(current, next - current));
-	} while (next != T::value_type::npos);
-	return result;
-}
-
-enum split_options
-{
-	all_tokens,
-	stop_on_first_delimiter_found
-};
-
-inline std::vector<std::string>
-split(const std::string& str, const std::string& delimiters, split_options options = split_options::all_tokens)
-{
-	std::vector<std::string> output;
-
-	// output.reserve(str.size() / 2);
-
-	auto first = str.cbegin();
-
-	while (first != str.cend())
-	{
-		const auto second = std::find_first_of(first, str.cend(), delimiters.cbegin(), delimiters.cend());
-
-		if (first != second) output.emplace_back(first, second);
-
-		if (options == stop_on_first_delimiter_found)
-		{
-			output.emplace_back(second + 1, str.cend());
-			break;
-		}
-
-		if (second == str.cend()) break;
-
-		first = std::next(second);
-	}
-
-	return output;
-}
-
-} // namespace util
 
 namespace http
 {
@@ -4233,7 +4349,7 @@ public:
 	void use_route_path_from_registry(
 		const std::string& route_path,
 		const std::string& registry_file,
-		const std::string& service,
+		const std::string& base_service,
 		json path_entry,
 		on_error on_error,
 		on_use_include_file file_path_conversion,
@@ -4245,6 +4361,7 @@ public:
 		{
 			std::string route_path_new = route_path == "/" ? path.key() : route_path + path.key();
 			std::string name = path.value().value("name", "");
+			std::string service = path.value().value("service", base_service);
 
 			for (auto& path_elements : path.value().items())
 			{
@@ -4355,11 +4472,13 @@ public:
 
 						for (auto& path_entry : value.items())
 						{
+
 							for (auto& path : path_entry.value().items())
 							{
+								std::string service{};
 								auto route = path.key();
 								auto details = path.value();
-								std::string service = path_entry.value().value("service", "");
+								if (path_entry.value().is_object()) service = path_entry.value().value("service", "");
 
 								if (route == "$ref")
 								{
@@ -4838,8 +4957,8 @@ public:
 
 			auto t1 = std::chrono::steady_clock::now();
 			route_context.the_route().update_hitcount_and_timing_metrics(
-				std::chrono::duration<std::int64_t, std::nano>(t0 - session.t0()),
-				std::chrono::duration<std::int64_t, std::nano>(t1 - t0));
+				std::chrono::duration_cast<std::chrono::milliseconds>(t0 - session.t0()),
+				std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0));
 		}
 		return route_context;
 	}
@@ -5080,8 +5199,10 @@ public:
 		: router_(configuration.get<std::string>("private_base", ""))
 		, configuration_(configuration)
 		, logger_(
-			  configuration.get<std::string>("log_file", "cout"),
-			  configuration.get<std::string>("log_level", "access_log")){};
+			  configuration.get<std::string>("log_file", "trafic:access_log.txt;admin:console"),
+			  configuration.get<std::string>("log_level", "trafic:access_log;admin:none") ){};
+
+
 
 	server(const server&) = delete;
 	server(server&&) = delete;
@@ -5150,7 +5271,7 @@ public:
 
 		std::int64_t idle_time()
 		{
-			return (std::chrono::duration<std::int64_t, std::nano>(
+			return (std::chrono::duration<std::int64_t, std::milli>(
 						std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
 						.count())
 				   / 1000000000;
@@ -5814,7 +5935,7 @@ public:
 
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
-							if (server_.logger_.current_level() == lgr::level::debug)
+							if (server_.logger_.current_admin_level() == lgr::level::debug)
 							{
 								server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(request));
 							}
@@ -5861,16 +5982,15 @@ public:
 
 							if (routing.match_result() == http::api::router_match::match_found)
 							{
-								routing.the_route().metric_response_latency(
-									std::chrono::duration<std::uint64_t, std::nano>(
-										std::chrono::steady_clock::now() - t0)
-										.count());
+								auto t1 = std::chrono::duration<std::uint64_t, std::nano>(std::chrono::steady_clock::now() - t0).count();
+
+								routing.the_route().metric_response_latency(t1);
 
 								auto log_msg = server_.manager().log_access(
 												   session_handler_, routing.the_route().route_metrics())
 											   + "\n";
 
-								if (server_.logger_.current_level() >= lgr::level::access_log)
+								if (server_.logger_.current_admin_level() >= lgr::level::access_log)
 								{
 									server_.logger_.access_log(log_msg);
 								}
@@ -5884,7 +6004,7 @@ public:
 								server_.logger_.access_log(log_msg);
 							}
 
-							if (server_.logger_.current_level() == lgr::level::debug)
+							if (server_.logger_.current_admin_level() == lgr::level::debug)
 							{
 								server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(response));
 							}

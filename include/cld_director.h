@@ -1026,18 +1026,21 @@ public:
 			auto workers_label_required = limits_.workers_label_required();
 			auto workers_runtime_max = limits_.workers_runtime_max();
 
-			logger.api(
-				"managing: /{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_required: {s}, label_actual: {s}\n",
-				workspace_id_,
-				type_,
-				name_,
-				limits_.workers_actual(),
-				limits_.workers_pending(),
-				limits_.workers_required(),
-				limits_.workers_min(),
-				limits_.workers_max(),
-				limits_.workers_label_actual(),
-				workers_label_required);
+			if (limits_.workers_required() > 0)
+			{
+				logger.api(
+					"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_required: {s}, label_actual: {s}\n",
+					workspace_id_,
+					type_,
+					name_,
+					limits_.workers_actual(),
+					limits_.workers_pending(),
+					limits_.workers_required(),
+					limits_.workers_min(),
+					limits_.workers_max(),
+					limits_.workers_label_actual(),
+					workers_label_required);
+			}
 
 
 			if (rescan) rescan = false;
@@ -1053,7 +1056,7 @@ public:
 				if (!success) // todo
 				{
 					logger.api(
-						"managing: /{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
+						"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
 						workspace_id_,
 						type_,
 						name_,
@@ -1064,7 +1067,7 @@ public:
 				else
 				{
 					logger.api(
-						"managing: /{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
+						"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
 						workspace_id_,
 						type_,
 						name_,
@@ -1175,7 +1178,7 @@ public:
 								{
 									worker.set_status(worker::status::drain);
 									logger.api(
-										"managing: /{s}/{s}/{s}: failed health check for worker {s}\n",
+										"/{s}/{s}/{s}: failed health check for worker {s}\n",
 										workspace_id_,
 										type_,
 										name_,
@@ -1224,7 +1227,7 @@ public:
 					if (!success) // todo
 					{
 						logger.api(
-							"managing: /{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
+							"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
 							workspace_id_,
 							type_,
 							name_,
@@ -1235,7 +1238,7 @@ public:
 					else
 					{
 						logger.api(
-							"managing: /{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
+							"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
 							workspace_id_,
 							type_,
 							name_,
@@ -1254,7 +1257,7 @@ public:
 						|| worker_it->second.get_status() == worker::status::down)
 					{
 						logger.api(
-							"managing: /{s}/{s}/{s}: delete {s}\n",
+							"/{s}/{s}/{s}: delete {s}\n",
 							workspace_id_,
 							type_,
 							name_,
@@ -1648,7 +1651,7 @@ public:
 		auto t1 = std::chrono::steady_clock::now();
 
 		auto elapsed = t1 - t0;
-		logger.info("managing: {u} workspaces took {d}msec\n", workspaces_.size(), elapsed.count() / 1000000);
+		logger.info("{u} workspaces took {d}msec\n", workspaces_.size(), elapsed.count() / 1000000);
 	}
 
 public:
@@ -1818,55 +1821,55 @@ public:
 	manager(http::configuration& http_configuration, const std::string& configuration_file)
 		: http::async::server(http_configuration), configuration_file_(configuration_file)
 	{
-		server_base::logger().api("load registry\n");
+		//server_base::logger().api("load registry\n");
 
-		server_base::router().use_registry(
-			"/",
-			"C:/tmp/pm_root/route_registry/ttwebcontexts.json", // TODO
-			[this](const std::string& error) {
-				server_base::logger().api("{s}\n", error);
-				return false;
-			},
-			[this](
-				const std::string& service,
-				const std::string& name,
-				const std::string& path,
-				const std::string& type,
-				const std::string& pre_attribute,
-				const std::string& post_attribute) {
-				server_base::logger().api(
-					"\\--middleware--> {s} {s} {s} {s} {s} {s}\n",
-					service,
-					name,
-					path,
-					type,
-					pre_attribute,
-					pre_attribute);
+		//server_base::router().use_registry(
+		//	"/",
+		//	"C:/tmp/pm_root/route_registry/ttwebcontexts.json", // TODO
+		//	[this](const std::string& error) {
+		//		server_base::logger().api("{s}\n", error);
+		//		return false;
+		//	},
+		//	[this](
+		//		const std::string& service,
+		//		const std::string& name,
+		//		const std::string& path,
+		//		const std::string& type,
+		//		const std::string& pre_attribute,
+		//		const std::string& post_attribute) {
+		//		server_base::logger().api(
+		//			"\\--middleware--> {s} {s} {s} {s} {s} {s}\n",
+		//			service,
+		//			name,
+		//			path,
+		//			type,
+		//			pre_attribute,
+		//			pre_attribute);
 
-				server_base::router().use_middleware(service, name, path, type, pre_attribute, post_attribute);
-			},
-			[this](
-				const std::string& service,
-				const std::string& name,
-				http::method::method_t method,
-				const std::string& route,
-				const std::vector<std::string>& consumes,
-				const std::vector<std::string>& produces) {
-				server_base::logger().api(
-					"\\--route---{s}-{s}->{s}|{s} [{s}/{s}]\n",
-					service,
-					name,
-					route,
-					http::method::to_string(method),
-					"",
-					"");
+		//		server_base::router().use_middleware(service, name, path, type, pre_attribute, post_attribute);
+		//	},
+		//	[this](
+		//		const std::string& service,
+		//		const std::string& name,
+		//		http::method::method_t method,
+		//		const std::string& route,
+		//		const std::vector<std::string>& consumes,
+		//		const std::vector<std::string>& produces) {
+		//		server_base::logger().api(
+		//			"\\--route---{s}-{s}->{s}|{s} [{s}/{s}]\n",
+		//			service,
+		//			name,
+		//			route,
+		//			http::method::to_string(method),
+		//			"",
+		//			"");
 
-				server_base::router().on_http_method(
-					service, name, method, route, consumes, produces, [](http::session_handler&) {});
-			}
+		//		server_base::router().on_http_method(
+		//			service, name, method, route, consumes, produces, [](http::session_handler&) {});
+		//	}
 
-		);
-		auto search_result = server_base::router().search("library-v1", "members");
+		//);
+		//auto search_result = server_base::router().search("library-v1", "members");
 
 		std::ifstream configuration_stream{ configuration_file_ };
 
@@ -3017,7 +3020,7 @@ private:
 				new_config_file << std::setw(4) << manager_json;
 
 				if (new_config_file.fail() == false)
-					server_base::logger_.info("managing: config saved to: \"{s}\"\n", configuration_file_);
+					server_base::logger_.info("config saved to: \"{s}\"\n", configuration_file_);
 			}
 
 			std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -3358,8 +3361,8 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 											  { "private_base", "/private/infra/manager" },
 											  { "private_ip_white_list", "::1/128;::ffff:127.0.0.0/120;::ffff:127.1.0.0/120" },
 											  { "public_ip_white_list", "::1/128;::ffff:192.168.1.0/120;::ffff:127.0.0.1/128" },
-											  { "log_level", "api" },
-											  { "log_file", "cout" },
+											  { "log_level", "trafic:access_log_all;admin:api" },
+											  { "log_file", "trafic:access_log.txt;admin:console" },
 											  { "https_enabled", "false" },
 											  { "http_enabled", "true" },
 											  { "http_use_portsharding", "false" } },

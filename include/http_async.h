@@ -580,9 +580,10 @@ public:
 		http::api::routing routing_{};
 		http::protocol protocol_;
 
-		std::vector<asio::ip::network_v6> private_ip_white_list_;
-		std::vector<asio::ip::network_v6> public_ip_white_list_;
+		std::vector<asio::ip::network_v6> private_ip_white_list_{};
+		std::vector<asio::ip::network_v6> public_ip_white_list_{};
 
+		bool private_base_request_{ false };
 
 		connection_handler_base(
 			asio::io_context& service, server& server, http::configuration& configuration, protocol protocol)
@@ -683,16 +684,18 @@ public:
 				session_handler_.request().set(
 					"X-Forwarded-For", session_handler_.request().get("X-Forwarded-For", this->remote_address_base()));
 
-				bool private_base_request
+				private_base_request_
 					= session_handler_.request().target().find(server_.router_.private_base_, 0) == 0;
 
-				if (private_base_request == true)
+				if (private_base_request_ == true)
 				{
 					session_handler_.client_allowed(is_remote_address_allowed_base(private_ip_white_list_));
+					server_.manager().requests_current(private_base_request_);
 				}
 				else
 				{
 					session_handler_.client_allowed(is_remote_address_allowed_base(public_ip_white_list_));
+					++server_.manager().requests_current(private_base_request_);
 				}
 
 				if (result == http::request_parser::good)
@@ -880,7 +883,7 @@ public:
 
 					routing_ = session_handler_.handle_request(server_.router_);
 
-					if (server_.logger_.current_level() == lgr::level::debug)
+					if (server_.logger_.current_admin_level() == lgr::level::debug)
 					{
 						server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(session_handler_.request()));
 					}
@@ -1176,29 +1179,44 @@ public:
 			if (routing_.match_result() == http::api::router_match::match_found)
 			{
 				routing_.the_route().metric_response_latency(
-					std::chrono::duration<std::uint64_t, std::nano>(
+					std::chrono::duration_cast<std::chrono::milliseconds>(
 						std::chrono::steady_clock::now() - session_handler_.t2())
 						.count());
 
-				if (server_.logger_.current_level() >= lgr::level::access_log)
+				if (server_.logger_.current_admin_level() == lgr::level::debug)
 				{
-					if (server_.logger_.current_level() == lgr::level::debug)
-					{
-						server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(session_handler_.response()));
-					}
+					server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(session_handler_.response()));
+				}
 
-					auto log_msg
-						= server_.manager().log_access(session_handler_, routing_.the_route().route_metrics()) + "\n";
+				auto log_msg
+					= server_.manager().log_access(session_handler_, routing_.the_route().route_metrics()) + "\n";
 
+
+				if (private_base_request_ == false)
+				{
 					server_.logger_.access_log(log_msg);
+					--server_.manager().requests_current(private_base_request_);
+
+				}
+				else if (private_base_request_ == true)
+				{
+					server_.logger_.access_log_all(log_msg);
+					server_.manager().requests_current(private_base_request_);
 				}
 			}
 			else
 			{
-				std::string log_msg
+				auto log_msg
 					= server_.manager().log_access(session_handler_, http::api::routing::metrics{}) + "\n";
 
-				server_.logger_.access_log(log_msg);
+				if (private_base_request_ == false)
+				{
+					server_.logger_.access_log(log_msg);
+				}
+				else if (private_base_request_ == true)
+				{
+					server_.logger_.access_log_all(log_msg);
+				}
 			}
 
 			if (session_handler_.response().connection_keep_alive())
