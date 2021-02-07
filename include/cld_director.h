@@ -2972,11 +2972,18 @@ public:
 
 	http::server::state start() override
 	{
-		auto ret = server_base::start();
+		try
+		{
+			auto ret = server_base::start();
+			director_thread_ = std::thread{ [this]() { director_handler(); } };
 
-		director_thread_ = std::thread{ [this]() { director_handler(); } };
-
-		return ret;
+			return ret;
+		}
+		catch (std::runtime_error& e)
+		{
+			std::cerr << e.what() << std::endl;
+			_exit(-1);
+		}
 	}
 
 	void to_json(json& j) const
