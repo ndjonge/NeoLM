@@ -412,6 +412,7 @@ public:
 
 	upstream& get_upstream(const std::string& base_url)
 	{
+		std14::shared_lock<std14::shared_mutex> g{ upstreams_lock_ };
 		auto result
 			= std::find_if(upstreams_.begin(), upstreams_.end(), [base_url](const std::unique_ptr<upstream>& rhs) {
 				  return (rhs->base_url_ == base_url);
@@ -675,6 +676,7 @@ public:
 		{
 			if (!ec)
 			{
+				session_handler_.t0() = std::chrono::steady_clock::now();
 				http::request_parser::result_type result;
 
 				std::tie(result, std::ignore) = session_handler_.parse_request(
@@ -2036,15 +2038,31 @@ http::response_message request(
 
 template <http::method::method_t method>
 void async_request(
+	http::async::upstreams& upstreams,
+	const std::string& base_url,
+	const std::string& request_url,
+	const http::headers& headers,
+	const std::string& body,
+	std::function<void(http::response_message& response, asio::error_code& error_code)>&& on_complete)
+{
+	std14::shared_lock<std14::shared_mutex> usptreams_guard{ upstreams.upstreams_lock_ };
+
+	auto& upstream = upstreams.get_upstream(base_url);
+
+
+	return async_request<method>(upstream, request_url, headers, body, std::move(on_complete));
+}
+
+template <http::method::method_t method>
+void async_request(
 	http::async::upstreams::upstream& upstream,
 	const std::string& request_url,
 	const http::headers& headers,
 	const std::string& body,
 	std::function<void(http::response_message& response, asio::error_code& error_code)>&& on_complete)
 {
-	auto request = http::request_message{ method, upstream.host(), request_url, headers, body };
-
 	bool found = false;
+	auto request = http::request_message{ method, upstream.host(), request_url, headers, body };
 
 	do
 	{

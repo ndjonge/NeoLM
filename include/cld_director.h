@@ -96,19 +96,18 @@ static bool create_bse_process_as_user(
 	std::uint32_t& pid,
 	std::string& ec)
 {
-	static std::atomic<std::uint32_t> worker_ids{ 0 };
-
 	bool result = true;
 
 	auto parameters_as_configuration = http::configuration({}, parameters);	
 
+	auto worker_id = parameters_as_configuration.get("cld_worker_id");
 	auto worker_label = parameters_as_configuration.get("cld_worker_label");
 
 	pid = local_testing::_test_sockets.aquire();
 
 	ec = "";
 
-	std::thread([pid, worker_label]() {
+	std::thread([pid, worker_label, worker_id]() {
 		std::lock_guard<std::mutex> g{ local_testing::m };
 		json put_new_instance_json = json::object();
 		std::string ec;
@@ -118,8 +117,7 @@ static bool create_bse_process_as_user(
 		put_new_instance_json["version"] = "test_bshell";
 
 		auto response = http::client::request<http::method::put>(
-			"http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/workers/worker_"
-				+ std::to_string(worker_ids++),
+			"http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/workers/" + worker_id,
 			ec,
 			{},
 			put_new_instance_json.dump()); //,std::cerr, true);
@@ -371,6 +369,7 @@ class worker
 public:
 	enum class status
 	{
+		recover,
 		starting,
 		up,
 		drain,
@@ -381,6 +380,8 @@ public:
 	{
 		switch (status)
 		{
+			case status::recover:
+				return "recover";
 			case status::starting:
 				return "starting";
 			case status::down:
@@ -405,6 +406,7 @@ private:
 
 	status status_{ status::down };
 	json worker_metrics_{};
+	http::async::upstreams::upstream* upstream_{nullptr};
 
 public:
 	worker(
@@ -434,10 +436,15 @@ public:
 	{
 	}
 
-	virtual ~worker() { worker_metrics_.clear(); };
+	virtual ~worker() { worker_metrics_.clear(); }
 
-	const std::string& get_base_url() const { return base_url_; };
-	const std::string& worker_label() const { return worker_label_; };
+	void upstream(http::async::upstreams::upstream& upstream) { upstream_ = &upstream; }
+	const http::async::upstreams::upstream& upstream() const { return *upstream_; }
+
+	const std::string& get_base_url() const { return base_url_; }
+	const std::string& worker_label() const { return worker_label_; }
+
+
 	void worker_label(const std::string& level)
 	{ 
 		worker_label_ = level;
@@ -448,10 +455,15 @@ public:
 	status get_status() const { return status_; }
 	void set_status(status s)
 	{
-		if (s == status::up && status_ == status::starting)
+		if (status_ == status::starting && (s == status::up || s == status::recover))
 		{
 			startup_t1_ = std::chrono::steady_clock::now();
 		}
+		else if (s == status::drain)
+		{
+			upstream_->set_state(http::async::upstreams::upstream::state::drain);
+		}
+
 		status_ = s;
 	};
 
@@ -564,7 +576,10 @@ public:
 		if (base_url.empty() == false)
 		{
 			limits_.workers_actual_upd(1);
-			upstreams_.add_upstream(io_context, base_url, worker_id + "/" + worker_label);
+			auto& upstream = upstreams_.add_upstream(io_context, base_url, worker_id + "/" + worker_label);
+
+			new_worker.first->second.upstream(upstream);
+
 			new_worker.first->second.set_status(worker::status::up);
 		}
 	}
@@ -656,25 +671,6 @@ public:
 		std::string& ec)
 		= 0;
 
-	void remove_worker(worker& worker)
-	{
-		std::lock_guard<std::mutex> g{ workers_mutex_ };
-		std::string ec;
-		auto response = http::client::request<http::method::delete_>(
-			worker.get_base_url() + "/private/infra/worker/shutdown", ec, {});
-
-		worker.set_status(worker::status::drain);
-	}
-
-	// remove all
-	void remove_all_workers(void)
-	{
-		for (auto in = workers_.begin(); in != workers_.end(); ++in)
-		{
-			remove_worker(in->second);
-		}
-	}
-
 	void cleanup_all_workers(void)
 	{
 		for (auto in = workers_.begin(); in != workers_.end();)
@@ -704,7 +700,6 @@ public:
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			return workers_pending_;
 		}
-
 		std::int16_t workers_required() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
@@ -737,6 +732,12 @@ public:
 			return workers_runtime_max_;
 		}
 		
+		std::int16_t workers_requests_max() const
+		{
+			std::lock_guard<std::mutex> m{ limits_mutex_ };
+			return workers_requests_max_;
+		}
+
 		std::int16_t workers_max() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
@@ -951,6 +952,7 @@ public:
 	limits& workgroups_limits() { return limits_; }
 
 	virtual void direct_workers(
+		asio::io_context& io_context,
 		const http::configuration& configuration,
 		lgr::logger& logger,
 		const std::string& = std::string{},
@@ -993,6 +995,7 @@ public:
 	virtual void set_tenant(const std::string& t) { tenant_id_ = t; };
 
 	virtual void direct_workers(
+		asio::io_context& io_context,
 		const http::configuration& configuration,
 		lgr::logger& logger,
 		const std::string& limit_name,
@@ -1025,6 +1028,7 @@ public:
 			auto workers_required_to_add = limits_.workers_required_to_add();
 			auto workers_label_required = limits_.workers_label_required();
 			auto workers_runtime_max = limits_.workers_runtime_max();
+			auto workers_requests_max = limits_.workers_requests_max();
 
 			if (limits_.workers_required() > 0)
 			{
@@ -1095,9 +1099,19 @@ public:
 					auto& worker = worker_it->second;
 					auto worker_label = worker_it->second.worker_label();
 					auto worker_runtime = worker_it->second.runtime();
-
+					auto worker_requests = worker_it->second.upstream().responses_tot_.load();
 
 					if (worker_label != workers_label_required)
+					{
+						worker.set_status(worker::status::drain);
+						workers_required_to_add++;
+
+						if (workers_required_to_add == 0)
+						{
+							break;
+						}
+					}
+					else if (worker_requests >= workers_requests_max)
 					{
 						worker.set_status(worker::status::drain);
 						workers_required_to_add++;
@@ -1127,6 +1141,7 @@ public:
 				std::int16_t workers_on_label_required = 0;
 				std::int16_t workers_not_on_label_required = 0;
 				std::int16_t workers_runtime_max_reached = 0;
+				std::int16_t workers_responses_max_reached = 0;
 
 				for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
 				{
@@ -1150,10 +1165,32 @@ public:
 						else
 						{
 							workers_on_label_required++;
-							if (worker.runtime() >= workers_runtime_max) workers_runtime_max_reached++;
+
+							if (worker.upstream().responses_tot_.load() >= workers_requests_max)
+							{
+								workers_responses_max_reached++;
+							}
+							else if (worker.runtime() >= workers_runtime_max)
+							{
+								workers_runtime_max_reached++;
+							}
+
 						}
 
 						if (worker_label != limits_.workers_label_actual()) limits_.workers_label_actual(worker_label);
+					}
+
+					if (worker_it->second.get_status() == worker::status::recover)
+					{
+						auto& upstream = upstreams_.add_upstream(
+							io_context,
+							worker_it->second.get_base_url(),
+							worker_it->first + "/" + worker_it->second.worker_label());
+
+						worker_it->second.upstream(upstream);
+
+						worker_it->second.set_status(worker::status::up);
+	
 					}
 
 					if (worker_it->second.get_status() == worker::status::up)
@@ -1163,7 +1200,8 @@ public:
 						http::headers watchdog_headers{ { "Host", "localhost" }, { "X-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" }};
 
 						http::client::async_request<http::method::post>(
-							upstreams_.get_upstream(worker_it->second.get_base_url()),
+							upstreams_,
+							worker_it->second.get_base_url(),
 							"/private/infra/worker/watchdog",
 							watchdog_headers,
 							std::string{},
@@ -1199,6 +1237,10 @@ public:
 				if (workers_on_label_required + limits_.workers_pending() != limits_.workers_required())
 				{
 					workers_to_start = workers_not_on_label_required;
+				} 
+				else if (workers_responses_max_reached > 0)
+				{
+					workers_to_start = workers_responses_max_reached;
 				}
 				else if (workers_runtime_max_reached > 0)
 				{
@@ -1253,8 +1295,12 @@ public:
 
 				for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
 				{
-					if ((worker_it->second.get_status() == worker::status::drain)
-						|| worker_it->second.get_status() == worker::status::down)
+					if (worker_it->second.get_status() == worker::status::drain)
+					{
+						if (worker_it->second.upstream().connections_busy_.load() == 0)
+							worker_it->second.set_status(worker::status::down);
+					}
+					if (worker_it->second.get_status() == worker::status::down)
 					{
 						logger.api(
 							"/{s}/{s}/{s}: delete {s}\n",
@@ -1297,6 +1343,38 @@ public:
 		j["parameters"].at("program").get_to(program_);
 		j["parameters"].at("cli_options").get_to(cli_options_);
 		j["parameters"].at("http_options").get_to(http_options_);
+
+		std::int16_t workers_added = 0;
+
+		for (const auto worker_json : j["workers"].items())
+		{			
+			auto worker_id = worker_json.value().value("worker_id", "");
+
+			if (worker_id.empty() == false)
+			{
+				auto id = util::split(worker_id, "_");
+				worker_ids_begin(std::atoi(id[1].c_str()));
+			}
+
+			auto worker_label = worker_json.value().value("worker_label", "");
+
+			auto process_id = worker_json.value().value("process_id", 0);
+			auto base_url = worker_json.value().value("base_url", "");
+			auto version = worker_json.value().value("version", "");
+			auto status = worker_json.value().value("status", "");
+
+			if (status == "up")
+			{
+				auto new_worker = workers_.emplace(std::pair<const std::string, worker>(
+					worker_id, worker{ worker_id, worker_label, base_url, version, process_id }));
+				
+				if (new_worker.second) new_worker.first->second.set_status(worker::status::recover);
+
+				workers_added++;
+			}
+		}
+		limits_.workers_actual_upd(workers_added);
+
 	}
 
 	void from_json(const json& j, const std::string& detail) override 
@@ -1357,7 +1435,14 @@ public:
 		j["parameters"].emplace("http_options", http_options_);
 	}
 
-public:
+	std::atomic<std::uint32_t> worker_ids_{ 0 };
+
+	void worker_ids_begin(std::uint32_t id) 
+	{ 
+		worker_ids_ = worker_ids_ <= id ? id+1 : worker_ids_;
+	}
+
+public :
 	bool create_worker_process(
 		const std::string& manager_endpoint,
 		const std::string& workspace_id,
@@ -1368,10 +1453,9 @@ public:
 		const std::string& worker_label,
 		std::string& ec) override
 	{
-		static std::atomic<std::uint32_t> worker_ids{ 0 };
 		std::stringstream parameters;
 
-		worker_id = "worker_" + std::to_string(worker_ids++);
+		worker_id = "worker_" + std::to_string(worker_ids_++);
 
 		parameters << "-httpserver_options cld_manager_endpoint:" << manager_endpoint
 				   << ",cld_workgroup_membership_type:worker,cld_manager_workspace:" << workspace_id
@@ -1437,6 +1521,7 @@ public:
 	}
 
 	virtual void direct_workers(
+		asio::io_context&,
 		const http::configuration&,
 		lgr::logger&,
 		const std::string&,
@@ -1638,7 +1723,7 @@ public:
 	const_iterator cend() const { return workspaces_.cend(); }
 	const_iterator cbegin() const { return workspaces_.cbegin(); }
 
-	void direct_workspaces(const http::configuration& configuration, lgr::logger& logger)
+	void direct_workspaces(asio::io_context& io_context, const http::configuration& configuration, lgr::logger& logger)
 	{
 		auto t0 = std::chrono::steady_clock::now();
 		for (auto& workspace : workspaces_)
@@ -1646,7 +1731,7 @@ public:
 			std::unique_lock<mutex_type> l{ workspaces_mutex_ };
 			json empty_limits_adjustments = json::object();
 			for (auto& workgroup : *workspace.second)
-				workgroup.second->direct_workers(configuration, logger);
+				workgroup.second->direct_workers(io_context, configuration, logger);
 		}
 		auto t1 = std::chrono::steady_clock::now();
 
@@ -2826,6 +2911,7 @@ public:
 						json limits = json::parse(session.request().body());
 						// TODO split function below:
 						workgroups->second->direct_workers(
+							server_base::get_io_context(),
 							server_base::configuration_,
 							server_base::logger_,
 							limit_name,
@@ -2870,6 +2956,7 @@ public:
 						json limits = json::parse(session.request().body());
 
 						workgroups->second->direct_workers(
+							server_base::get_io_context(),
 							server_base::configuration_,
 							server_base::logger_,
 							limit_name,
@@ -3011,7 +3098,7 @@ private:
 		{
 			if (server_base::is_active())
 			{
-				workspaces_.direct_workspaces(server_base::configuration_, server_base::logger_);
+				workspaces_.direct_workspaces(server_base::get_io_context(), server_base::configuration_, server_base::logger_);
 
 				json manager_json = json::object();
 				to_json(manager_json);
@@ -3366,8 +3453,8 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", "4000" },
 											  { "private_base", "/private/infra/manager" },
-											  { "private_ip_white_list", "::1/128;::ffff:127.0.0.0/120;::ffff:127.1.0.0/120" },
-											  { "public_ip_white_list", "::1/128;::ffff:192.168.1.0/120;::ffff:127.0.0.1/128" },
+											  { "private_ip_white_list", "::ffff:172.31.238.0/120;::1/128;::ffff:127.0.0.0/120;::ffff:127.1.0.0/120" },
+											  { "public_ip_white_list", "::ffff:172.31.238.0/120;::1/128;::ffff:192.168.1.0/120;::ffff:127.0.0.1/128" },
 											  { "log_level", "trafic:access_log_all;admin:api" },
 											  { "log_file", "trafic:access_log.txt;admin:console" },
 											  { "https_enabled", "false" },
