@@ -255,7 +255,54 @@ public:
 		include_connections
 	};
 
-	std::string to_string(const std::string& workspace, options options)
+	void to_json(const std::string& workspace_id, const std::string& tenant_id, options options, json& result)
+	{
+		std::unique_lock<std14::shared_mutex> g{ upstreams_lock_ };
+
+		result = json::array();
+
+		for (auto& upstream : upstreams_)
+		{
+			json upstream_json = json::object();
+			auto connections_busy_ = upstream->connections_busy_.load();
+			auto connections_total = upstream->connections_total_.load();
+			auto connections_idle = connections_total - connections_busy_;
+			auto upstream_state = "up";
+
+			if (upstream->state_ == upstream::state::drain)
+				upstream_state = "drain";
+			else if (upstream->state_ == upstream::state::down)
+				upstream_state = "down";
+
+			upstream_json["tenant_id"] = tenant_id;
+			upstream_json["base_url"] = upstream->base_url_;
+			upstream_json["workspace_id"] = workspace_id;
+			upstream_json["state"] = upstream_state;
+			upstream_json["tenant_id"] = tenant_id;
+
+			upstream_json["connections"]["total"] = connections_total;
+			upstream_json["connections"]["idle"] = connections_idle;
+			upstream_json["connections"]["busy"] = upstream->connections_busy_.load();
+			upstream_json["connections"]["reopend"] = upstream->connections_reopened_.load();
+
+			upstream_json["responses"]["1xx"] = upstream->responses_1xx_.load();
+			upstream_json["responses"]["2xx"] = upstream->responses_2xx_.load();
+			upstream_json["responses"]["3xx"] = upstream->responses_3xx_.load();
+			upstream_json["responses"]["4xx"] = upstream->responses_4xx_.load();
+			upstream_json["responses"]["5xx"] = upstream->responses_5xx_.load();
+			upstream_json["responses"]["tot"] = upstream->responses_tot_.load();
+			upstream_json["responses"]["health"] = upstream->responses_health_.load();
+
+			if (options == options::include_connections)
+			{
+				// todo
+			}
+
+			result.emplace_back(upstream_json);
+		}
+	}
+
+	std::string to_string(const std::string& workspace_id, const std::string& tenant_id, options options)
 	{
 		std::unique_lock<std14::shared_mutex> g{ upstreams_lock_ };
 
@@ -273,7 +320,8 @@ public:
 			else if (upstream->state_ == upstream::state::down)
 				upstream_state = "down";
 
-			ss << workspace << " : " << upstream->base_url_ << ", " << upstream->id_ << ", " << upstream_state
+			ss << tenant_id << ", " << upstream->base_url_ << ", "
+			   << "/" << workspace_id << upstream->id_ << ", " << upstream_state
 			   << ", connections(total: " << std::to_string(connections_total) << ", "
 			   << "idle: " << std::to_string(connections_idle) << ", busy: " << std::to_string(connections_busy_)
 			   << ", reopend: " << std::to_string(upstream->connections_reopened_) << ")"

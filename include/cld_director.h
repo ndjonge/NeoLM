@@ -576,7 +576,8 @@ public:
 		if (base_url.empty() == false)
 		{
 			limits_.workers_actual_upd(1);
-			auto& upstream = upstreams_.add_upstream(io_context, base_url, worker_id + "/" + worker_label);
+			auto& upstream = upstreams_.add_upstream(
+				io_context, base_url, "/" + name_ + "/" + type_ + "/"  + worker_id + "_" + worker_label);
 
 			new_worker.first->second.upstream(upstream);
 
@@ -1185,7 +1186,7 @@ public:
 						auto& upstream = upstreams_.add_upstream(
 							io_context,
 							worker_it->second.get_base_url(),
-							worker_it->first + "/" + worker_it->second.worker_label());
+							"/"+ name_ + "/" + type_ + "/" + worker_it->first + "/" + worker_it->second.worker_label());
 
 						worker_it->second.upstream(upstream);
 
@@ -1346,7 +1347,7 @@ public:
 
 		std::int16_t workers_added = 0;
 
-		for (const auto worker_json : j["workers"].items())
+		for (const auto& worker_json : j["workers"].items())
 		{			
 			auto worker_id = worker_json.value().value("worker_id", "");
 
@@ -1439,7 +1440,7 @@ public:
 
 	void worker_ids_begin(std::uint32_t id) 
 	{ 
-		worker_ids_ = worker_ids_ <= id ? id+1 : worker_ids_;
+		worker_ids_ = worker_ids_.load() <= id ? id + 1 : worker_ids_.load();
 	}
 
 public :
@@ -2982,25 +2983,53 @@ public:
 			});
 
 		server_base::router_.on_get("/private/infra/manager/upstreams", [this](http::session_handler& session) {
-			for (const auto& workspace : workspaces_)
+			auto include_connections = session.request().query().get<bool>("connections", false);
+			const auto& format = session.request().get<std::string>("Accept", "application/text");
+
+			if (format.find("application/json") != std::string::npos)
 			{
-				auto include_connections = session.request().query().get<bool>("connections", false);
-
-				std::stringstream ss;
-				for (const auto& workgroup : *workspace.second)
+				json result = json::array();
+				for (const auto& workspace : workspaces_)
 				{
-					if (include_connections)
-						ss << workgroup.second->upstreams_.to_string(
-							workspace.first, http::async::upstreams::options::include_connections);
-					else
-						ss << workgroup.second->upstreams_.to_string(
-							workspace.first, http::async::upstreams::options::upstreams_only);
+					for (const auto& workgroup : *workspace.second)
+					{
+						json upstream_json = json::object();
+
+						workgroup.second->upstreams_.to_json(
+							workspace.first,
+							workspace.second->get_tenant_id(),
+							http::async::upstreams::options::upstreams_only,
+							upstream_json);
+
+						result.emplace_back(upstream_json);
+					}
 				}
-
-				session.response().body() += ss.str();
+				session.response().assign(http::status::ok, result.dump(), "application/json");
 			}
+			else
+			{
+				for (const auto& workspace : workspaces_)
+				{
+					std::stringstream ss;
+					for (const auto& workgroup : *workspace.second)
+					{
+						if (include_connections)
+							ss << workgroup.second->upstreams_.to_string(
+								workspace.first,
+								workspace.second->get_tenant_id(),
+								http::async::upstreams::options::include_connections);
+						else
+							ss << workgroup.second->upstreams_.to_string(
+								workspace.first,
+								workspace.second->get_tenant_id(),
+								http::async::upstreams::options::upstreams_only);
 
-			session.response().status(http::status::ok);
+						session.response().body() += ss.str();
+					}
+				}
+				session.response().type("text");
+				session.response().status(http::status::ok);
+			}
 		});
 
 		server_base::router_.on_proxy_pass("/", [this](http::session_handler& session) {
