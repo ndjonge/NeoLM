@@ -404,7 +404,7 @@ private:
 	std::chrono::steady_clock::time_point startup_t0_;
 	std::chrono::steady_clock::time_point startup_t1_{};
 
-	status status_{ status::down };
+	std::atomic<status> status_{ status::down };
 	json worker_metrics_{};
 	http::async::upstreams::upstream* upstream_{nullptr};
 
@@ -432,7 +432,7 @@ public:
 		, version_(worker.version_)
 		, process_id_(worker.process_id_)
 		, startup_t0_(worker.startup_t0_)
-		, status_(worker.status_)
+		, status_(worker.status_.load())
 	{
 	}
 
@@ -1346,7 +1346,8 @@ public:
 		j["parameters"].at("http_options").get_to(http_options_);
 
 		std::int16_t workers_added = 0;
-
+		
+		if(0)
 		for (const auto& worker_json : j["workers"].items())
 		{			
 			auto worker_id = worker_json.value().value("worker_id", "");
@@ -1358,8 +1359,7 @@ public:
 			}
 
 			auto worker_label = worker_json.value().value("worker_label", "");
-
-			auto process_id = worker_json.value().value("process_id", 0);
+			auto process_id = worker_json.value().value("process_id", 1234);
 			auto base_url = worker_json.value().value("base_url", "");
 			auto version = worker_json.value().value("version", "");
 			auto status = worker_json.value().value("status", "");
@@ -3068,13 +3068,12 @@ public:
 
 			if (forwarded == false)
 			{
-				server_base::logger().access_log("--------proxy error----------\n {s}", session.response().body());
-				session.response().status(http::status::bad_gateway);
+				session.response().status(http::status::not_found);
 			}
 		});
 
 		server_base::router_.on_internal_error([this](http::session_handler& session, std::exception& e) {
-			server_base::logger().access_log(
+			server_base::logger().info(
 				"api-error with requested url: \"{s}\", error: \"{s}\", and request body:\n \"{s}\"",
 				session.request().url_requested(),
 				e.what(),
