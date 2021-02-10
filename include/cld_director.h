@@ -1328,6 +1328,8 @@ public:
 
 	void from_json(const json& j) override
 	{
+		std::unique_lock<std::mutex> guard( workgroups::workers_mutex_ );
+
 		workgroups::from_json(j);
 		try
 		{ // TODO optional parameters bse, bse_bin, bse_user, os_user and os_password.
@@ -1379,6 +1381,7 @@ public:
 
 	void from_json(const json& j, const std::string& detail) override 
 	{
+		std::unique_lock<std::mutex> guard(workgroups::workers_mutex_);
 		if (detail.empty() || (detail == "bse")) bse_ = j["parameters"].value("bse", "");
 		if (detail.empty() || (detail == "bse_bin")) bse_bin_ = j["parameters"].value("bse_bin", "");
 		if (detail.empty() || (detail == "bse_user")) bse_user_ = j["parameters"].value("bse_user", "");
@@ -1391,6 +1394,7 @@ public:
 
 	void to_json(json& j, const std::string& detail) const override 
 	{
+		std::unique_lock<std::mutex> guard(workgroups::workers_mutex_);
 		if (detail.empty() || ((detail == "bse") && (bse_.empty() == false))) 
 			j["parameters"].emplace("bse", bse_);
 
@@ -1420,6 +1424,7 @@ public:
 	{
 		workgroups::to_json(j);
 
+		std::unique_lock<std::mutex> guard(workgroups::workers_mutex_);
 		if (bse_.empty() == false) j["parameters"].emplace("bse", bse_);
 
 		if (bse_bin_.empty() == false) j["parameters"].emplace("bse_bin", bse_bin_);
@@ -1453,6 +1458,7 @@ public :
 		const std::string& worker_label,
 		std::string& ec) override
 	{
+		std::unique_lock<std::mutex> guard(workgroups::workers_mutex_);
 		std::stringstream parameters;
 
 		worker_id = "worker_" + std::to_string(worker_ids_++);
