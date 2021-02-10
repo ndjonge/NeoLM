@@ -2136,6 +2136,23 @@ void async_request(
 }
 
 template <http::method::method_t method>
+void async_request(
+	http::async::upstreams& upstreams,
+	const std::string& base_url,
+	const std::string& request_url,
+	const http::headers& headers,
+	const std::string& body,
+	std::function<void(http::response_message& response, asio::error_code& error_code)>&& on_complete)
+{
+	std14::shared_lock<std14::shared_mutex> usptreams_guard{ upstreams.upstreams_lock_ };
+
+	auto& upstream = upstreams.get_upstream(base_url);
+
+	return async_request<method>(upstream, request_url, headers, body, std::move(on_complete));
+}
+
+
+template <http::method::method_t method>
 void request(
 	const std::string& request_url,
 	const http::headers& additional_headers,
@@ -2153,21 +2170,6 @@ void request(
 	io_context.run();
 }
 
-template <http::method::method_t method>
-void async_request(
-	http::async::upstreams& upstreams,
-	const std::string& base_url,
-	const std::string& request_url,
-	const http::headers& headers,
-	const std::string& body,
-	std::function<void(http::response_message& response, asio::error_code& error_code)>&& on_complete)
-{
-	std14::shared_lock<std14::shared_mutex> usptreams_guard{ upstreams.upstreams_lock_ };
-
-	auto& upstream = upstreams.get_upstream(base_url);
-
-	return async_request<method>(upstream, request_url, headers, body, std::move(on_complete));
-}
 
 
 } // namespace client
