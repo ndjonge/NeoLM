@@ -2036,24 +2036,6 @@ private:
 };
 
 template <http::method::method_t method>
-void request(
-	const std::string& request_url,
-	const http::headers& additional_headers,
-	const std::string& body,
-	std::function<void(http::response_message& response, asio::error_code& error_code)>&& on_complete)
-{
-	asio::io_context io_context;
-
-	http::async::upstreams::upstream local_upstream(io_context, request_url, "");
-
-	local_upstream.set_state(http::async::upstreams::upstream::state::up);
-
-	async_request<method>(local_upstream, request_url, additional_headers, body, std::move(on_complete));
-
-	io_context.run();
-}
-
-template <http::method::method_t method>
 http::response_message request(
 	const std::string& request_url,
 	std::string& error_code,
@@ -2083,6 +2065,25 @@ http::response_message request(
 
 	return result;
 }
+
+template <http::method::method_t method>
+void request(
+	const std::string& request_url,
+	const http::headers& additional_headers,
+	const std::string& body,
+	std::function<void(http::response_message& response, asio::error_code& error_code)>&& on_complete)
+{
+	asio::io_context io_context;
+
+	http::async::upstreams::upstream local_upstream(io_context, request_url, "");
+
+	local_upstream.set_state(http::async::upstreams::upstream::state::up);
+
+	async_request<method>(local_upstream, request_url, additional_headers, body, std::move(on_complete));
+
+	io_context.run();
+}
+
 
 template <http::method::method_t method>
 void async_request(
