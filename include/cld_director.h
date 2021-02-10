@@ -1347,7 +1347,6 @@ public:
 
 		std::int16_t workers_added = 0;
 		
-		if(0)
 		for (const auto& worker_json : j["workers"].items())
 		{			
 			auto worker_id = worker_json.value().value("worker_id", "");
