@@ -3506,7 +3506,7 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 											  { "private_base", "/private/infra/manager" },
 											  { "private_ip_white_list", "::ffff:172.31.238.0/120;::1/128;::ffff:127.0.0.0/120;::ffff:127.1.0.0/120" },
 											  { "public_ip_white_list", "::ffff:172.31.238.0/120;::1/128;::ffff:192.168.1.0/120;::ffff:127.0.0.1/128" },
-											  { "log_level", "trafic:access_log_all;admin:api" },
+											  { "log_level", "trafic:access_log_all;admin:access_log_all" },
 											  { "log_file", "trafic:access_log.txt;admin:console" },
 											  { "https_enabled", "false" },
 											  { "http_enabled", "true" },

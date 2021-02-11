@@ -3879,9 +3879,9 @@ public:
 
 		void to_json(json& result)
 		{
-			result["request_latency"] = request_latency_.load() / 1000000.0;
-			result["processing_duration"] = processing_duration_.load() / 1000000.0;
-			result["response_latency"] = response_latency_.load() / 1000000.0;
+			result["request_latency"] = request_latency_.load();
+			result["processing_duration"] = processing_duration_.load();
+			result["response_latency"] = response_latency_.load();
 			result["active_count"] = active_count_.load();
 			result["hit_count"] = hit_count_.load();
 		}
@@ -3890,8 +3890,8 @@ public:
 		{
 			std::ostringstream ss;
 
-			ss << request_latency_.load() / 1000000.0 << "ms, " << processing_duration_.load() / 1000000.0 << "ms, "
-			   << response_latency_.load() / 1000000.0 << "ms, " << active_count_ << "x, " << hit_count_ << "x";
+			ss << request_latency_.load() << "ms, " << processing_duration_.load() << "ms, "
+			   << response_latency_.load() << "ms, " << active_count_ << "x, " << hit_count_ << "x";
 
 			return ss.str();
 		};
@@ -3900,9 +3900,9 @@ public:
 		{
 			std::ostringstream ss;
 
-			ss << "{\"request_latency\" :" << request_latency_.load() / 1000000.0
-			   << ",\"processing_duration\":" << processing_duration_.load() / 1000000.0
-			   << ",\"response_latency\":" << response_latency_.load() / 1000000.0
+			ss << "{\"request_latency\" :" << request_latency_.load() 
+			   << ",\"processing_duration\":" << processing_duration_.load() 
+			   << ",\"response_latency\":" << response_latency_.load() 
 			   << ",\"active_count\":" << active_count_ << ",\"hit_count\":" << hit_count_ << "}";
 
 			return ss.str();
@@ -3964,8 +3964,10 @@ public:
 			std::chrono::high_resolution_clock::duration request_duration,
 			std::chrono::high_resolution_clock::duration new_processing_duration_)
 		{
-			metrics_.request_latency_.store(request_duration.count());
-			metrics_.processing_duration_.store(new_processing_duration_.count());
+			metrics_.request_latency_.store(
+				std::chrono::duration_cast<std::chrono::milliseconds>(request_duration).count());
+			metrics_.processing_duration_.store(
+				std::chrono::duration_cast<std::chrono::milliseconds>(new_processing_duration_).count());
 			metrics_.hit_count_++;
 		}
 
@@ -4957,8 +4959,8 @@ public:
 
 			auto t1 = std::chrono::steady_clock::now();
 			route_context.the_route().update_hitcount_and_timing_metrics(
-				std::chrono::duration_cast<std::chrono::milliseconds>(t0 - session.t0()),
-				std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0));
+				t0 - session.t0(),
+				t1 - t0);
 		}
 		return route_context;
 	}
@@ -5297,7 +5299,7 @@ public:
 		{
 			std::lock_guard<std::mutex> g(mutex_);
 
-			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_) / 1000000;
+			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_);
 
 			std::string msg = lgr::logger::format<lgr::prefix::access_log>(
 				"{s} - {s} - '{s} {s}' - {d} - {u} - {u} - {u}",
