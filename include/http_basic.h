@@ -234,7 +234,7 @@ inline void daemonize(const std::string& workdir, const std::string& lock_file)
 	}
 }
 #else
-inline void daemonize(const std::string&) 
+inline void daemonize(const std::string&, const std::string&)
 { 
 	std::cout << "Not implemented yet\n"; 
 }

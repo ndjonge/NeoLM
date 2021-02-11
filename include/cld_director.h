@@ -3487,9 +3487,11 @@ static std::unique_ptr<manager<http::async::server>> cpm_server_;
 } // namespace cloud
 
 
-inline int start_cld_manager_server(std::string config_file, std::string config_options, bool, bool selftest = false)
+inline int start_cld_manager_server(std::string config_file, std::string config_options, bool run_as_daemon)
 {
 	std::string server_version = std::string{ "ln-cld-mgr" };
+
+	if (run_as_daemon) util::daemonize("/tmp", "/var/lock/" + server_version + ".pid");
 
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", "4000" },
@@ -3503,16 +3505,7 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 											  { "http_use_portsharding", "false" } },
 											config_options };
 
-	if (selftest)
-	{
-		auto base_path = config_file.find_last_of("/\\");
 
-		if (base_path != std::string::npos)
-		{
-			config_file = config_file.substr(0, base_path);
-			config_file += "/test.json";
-		}
-	}
 
 	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager<http::async::server>>(
 		new cloud::platform::manager<http::async::server>(http_configuration, config_file));
@@ -3530,7 +3523,7 @@ inline int start_cld_manager_server(int argc, const char** argv)
 		{ { "cld_config",
 			{ prog_args::arg_t::arg_val, " <config>: filename for the workspace config file or url", "config.json" } },
 		  { "cld_options", { prog_args::arg_t::arg_val, "see doc.", "" } },
-		  { "foreground", { prog_args::arg_t::flag, "run in foreground" } } });
+		  { "daemonize", { prog_args::arg_t::flag, "run as daemon" } } });
 
 	if (cmd_args.process_args() == false)
 	{
@@ -3539,7 +3532,7 @@ inline int start_cld_manager_server(int argc, const char** argv)
 	}
 
 	return start_cld_manager_server(
-		cmd_args.get_val("cld_config"), cmd_args.get_val("cld_options"), cmd_args.get_val("foreground") == "true");
+		cmd_args.get_val("cld_config"), cmd_args.get_val("cld_options"), cmd_args.get_val("daemonize") == "true");
 }
 
 inline void run_cld_manager_server()
