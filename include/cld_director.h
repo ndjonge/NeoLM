@@ -3486,16 +3486,6 @@ static std::unique_ptr<manager<http::async::server>> cpm_server_;
 } // namespace platform
 } // namespace cloud
 
-#if 0
-static void Daemonize()
-{
-	int devnull = open("/dev/null", O_RDWR);
-	if (devnull > 0) {
-
-	}
-
-}
-#endif
 
 inline int start_cld_manager_server(std::string config_file, std::string config_options, bool, bool selftest = false)
 {
