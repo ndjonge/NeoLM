@@ -1,6 +1,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <set>
 #include <string>
 
 // wireshark:
@@ -42,6 +43,7 @@ namespace bse_utils
 {
 
 #ifdef LOCAL_TESTING
+
 namespace local_testing
 {
 std::mutex m;
@@ -49,23 +51,32 @@ std::mutex m;
 template <typename S> struct test_sockets
 {
 public:
-	std::queue<S> available_sockets_;
+	std::set<S> available_sockets_;
 	std::mutex m_;
 
 	test_sockets(S b, size_t nr)
 	{
 		std::lock_guard<std::mutex> g{ m_ };
 		for (S i = 0; i < nr; i++)
-			available_sockets_.push(b + i);
+			available_sockets_.emplace(b + i);
 	}
 
 	S aquire()
 	{
 		std::lock_guard<std::mutex> g{ m_ };
-		S s = available_sockets_.front();
-		available_sockets_.pop();
 
-		return s;
+		auto port = *(available_sockets_.begin());
+		available_sockets_.erase(port);
+		return port;
+	}
+
+	S aquire(S port)
+	{
+		std::lock_guard<std::mutex> g{ m_ };
+
+		available_sockets_.erase(port);
+
+		return port;
 	}
 
 	void release(const std::string& url)
@@ -73,13 +84,7 @@ public:
 		std::lock_guard<std::mutex> g{ m_ };
 		auto port = url.substr(1 + url.find_last_of(':'));
 
-		available_sockets_.push(stoul(port));
-	}
-
-	void release(S s)
-	{
-		std::lock_guard<std::mutex> g{ m_ };
-		available_sockets_.push(s);
+		available_sockets_.emplace(stoul(port));
 	}
 };
 
@@ -1359,9 +1364,20 @@ public:
 				worker_ids_begin(std::atoi(id[1].c_str()));
 			}
 
+
 			auto worker_label = worker_json.value().value("worker_label", "");
 			auto process_id = worker_json.value().value("process_id", 1234);
 			auto base_url = worker_json.value().value("base_url", "");
+
+			if (base_url.empty() == false)
+			{
+				auto base_url_split = util::split(base_url, ":");
+				auto port = std::atoi(base_url_split[2].c_str());
+
+				bse_utils::local_testing::_test_sockets.aquire(port);
+
+			}
+
 			auto version = worker_json.value().value("version", "");
 			auto status = worker_json.value().value("status", "");
 
@@ -2458,6 +2474,8 @@ public:
 						json parameters_json = json::parse(session.request().body());
 
 						workgroups->second->from_json(parameters_json, detail);
+
+						workgroups->second->to_json(result, detail);
 
 						session.response().assign(http::status::ok, result.dump(), "application/json");
 					}

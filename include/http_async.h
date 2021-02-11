@@ -1022,6 +1022,13 @@ public:
 			session_handler_.request().set("Accept-Encoding", "gzip");
 			session_handler_.request().reset_if_exists("Expect");
 
+			auto response_delay = session_handler_.request().get<std::int64_t>("X-Delay-Upstream-Response", 0);
+
+			if (response_delay > 0)
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds{ response_delay });
+			}
+
 			write_buffer_.emplace_back(http::to_string(session_handler_.request()));
 
 			auto me = this->shared_from_this();
