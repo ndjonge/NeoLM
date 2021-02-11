@@ -148,6 +148,7 @@ private:
 
 namespace util
 {
+static int pid_fd = -1;
 
 #if !defined(WIN32)
 inline void daemonize(const std::string& workdir, const std::string& lock_file)
