@@ -213,7 +213,7 @@ inline void daemonize(const std::string& workdir, const std::string& lock_file)
 	stderr = fopen("/dev/null", "w+");
 
 	/* Try to write PID of daemon to lockfile */
-	if (pid_file_name != NULL)
+	if (lock_file.empty() == false)
 	{
 		char str[256];
 		pid_fd = open(lock_file.data(), O_RDWR | O_CREAT, 0640);
