@@ -103,7 +103,7 @@ static bool create_bse_process_as_user(
 {
 	bool result = true;
 
-	auto parameters_as_configuration = http::configuration({}, parameters);	
+	auto parameters_as_configuration = http::configuration({}, parameters);
 
 	auto worker_id = parameters_as_configuration.get("cld_worker_id");
 	auto worker_label = parameters_as_configuration.get("cld_worker_label");
@@ -122,7 +122,8 @@ static bool create_bse_process_as_user(
 		put_new_instance_json["version"] = "test_bshell";
 
 		auto response = http::client::request<http::method::put>(
-			"http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/workers/" + worker_id,
+			"http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/workers/"
+				+ worker_id,
 			ec,
 			{},
 			put_new_instance_json.dump()); //,std::cerr, true);
@@ -411,7 +412,7 @@ private:
 
 	std::atomic<status> status_{ status::down };
 	json worker_metrics_{};
-	http::async::upstreams::upstream* upstream_{nullptr};
+	http::async::upstreams::upstream* upstream_{ nullptr };
 
 public:
 	worker(
@@ -449,11 +450,7 @@ public:
 	const std::string& get_base_url() const { return base_url_; }
 	const std::string& worker_label() const { return worker_label_; }
 
-
-	void worker_label(const std::string& level)
-	{ 
-		worker_label_ = level;
-	}
+	void worker_label(const std::string& level) { worker_label_ = level; }
 
 	int get_process_id() const { return process_id_; };
 
@@ -510,9 +507,10 @@ public:
 		}
 	}
 
-	int runtime() const 
+	int runtime() const
 	{
-		auto ret = std::chrono::duration_cast<std::chrono::minutes>(std::chrono::steady_clock::now() - startup_t1_).count();
+		auto ret
+			= std::chrono::duration_cast<std::chrono::minutes>(std::chrono::steady_clock::now() - startup_t1_).count();
 
 		return ret;
 	}
@@ -561,8 +559,8 @@ public:
 		workers_.emplace(std::pair<const std::string, worker>(worker_id, worker{ worker_id, worker_label_selected }));
 	}
 
-	void
-	add_worker(const std::string& worker_id, const std::string& worker_label, const json& j, asio::io_context& io_context)
+	void add_worker(
+		const std::string& worker_id, const std::string& worker_label, const json& j, asio::io_context& io_context)
 	{
 		std::lock_guard<std::mutex> g{ workers_mutex_ };
 		std::int32_t process_id;
@@ -582,7 +580,7 @@ public:
 		{
 			limits_.workers_actual_upd(1);
 			auto& upstream = upstreams_.add_upstream(
-				io_context, base_url, "/" + name_ + "/" + type_ + "/"  + worker_id + "_" + worker_label);
+				io_context, base_url, "/" + name_ + "/" + type_ + "/" + worker_id + "_" + worker_label);
 
 			new_worker.first->second.upstream(upstream);
 
@@ -623,7 +621,7 @@ public:
 			auto response = http::client::request<http::method::delete_>(
 				worker->second.get_base_url() + "/private/infra/worker/process", ec, {});
 
-			if (response.status() == http::status::no_content) 
+			if (response.status() == http::status::no_content)
 			{
 				worker->second.set_status(worker::status::down);
 				result = true;
@@ -644,7 +642,7 @@ public:
 	}
 
 	virtual void from_json(const json& j, const std::string& detail) = 0;
-	virtual void to_json(json& j, const std::string& detail) const = 0; 
+	virtual void to_json(json& j, const std::string& detail) const = 0;
 
 	virtual void to_json(json& j) const
 	{
@@ -673,7 +671,7 @@ public:
 		const std::string& worker_name,
 		std::uint32_t& pid,
 		std::string& worker_id,
-		const std::string& worker_label,		
+		const std::string& worker_label,
 		std::string& ec)
 		= 0;
 
@@ -714,7 +712,7 @@ public:
 		std::int16_t workers_required_to_add() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
-			return workers_required_ - (workers_actual_ + workers_pending_ );
+			return workers_required_ - (workers_actual_ + workers_pending_);
 		}
 		std::int16_t workers_actual() const
 		{
@@ -737,7 +735,7 @@ public:
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			return workers_runtime_max_;
 		}
-		
+
 		std::int16_t workers_requests_max() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
@@ -785,7 +783,7 @@ public:
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			if (value > 0 && workers_pending_) workers_pending_ -= value;
-	
+
 			workers_actual_ += value;
 		}
 		void workers_min(std::int16_t value)
@@ -810,18 +808,13 @@ public:
 			workers_label_actual_ = value;
 		}
 
-		void workers_not_on_label_required(std::int16_t value) 
-		{ 
-			workers_not_on_label_required_ = value;
-		}
+		void workers_not_on_label_required(std::int16_t value) { workers_not_on_label_required_ = value; }
 
 		void workers_start_at_once_max(std::int16_t value)
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			workers_start_at_once_max_ = value;
 		}
-
-		
 
 		enum class from_json_operation
 		{
@@ -878,7 +871,7 @@ public:
 					workers_label_required_ = j.value("workers_label_required", "unknown");
 
 				if (limit_name.empty() || limit_name == "workers_start_at_once_max")
-					workers_start_at_once_max_ += j.value("workers_start_at_once_max", std::int16_t{4});
+					workers_start_at_once_max_ += j.value("workers_start_at_once_max", std::int16_t{ 4 });
 			}
 
 			if (workers_min_ > workers_max_) workers_min_ = workers_max_;
@@ -945,8 +938,8 @@ public:
 		std::int16_t workers_min_{ 0 };
 		std::int16_t workers_max_{ 0 };
 
-		std::string workers_label_required_{ };
-		std::string workers_label_actual_{ };
+		std::string workers_label_required_{};
+		std::string workers_label_actual_{};
 
 		std::int16_t workers_runtime_max_{ 0 };
 		std::int16_t workers_requests_max_{ 0 };
@@ -1039,7 +1032,8 @@ public:
 			if (limits_.workers_required() > 0)
 			{
 				logger.api(
-					"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_required: {s}, label_actual: {s}\n",
+					"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_required: {s}, "
+					"label_actual: {s}\n",
 					workspace_id_,
 					type_,
 					name_,
@@ -1051,7 +1045,6 @@ public:
 					limits_.workers_label_actual(),
 					workers_label_required);
 			}
-
 
 			if (rescan) rescan = false;
 
@@ -1091,7 +1084,6 @@ public:
 					limits_.workers_pending_upd(1);
 				}
 			}
-
 
 			if (workers_required_to_add < 0)
 			{
@@ -1180,7 +1172,6 @@ public:
 							{
 								workers_runtime_max_reached++;
 							}
-
 						}
 
 						if (worker_label != limits_.workers_label_actual()) limits_.workers_label_actual(worker_label);
@@ -1191,19 +1182,21 @@ public:
 						auto& upstream = upstreams_.add_upstream(
 							io_context,
 							worker_it->second.get_base_url(),
-							"/"+ name_ + "/" + type_ + "/" + worker_it->first + "/" + worker_it->second.worker_label());
+							"/" + name_ + "/" + type_ + "/" + worker_it->first + "/"
+								+ worker_it->second.worker_label());
 
 						worker_it->second.upstream(upstream);
 
 						worker_it->second.set_status(worker::status::up);
-	
 					}
 
 					if (worker_it->second.get_status() == worker::status::up)
 					{
 						auto workers_feed_watchdog = workers_watchdogs_feeded++ < limits_.workers_min();
 
-						http::headers watchdog_headers{ { "Host", "localhost" }, { "X-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" }};
+						http::headers watchdog_headers{
+							{ "Host", "localhost" }, { "X-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" }
+						};
 
 						http::client::async_request<http::method::post>(
 							upstreams_,
@@ -1211,14 +1204,18 @@ public:
 							"/private/infra/worker/watchdog",
 							watchdog_headers,
 							std::string{},
-							[this, &worker, &logger](
-								http::response_message& response, asio::error_code& error_code) {
-								if (!error_code && response.status() == http::status::ok
+							[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
+								if (!error_code
+									&& (response.status() == http::status::ok
+										|| response.status() == http::status::no_content)
 									&& worker.get_status() != worker::status::up)
 								{
 									worker.set_status(worker::status::up);
 								}
-								else if (error_code || response.status() != http::status::ok)
+								else if (
+									error_code
+									|| (response.status() != http::status::ok
+										&& response.status() != http::status::no_content))
 								{
 									worker.set_status(worker::status::drain);
 									logger.api(
@@ -1236,14 +1233,14 @@ public:
 					++worker_it;
 				}
 
-//				limits_.workers_refresh_actual(workers_on_label_required);
+				//				limits_.workers_refresh_actual(workers_on_label_required);
 				auto workers_to_start = workers_not_on_label_required;
 				limits_.workers_not_on_label_required(workers_not_on_label_required);
 
 				if (workers_on_label_required + limits_.workers_pending() != limits_.workers_required())
 				{
 					workers_to_start = workers_not_on_label_required;
-				} 
+				}
 				else if (workers_responses_max_reached > 0)
 				{
 					workers_to_start = workers_responses_max_reached;
@@ -1333,7 +1330,7 @@ public:
 
 	void from_json(const json& j) override
 	{
-		std::unique_lock<std::mutex> guard( workgroups::workers_mutex_ );
+		std::unique_lock<std::mutex> guard(workgroups::workers_mutex_);
 
 		workgroups::from_json(j);
 		try
@@ -1353,9 +1350,9 @@ public:
 		j["parameters"].at("http_options").get_to(http_options_);
 
 		std::int16_t workers_added = 0;
-		
+
 		for (const auto& worker_json : j["workers"].items())
-		{			
+		{
 			auto worker_id = worker_json.value().value("worker_id", "");
 
 			if (worker_id.empty() == false)
@@ -1364,19 +1361,19 @@ public:
 				worker_ids_begin(std::atoi(id[1].c_str()));
 			}
 
-
 			auto worker_label = worker_json.value().value("worker_label", "");
 			auto process_id = worker_json.value().value("process_id", 1234);
 			auto base_url = worker_json.value().value("base_url", "");
 
+#if defined(LOCAL_TESTING)
 			if (base_url.empty() == false)
 			{
 				auto base_url_split = util::split(base_url, ":");
 				auto port = std::atoi(base_url_split[2].c_str());
 
 				bse_utils::local_testing::_test_sockets.aquire(port);
-
 			}
+#endif
 
 			auto version = worker_json.value().value("version", "");
 			auto status = worker_json.value().value("status", "");
@@ -1385,17 +1382,16 @@ public:
 			{
 				auto new_worker = workers_.emplace(std::pair<const std::string, worker>(
 					worker_id, worker{ worker_id, worker_label, base_url, version, process_id }));
-				
+
 				if (new_worker.second) new_worker.first->second.set_status(worker::status::recover);
 
 				workers_added++;
 			}
 		}
 		limits_.workers_actual_upd(workers_added);
-
 	}
 
-	void from_json(const json& j, const std::string& detail) override 
+	void from_json(const json& j, const std::string& detail) override
 	{
 		std::unique_lock<std::mutex> guard(workgroups::workers_mutex_);
 		if (detail.empty() || (detail == "bse")) bse_ = j["parameters"].value("bse", "");
@@ -1408,32 +1404,28 @@ public:
 		if (detail.empty() || (detail == "http_options")) http_options_ = j["parameters"].value("http_options", "");
 	}
 
-	void to_json(json& j, const std::string& detail) const override 
+	void to_json(json& j, const std::string& detail) const override
 	{
 		std::unique_lock<std::mutex> guard(workgroups::workers_mutex_);
-		if (detail.empty() || ((detail == "bse") && (bse_.empty() == false))) 
-			j["parameters"].emplace("bse", bse_);
+		if (detail.empty() || ((detail == "bse") && (bse_.empty() == false))) j["parameters"].emplace("bse", bse_);
 
 		if (detail.empty() || ((detail == "bse_user") && (bse_bin_.empty() == false)))
 			j["parameters"].emplace("bse_bin", bse_bin_);
 
-		if (detail.empty() || ((detail == "bse_user") && (bse_user_.empty() == false))) 
+		if (detail.empty() || ((detail == "bse_user") && (bse_user_.empty() == false)))
 			j["parameters"].emplace("bse_user", bse_user_);
 
 		if (detail.empty() || ((detail == "os_user") && (os_user_.empty() == false)))
 			j["parameters"].emplace("os_user", os_user_);
 
-		if (detail.empty() || ((detail == "os_password") && (os_password_.empty() == false))) 
+		if (detail.empty() || ((detail == "os_password") && (os_password_.empty() == false)))
 			j["parameters"].emplace("os_password", os_password_);
 
-		if (detail.empty() || detail == "program") 
-			j["parameters"].emplace("program", program_);
+		if (detail.empty() || detail == "program") j["parameters"].emplace("program", program_);
 
-		if (detail.empty() || detail == "cli_options")
-			j["parameters"].emplace("cli_options", cli_options_);
+		if (detail.empty() || detail == "cli_options") j["parameters"].emplace("cli_options", cli_options_);
 
-		if (detail.empty() || detail == "http_options")
-			j["parameters"].emplace("http_options", http_options_);
+		if (detail.empty() || detail == "http_options") j["parameters"].emplace("http_options", http_options_);
 	}
 
 	void to_json(json& j) const override
@@ -1458,12 +1450,9 @@ public:
 
 	std::atomic<std::uint32_t> worker_ids_{ 0 };
 
-	void worker_ids_begin(std::uint32_t id) 
-	{ 
-		worker_ids_ = worker_ids_.load() <= id ? id + 1 : worker_ids_.load();
-	}
+	void worker_ids_begin(std::uint32_t id) { worker_ids_ = worker_ids_.load() <= id ? id + 1 : worker_ids_.load(); }
 
-public :
+public:
 	bool create_worker_process(
 		const std::string& manager_endpoint,
 		const std::string& workspace_id,
@@ -1525,15 +1514,13 @@ public:
 	}
 
 	void from_json(const json& j, const std::string& detail) override
-	{ 
-		if (detail.empty() || detail == "python_root")
-			rootdir = j["parameters"].value("python_root", "");
+	{
+		if (detail.empty() || detail == "python_root") rootdir = j["parameters"].value("python_root", "");
 	};
 
 	void to_json(json& j, const std::string& detail) const override
-	{ 
-		if (detail.empty() || detail == "python_root")
-			j["parameters"].emplace("python_root", rootdir);
+	{
+		if (detail.empty() || detail == "python_root") j["parameters"].emplace("python_root", rootdir);
 	}
 
 	void to_json(json& j) const override
@@ -1557,7 +1544,7 @@ public:
 		const std::string&, // worker_name,
 		std::uint32_t&, // pid,
 		std::string&,
-		const std::string&,		
+		const std::string&,
 		std::string&) override
 	{
 		return false;
@@ -1928,9 +1915,9 @@ public:
 	manager(http::configuration& http_configuration, const std::string& configuration_file)
 		: http::async::server(http_configuration), configuration_file_(configuration_file)
 	{
-		//server_base::logger().api("load registry\n");
+		// server_base::logger().api("load registry\n");
 
-		//server_base::router().use_registry(
+		// server_base::router().use_registry(
 		//	"/",
 		//	"C:/tmp/pm_root/route_registry/ttwebcontexts.json", // TODO
 		//	[this](const std::string& error) {
@@ -1976,7 +1963,7 @@ public:
 		//	}
 
 		//);
-		//auto search_result = server_base::router().search("library-v1", "members");
+		// auto search_result = server_base::router().search("library-v1", "members");
 
 		std::ifstream configuration_stream{ configuration_file_ };
 
@@ -1987,7 +1974,7 @@ public:
 			try
 			{
 				json manager_configuration_json = json::parse(configuration_stream);
-				
+
 				if (manager_configuration_json.contains("applications") == true)
 					applications_.from_json(manager_configuration_json.at("applications"));
 
@@ -2582,7 +2569,6 @@ public:
 				}
 			});
 
-
 		// put specific worker {worker_id} of worker {name} and {type} in workspace {workspace_id}
 		server_base::router_.on_put(
 			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
@@ -2626,7 +2612,6 @@ public:
 						"application/json");
 				}
 			});
-
 
 		// remove specific worker {worker_id} of worker {type} in workspace {workspace_id}
 		server_base::router_.on_delete(
@@ -2746,7 +2731,7 @@ public:
 
 						if (worker != i->second->end())
 						{
-							//worker->second.set_status(worker::status::drain);
+							// worker->second.set_status(worker::status::drain);
 							worker->second.worker_label("");
 							session.response().assign(http::status::no_content);
 						}
@@ -3149,7 +3134,8 @@ private:
 		{
 			if (server_base::is_active())
 			{
-				workspaces_.direct_workspaces(server_base::get_io_context(), server_base::configuration_, server_base::logger_);
+				workspaces_.direct_workspaces(
+					server_base::get_io_context(), server_base::configuration_, server_base::logger_);
 
 				json manager_json = json::object();
 				to_json(manager_json);
@@ -3486,26 +3472,25 @@ static std::unique_ptr<manager<http::async::server>> cpm_server_;
 } // namespace platform
 } // namespace cloud
 
-
 inline int start_cld_manager_server(std::string config_file, std::string config_options, bool run_as_daemon)
 {
 	std::string server_version = std::string{ "ln-cld-mgr" };
 
 	if (run_as_daemon) util::daemonize("/tmp", "/var/lock/" + server_version + ".pid");
 
-	http::configuration http_configuration{ { { "server", server_version },
-											  { "http_listen_port_begin", "4000" },
-											  { "private_base", "/private/infra/manager" },
-											  { "private_ip_white_list", "::ffff:172.31.238.0/120;::1/128;::ffff:127.0.0.0/120;::ffff:127.1.0.0/120" },
-											  { "public_ip_white_list", "::ffff:172.31.238.0/120;::1/128;::ffff:192.168.1.0/120;::ffff:127.0.0.1/128" },
-											  { "log_level", "trafic:access_log_all;admin:access_log_all" },
-											  { "log_file", "trafic:access_log.txt;admin:console" },
-											  { "https_enabled", "false" },
-											  { "http_enabled", "true" },
-											  { "http_use_portsharding", "false" } },
-											config_options };
-
-
+	http::configuration http_configuration{
+		{ { "server", server_version },
+		  { "http_listen_port_begin", "4000" },
+		  { "private_base", "/private/infra/manager" },
+		  { "private_ip_white_list", "::ffff:172.31.238.0/120;::1/128;::ffff:127.0.0.0/120;::ffff:127.1.0.0/120" },
+		  { "public_ip_white_list", "::ffff:172.31.238.0/120;::1/128;::ffff:192.168.1.0/120;::ffff:127.0.0.1/128" },
+		  { "log_level", "trafic:access_log_all;admin:api" },
+		  { "log_file", "trafic:access_log.txt;admin:console" },
+		  { "https_enabled", "false" },
+		  { "http_enabled", "true" },
+		  { "http_use_portsharding", "false" } },
+		config_options
+	};
 
 	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager<http::async::server>>(
 		new cloud::platform::manager<http::async::server>(http_configuration, config_file));

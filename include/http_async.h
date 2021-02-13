@@ -650,8 +650,9 @@ public:
 			{
 				auto spec = util::split(allowed_range_spec, "/");
 
-				auto allowed_network
-					= asio::ip::network_v6(asio::ip::address_v6::from_string(spec[0]), static_cast<std::uint16_t>(std::strtoul(spec[1].data(), nullptr, 10)));
+				auto allowed_network = asio::ip::network_v6(
+					asio::ip::address_v6::from_string(spec[0]),
+					static_cast<std::uint16_t>(std::strtoul(spec[1].data(), nullptr, 10)));
 
 				private_ip_white_list_.emplace_back(allowed_network);
 			}
@@ -661,11 +662,11 @@ public:
 				auto spec = util::split(allowed_range_spec, "/");
 
 				auto allowed_network = asio::ip::network_v6(
-					asio::ip::address_v6::from_string(spec[0]), static_cast<std::uint16_t>(std::strtoul(spec[1].data(), nullptr, 0)));
+					asio::ip::address_v6::from_string(spec[0]),
+					static_cast<std::uint16_t>(std::strtoul(spec[1].data(), nullptr, 0)));
 
 				public_ip_white_list_.emplace_back(allowed_network);
 			}
-
 		}
 
 		virtual ~connection_handler_base()
@@ -734,8 +735,7 @@ public:
 				session_handler_.request().set(
 					"X-Forwarded-For", session_handler_.request().get("X-Forwarded-For", this->remote_address_base()));
 
-				private_base_request_
-					= session_handler_.request().target().find(server_.router_.private_base_, 0) == 0;
+				private_base_request_ = session_handler_.request().target().find(server_.router_.private_base_, 0) == 0;
 
 				if (private_base_request_ == true)
 				{
@@ -1248,12 +1248,10 @@ public:
 				auto log_msg
 					= server_.manager().log_access(session_handler_, routing_.the_route().route_metrics()) + "\n";
 
-
 				if (private_base_request_ == false)
 				{
 					server_.logger_.access_log(log_msg);
 					--server_.manager().requests_current(private_base_request_);
-
 				}
 				else if (private_base_request_ == true)
 				{
@@ -1263,8 +1261,7 @@ public:
 			}
 			else
 			{
-				auto log_msg
-					= server_.manager().log_access(session_handler_, http::api::routing::metrics{}) + "\n";
+				auto log_msg = server_.manager().log_access(session_handler_, http::api::routing::metrics{}) + "\n";
 
 				if (private_base_request_ == false)
 				{
@@ -1317,15 +1314,16 @@ public:
 			}
 		}
 
-		bool is_remote_address_allowed(const std::vector<asio::ip::network_v6>& networks) const { 
+		bool is_remote_address_allowed(const std::vector<asio::ip::network_v6>& networks) const
+		{
 			auto address = socket_.remote_endpoint().address();
 			bool result = false;
 
 			if (address.is_v4())
 			{
-				//auto address_as_network = asio::ip::network_v4(address.to_v4(), 32);
+				// auto address_as_network = asio::ip::network_v4(address.to_v4(), 32);
 
-				//for (const auto& network : networks)
+				// for (const auto& network : networks)
 				//{
 				//	if (address_as_network.canonical() == network.canonical()) return true;
 
@@ -1338,14 +1336,12 @@ public:
 
 				for (const auto& network : networks)
 				{
-					if (address_as_network.canonical() == network.canonical()) 
-						return true;
+					if (address_as_network.canonical() == network.canonical()) return true;
 
-					if (address_as_network.is_subnet_of(network.canonical()) == true) 
-						return true;
+					if (address_as_network.is_subnet_of(network.canonical()) == true) return true;
 				}
 			}
-			return result; 
+			return result;
 		}
 
 		void start() override
@@ -1407,10 +1403,7 @@ public:
 			}
 		}
 
-		bool is_remote_address_allowed(const std::vector<asio::ip::network_v6>&) const 
-		{ 
-			return false;
-		}
+		bool is_remote_address_allowed(const std::vector<asio::ip::network_v6>&) const { return false; }
 
 		void start() override
 		{
@@ -1457,8 +1450,7 @@ public:
 public:
 	server(http::configuration& configuration)
 		: http::server{ configuration }
-		, thread_count_(configuration.get<std::uint8_t>(
-			  "thread_count", static_cast<std::uint8_t>(4)))
+		, thread_count_(configuration.get<std::uint8_t>("thread_count", static_cast<std::uint8_t>(4)))
 		, http_watchdog_idle_timeout_(configuration.get<std::int16_t>("http_watchdog_idle_timeout", 0))
 		, http_watchdog_max_requests_concurrent_(
 			  configuration.get<std::int16_t>("http_watchdog_max_requests_concurrent", 0))
@@ -2141,8 +2133,6 @@ http::response_message request(
 	return result;
 }
 
-
-
 template <http::method::method_t method>
 void async_request(
 	http::async::upstreams& upstreams,
@@ -2158,7 +2148,6 @@ void async_request(
 
 	return async_request<method>(upstream, request_url, headers, body, std::move(on_complete));
 }
-
 
 template <http::method::method_t method>
 void request(
@@ -2177,8 +2166,6 @@ void request(
 
 	io_context.run();
 }
-
-
 
 } // namespace client
 } // namespace http

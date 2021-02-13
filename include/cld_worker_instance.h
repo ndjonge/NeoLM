@@ -41,7 +41,7 @@ public:
 		removed,
 	};
 
-	worker_base(const http::basic::server& server) : server_(server), state_(state::initial) {}
+	worker_base(const http::server& server) : server_(server), state_(state::initial) {}
 
 	virtual ~worker_base(){};
 
@@ -54,7 +54,7 @@ public:
 	virtual void set_forked(bool f) { is_forked_ = f; };
 
 protected:
-	const http::basic::server& server_;
+	const http::server& server_;
 	state state_;
 	bool is_forked_{ false };
 };
@@ -68,15 +68,15 @@ template <typename T> class worker : public worker_base
 protected:
 	std::string manager_endpoint_url_;
 	std::string cld_worker_id_;
-	std::string cld_worker_level_;
+	std::string cld_worker_label_;
 
 	using json = T;
 
 public:
-	worker(const http::basic::server& server) : worker_base(server)
+	worker(const http::server& server) : worker_base(server)
 	{
 		cld_worker_id_ = server_.config().get<std::string>("cld_worker_id", "no_id");
-		cld_worker_level_ = server_.config().get<std::string>("cld_worker_level", "no_level");
+		cld_worker_label_ = server_.config().get<std::string>("cld_worker_label", "no_label");
 
 		manager_endpoint_url_ = server_.config().get<std::string>(
 									"cld_manager_endpoint", "http://localhost:4000/private/infra/workspaces")
@@ -101,7 +101,7 @@ public:
 		auto pid = getpid();
 
 		put_new_instance_json["process_id"] = pid;
-		put_new_instance_json["worker_level"] = cld_worker_level_;
+		put_new_instance_json["worker_label"] = cld_worker_label_;
 		put_new_instance_json["base_url"] = server_.config().get("http_this_server_local_url");
 		put_new_instance_json["version"] = server_.config().get<std::string>("server", "");
 
@@ -137,7 +137,7 @@ public:
 		auto pid = getpid();
 
 		put_new_instance_json["process_id"] = pid;
-		put_new_instance_json["worker_level"] = cld_worker_level_;
+		put_new_instance_json["worker_label"] = cld_worker_label_;
 		put_new_instance_json["base_url"] = server_.config().get("http_this_server_local_url");
 
 		if (option == remove_worker_options::remove_and_decrease_required_limit)
@@ -207,7 +207,7 @@ template <typename J> class enable_server_as_worker
 {
 public:
 	using json = J;
-	enable_server_as_worker(http::basic::server* server)
+	enable_server_as_worker(http::server* server)
 		: workgroup_controller_(workgroup_controller_from_configuration(*server))
 	{
 		// http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/worker
@@ -218,7 +218,7 @@ public:
 protected:
 	std::unique_ptr<worker_base> workgroup_controller_;
 
-	std::unique_ptr<worker_base> workgroup_controller_from_configuration(http::basic::server& server)
+	std::unique_ptr<worker_base> workgroup_controller_from_configuration(http::server& server)
 	{
 		if (server.config().get("cld_workgroup_membership_type") == "worker")
 		{
