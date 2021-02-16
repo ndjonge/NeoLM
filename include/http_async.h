@@ -8,9 +8,12 @@
 #include <deque>
 #include <thread>
 
+#if defined(WIN32)
 #pragma warning(push)
 #pragma warning(disable : 4459) // asio / VC2019 issue, disable warning C4459 : Declaration of "query" shadows global
 								// declaration
+#endif
+
 #include <asio.hpp>
 #ifdef USE_WOLFSSL
 #ifndef ASIO_USE_WOLFSSL
@@ -19,8 +22,9 @@
 #include "infor_ssl.h"
 #endif
 #include <asio/ssl.hpp>
+#if defined(WIN32)
 #pragma warning(pop)
-
+#endif
 #include "http_basic.h"
 
 namespace util
@@ -320,7 +324,9 @@ public:
 			else if (upstream->state_ == upstream::state::down)
 				upstream_state = "down";
 
-			ss << tenant_id << ", " << upstream->base_url_ << ", "
+			if (tenant_id.empty() == true) ss << tenant_id << ", ";
+
+			ss << upstream->base_url_ << ", "
 			   << "/" << workspace_id << upstream->id_ << ", " << upstream_state
 			   << ", connections(total: " << std::to_string(connections_total) << ", "
 			   << "idle: " << std::to_string(connections_idle) << ", busy: " << std::to_string(connections_busy_)
@@ -646,8 +652,8 @@ public:
 			server_.logger_.info(
 				"{s}_connection_handler: start {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
 
-			for (const auto& allowed_range_spec : 
-				util::split(configuration.get<std::string>("private_ip_white_list", "::/0"), ";"))
+			for (const auto& allowed_range_spec :
+				 util::split(configuration.get<std::string>("private_ip_white_list", "::/0"), ";"))
 			{
 				auto spec = util::split(allowed_range_spec, "/");
 
@@ -935,7 +941,7 @@ public:
 
 					routing_ = session_handler_.handle_request(server_.router_);
 
-					if (server_.logger_.current_admin_level() == lgr::level::debug)
+					if (server_.logger_.current_log2_level() == lgr::level::debug)
 					{
 						server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(session_handler_.request()));
 					}
@@ -1242,7 +1248,7 @@ public:
 						std::chrono::steady_clock::now() - session_handler_.t2())
 						.count());
 
-				if (server_.logger_.current_admin_level() == lgr::level::debug)
+				if (server_.logger_.current_log2_level() == lgr::level::debug)
 				{
 					server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(session_handler_.response()));
 				}
@@ -2004,6 +2010,7 @@ public:
 		else if (upstream_connection_.should_drain())
 		{
 			upstream_connection_.drain();
+			on_complete_(response_, ec);
 			return;
 		}
 

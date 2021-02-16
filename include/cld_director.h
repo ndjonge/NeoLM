@@ -303,6 +303,8 @@ static bool create_bse_process_as_user(
 		envp.push_back(strdup(ss.str().data()));
 		envp.push_back(nullptr);
 
+		signal(SIGCHLD, SIG_IGN);
+
 		pid = fork();
 
 		if (pid == 0)
@@ -1032,8 +1034,7 @@ public:
 			if (limits_.workers_required() > 0)
 			{
 				logger.api(
-					"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_required: {s}, "
-					"label_actual: {s}\n",
+					"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, label_required: {s}\n",
 					workspace_id_,
 					type_,
 					name_,
@@ -1099,28 +1100,47 @@ public:
 					auto worker_runtime = worker_it->second.runtime();
 					auto worker_requests = worker_it->second.upstream().responses_tot_.load();
 
-					if (worker_label != workers_label_required)
+					if ((worker_label != workers_label_required) || (worker_requests >= workers_requests_max)
+						|| (worker_runtime >= workers_runtime_max))
 					{
-						worker.set_status(worker::status::drain);
-						workers_required_to_add++;
+						http::headers watchdog_headers{ { "Host", "localhost" } };
 
-						if (workers_required_to_add == 0)
-						{
-							break;
-						}
-					}
-					else if (worker_requests >= workers_requests_max)
-					{
-						worker.set_status(worker::status::drain);
-						workers_required_to_add++;
+						std::string base_url = worker_it->second.get_base_url();
 
-						if (workers_required_to_add == 0)
-						{
-							break;
-						}
-					}
-					else if (worker_runtime >= workers_runtime_max)
-					{
+						http::client::async_request<http::method::delete_>(
+							upstreams_,
+							worker_it->second.get_base_url(),
+							"/private/infra/worker/process",
+							watchdog_headers,
+							std::string{},
+							[this, base_url, &logger](http::response_message& response, asio::error_code& error_code) {
+								if (!error_code
+									&& (response.status() == http::status::ok
+										|| response.status() == http::status::no_content))
+								{
+									logger.api(
+										"/{s}/{s}/{s}: process deleted for {s}\n",
+										workspace_id_,
+										type_,
+										name_,
+										base_url);
+								}
+								else if (
+									error_code
+									|| (response.status() != http::status::ok
+										&& response.status() != http::status::no_content))
+								{
+									logger.api(
+										"/{s}/{s}/{s}: failed to delete process {s}\n",
+										workspace_id_,
+										type_,
+										name_,
+										base_url);
+								}
+
+								return;
+							});
+
 						worker.set_status(worker::status::drain);
 						workers_required_to_add++;
 
@@ -1233,7 +1253,6 @@ public:
 					++worker_it;
 				}
 
-				//				limits_.workers_refresh_actual(workers_on_label_required);
 				auto workers_to_start = workers_not_on_label_required;
 				limits_.workers_not_on_label_required(workers_not_on_label_required);
 
@@ -1307,10 +1326,11 @@ public:
 					if (worker_it->second.get_status() == worker::status::down)
 					{
 						logger.api(
-							"/{s}/{s}/{s}: delete {s}\n",
+							"/{s}/{s}/{s} delete {s} {s}\n",
 							workspace_id_,
 							type_,
 							name_,
+							worker_it->first,
 							worker_it->second.get_base_url());
 
 						upstreams_.erase_upstream(worker_it->second.get_base_url());
@@ -2009,15 +2029,28 @@ public:
 		});
 
 		server_base::router_.on_post("/private/infra/manager/log_level", [this](http::session_handler& session) {
-			server_base::logger_.set_level(session.request().body());
-			auto new_level = server_base::logger_.current_level_to_string();
+			server_base::logger_.set_log_level(session.request().body());
+			auto new_level = server_base::logger_.current_log_level_to_string();
 			http::server::configuration_.set("log_level", new_level);
-			session.response().body() = server_base::logger_.current_level_to_string();
+			session.response().body() = server_base::logger_.current_log_level_to_string();
 			session.response().status(http::status::ok);
 		});
 
 		server_base::router_.on_get("/private/infra/manager/log_level", [this](http::session_handler& session) {
-			session.response().body() = server_base::logger_.current_level_to_string();
+			session.response().body() = server_base::logger_.current_log_level_to_string();
+			session.response().status(http::status::ok);
+		});
+
+		server_base::router_.on_post("/private/infra/manager/log2_level", [this](http::session_handler& session) {
+			server_base::logger_.set_log2_level(session.request().body());
+			auto new_level = server_base::logger_.current_log2_level_to_string();
+			http::server::configuration_.set("log2_level", new_level);
+			session.response().body() = server_base::logger_.current_log2_level_to_string();
+			session.response().status(http::status::ok);
+		});
+
+		server_base::router_.on_get("/private/infra/manager/log2_level", [this](http::session_handler& session) {
+			session.response().body() = server_base::logger_.current_log2_level_to_string();
 			session.response().status(http::status::ok);
 		});
 
@@ -3484,8 +3517,10 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 											  { "private_base", "/private/infra/manager" },
 											  { "private_ip_white_list", "::/0" },
 											  { "public_ip_white_list", "::/0" },
-											  { "log_level", "trafic:access_log_all;admin:api" },
-											  { "log_file", "trafic:access_log.txt;admin:console" },
+											  { "log_level", "access_log_all" },
+											  { "log_file", "access_log.txt" },
+											  { "log2_level", "api" },
+											  { "log2_file", "console" },
 											  { "https_enabled", "false" },
 											  { "http_enabled", "true" },
 											  { "http_use_portsharding", "false" } },

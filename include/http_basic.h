@@ -235,12 +235,8 @@ inline void daemonize(const std::string& workdir, const std::string& lock_file)
 	}
 }
 #else
-inline void daemonize(const std::string&, const std::string&)
-{ 
-	std::cout << "Not implemented yet\n"; 
-}
+inline void daemonize(const std::string&, const std::string&) { std::cout << "Not implemented yet\n"; }
 #endif
-
 
 inline std::string to_lower(std::string input)
 {
@@ -411,7 +407,6 @@ split(const std::string& str, const std::string& delimiters, split_options optio
 
 } // namespace util
 
-
 namespace gzip
 {
 
@@ -579,25 +574,33 @@ inline std::size_t get_thread_id() noexcept
 class logger
 {
 public:
-	logger(const std::string& file, const std::string& level) : admin_ostream_(&std::cout), trafic_ostream_(&std::cout)
+	logger(
+		const std::string& log_file,
+		const std::string& log_level,
+		const std::string& log2_file,
+		const std::string& log2_level)
+		: log2_ostream_(&std::cout), log_ostream_(&std::cout)
 	{
-		set_level(level);
-		set_file(file);
+		set_log_level(log_level);
+		set_log_file(log_file);
 
-		if (admin_level_ != level::none && admin_file_ != "console")
+		set_log2_level(log2_level);
+		set_log2_file(log2_file);
+
+		if (log2_level_ != level::none && log2_file_ != "console")
 		{
-			redirected_admin_ostream_.open(admin_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
-			admin_ostream_ = &redirected_admin_ostream_;
+			redirected_log2_ostream_.open(
+				log2_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
+			log2_ostream_ = &redirected_log2_ostream_;
 		}
 
-		if (trafic_level_ != level::none && trafic_file_ != "console")
+		if (log_level_ != level::none && log_file_ != "console")
 		{
-			redirected_trafic_ostream_.open(
-				trafic_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
-			trafic_ostream_ = &redirected_trafic_ostream_;
+			redirected_log_ostream_.open(log_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
+			log_ostream_ = &redirected_log_ostream_;
 		}
 
-		if (admin_level_ != level::none)
+		if (log2_level_ != level::none)
 		{
 			info("logger started\n");
 		}
@@ -605,50 +608,32 @@ public:
 
 	~logger()
 	{
-		if (admin_level_ != level::none)
+		if (log2_level_ != level::none)
 		{
 			info("logger stopped\n");
 		}
 	}
 
-	level current_admin_level() const { return admin_level_.load(); }
-	level current_trafic_level() const { return trafic_level_.load(); }
+	level current_log2_level() const { return log2_level_.load(); }
+	level current_log_level() const { return log_level_.load(); }
 
-	const std::string current_level_to_string() const
+	const std::string current_log2_level_to_string() const
 	{
-		std::string ret="admin:";
+		std::string ret;
 
-		if (admin_level_ == level::access_log)
+		if (log2_level_ == level::access_log)
 			ret += "access_log";
-		else if (admin_level_ == level::access_log_all)
+		else if (log2_level_ == level::access_log_all)
 			ret += "access_log_all";
-		else if (admin_level_ == level::error)
+		else if (log2_level_ == level::error)
 			ret += "error";
-		else if (admin_level_ == level::warning)
+		else if (log2_level_ == level::warning)
 			ret += "warning";
-		else if (admin_level_ == level::api)
+		else if (log2_level_ == level::api)
 			ret += "api";
-		else if (admin_level_ == level::info)
+		else if (log2_level_ == level::info)
 			ret += "info";
-		else if (admin_level_ == level::debug)
-			ret += "debug";
-		else
-			ret += "none";
-
-		ret += ";trafic:";
-		if (trafic_level_ == level::access_log) 
-			ret += "access_log";
-		else if (trafic_level_ == level::access_log_all)
-			ret += "access_log_all";
-		else if (trafic_level_ == level::error)
-			ret += "error";
-		else if (trafic_level_ == level::warning)
-			ret += "warning";
-		else if (trafic_level_ == level::api)
-			ret += "api";
-		else if (trafic_level_ == level::info)
-			ret += "info";
-		else if (trafic_level_ == level::debug)
+		else if (log2_level_ == level::debug)
 			ret += "debug";
 		else
 			ret += "none";
@@ -656,79 +641,75 @@ public:
 		return ret;
 	}
 
-	void set_file(const std::string& file)
+	const std::string current_log_level_to_string() const
 	{
-		auto levels = util::split(file, ":;");
+		std::string ret;
 
-		if (levels.size() == 4)
-		{
-			if (levels[0] == "trafic") trafic_file_ = levels[1];
+		if (log_level_ == level::access_log)
+			ret += "access_log";
+		else if (log_level_ == level::access_log_all)
+			ret += "access_log_all";
+		else if (log_level_ == level::error)
+			ret += "error";
+		else if (log_level_ == level::warning)
+			ret += "warning";
+		else if (log_level_ == level::api)
+			ret += "api";
+		else if (log_level_ == level::info)
+			ret += "info";
+		else if (log_level_ == level::debug)
+			ret += "debug";
+		else
+			ret += "none";
 
-			if (levels[2] == "trafic") trafic_file_ = levels[3];
-
-			if (levels[0] == "admin") admin_file_ = levels[1];
-
-			if (levels[2] == "admin") admin_file_ = levels[3];
-		}
+		return ret;
 	}
 
-	void set_level(const std::string& level) 
-	{
-		auto levels = util::split(level, ":;");
+	void set_log_file(const std::string& file) { log_file_ = file; }
 
-		if (levels.size() == 4)
-		{
-			if (levels[0] == "trafic") set_trafic_level(levels[1]);
+	void set_log2_file(const std::string& file) { log2_file_ = file; }
 
-			if (levels[2] == "trafic") set_trafic_level(levels[3]);
+	void set_log2_level(level l) { log2_level_.store(l); }
+	void set_log_level(level l) { log_level_.store(l); }
 
-			if (levels[0] == "admin") set_admin_level(levels[1]);
-
-			if (levels[2] == "admin") set_admin_level(levels[3]);
-		}
-	}
-
-	void set_admin_level(level l) { admin_level_.store(l); }
-	void set_trafic_level(level l) { trafic_level_.store(l); }
-
-	void set_admin_level(const std::string& level)
+	void set_log2_level(const std::string& level)
 	{
 		if (level == "access_log")
-			admin_level_ = level::access_log;
+			log2_level_ = level::access_log;
 		else if (level == "access_log_all")
-			admin_level_ = level::access_log_all;
+			log2_level_ = level::access_log_all;
 		else if (level == "api")
-			admin_level_ = level::api;
+			log2_level_ = level::api;
 		else if (level == "warning")
-			admin_level_ = level::warning;
+			log2_level_ = level::warning;
 		else if (level == "error")
-			admin_level_ = level::error;
+			log2_level_ = level::error;
 		else if (level == "info")
-			admin_level_ = level::info;
+			log2_level_ = level::info;
 		else if (level == "debug")
-			admin_level_ = level::debug;
+			log2_level_ = level::debug;
 		else
-			admin_level_ = level::none;
+			log2_level_ = level::none;
 	}
 
-	void set_trafic_level(const std::string& level)
+	void set_log_level(const std::string& level)
 	{
 		if (level == "access_log")
-			trafic_level_ = level::access_log;
+			log_level_ = level::access_log;
 		else if (level == "access_log_all")
-			trafic_level_ = level::access_log_all;
+			log_level_ = level::access_log_all;
 		else if (level == "api")
-			trafic_level_ = level::api;
+			log_level_ = level::api;
 		else if (level == "warning")
-			trafic_level_ = level::warning;
+			log_level_ = level::warning;
 		else if (level == "error")
-			trafic_level_ = level::error;
+			log_level_ = level::error;
 		else if (level == "info")
-			trafic_level_ = level::info;
+			log_level_ = level::info;
 		else if (level == "debug")
-			trafic_level_ = level::debug;
+			log_level_ = level::debug;
 		else
-			trafic_level_ = level::none;
+			log_level_ = level::none;
 	}
 
 	template <const char* P, typename... A> static const std::string format(const std::string& msg)
@@ -954,17 +935,16 @@ public:
 
 	inline void log(const level l, const std::string& msg) const
 	{
-		if (admin_level_ >= l)
+		if (log2_level_ >= l)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			admin_ostream_->write(msg.data(), msg.size()).flush();
+			log2_ostream_->write(msg.data(), msg.size()).flush();
 		}
-		if (trafic_level_ >= l)
+		if (log_level_ >= l)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			trafic_ostream_->write(msg.data(), msg.size()).flush();
+			log_ostream_->write(msg.data(), msg.size()).flush();
 		}
-
 	}
 
 	template <typename... A> void access_log(const char* format, const A&... args) const
@@ -999,53 +979,51 @@ public:
 
 	template <typename... A> void access_log(const std::string& msg) const
 	{
-		if (trafic_level_ >= level::access_log)
+		if (log_level_ >= level::access_log)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			trafic_ostream_->write(msg.data(), msg.size()).flush();
+			log_ostream_->write(msg.data(), msg.size()).flush();
 		}
-		if (admin_level_ >= level::access_log)
+		if (log2_level_ >= level::access_log)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			admin_ostream_->write(msg.data(), msg.size()).flush();
+			log2_ostream_->write(msg.data(), msg.size()).flush();
 		}
-
 	}
 
 	template <typename... A> void access_log_all(const std::string& msg) const
 	{
-		if (trafic_level_ >= level::access_log_all)
+		if (log_level_ >= level::access_log_all)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			trafic_ostream_->write(msg.data(), msg.size()).flush();
+			log_ostream_->write(msg.data(), msg.size()).flush();
 		}
-		if (admin_level_ >= level::access_log_all)
+		if (log2_level_ >= level::access_log_all)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			admin_ostream_->write(msg.data(), msg.size()).flush();
+			log2_ostream_->write(msg.data(), msg.size()).flush();
 		}
 	}
 
-	std::ostream& as_stream() { return *admin_ostream_; }
-	const std::ostream& as_stream() const { return *admin_ostream_; }
+	std::ostream& as_stream() { return *log2_ostream_; }
+	const std::ostream& as_stream() const { return *log2_ostream_; }
 
 private:
 	mutable std::mutex lock_;
-	std::ostream* admin_ostream_;
-	std::ostream* trafic_ostream_;
+	std::ostream* log2_ostream_;
+	std::ostream* log_ostream_;
 
-	std::ofstream redirected_admin_ostream_;
-	std::ofstream redirected_trafic_ostream_;
+	std::ofstream redirected_log2_ostream_;
+	std::ofstream redirected_log_ostream_;
 
-	std::atomic<level> admin_level_;
-	std::atomic<level> trafic_level_;
+	std::atomic<level> log2_level_;
+	std::atomic<level> log_level_;
 
-	std::string admin_file_;
-	std::string trafic_file_;
+	std::string log2_file_;
+	std::string log_file_;
 };
 
 } // namespace lgr
-
 
 namespace http
 {
@@ -3698,6 +3676,7 @@ public:
 
 	template <typename router_t> typename router_t::request_result_type handle_request(router_t& router_)
 	{
+
 		response_.status(http::status::not_found);
 
 		std::string request_path;
@@ -3983,8 +3962,8 @@ public:
 		{
 			std::ostringstream ss;
 
-			ss << request_latency_.load() << "ms, " << processing_duration_.load() << "ms, "
-			   << response_latency_.load() << "ms, " << active_count_ << "x, " << hit_count_ << "x";
+			ss << request_latency_.load() << "ms, " << processing_duration_.load() << "ms, " << response_latency_.load()
+			   << "ms, " << active_count_ << "x, " << hit_count_ << "x";
 
 			return ss.str();
 		};
@@ -3993,10 +3972,10 @@ public:
 		{
 			std::ostringstream ss;
 
-			ss << "{\"request_latency\" :" << request_latency_.load() 
-			   << ",\"processing_duration\":" << processing_duration_.load() 
-			   << ",\"response_latency\":" << response_latency_.load() 
-			   << ",\"active_count\":" << active_count_ << ",\"hit_count\":" << hit_count_ << "}";
+			ss << "{\"request_latency\" :" << request_latency_.load()
+			   << ",\"processing_duration\":" << processing_duration_.load()
+			   << ",\"response_latency\":" << response_latency_.load() << ",\"active_count\":" << active_count_
+			   << ",\"hit_count\":" << hit_count_ << "}";
 
 			return ss.str();
 		};
@@ -5051,9 +5030,7 @@ public:
 			route_context.the_route().metric_active_count()--;
 
 			auto t1 = std::chrono::steady_clock::now();
-			route_context.the_route().update_hitcount_and_timing_metrics(
-				t0 - session.t0(),
-				t1 - t0);
+			route_context.the_route().update_hitcount_and_timing_metrics(t0 - session.t0(), t1 - t0);
 		}
 		return route_context;
 	}
@@ -5294,10 +5271,10 @@ public:
 		: router_(configuration.get<std::string>("private_base", ""))
 		, configuration_(configuration)
 		, logger_(
-			  configuration.get<std::string>("log_file", "trafic:access_log.txt;admin:console"),
-			  configuration.get<std::string>("log_level", "trafic:access_log;admin:none") ){};
-
-
+			  configuration.get<std::string>("log_file", "access_log.txt"),
+			  configuration.get<std::string>("log_level", "access_log"),
+			  configuration.get<std::string>("log2_file", "console"),
+			  configuration.get<std::string>("log2_level", "none")){};
 
 	server(const server&) = delete;
 	server(server&&) = delete;
@@ -5979,9 +5956,12 @@ public:
 					data_end = data_begin + ret;
 				}
 
+
 				http::session_handler::result_type parse_result;
 				auto& response = session_handler_.response();
 				auto& request = session_handler_.request();
+
+				session_handler_.t0() = std::chrono::steady_clock::now();
 
 				std::tie(parse_result, data_begin) = session_handler_.parse_request(data_begin, data_end);
 				assert(data_begin <= data_end);
@@ -6030,7 +6010,7 @@ public:
 
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
-							if (server_.logger_.current_admin_level() == lgr::level::debug)
+							if (server_.logger_.current_log2_level() == lgr::level::debug)
 							{
 								server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(request));
 							}
@@ -6077,7 +6057,10 @@ public:
 
 							if (routing.match_result() == http::api::router_match::match_found)
 							{
-								auto t1 = std::chrono::duration<std::uint64_t, std::nano>(std::chrono::steady_clock::now() - t0).count();
+								auto t1 = std::chrono::duration<std::uint64_t, std::nano>(
+											  std::chrono::steady_clock::now() - t0)
+											  .count()
+										  / 1000;
 
 								routing.the_route().metric_response_latency(t1);
 
@@ -6085,7 +6068,7 @@ public:
 												   session_handler_, routing.the_route().route_metrics())
 											   + "\n";
 
-								if (server_.logger_.current_admin_level() >= lgr::level::access_log)
+								if (server_.logger_.current_log_level() >= lgr::level::access_log)
 								{
 									server_.logger_.access_log(log_msg);
 								}
@@ -6099,7 +6082,7 @@ public:
 								server_.logger_.access_log(log_msg);
 							}
 
-							if (server_.logger_.current_admin_level() == lgr::level::debug)
+							if (server_.logger_.current_log2_level() == lgr::level::debug)
 							{
 								server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(response));
 							}
