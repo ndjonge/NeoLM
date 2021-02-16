@@ -1303,6 +1303,7 @@ public:
 						if (worker_it->second.upstream().connections_busy_.load() == 0)
 							worker_it->second.set_status(worker::status::down);
 					}
+
 					if (worker_it->second.get_status() == worker::status::down)
 					{
 						logger.api(
@@ -3478,19 +3479,17 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 
 	if (run_as_daemon) util::daemonize("/tmp", "/var/lock/" + server_version + ".pid");
 
-	http::configuration http_configuration{
-		{ { "server", server_version },
-		  { "http_listen_port_begin", "4000" },
-		  { "private_base", "/private/infra/manager" },
-		  { "private_ip_white_list", "::ffff:172.31.238.0/120;::1/128;::ffff:127.0.0.0/120;::ffff:127.1.0.0/120" },
-		  { "public_ip_white_list", "::ffff:172.31.238.0/120;::1/128;::ffff:192.168.1.0/120;::ffff:127.0.0.1/128" },
-		  { "log_level", "trafic:access_log_all;admin:api" },
-		  { "log_file", "trafic:access_log.txt;admin:console" },
-		  { "https_enabled", "false" },
-		  { "http_enabled", "true" },
-		  { "http_use_portsharding", "false" } },
-		config_options
-	};
+	http::configuration http_configuration{ { { "server", server_version },
+											  { "http_listen_port_begin", "4000" },
+											  { "private_base", "/private/infra/manager" },
+											  { "private_ip_white_list", "::/0" },
+											  { "public_ip_white_list", "::/0" },
+											  { "log_level", "trafic:access_log_all;admin:api" },
+											  { "log_file", "trafic:access_log.txt;admin:console" },
+											  { "https_enabled", "false" },
+											  { "http_enabled", "true" },
+											  { "http_use_portsharding", "false" } },
+											config_options };
 
 	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager<http::async::server>>(
 		new cloud::platform::manager<http::async::server>(http_configuration, config_file));

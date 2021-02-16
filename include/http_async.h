@@ -646,7 +646,8 @@ public:
 			server_.logger_.info(
 				"{s}_connection_handler: start {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
 
-			for (const auto& allowed_range_spec : util::split(configuration.get("private_ip_white_list"), ";"))
+			for (const auto& allowed_range_spec : 
+				util::split(configuration.get<std::string>("private_ip_white_list", "::/0"), ";"))
 			{
 				auto spec = util::split(allowed_range_spec, "/");
 
@@ -657,7 +658,8 @@ public:
 				private_ip_white_list_.emplace_back(allowed_network);
 			}
 
-			for (const auto& allowed_range_spec : util::split(configuration.get("public_ip_white_list"), ";"))
+			for (const auto& allowed_range_spec :
+				 util::split(configuration.get<std::string>("public_ip_white_list", "::/0"), ";"))
 			{
 				auto spec = util::split(allowed_range_spec, "/");
 
