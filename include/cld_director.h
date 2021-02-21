@@ -601,10 +601,16 @@ public:
 		{
 			if (worker->second.get_base_url().empty() == false)
 			{
-				upstreams_.erase_upstream(worker->second.get_base_url());
-				limits_.workers_actual_upd(-1);
+				if (worker->second.get_status() == worker::status::up)
+				{
+					if (worker->second.upstream().connections_busy_.load() == 0)
+						worker->second.set_status(worker::status::down);
+				}
+
+//				upstreams_.erase_upstream(worker->second.get_base_url());
+//				limits_.workers_actual_upd(-1);
 			}
-			worker = workers_.erase(worker);
+//			worker = workers_.erase(worker);
 			result = true;
 		}
 		return result;
@@ -3519,7 +3525,7 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 											  { "public_ip_white_list", "::/0" },
 											  { "log_level", "access_log_all" },
 											  { "log_file", "access_log.txt" },
-											  { "log2_level", "api" },
+											  { "log2_level", "debug" },
 											  { "log2_file", "console" },
 											  { "https_enabled", "false" },
 											  { "http_enabled", "true" },

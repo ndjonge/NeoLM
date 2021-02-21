@@ -146,7 +146,6 @@ public:
 		void error()
 		{
 			--(owner_.connections_busy_);
-			owner_.set_state(upstream::state::drain);
 			state_ = state::error;
 		}
 
@@ -988,7 +987,7 @@ public:
 		{
 			asio::error_code error;
 			char peek_buffer[1];
-#ifdef LOCAL_TESTING_WITH_RANDOM_FAILURES
+#ifdef  LOCAL_TESTING_WITH_RANDOM_FAILURES
 			bool random_failure = 1 + (rand() % 100) == 5;
 #else
 			bool random_failure = false;
@@ -1835,7 +1834,7 @@ public:
 		char peek_buffer[1];
 
 #ifdef LOCAL_TESTING_WITH_RANDOM_FAILURES
-		bool random_failure = 1 + (rand() % 100) == 5;
+		bool random_failure = 1 + (rand() % 5) == 5;
 #else
 		bool random_failure = false;
 #endif
