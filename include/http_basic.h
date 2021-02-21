@@ -589,8 +589,7 @@ public:
 
 		if (log2_level_ != level::none && log2_file_ != "console")
 		{
-			redirected_log2_ostream_.open(
-				log2_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
+			redirected_log2_ostream_.open(log2_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
 			log2_ostream_ = &redirected_log2_ostream_;
 		}
 
@@ -5955,7 +5954,6 @@ public:
 
 					data_end = data_begin + ret;
 				}
-
 
 				http::session_handler::result_type parse_result;
 				auto& response = session_handler_.response();

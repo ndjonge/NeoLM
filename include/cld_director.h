@@ -596,23 +596,22 @@ public:
 		bool result = false;
 
 		auto worker = workers_.find(id);
-
 		if (worker != workers_.end())
 		{
 			if (worker->second.get_base_url().empty() == false)
 			{
-				if (worker->second.get_status() == worker::status::up)
-				{
-					if (worker->second.upstream().connections_busy_.load() == 0)
-						worker->second.set_status(worker::status::down);
-				}
+				worker->second.set_status(worker::status::drain);
 
-//				upstreams_.erase_upstream(worker->second.get_base_url());
-//				limits_.workers_actual_upd(-1);
+				if (worker->second.upstream().connections_busy_.load() == 0)
+					worker->second.set_status(worker::status::down);
+
+				//				upstreams_.erase_upstream(worker->second.get_base_url());
+				//				limits_.workers_actual_upd(-1);
 			}
-//			worker = workers_.erase(worker);
+			//			worker = workers_.erase(worker);
 			result = true;
 		}
+
 		return result;
 	}
 
@@ -1040,7 +1039,8 @@ public:
 			if (limits_.workers_required() > 0)
 			{
 				logger.api(
-					"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, label_required: {s}\n",
+					"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, "
+					"label_required: {s}\n",
 					workspace_id_,
 					type_,
 					name_,
@@ -3525,7 +3525,7 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 											  { "public_ip_white_list", "::/0" },
 											  { "log_level", "access_log_all" },
 											  { "log_file", "access_log.txt" },
-											  { "log2_level", "debug" },
+											  { "log2_level", "api" },
 											  { "log2_file", "console" },
 											  { "https_enabled", "false" },
 											  { "http_enabled", "true" },

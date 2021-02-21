@@ -987,7 +987,7 @@ public:
 		{
 			asio::error_code error;
 			char peek_buffer[1];
-#ifdef  LOCAL_TESTING_WITH_RANDOM_FAILURES
+#ifdef LOCAL_TESTING_WITH_RANDOM_FAILURES
 			bool random_failure = 1 + (rand() % 100) == 5;
 #else
 			bool random_failure = false;
@@ -1818,15 +1818,9 @@ public:
 	{
 	}
 
-	async_session(const async_session& rhs)
-		: upstream_(rhs.upstream_), upstream_connection_(rhs.upstream_connection_), on_complete_(rhs.on_complete_)
-	{
-	}
+	async_session(const async_session& rhs) = default;
 
-	async_session(const async_session&& rhs)
-		: upstream_(rhs.upstream_), upstream_connection_(rhs.upstream_connection_), on_complete_(rhs.on_complete_)
-	{
-	}
+	async_session(async_session&& rhs) = default;
 
 	void write_request(http::request_message& request, asio::error_code& error_code)
 	{
@@ -1834,7 +1828,7 @@ public:
 		char peek_buffer[1];
 
 #ifdef LOCAL_TESTING_WITH_RANDOM_FAILURES
-		bool random_failure = 1 + (rand() % 5) == 5;
+		bool random_failure = 1 + (rand() % 100) == 5;
 #else
 		bool random_failure = false;
 #endif
