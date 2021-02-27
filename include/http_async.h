@@ -940,7 +940,7 @@ public:
 
 					routing_ = session_handler_.handle_request(server_.router_);
 
-					if (server_.logger_.current_log2_level() == lgr::level::debug)
+					if (server_.logger_.current_extended_log_level() == lgr::level::debug)
 					{
 						server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(session_handler_.request()));
 					}
@@ -1247,7 +1247,7 @@ public:
 						std::chrono::steady_clock::now() - session_handler_.t2())
 						.count());
 
-				if (server_.logger_.current_log2_level() == lgr::level::debug)
+				if (server_.logger_.current_extended_log_level() == lgr::level::debug)
 				{
 					server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(session_handler_.response()));
 				}
@@ -1811,10 +1811,9 @@ class async_session : public std::enable_shared_from_this<async_session>
 {
 public:
 	async_session(
-		http::async::upstreams::upstream& upstream,
 		http::async::upstreams::connection_type& upstream_connection,
 		std::function<void(http::response_message& response, asio::error_code& error_code)>&& on_complete)
-		: upstream_(upstream), upstream_connection_(upstream_connection), on_complete_(on_complete)
+		: upstream_connection_(upstream_connection), on_complete_(on_complete)
 	{
 	}
 
@@ -2029,7 +2028,6 @@ public:
 
 private:
 	http::response_message response_;
-	http::async::upstreams::upstream& upstream_;
 	http::async::upstreams::connection_type& upstream_connection_;
 	std::deque<std::string> write_buffer_;
 
@@ -2072,7 +2070,7 @@ void async_request(
 					++(upstream.connections_busy_);
 
 					std::shared_ptr<async_session> session{ new async_session(
-						upstream, *selected_connection, std::move(on_complete)) };
+						*selected_connection, std::move(on_complete)) };
 
 					session->write_request(request, error_code);
 

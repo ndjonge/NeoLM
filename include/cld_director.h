@@ -2034,31 +2034,33 @@ public:
 			session.response().body() = session.request().body();
 		});
 
-		server_base::router_.on_post("/private/infra/manager/log_level", [this](http::session_handler& session) {
-			server_base::logger_.set_log_level(session.request().body());
-			auto new_level = server_base::logger_.current_log_level_to_string();
-			http::server::configuration_.set("log_level", new_level);
-			session.response().body() = server_base::logger_.current_log_level_to_string();
+		server_base::router_.on_post("/private/infra/manager/access_log_level", [this](http::session_handler& session) {
+			server_base::logger_.set_access_log_level(session.request().body());
+			auto new_level = server_base::logger_.current_access_log_level_to_string();
+			http::server::configuration_.set("access_log_level", new_level);
+			session.response().body() = server_base::logger_.current_access_log_level_to_string();
 			session.response().status(http::status::ok);
 		});
 
-		server_base::router_.on_get("/private/infra/manager/log_level", [this](http::session_handler& session) {
-			session.response().body() = server_base::logger_.current_log_level_to_string();
+		server_base::router_.on_get("/private/infra/manager/access_log_level", [this](http::session_handler& session) {
+			session.response().body() = server_base::logger_.current_access_log_level_to_string();
 			session.response().status(http::status::ok);
 		});
 
-		server_base::router_.on_post("/private/infra/manager/log2_level", [this](http::session_handler& session) {
-			server_base::logger_.set_log2_level(session.request().body());
-			auto new_level = server_base::logger_.current_log2_level_to_string();
-			http::server::configuration_.set("log2_level", new_level);
-			session.response().body() = server_base::logger_.current_log2_level_to_string();
-			session.response().status(http::status::ok);
-		});
+		server_base::router_.on_post(
+			"/private/infra/manager/extended_log_level", [this](http::session_handler& session) {
+				server_base::logger_.set_extended_log_level(session.request().body());
+				auto new_level = server_base::logger_.current_extended_log_level_to_string();
+				http::server::configuration_.set("extended_log_level", new_level);
+				session.response().body() = server_base::logger_.current_extended_log_level_to_string();
+				session.response().status(http::status::ok);
+			});
 
-		server_base::router_.on_get("/private/infra/manager/log2_level", [this](http::session_handler& session) {
-			session.response().body() = server_base::logger_.current_log2_level_to_string();
-			session.response().status(http::status::ok);
-		});
+		server_base::router_.on_get(
+			"/private/infra/manager/extended_log_level", [this](http::session_handler& session) {
+				session.response().body() = server_base::logger_.current_extended_log_level_to_string();
+				session.response().status(http::status::ok);
+			});
 
 		server_base::router_.on_get("/private/infra/manager/version", [](http::session_handler& session) {
 			std::string version = std::string{ "logic service " } + get_version_ex(PORT_SET, NULL) + std::string{ "/" }
@@ -3476,7 +3478,7 @@ static std::unique_ptr<manager<http::async::server>> cpm_server_;
 //		"\"\\\\\\\\view\\\\enha_BDNT79248.NLBAWPSET7.ndjonge\\\\obj.dbg.WinX64\\bin\",\"bse_user\" : "
 //		"\"ndjonge\",\"cli_options\" :\"-httpserver -delay 0 -install -set HTTP_BOOT_PROCESS=otttsthttpboot "
 //		"D:/Infor/lnmsql/bse/http/t.o\",\"http_options\" : "
-//		"\"http_watchdog_timeout:60,log_level:access_log\",\"os_password\" : "
+//		"\"http_watchdog_timeout:60,access_log_level:access_log\",\"os_password\" : "
 //		"\"$2S$80EEA66DF8FBAEB005D7210E2372952C\",\"os_user\" : \"ndjonge@infor.com\",\"program\" : "
 //		"\"ntbshell.exe\",\"startobject\" : \"\"},\"limits\" : {\"workers_actual\" : 10,\"workers_max\" : "
 //		"10,\"workers_min\" : 10,\"workers_pending\" : 0,\"workers_required\" : 10},   \"name\" : "
@@ -3523,10 +3525,10 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 											  { "private_base", "/private/infra/manager" },
 											  { "private_ip_white_list", "::/0" },
 											  { "public_ip_white_list", "::/0" },
-											  { "log_level", "access_log_all" },
-											  { "log_file", "access_log.txt" },
-											  { "log2_level", "api" },
-											  { "log2_file", "console" },
+											  { "access_log_level", "access_log_all" },
+											  { "access_log_file", "access_log.txt" },
+											  { "extended_log_level", "api" },
+											  { "extended_log_file", "console" },
 											  { "https_enabled", "false" },
 											  { "http_enabled", "true" },
 											  { "http_use_portsharding", "false" } },

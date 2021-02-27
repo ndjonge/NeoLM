@@ -46,13 +46,13 @@ private:
 				});
 
 			S::router_.on_post(
-				S::configuration_.template get<std::string>("internal_base", "") + "/log_level",
+				S::configuration_.template get<std::string>("internal_base", "") + "/access_log_level",
 				[this](http::session_handler& session) {
 					S::logger_.set_level(session.request().body());
 					auto new_level = S::logger_.current_level_to_string();
 
 					session.response().body() = S::logger_.current_level_to_string();
-					http::basic::server::configuration_.set("log_level", new_level);
+					http::basic::server::configuration_.set("access_log_level", new_level);
 
 					session.response().status(http::status::ok);
 				});

@@ -575,31 +575,33 @@ class logger
 {
 public:
 	logger(
-		const std::string& log_file,
-		const std::string& log_level,
-		const std::string& log2_file,
-		const std::string& log2_level)
-		: log2_ostream_(&std::cout), log_ostream_(&std::cout)
+		const std::string& access_log_file,
+		const std::string& access_log_level,
+		const std::string& extended_log_file,
+		const std::string& extended_log_level)
+		: extended_log_ostream_(&std::cout), access_log_ostream_(&std::cout)
 	{
-		set_log_level(log_level);
-		set_log_file(log_file);
+		set_access_log_level(access_log_level);
+		set_access_log_file(access_log_file);
 
-		set_log2_level(log2_level);
-		set_log2_file(log2_file);
+		set_extended_log_level(extended_log_level);
+		set_extended_log_file(extended_log_file);
 
-		if (log2_level_ != level::none && log2_file_ != "console")
+		if (extended_log_level_ != level::none && extended_log_file_ != "console")
 		{
-			redirected_log2_ostream_.open(log2_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
-			log2_ostream_ = &redirected_log2_ostream_;
+			redirected_extended_log_ostream_.open(
+				extended_log_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
+			extended_log_ostream_ = &redirected_extended_log_ostream_;
 		}
 
-		if (log_level_ != level::none && log_file_ != "console")
+		if (access_log_level_ != level::none && access_log_file_ != "console")
 		{
-			redirected_log_ostream_.open(log_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
-			log_ostream_ = &redirected_log_ostream_;
+			redirected_access_log_ostream_.open(
+				access_log_file_, std::ofstream::app | std::ofstream::out | std::ofstream::binary);
+			access_log_ostream_ = &redirected_access_log_ostream_;
 		}
 
-		if (log2_level_ != level::none)
+		if (extended_log_level_ != level::none)
 		{
 			info("logger started\n");
 		}
@@ -607,32 +609,32 @@ public:
 
 	~logger()
 	{
-		if (log2_level_ != level::none)
+		if (extended_log_level_ != level::none)
 		{
 			info("logger stopped\n");
 		}
 	}
 
-	level current_log2_level() const { return log2_level_.load(); }
-	level current_log_level() const { return log_level_.load(); }
+	level current_extended_log_level() const { return extended_log_level_.load(); }
+	level current_access_log_level() const { return access_log_level_.load(); }
 
-	const std::string current_log2_level_to_string() const
+	const std::string current_extended_log_level_to_string() const
 	{
 		std::string ret;
 
-		if (log2_level_ == level::access_log)
+		if (extended_log_level_ == level::access_log)
 			ret += "access_log";
-		else if (log2_level_ == level::access_log_all)
+		else if (extended_log_level_ == level::access_log_all)
 			ret += "access_log_all";
-		else if (log2_level_ == level::error)
+		else if (extended_log_level_ == level::error)
 			ret += "error";
-		else if (log2_level_ == level::warning)
+		else if (extended_log_level_ == level::warning)
 			ret += "warning";
-		else if (log2_level_ == level::api)
+		else if (extended_log_level_ == level::api)
 			ret += "api";
-		else if (log2_level_ == level::info)
+		else if (extended_log_level_ == level::info)
 			ret += "info";
-		else if (log2_level_ == level::debug)
+		else if (extended_log_level_ == level::debug)
 			ret += "debug";
 		else
 			ret += "none";
@@ -640,23 +642,23 @@ public:
 		return ret;
 	}
 
-	const std::string current_log_level_to_string() const
+	const std::string current_access_log_level_to_string() const
 	{
 		std::string ret;
 
-		if (log_level_ == level::access_log)
+		if (access_log_level_ == level::access_log)
 			ret += "access_log";
-		else if (log_level_ == level::access_log_all)
+		else if (access_log_level_ == level::access_log_all)
 			ret += "access_log_all";
-		else if (log_level_ == level::error)
+		else if (access_log_level_ == level::error)
 			ret += "error";
-		else if (log_level_ == level::warning)
+		else if (access_log_level_ == level::warning)
 			ret += "warning";
-		else if (log_level_ == level::api)
+		else if (access_log_level_ == level::api)
 			ret += "api";
-		else if (log_level_ == level::info)
+		else if (access_log_level_ == level::info)
 			ret += "info";
-		else if (log_level_ == level::debug)
+		else if (access_log_level_ == level::debug)
 			ret += "debug";
 		else
 			ret += "none";
@@ -664,51 +666,51 @@ public:
 		return ret;
 	}
 
-	void set_log_file(const std::string& file) { log_file_ = file; }
+	void set_access_log_file(const std::string& file) { access_log_file_ = file; }
 
-	void set_log2_file(const std::string& file) { log2_file_ = file; }
+	void set_extended_log_file(const std::string& file) { extended_log_file_ = file; }
 
-	void set_log2_level(level l) { log2_level_.store(l); }
-	void set_log_level(level l) { log_level_.store(l); }
+	void set_extended_log_level(level l) { extended_log_level_.store(l); }
+	void set_access_log_level(level l) { access_log_level_.store(l); }
 
-	void set_log2_level(const std::string& level)
+	void set_extended_log_level(const std::string& level)
 	{
 		if (level == "access_log")
-			log2_level_ = level::access_log;
+			extended_log_level_ = level::access_log;
 		else if (level == "access_log_all")
-			log2_level_ = level::access_log_all;
+			extended_log_level_ = level::access_log_all;
 		else if (level == "api")
-			log2_level_ = level::api;
+			extended_log_level_ = level::api;
 		else if (level == "warning")
-			log2_level_ = level::warning;
+			extended_log_level_ = level::warning;
 		else if (level == "error")
-			log2_level_ = level::error;
+			extended_log_level_ = level::error;
 		else if (level == "info")
-			log2_level_ = level::info;
+			extended_log_level_ = level::info;
 		else if (level == "debug")
-			log2_level_ = level::debug;
+			extended_log_level_ = level::debug;
 		else
-			log2_level_ = level::none;
+			extended_log_level_ = level::none;
 	}
 
-	void set_log_level(const std::string& level)
+	void set_access_log_level(const std::string& level)
 	{
 		if (level == "access_log")
-			log_level_ = level::access_log;
+			access_log_level_ = level::access_log;
 		else if (level == "access_log_all")
-			log_level_ = level::access_log_all;
+			access_log_level_ = level::access_log_all;
 		else if (level == "api")
-			log_level_ = level::api;
+			access_log_level_ = level::api;
 		else if (level == "warning")
-			log_level_ = level::warning;
+			access_log_level_ = level::warning;
 		else if (level == "error")
-			log_level_ = level::error;
+			access_log_level_ = level::error;
 		else if (level == "info")
-			log_level_ = level::info;
+			access_log_level_ = level::info;
 		else if (level == "debug")
-			log_level_ = level::debug;
+			access_log_level_ = level::debug;
 		else
-			log_level_ = level::none;
+			access_log_level_ = level::none;
 	}
 
 	template <const char* P, typename... A> static const std::string format(const std::string& msg)
@@ -934,15 +936,15 @@ public:
 
 	inline void log(const level l, const std::string& msg) const
 	{
-		if (log2_level_ >= l)
+		if (extended_log_level_ >= l)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			log2_ostream_->write(msg.data(), msg.size()).flush();
+			extended_log_ostream_->write(msg.data(), msg.size()).flush();
 		}
-		if (log_level_ >= l)
+		if (access_log_level_ >= l)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			log_ostream_->write(msg.data(), msg.size()).flush();
+			access_log_ostream_->write(msg.data(), msg.size()).flush();
 		}
 	}
 
@@ -978,48 +980,48 @@ public:
 
 	template <typename... A> void access_log(const std::string& msg) const
 	{
-		if (log_level_ >= level::access_log)
+		if (access_log_level_ >= level::access_log)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			log_ostream_->write(msg.data(), msg.size()).flush();
+			access_log_ostream_->write(msg.data(), msg.size()).flush();
 		}
-		if (log2_level_ >= level::access_log)
+		if (extended_log_level_ >= level::access_log)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			log2_ostream_->write(msg.data(), msg.size()).flush();
+			extended_log_ostream_->write(msg.data(), msg.size()).flush();
 		}
 	}
 
 	template <typename... A> void access_log_all(const std::string& msg) const
 	{
-		if (log_level_ >= level::access_log_all)
+		if (access_log_level_ >= level::access_log_all)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			log_ostream_->write(msg.data(), msg.size()).flush();
+			access_log_ostream_->write(msg.data(), msg.size()).flush();
 		}
-		if (log2_level_ >= level::access_log_all)
+		if (extended_log_level_ >= level::access_log_all)
 		{
 			std::lock_guard<std::mutex> g{ lock_ };
-			log2_ostream_->write(msg.data(), msg.size()).flush();
+			extended_log_ostream_->write(msg.data(), msg.size()).flush();
 		}
 	}
 
-	std::ostream& as_stream() { return *log2_ostream_; }
-	const std::ostream& as_stream() const { return *log2_ostream_; }
+	std::ostream& as_stream() { return *extended_log_ostream_; }
+	const std::ostream& as_stream() const { return *extended_log_ostream_; }
 
 private:
 	mutable std::mutex lock_;
-	std::ostream* log2_ostream_;
-	std::ostream* log_ostream_;
+	std::ostream* extended_log_ostream_;
+	std::ostream* access_log_ostream_;
 
-	std::ofstream redirected_log2_ostream_;
-	std::ofstream redirected_log_ostream_;
+	std::ofstream redirected_extended_log_ostream_;
+	std::ofstream redirected_access_log_ostream_;
 
-	std::atomic<level> log2_level_;
-	std::atomic<level> log_level_;
+	std::atomic<level> extended_log_level_;
+	std::atomic<level> access_log_level_;
 
-	std::string log2_file_;
-	std::string log_file_;
+	std::string extended_log_file_;
+	std::string access_log_file_;
 };
 
 } // namespace lgr
@@ -4016,9 +4018,10 @@ public:
 
 		route(
 			const endpoint_lambda& endpoint,
+			const std::string& handler,
 			const std::vector<std::string>& consumes,
 			const std::vector<std::string>& produces)
-			: endpoint_(endpoint), produces_(produces), consumes_(consumes)
+			: endpoint_(endpoint), produces_(produces), consumes_(consumes), handler_(handler)
 		{
 		}
 
@@ -4046,12 +4049,14 @@ public:
 
 		const std::vector<std::string>& produces() const { return produces_; }
 		const std::vector<std::string>& consumes() const { return consumes_; }
+		const std::string& handler() const { return handler_; }
 
 	private:
 		endpoint_lambda endpoint_;
 		metrics metrics_;
 		std::vector<std::string> produces_;
 		std::vector<std::string> consumes_;
+		std::string handler_;
 	};
 
 	using middlewares = std::vector<std::pair<middleware, middleware>>;
@@ -4147,26 +4152,24 @@ public:
 
 					auto endpoint_json = json::object();
 
+					for (auto& middleware_stack_item : middleware_stack)
+					{
+						endpoint_json["middlewares"].emplace_back(middleware_stack_item);
+					}
+
 					if (middlewares_)
 					{
 						for (auto& middleware : *middlewares_.get())
 						{
 							json middleware_json = json::object();
 							if (middleware.first.middleware_attribute().empty() == false)
-								middleware_json["pre"]
-									= middleware.first.type() + "::" + middleware.first.middleware_attribute();
+								middleware_json["pre"] = middleware.first.middleware_attribute();
 
 							if (middleware.second.middleware_attribute().empty() == false)
-								middleware_json["post"]
-									= middleware.second.type() + "::" + middleware.second.middleware_attribute();
+								middleware_json["post"] = middleware.second.middleware_attribute();
 
 							endpoint_json["middlewares"].emplace_back(middleware_json);
 						}
-					}
-
-					for (auto& middleware_stack_item : middleware_stack)
-					{
-						endpoint_json["middlewares"].emplace_back(middleware_stack_item);
 					}
 
 					json metrics_json;
@@ -4188,6 +4191,9 @@ public:
 					endpoint_json["service"] = service_;
 					endpoint_json["name"] = name_;
 
+					if (endpoint->second->handler().empty() == false)
+						endpoint_json["handler"] = endpoint->second->handler();
+
 					result[s.str()] = endpoint_json;
 				}
 			}
@@ -4200,16 +4206,14 @@ public:
 
 				if (middlewares_)
 				{
-					json middleware_json = json::object();
 					for (auto& middleware : *middlewares_.get())
 					{
+						json middleware_json = json::object();
 						if (middleware.first.middleware_attribute().empty() == false)
-							middleware_json["pre"]
-								= middleware.first.type() + "::" + middleware.first.middleware_attribute();
+							middleware_json["pre"] = middleware.first.middleware_attribute();
 
 						if (middleware.second.middleware_attribute().empty() == false)
-							middleware_json["post"]
-								= middleware.second.type() + "::" + middleware.second.middleware_attribute();
+							middleware_json["post"] = middleware.second.middleware_attribute();
 
 						middleware_stack.emplace_back(middleware_json);
 					}
@@ -4324,6 +4328,8 @@ public:
 		const std::string& name,
 		http::method::method_t method,
 		const std::string& route,
+		const std::string& type,
+		const std::string& endpoint_handler,
 		const std::vector<std::string>& consumes,
 		const std::vector<std::string>& produces)>;
 	using on_use_include_file = std::function<std::string(const std::string&)>;
@@ -4425,62 +4431,88 @@ public:
 		const std::string& base_service,
 		json path_entry,
 		on_error on_error,
-		on_use_include_file file_path_conversion,
+		on_use_include_file on_use_include_file,
+		on_use_middleware on_use_middleware,
 		on_use_endpoint on_use_endpoint)
 	{
 		auto registry_base_path = registry_file.substr(0, registry_file.find_last_of('/') + 1);
 
 		for (auto& path : path_entry.items())
 		{
-			std::string route_path_new = route_path == "/" ? path.key() : route_path + path.key();
-			std::string name = path.value().value("name", "");
-			std::string service = path.value().value("service", base_service);
-
-			for (auto& path_elements : path.value().items())
+			if (path.key() == "middlewares")
 			{
-				auto key = path_elements.key();
-				std::transform(
-					key.begin(), key.end(), key.begin(), [](char c) { return static_cast<char>(std::toupper(c)); });
+				use_middleware_from_registry(
+					route_path,
+					registry_file,
+					base_service,
+					path.value(),
+					on_error,
+					on_use_include_file,
+					on_use_middleware,
+					on_use_endpoint);
+			}
+			else
+			{
+				std::string route_path_new = route_path == "/" ? path.key() : route_path + path.key();
+				std::string name = path.value().value("name", "");
+				std::string service = path.value().value("service", base_service);
 
-				auto method = http::method::to_method(key);
-				if (method != http::method::unknown)
+				for (auto& path_elements : path.value().items())
 				{
-					std::string handler = path_elements.value().at("endpoint").at("handler");
-					std::string type = path_elements.value().at("endpoint").at("type");
+					auto key = path_elements.key();
+					std::transform(
+						key.begin(), key.end(), key.begin(), [](char c) { return static_cast<char>(std::toupper(c)); });
 
-					std::vector<std::string> produces;
-					std::vector<std::string> consumes;
+					auto method = http::method::to_method(key);
+					if (method != http::method::unknown)
+					{
+						std::string handler = path_elements.value().at("endpoint").at("handler");
+						std::string type = path_elements.value().at("endpoint").at("type");
 
-					if (path_elements.value().contains("produces"))
-						for (auto& produces_entry : path_elements.value().at("produces").items())
-						{
-							produces.emplace_back(produces_entry.value());
-						}
+						std::vector<std::string> produces;
+						std::vector<std::string> consumes;
 
-					if (path_elements.value().contains("consumes"))
-						for (auto& consumes_entry : path_elements.value().at("consumes").items())
-						{
-							consumes.emplace_back(consumes_entry.value());
-						}
+						if (path_elements.value().contains("produces"))
+							for (auto& produces_entry : path_elements.value().at("produces").items())
+							{
+								produces.emplace_back(produces_entry.value());
+							}
 
-					on_use_endpoint(service, name, method, route_path_new, produces, consumes);
+						if (path_elements.value().contains("consumes"))
+							for (auto& consumes_entry : path_elements.value().at("consumes").items())
+							{
+								consumes.emplace_back(consumes_entry.value());
+							}
+
+						on_use_endpoint(service, name, method, route_path_new, type, handler, produces, consumes);
+					}
+					else if (path_elements.key() == "paths")
+					{
+						use_route_path_from_registry(
+							route_path_new,
+							registry_file,
+							service,
+							path_elements.value(),
+							on_error,
+							on_use_include_file,
+							on_use_middleware,
+							on_use_endpoint);
+					}
+					else if (path_elements.key() == "middlewares")
+					{
+						use_middleware_from_registry(
+							route_path_new,
+							registry_file,
+							service,
+							path_elements.value(),
+							on_error,
+							on_use_include_file,
+							on_use_middleware,
+							on_use_endpoint);
+					}
 				}
-				else if (path_elements.key() == "paths")
-				{
-					use_route_path_from_registry(
-						route_path_new,
-						registry_file,
-						service,
-						path_elements.value(),
-						on_error,
-						file_path_conversion,
-						on_use_endpoint);
-				}
-
-				auto value = path_elements.value();
 			}
 		}
-
 		// if (path_entry.key() == "paths")
 		//{
 		//	for (auto& path : path_entry.items())
@@ -4572,6 +4604,19 @@ public:
 										details,
 										on_error,
 										on_use_include_file,
+										on_use_middleware,
+										on_use_endpoint);
+								}
+								else if (route == "middlewares")
+								{
+									use_middleware_from_registry(
+										route_path_new,
+										registry_file,
+										service,
+										details,
+										on_error,
+										on_use_include_file,
+										on_use_middleware,
 										on_use_endpoint);
 								}
 							}
@@ -4606,6 +4651,7 @@ public:
 									path,
 									on_error,
 									on_use_include_file,
+									on_use_middleware,
 									on_use_endpoint);
 							}
 						}
@@ -4652,9 +4698,9 @@ public:
 	}
 
 	void use_middleware(
-		const std::string& path,
 		const std::string& service,
 		const std::string& name,
+		const std::string& path,
 		const std::string& type,
 		const std::string& pre_middleware_attribute,
 		const std::string& post_middleware_attribute)
@@ -4664,10 +4710,12 @@ public:
 		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>(
 			{ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty });
 
-		on_middleware(path, service, name, middleware_pair);
+		on_middleware(service, name, path, middleware_pair);
 	}
 
 	void use_middleware(
+		const std::string& service,
+		const std::string& name,
 		const std::string& path,
 		const std::string& pre_middleware_attribute,
 		W&& middleware_pre_function,
@@ -4678,7 +4726,7 @@ public:
 			{ "C++", pre_middleware_attribute, middleware_pre_function },
 			{ "C++", post_middleware_attribute, middleware_post_function });
 
-		on_middleware(path, middleware_pair);
+		on_middleware(service, name, path, middleware_pair);
 	}
 
 	void use_middleware(const std::string& path, W&& middleware_pre_function, W&& middleware_post_function)
@@ -4772,7 +4820,7 @@ public:
 				if (split_route.size() > 2) last_part = *(split_route.crbegin() + 1);
 		}
 
-		on_http_method("root", last_part, method, route, {}, {}, std::move(end_point));
+		on_http_method("root", last_part, method, route, "", {}, {}, std::move(end_point));
 	}
 
 	void on_http_method(
@@ -4780,6 +4828,7 @@ public:
 		const std::string& name,
 		const M method,
 		const T& route,
+		const std::string& meta_data,
 		const std::vector<std::string>& produces,
 		const std::vector<std::string>& consumes,
 		R&& end_point)
@@ -4814,7 +4863,8 @@ public:
 		auto new_endpoint = it->endpoints_->insert(
 			it->endpoints_->end(),
 			std::pair<M, std::unique_ptr<routing::route>>{
-				M{ method }, std::unique_ptr<routing::route>{ new routing::route{ end_point, consumes, produces } } });
+				M{ method },
+				std::unique_ptr<routing::route>{ new routing::route{ end_point, meta_data, consumes, produces } } });
 
 		service_lookup_[service + "/" + name]
 			= std::pair<std::string, routing::route*>{ route, new_endpoint->second.get() };
@@ -4827,9 +4877,9 @@ public:
 
 		if (it->middlewares_)
 		{
-			for (auto& m : *it->middlewares_)
+			for (auto m = it->middlewares_->cbegin(); m != it->middlewares_->cend(); ++m)
 			{
-				result.middlewares_vector().emplace_back(m);
+				result.middlewares_vector().emplace_back(*m);
 			}
 		}
 
@@ -4923,9 +4973,9 @@ public:
 
 			if (l->second->middlewares_)
 			{
-				for (auto& m : *l->second->middlewares_)
+				for (auto m = l->second->middlewares_->cbegin(); m != l->second->middlewares_->cend(); ++m)
 				{
-					result.middlewares_vector().emplace_back(m);
+					result.middlewares_vector().emplace_back(*m);
 				}
 			}
 
@@ -5270,10 +5320,10 @@ public:
 		: router_(configuration.get<std::string>("private_base", ""))
 		, configuration_(configuration)
 		, logger_(
-			  configuration.get<std::string>("log_file", "access_log.txt"),
-			  configuration.get<std::string>("log_level", "access_log"),
-			  configuration.get<std::string>("log2_file", "console"),
-			  configuration.get<std::string>("log2_level", "none")){};
+			  configuration.get<std::string>("access_log_file", "access_log.txt"),
+			  configuration.get<std::string>("access_log_level", "access_log"),
+			  configuration.get<std::string>("extended_log_file", "console"),
+			  configuration.get<std::string>("extended_log_level", "none")){};
 
 	server(const server&) = delete;
 	server(server&&) = delete;
@@ -6008,7 +6058,7 @@ public:
 
 							bool private_base_request = request.target().find(server_.router_.private_base_, 0) == 0;
 
-							if (server_.logger_.current_log2_level() == lgr::level::debug)
+							if (server_.logger_.current_extended_log_level() == lgr::level::debug)
 							{
 								server_.logger_.debug("request:\n{s}\n", http::to_dbg_string(request));
 							}
@@ -6066,7 +6116,7 @@ public:
 												   session_handler_, routing.the_route().route_metrics())
 											   + "\n";
 
-								if (server_.logger_.current_log_level() >= lgr::level::access_log)
+								if (server_.logger_.current_access_log_level() >= lgr::level::access_log)
 								{
 									server_.logger_.access_log(log_msg);
 								}
@@ -6080,7 +6130,7 @@ public:
 								server_.logger_.access_log(log_msg);
 							}
 
-							if (server_.logger_.current_log2_level() == lgr::level::debug)
+							if (server_.logger_.current_extended_log_level() == lgr::level::debug)
 							{
 								server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(response));
 							}
