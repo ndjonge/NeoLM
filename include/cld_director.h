@@ -2028,11 +2028,15 @@ public:
 			session.response().body() = std::string("Ok") + session.request().body();
 		});
 
+
 		server_base::router_.on_post("/private/infra/manager/mirror", [](http::session_handler& session) {
 			session.response().status(http::status::ok);
 			session.response().type(session.response().get<std::string>("Content-Type", "text/plain"));
 			session.response().body() = session.request().body();
 		});
+
+		server_base::router_.use_middleware(
+			"myservice", "myendpoint", http::method::post, "/private/infra/manager/mirror", "c++", "pre", "post");
 
 		server_base::router_.on_post("/private/infra/manager/access_log_level", [this](http::session_handler& session) {
 			server_base::logger_.set_access_log_level(session.request().body());

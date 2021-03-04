@@ -4007,14 +4007,16 @@ public:
 		std::string middleware_attribute_;
 	};
 
+	using middlewares = std::vector<std::pair<middleware, middleware>>;
+
 	class route
 	{
 		friend class route_part;
 
 	public:
 		route() = default;
-		route(const route& rhs) = default;
-		route& operator=(const route&) = default;
+		route(const route& rhs) = delete;
+		route& operator=(const route&) = delete;
 
 		route(
 			const endpoint_lambda& endpoint,
@@ -4050,6 +4052,7 @@ public:
 		const std::vector<std::string>& produces() const { return produces_; }
 		const std::vector<std::string>& consumes() const { return consumes_; }
 		const std::string& handler() const { return handler_; }
+		std::unique_ptr<routing::middlewares>& middlewares() { return middlewares_; }
 
 	private:
 		endpoint_lambda endpoint_;
@@ -4057,9 +4060,8 @@ public:
 		std::vector<std::string> produces_;
 		std::vector<std::string> consumes_;
 		std::string handler_;
+		std::unique_ptr<routing::middlewares> middlewares_;
 	};
-
-	using middlewares = std::vector<std::pair<middleware, middleware>>;
 
 	routing(result r = http::api::router_match::no_route) : result_(r) {}
 
@@ -4160,6 +4162,21 @@ public:
 					if (middlewares_)
 					{
 						for (auto& middleware : *middlewares_.get())
+						{
+							json middleware_json = json::object();
+							if (middleware.first.middleware_attribute().empty() == false)
+								middleware_json["pre"] = middleware.first.middleware_attribute();
+
+							if (middleware.second.middleware_attribute().empty() == false)
+								middleware_json["post"] = middleware.second.middleware_attribute();
+
+							endpoint_json["middlewares"].emplace_back(middleware_json);
+						}
+					}
+
+					if (endpoint->second->middlewares())
+					{
+						for (auto& middleware : *endpoint->second->middlewares().get())
 						{
 							json middleware_json = json::object();
 							if (middleware.first.middleware_attribute().empty() == false)
@@ -4319,6 +4336,7 @@ public:
 	using on_use_middleware = std::function<void(
 		const std::string& service,
 		const std::string& name,
+		http::method::method_t method,
 		const std::string& path,
 		const std::string& type,
 		const std::string& pre_attribute,
@@ -4368,7 +4386,7 @@ public:
 			auto pre = middleware_entry.value("pre", "");
 			auto post = middleware_entry.value("post", "");
 
-			on_use_middleware(service, "", route_path, type, pre, post);
+			on_use_middleware(service, "", http::method::unknown, route_path, type, pre, post);
 		}
 		else
 			for (auto& middlewares : middleware_entry)
@@ -4407,7 +4425,7 @@ public:
 						auto pre = middleware_json->second.value("pre", "");
 						auto post = middleware_json->second.value("post", "");
 
-						on_use_middleware(service, "", route_path, type, pre, post);
+						on_use_middleware(service, "", http::method::unknown, route_path, type, pre, post);
 					}
 					else
 					{
@@ -4417,7 +4435,7 @@ public:
 						auto pre = middlewares.value("pre", "");
 						auto post = middlewares.value("post", "");
 
-						on_use_middleware(service, "", route_path, type, pre, post);
+						on_use_middleware(service, "", http::method::unknown, route_path, type, pre, post);
 
 						break; // NDJ --> do not enumerate this is a no-name middleware;
 					}
@@ -4485,6 +4503,20 @@ public:
 							}
 
 						on_use_endpoint(service, name, method, route_path_new, type, handler, produces, consumes);
+
+						if (path_elements.value().contains("middlewares"))
+						{
+							// local definition of the middleware
+							// as we are in an entrys() loop we hit this for each object property
+							for (auto& middlewares_entry : path_elements.value().at("middlewares").items())
+							{
+								auto type = middlewares_entry.value().value("type", "");
+								auto pre = middlewares_entry.value().value("pre", "");
+								auto post = middlewares_entry.value().value("post", "");
+
+								on_use_middleware(service, name, method, route_path_new, type, pre, post);
+							}
+						}
 					}
 					else if (path_elements.key() == "paths")
 					{
@@ -4700,6 +4732,23 @@ public:
 	void use_middleware(
 		const std::string& service,
 		const std::string& name,
+		const M method,
+		const std::string& path,
+		const std::string& type,
+		const std::string& pre_middleware_attribute,
+		const std::string& post_middleware_attribute)
+	{
+		W empty;
+
+		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>(
+			{ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty });
+
+		on_middleware(service, name, method, path, middleware_pair);
+	}
+
+	void use_middleware(
+		const std::string& service,
+		const std::string& name,
 		const std::string& path,
 		const std::string& type,
 		const std::string& pre_middleware_attribute,
@@ -4716,6 +4765,7 @@ public:
 	void use_middleware(
 		const std::string& service,
 		const std::string& name,
+		const M method,
 		const std::string& path,
 		const std::string& pre_middleware_attribute,
 		W&& middleware_pre_function,
@@ -4726,7 +4776,7 @@ public:
 			{ "C++", pre_middleware_attribute, middleware_pre_function },
 			{ "C++", post_middleware_attribute, middleware_post_function });
 
-		on_middleware(service, name, path, middleware_pair);
+		on_middleware(service, name, method, path, middleware_pair);
 	}
 
 	void use_middleware(const std::string& path, W&& middleware_pre_function, W&& middleware_post_function)
@@ -4770,6 +4820,62 @@ public:
 	void on_proxy_pass(std::string&& route, R&& api_method)
 	{
 		on_http_method(method::proxy_pass, route, std::move(api_method));
+	}
+
+	void on_middleware(
+		const std::string& service,
+		const std::string& name,
+		M method,
+		const T& route,
+		const std::pair<routing::middleware, routing::middleware>& middleware_pair)
+	{
+		auto it = root_.get();
+
+		auto parts = util::split(route, "/");
+
+		for (const auto& part : parts)
+		{
+			// auto& l = it->link_[part];
+
+			auto l = std::find_if(
+				it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
+					return (l.first == part);
+				});
+
+			if (l == it->link_.end())
+			{
+				l = it->link_.insert(
+					it->link_.end(),
+					std::pair<T, std::unique_ptr<router::route_part>>{
+						T{ part }, std::unique_ptr<router::route_part>{ new router::route_part{ service, name } } });
+			}
+
+			it = l->second.get();
+		}
+
+		if (method != http::method::unknown)
+		{
+			if (it->endpoints_)
+			{
+				auto endpoint = std::find_if(
+					it->endpoints_->begin(),
+					it->endpoints_->end(),
+					[method](const std::pair<M, std::unique_ptr<routing::route>>& e) { return (e.first == method); });
+
+				if (endpoint != it->endpoints_->end())
+				{
+					if (!endpoint->second->middlewares())
+						endpoint->second->middlewares().reset(new routing::middlewares{});
+					endpoint->second->middlewares()->emplace_back(middleware_pair);
+				}
+			}
+		}
+		else
+		{
+			if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
+
+			it->middlewares_->emplace_back(middleware_pair);
+		}
 	}
 
 	void on_middleware(
@@ -4856,8 +4962,6 @@ public:
 			it = l->second.get();
 		}
 
-		//		if (!it->endpoints_) it->endpoints_->reset(new std::map<M, std::unique_ptr<router::route>>);
-
 		if (!it->endpoints_) it->endpoints_.reset(new std::vector<std::pair<M, std::unique_ptr<routing::route>>>);
 
 		auto new_endpoint = it->endpoints_->insert(
@@ -4910,6 +5014,16 @@ public:
 						{
 							result.match_result() = http::api::router_match::match_found;
 							result.set_route(endpoint->second.get());
+							if (endpoint->second->middlewares())
+							{
+								for (auto m = endpoint->second->middlewares()->cbegin();
+									 m != endpoint->second->middlewares()->cend();
+									 ++m)
+								{
+									result.middlewares_vector().emplace_back(*m);
+								}
+							}
+
 							return result;
 						}
 						else
@@ -4992,6 +5106,15 @@ public:
 
 		if (endpoint != it->endpoints_->end())
 		{
+			if (endpoint->second->middlewares())
+			{
+				for (auto m = endpoint->second->middlewares()->cbegin(); m != endpoint->second->middlewares()->cend();
+					 ++m)
+				{
+					result.middlewares_vector().emplace_back(*m);
+				}
+			}
+
 			result.match_result() = http::api::router_match::match_found;
 			result.set_route(endpoint->second.get());
 			return result;
