@@ -154,7 +154,7 @@ public:
 		void reopen(asio::error_code& error)
 		{
 			asio::error_code error_1;
-			if (socket_.is_open())
+			//if (socket_.is_open())
 			{
 				socket_.shutdown(asio::socket_base::shutdown_send, error_1);
 				socket_.close();
