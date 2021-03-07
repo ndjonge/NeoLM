@@ -1086,7 +1086,8 @@ public:
 			if (result == http::response_parser::result_type::good)
 			{
 				session_handler_.request().set("X-Request-ID", upstream_connection.id());
-				session_handler_.response().set("X-Upstream-Server", upstream_connection.id());
+				// TODO: enable via config?
+				// session_handler_.response().set("X-Upstream-Server", upstream_connection.id());
 
 				auto content_length = session_handler_.response().content_length();
 
@@ -1694,6 +1695,13 @@ public:
 private:
 	void handle_new_connection(const shared_connection_handler_http& handler, const asio::error_code error)
 	{
+		auto new_handler = std::make_shared<server::connection_handler_http>(
+			io_context_pool_.get_io_context(), *this, configuration_);
+
+		http_acceptor_.async_accept(new_handler->socket(), [this, new_handler](const asio::error_code error) {
+			this->handle_new_connection(new_handler, error);
+		});
+
 		if (error)
 		{
 			return;
@@ -1704,23 +1712,10 @@ private:
 
 		handler->start();
 
-		auto new_handler = std::make_shared<server::connection_handler_http>(
-			io_context_pool_.get_io_context(), *this, configuration_);
-
-		http_acceptor_.async_accept(new_handler->socket(), [this, new_handler](const asio::error_code error) {
-			this->handle_new_connection(new_handler, error);
-		});
 	}
 
 	void handle_new_https_connection(const shared_https_connection_handler_https& handler, const asio::error_code error)
 	{
-		if (error)
-		{
-			return;
-		}
-
-		handler->start();
-
 		auto new_handler = std::make_shared<server::connection_handler_https>(
 			io_context_pool_.get_io_context(), *this, configuration_, https_ssl_context_);
 
@@ -1728,6 +1723,16 @@ private:
 			new_handler->socket().lowest_layer(), [this, new_handler](const asio::error_code error) {
 				this->handle_new_https_connection(new_handler, error);
 			});
+
+		if (error)
+		{
+			return;
+		}
+
+		++manager().connections_accepted();
+		++manager().connections_current();
+
+		handler->start();
 	}
 
 	std::uint8_t thread_count_;

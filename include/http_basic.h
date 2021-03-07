@@ -1092,7 +1092,7 @@ inline method_t to_method(const std::string& v) noexcept
 			if (v == "GET") return http::method::get;
 			break;
 		case 'H':
-			if (v == "HEAD") return http::method::get;
+			if (v == "HEAD") return http::method::head;
 			break;
 		case 'O':
 			if (v == "OPTIONS") return http::method::options;
@@ -4685,6 +4685,83 @@ public:
 									on_use_include_file,
 									on_use_middleware,
 									on_use_endpoint);
+							}
+						}
+						else
+						{
+							std::string route_path_new = route_path == "/" ? key : route_path + key;
+							std::string name = value.value("name", "");
+							std::string service = value.value("service", "");
+
+							for (auto& path_elements : value.items())
+							{
+								auto key = path_elements.key();
+								std::transform(key.begin(), key.end(), key.begin(), [](char c) {
+									return static_cast<char>(std::toupper(c));
+								});
+
+								auto method = http::method::to_method(key);
+								if (method != http::method::unknown)
+								{
+									std::string handler = path_elements.value().at("endpoint").at("handler");
+									std::string type = path_elements.value().at("endpoint").at("type");
+
+									std::vector<std::string> produces;
+									std::vector<std::string> consumes;
+
+									if (path_elements.value().contains("produces"))
+										for (auto& produces_entry : path_elements.value().at("produces").items())
+										{
+											produces.emplace_back(produces_entry.value());
+										}
+
+									if (path_elements.value().contains("consumes"))
+										for (auto& consumes_entry : path_elements.value().at("consumes").items())
+										{
+											consumes.emplace_back(consumes_entry.value());
+										}
+
+									on_use_endpoint(
+										service, name, method, route_path_new, type, handler, produces, consumes);
+
+									if (path_elements.value().contains("middlewares"))
+									{
+										// local definition of the middleware
+										// as we are in an entrys() loop we hit this for each object property
+										for (auto& middlewares_entry : path_elements.value().at("middlewares").items())
+										{
+											auto type = middlewares_entry.value().value("type", "");
+											auto pre = middlewares_entry.value().value("pre", "");
+											auto post = middlewares_entry.value().value("post", "");
+
+											on_use_middleware(service, name, method, route_path_new, type, pre, post);
+										}
+									}
+								}
+								else if (path_elements.key() == "paths")
+								{
+									use_route_path_from_registry(
+										route_path_new,
+										registry_file,
+										service,
+										path_elements.value(),
+										on_error,
+										on_use_include_file,
+										on_use_middleware,
+										on_use_endpoint);
+								}
+								else if (path_elements.key() == "middlewares")
+								{
+									use_middleware_from_registry(
+										route_path_new,
+										registry_file,
+										service,
+										path_elements.value(),
+										on_error,
+										on_use_include_file,
+										on_use_middleware,
+										on_use_endpoint);
+								}
 							}
 						}
 					}
