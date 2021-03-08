@@ -57,7 +57,7 @@ if(WIN32)
 
 else()
 #    add_definitions(-DLOCAL_TESTING -std=c++11 -Wreorder -O3 -march=native -mtune=native)  
-    add_definitions(-DLOCAL_TESTING -std=c++11 -Wreorder -g -fsanitize=thread -fno-omit-frame-pointer) 
+add_definitions(-DLOCAL_TESTING -std=c++11 -Wall -Wreorder -g -fsanitize=thread -fno-omit-frame-pointer) 
     add_definitions(-DHTTP_DO_NOT_USE_CURL)
     #target_link_libraries( ${PROJECT_NAME} pthread) 
     target_link_libraries( ${PROJECT_NAME} pthread -fsanitize=thread -fno-omit-frame-pointer) 

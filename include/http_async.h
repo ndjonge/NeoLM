@@ -1362,14 +1362,19 @@ public:
 
 		void stop() override
 		{
-			socket_.cancel();
-
-			/*if (socket_.is_open())
+			try
 			{
-				asio::error_code error;
-				this->socket_.shutdown(asio::socket_base::shutdown_send, error);
-				this->socket_.close();
-			}*/
+				socket_.cancel();
+				if (socket_.is_open())
+				{
+					asio::error_code error;
+					this->socket_.shutdown(asio::socket_base::shutdown_send, error);
+					this->socket_.close();
+				}
+			} 
+			catch(...)
+			{
+			}
 		}
 
 	private:
