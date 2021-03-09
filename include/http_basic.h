@@ -4332,8 +4332,9 @@ public:
 			return search_result{ false, "", nullptr };
 	}
 
-	using on_error = std::function<bool(const std::string& message)>;
+	using on_error = std::function<bool(const std::string& current_file, const std::string& message)>;
 	using on_use_middleware = std::function<void(
+		const std::string& current_file,
 		const std::string& service,
 		const std::string& name,
 		http::method::method_t method,
@@ -4342,6 +4343,7 @@ public:
 		const std::string& pre_attribute,
 		const std::string& post_attribute)>;
 	using on_use_endpoint = std::function<void(
+		const std::string& current_file,
 		const std::string& service,
 		const std::string& name,
 		http::method::method_t method,
@@ -4350,7 +4352,7 @@ public:
 		const std::string& endpoint_handler,
 		const std::vector<std::string>& consumes,
 		const std::vector<std::string>& produces)>;
-	using on_use_include_file = std::function<std::string(const std::string&)>;
+	using on_use_include_file = std::function<std::string(const std::string&, const std::string&)>;
 
 	void use_registry(
 		const std::string& route_path,
@@ -4386,7 +4388,7 @@ public:
 			auto pre = middleware_entry.value("pre", "");
 			auto post = middleware_entry.value("post", "");
 
-			on_use_middleware(service, "", http::method::unknown, route_path, type, pre, post);
+			on_use_middleware(registry_file, service, "", http::method::unknown, route_path, type, pre, post);
 		}
 		else
 			for (auto& middlewares : middleware_entry)
@@ -4402,6 +4404,7 @@ public:
 						if (middleware_json == middleware_definiton_cache_.end())
 						{
 							use_registry(
+								registry_file,
 								route_path,
 								registry_base_path + tokens[0],
 								on_error,
@@ -4414,8 +4417,9 @@ public:
 							if (middleware_json == middleware_definiton_cache_.cend())
 							{
 								on_error(
+									registry_file,
 									"error when reading router registry file " + registry_file + " : " + tokens[1]
-									+ " is not defined");
+										+ " is not defined");
 
 								break;
 							}
@@ -4425,7 +4429,8 @@ public:
 						auto pre = middleware_json->second.value("pre", "");
 						auto post = middleware_json->second.value("post", "");
 
-						on_use_middleware(service, "", http::method::unknown, route_path, type, pre, post);
+						on_use_middleware(
+							registry_file, service, "", http::method::unknown, route_path, type, pre, post);
 					}
 					else
 					{
@@ -4435,7 +4440,8 @@ public:
 						auto pre = middlewares.value("pre", "");
 						auto post = middlewares.value("post", "");
 
-						on_use_middleware(service, "", http::method::unknown, route_path, type, pre, post);
+						on_use_middleware(
+							registry_file, service, "", http::method::unknown, route_path, type, pre, post);
 
 						break; // NDJ --> do not enumerate this is a no-name middleware;
 					}
@@ -4457,6 +4463,8 @@ public:
 
 		for (auto& path : path_entry.items())
 		{
+			auto test = path.key();
+
 			if (path.key() == "middlewares")
 			{
 				use_middleware_from_registry(
@@ -4469,7 +4477,37 @@ public:
 					on_use_middleware,
 					on_use_endpoint);
 			}
-			else
+			else if (path.key() == "$ref" || path.key() == "#include")
+			{
+				use_registry(
+					registry_file,
+					route_path,
+					path.value(),
+					on_error,
+					on_use_include_file,
+					on_use_middleware,
+					on_use_endpoint);
+			}
+			else if (path.value().is_array() == true)
+			{
+				for (auto& path_elements : path.value().items())
+				{
+					std::string route_path_new = route_path == "/" ? path.key() : route_path + path.key();
+					std::string name = path_elements.value().value("name", "");
+					std::string service = path_elements.value().value("service", base_service);
+
+					use_route_path_from_registry(
+						route_path_new,
+						registry_file,
+						service,
+						path_elements.value(),
+						on_error,
+						on_use_include_file,
+						on_use_middleware,
+						on_use_endpoint);
+				}
+			}
+			else if (path.value().is_object() == true)
 			{
 				std::string route_path_new = route_path == "/" ? path.key() : route_path + path.key();
 				std::string name = path.value().value("name", "");
@@ -4502,7 +4540,8 @@ public:
 								consumes.emplace_back(consumes_entry.value());
 							}
 
-						on_use_endpoint(service, name, method, route_path_new, type, handler, produces, consumes);
+						on_use_endpoint(
+							registry_file, service, name, method, route_path_new, type, handler, produces, consumes);
 
 						if (path_elements.value().contains("middlewares"))
 						{
@@ -4514,7 +4553,8 @@ public:
 								auto pre = middlewares_entry.value().value("pre", "");
 								auto post = middlewares_entry.value().value("post", "");
 
-								on_use_middleware(service, name, method, route_path_new, type, pre, post);
+								on_use_middleware(
+									registry_file, service, name, method, route_path_new, type, pre, post);
 							}
 						}
 					}
@@ -4560,6 +4600,7 @@ public:
 	}
 
 	void use_registry(
+		const std::string& registry_file_base,
 		const std::string& route_path,
 		const std::string& registry_file,
 		on_error on_error,
@@ -4570,7 +4611,9 @@ public:
 		try
 		{
 			auto registry_base_path = registry_file.substr(0, registry_file.find_last_of('/') + 1);
-			auto root_registry_json = load_registry_file(registry_file, on_error, on_use_include_file);
+			auto root_registry_json
+				= load_registry_file(registry_file_base, registry_file, on_error, on_use_include_file);
+			if (root_registry_json.is_object() == false) return;
 
 			std::string registry_version = root_registry_json["httpreg"];
 			std::string date = root_registry_json.at("info").at("date");
@@ -4620,6 +4663,7 @@ public:
 								if (route == "$ref")
 								{
 									use_registry(
+										registry_file,
 										route_path_new,
 										registry_base_path + std::string{ details },
 										on_error,
@@ -4722,7 +4766,15 @@ public:
 										}
 
 									on_use_endpoint(
-										service, name, method, route_path_new, type, handler, produces, consumes);
+										registry_file,
+										service,
+										name,
+										method,
+										route_path_new,
+										type,
+										handler,
+										produces,
+										consumes);
 
 									if (path_elements.value().contains("middlewares"))
 									{
@@ -4734,7 +4786,8 @@ public:
 											auto pre = middlewares_entry.value().value("pre", "");
 											auto post = middlewares_entry.value().value("post", "");
 
-											on_use_middleware(service, name, method, route_path_new, type, pre, post);
+											on_use_middleware(
+												registry_file, service, name, method, route_path_new, type, pre, post);
 										}
 									}
 								}
@@ -4770,20 +4823,25 @@ public:
 					}
 					else
 					{
-						on_error("warning: wrong json type found in path object" + registry_file + " : " + key);
+						on_error(
+							registry_file,
+							"warning: wrong json type found in path object" + registry_file + " : " + key);
 					}
 				}
 		}
 		catch (json::exception& e)
 		{
-			on_error("error when reading router registry file: " + registry_file + " : " + e.what());
+			on_error(registry_file, "error when reading router registry file: " + registry_file + " : " + e.what());
 		}
 	}
 
-	json
-	load_registry_file(const std::string& registry_file, on_error on_error, on_use_include_file on_use_include_file)
+	json load_registry_file(
+		const std::string& registry_file_included_from,
+		const std::string& registry_file,
+		on_error on_error,
+		on_use_include_file on_use_include_file)
 	{
-		std::string real_registry_file = on_use_include_file(registry_file);
+		std::string real_registry_file = on_use_include_file(registry_file_included_from, registry_file);
 
 		std::ifstream registry_stream{ real_registry_file };
 
@@ -4797,11 +4855,15 @@ public:
 			}
 			catch (json::exception& e)
 			{
-				on_error("error when reading router registry file: " + registry_file + " : " + e.what());
+				on_error(
+					registry_file_included_from,
+					"error when reading router registry file: " + registry_file + " : " + e.what());
 			}
 		}
 
-		on_error("error when reading router registry file: " + registry_file + " : file not found");
+		on_error(
+			registry_file_included_from,
+			"error when reading router registry file: " + registry_file + " : file not found");
 
 		return json{};
 	}

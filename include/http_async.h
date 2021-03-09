@@ -680,6 +680,7 @@ public:
 		{
 			server_.logger_.info(
 				"{s}_connection_handler: close {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
+			--server_.manager().connections_current();
 		}
 
 		connection_handler_base(connection_handler_base const&) = delete;
@@ -1362,18 +1363,12 @@ public:
 
 		void stop() override
 		{
-			try
+			if (socket_.is_open())
 			{
-				socket_.cancel();
-				if (socket_.is_open())
-				{
-					asio::error_code error;
-					this->socket_.shutdown(asio::socket_base::shutdown_send, error);
-					this->socket_.close();
-				}
-			} 
-			catch(...)
-			{
+				asio::error_code error;
+				socket_.shutdown(asio::socket_base::shutdown_send, error);
+				socket_.cancel(error);
+				socket_.close();
 			}
 		}
 
@@ -1448,8 +1443,9 @@ public:
 			if (socket_.lowest_layer().is_open())
 			{
 				asio::error_code error;
-				this->socket_.lowest_layer().shutdown(asio::socket_base::shutdown_send, error);
-				this->socket_.lowest_layer().close();
+				socket_.lowest_layer().shutdown(asio::socket_base::shutdown_send, error);
+				socket_.lowest_layer().cancel(error);
+				socket_.lowest_layer().close(error);
 			}
 		}
 
