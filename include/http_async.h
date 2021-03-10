@@ -154,7 +154,7 @@ public:
 		void reopen(asio::error_code& error)
 		{
 			asio::error_code error_1;
-			//if (socket_.is_open())
+			// if (socket_.is_open())
 			{
 				socket_.shutdown(asio::socket_base::shutdown_send, error_1);
 				socket_.close();
@@ -1477,7 +1477,7 @@ public:
 		, https_listen_port_(network::tcp::socket::invalid_socket)
 		, https_listen_address_(configuration.get<std::string>("https_listen_address", "::0"))
 		, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
-		, max_request_content_length_(configuration.get<size_t>("gzip_min_length", 1024 * 1024 * 16))
+		, max_request_content_length_(configuration.get<size_t>("max_request_content_length", 1024 * 1024 * 16))
 		, io_context_pool_(thread_count_)
 		, http_acceptor_(io_context_pool_.get_io_context())
 		, https_acceptor_(io_context_pool_.get_io_context())
@@ -1712,7 +1712,6 @@ private:
 		++manager().connections_current();
 
 		handler->start();
-
 	}
 
 	void handle_new_https_connection(const shared_https_connection_handler_https& handler, const asio::error_code error)

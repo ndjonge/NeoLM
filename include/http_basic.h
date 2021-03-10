@@ -1719,12 +1719,18 @@ class configuration
 public:
 	using iterator = std::vector<http::field<std::string>>::iterator;
 	using value_type = http::field<std::string>;
+	using on_configuration_change
+		= std::function<void(const std::string& name, const std::string& value, const std::string& default)>;
 
 public:
 	configuration() = default;
 
-	configuration(std::initializer_list<configuration::value_type> init_list, const std::string& string_options = "")
-		: fields_(init_list)
+	configuration(
+		std::initializer_list<configuration::value_type> init_list,
+		const std::string& string_options = "",
+		on_configuration_change on_configuration_change_handler
+		= [](const std::string&, const std::string&, const std::string&) {})
+		: fields_(init_list), on_configuration_change_(on_configuration_change_handler)
 	{
 		const auto& split_string_options = util::split(string_options, ",");
 
@@ -1740,18 +1746,22 @@ public:
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		fields_ = c.fields_;
+		on_configuration_change_ = c.on_configuration_change_;
 	};
 
 	configuration(http::configuration&& c) noexcept
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		fields_ = c.fields_;
+		on_configuration_change_ = c.on_configuration_change_;
 	};
 
 	configuration& operator=(const http::configuration& c)
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		fields_ = c.fields_;
+		on_configuration_change_ = c.on_configuration_change_;
+
 		return *this;
 	};
 
@@ -1759,6 +1769,7 @@ public:
 	{
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 		fields_ = c.fields_;
+		on_configuration_change_ = c.on_configuration_change_;
 		return *this;
 	};
 
@@ -1795,25 +1806,28 @@ public:
 
 	template <typename T>
 	typename std::enable_if<std::is_same<T, bool>::value, bool>::type
-	get(const std::string& name, const T value = T()) const
+	get(const std::string& name, const T default_value = T()) const
 	{
-		T returnvalue = value;
+		T return_value = default_value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
 			return util::case_sensitive::equal_to<std::string>()(f.name, name);
 		});
 
-		if (i != std::end(fields_)) returnvalue = i->value == "true";
+		if (i != std::end(fields_)) return_value = i->value == "true";
 
-		return static_cast<T>(returnvalue);
+		on_configuration_change_(
+			name, return_value == true ? "true" : "false", default_value == true ? "true" : "false");
+
+		return static_cast<T>(return_value);
 	}
 
 	template <typename T>
 	typename std::enable_if<std::is_integral<T>::value && !std::is_same<T, bool>::value, T>::type
-	get(const std::string& name, const T value = T()) const
+	get(const std::string& name, const T default_value = T()) const
 	{
-		T returnvalue = value;
+		T return_value = default_value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
@@ -1821,25 +1835,29 @@ public:
 		});
 
 		if (i != std::end(fields_))
-			returnvalue = static_cast<T>(std::stoi(i->value)); // TODO klopt dit nog? T is_integral
+			return_value = static_cast<T>(std::stoi(i->value)); // TODO klopt dit nog? T is_integral
 
-		return static_cast<T>(returnvalue);
+		on_configuration_change_(name, std::to_string(return_value), std::to_string(default_value));
+
+		return static_cast<T>(return_value);
 	}
 
 	template <typename T>
 	typename std::enable_if<std::is_same<T, std::string>::value, std::string>::type
-	get(const std::string& name, const T& value = T()) const
+	get(const std::string& name, const T& default_value = T()) const
 	{
-		T returnvalue = value;
+		T return_value = default_value;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
 			return (util::case_sensitive::equal_to<std::string>()(f.name, name));
 		});
 
-		if (i != std::end(fields_)) returnvalue = i->value;
+		if (i != std::end(fields_)) return_value = i->value;
 
-		return returnvalue;
+		on_configuration_change_(name, return_value, default_value);
+
+		return return_value;
 	}
 
 	inline const std::string get(const char* name) const
@@ -1853,10 +1871,12 @@ public:
 
 		if (i == std::end(fields_))
 		{
+			on_configuration_change_(name, not_found, not_found);
 			return not_found;
 		}
 		else
 		{
+			on_configuration_change_(name, i->value, not_found);
 			return i->value;
 		}
 	}
@@ -1875,8 +1895,7 @@ public:
 		}
 		else
 		{
-			value_type field_(name, value);
-			fields_.emplace_back(std::move(field_));
+			fields_.emplace_back(name, value);
 		}
 	}
 
@@ -1889,6 +1908,7 @@ public:
 private:
 	std::vector<http::field<std::string>> fields_;
 	mutable std::mutex configuration_mutex_;
+	on_configuration_change on_configuration_change_;
 };
 
 enum message_specializations
@@ -5861,7 +5881,7 @@ public:
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
 		, https_listen_port_begin_(configuration.get<int>(
 			  "https_listen_port_begin", configuration.get<int>("http_listen_port_begin") + 2000))
-		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", http_listen_port_begin_))
+		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", https_listen_port_begin_))
 		, https_listen_port_(network::tcp::socket::invalid_socket)
 		, endpoint_https_(configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
 		, connection_timeout_(configuration.get<int>("keepalive_timeout", 5))

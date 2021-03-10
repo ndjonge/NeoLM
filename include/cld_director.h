@@ -3171,19 +3171,28 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 
 	if (run_as_daemon) util::daemonize("/tmp", "/var/lock/" + server_version + ".pid");
 
-	http::configuration http_configuration{ { { "server", server_version },
-											  { "http_listen_port_begin", "4000" },
-											  { "private_base", "/private/infra/manager" },
-											  { "private_ip_white_list", "::/0" },
-											  { "public_ip_white_list", "::/0" },
-											  { "access_log_level", "access_log_all" },
-											  { "access_log_file", "access_log.txt" },
-											  { "extended_log_level", "api" },
-											  { "extended_log_file", "console" },
-											  { "https_enabled", "false" },
-											  { "http_enabled", "true" },
-											  { "http_use_portsharding", "false" } },
-											config_options };
+	http::configuration http_configuration{
+		{ { "server", server_version },
+		  { "http_listen_port_begin", "4000" },
+		  { "private_base", "/private/infra/manager" },
+		  { "private_ip_white_list", "::/0" },
+		  { "public_ip_white_list", "::/0" },
+		  { "access_log_level", "access_log_all" },
+		  { "access_log_file", "access_log.txt" },
+		  { "extended_log_level", "api" },
+		  { "extended_log_file", "console" },
+		  { "https_enabled", "false" },
+		  { "http_enabled", "true" },
+		  { "http_use_portsharding", "false" } },
+		config_options,
+		[](const std::string name, const std::string value, const std::string default_value) {
+			std::ofstream configuration_dump{ "C:\\tmp\\options.txt", std::ios_base::app };
+
+			configuration_dump << "name: '" << name << "', value: '" << value << "', default_value: '" << default_value
+							   << "'\n";
+			configuration_dump.flush();
+		}
+	};
 
 	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager<http::async::server>>(
 		new cloud::platform::manager<http::async::server>(http_configuration, config_file));
