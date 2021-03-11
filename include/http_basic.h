@@ -1720,7 +1720,7 @@ public:
 	using iterator = std::vector<http::field<std::string>>::iterator;
 	using value_type = http::field<std::string>;
 	using on_configuration_change
-		= std::function<void(const std::string& name, const std::string& value, const std::string& default)>;
+		= std::function<void(const std::string& name, const std::string& value, const std::string& default_value)>;
 
 public:
 	configuration() = default;
