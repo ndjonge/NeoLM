@@ -122,7 +122,7 @@ static bool create_bse_process_as_user(
 		put_new_instance_json["version"] = "test_bshell";
 
 		auto response = http::client::request<http::method::put>(
-			"http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/workers/"
+			"http://localhost:4000/platform/manager/workspaces/workspace_000/workgroups/untitled/bshells/workers/"
 				+ worker_id,
 			ec,
 			{},
@@ -136,7 +136,7 @@ static bool create_bse_process_as_user(
 				throw std::runtime_error{ "error sending \"worker\" registration" };
 			}
 			// else
-			//	std::cout << "http://localhost:5000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/"
+			//	std::cout << "http://localhost:5000/platform/manager/workspaces/workspace_000/workgroups/untitled/bshells/"
 			//				 "workers/ send\n";
 		}
 		else
@@ -483,7 +483,7 @@ public:
 	{
 		if (!base_url_.empty())
 		{
-			worker_json["link_to_status_url"] = base_url_ + "/private/infra/worker/status";
+			worker_json["link_to_status_url"] = base_url_ + "/platform/worker/status";
 			worker_json["base_url"] = base_url_;
 			worker_json["version"] = version_;
 
@@ -626,7 +626,7 @@ public:
 		{
 			std::string ec;
 			auto response = http::client::request<http::method::delete_>(
-				worker->second.get_base_url() + "/private/infra/worker/process", ec, {});
+				worker->second.get_base_url() + "/platform/worker/process", ec, {});
 
 			if (response.status() == http::status::no_content)
 			{
@@ -1013,7 +1013,7 @@ public:
 		std::string server_endpoint
 			= configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000");
 
-		server_endpoint += "/private/infra/workspaces";
+		server_endpoint += "/platform/manager/workspaces";
 
 		std::unique_lock<std::mutex> lock{ workers_mutex_ };
 
@@ -1117,7 +1117,7 @@ public:
 						http::client::async_request<http::method::delete_>(
 							upstreams_,
 							worker_it->second.get_base_url(),
-							"/private/infra/worker/process",
+							"/platform/worker/process",
 							watchdog_headers,
 							std::string{},
 							[this, base_url, &logger](http::response_message& response, asio::error_code& error_code) {
@@ -1228,7 +1228,7 @@ public:
 						http::client::async_request<http::method::post>(
 							upstreams_,
 							worker_it->second.get_base_url(),
-							"/private/infra/worker/watchdog",
+							"/platform/worker/watchdog",
 							watchdog_headers,
 							std::string{},
 							[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
@@ -1979,13 +1979,13 @@ public:
 			session.response().body() = std::string("Ok") + session.request().body();
 		});
 
-		server_base::router_.on_post("/private/infra/manager/mirror", [](http::session_handler& session) {
+		server_base::router_.on_post("/platform/manager/mirror", [](http::session_handler& session) {
 			session.response().status(http::status::ok);
 			session.response().type(session.response().get<std::string>("Content-Type", "text/plain"));
 			session.response().body() = session.request().body();
 		});
 
-		server_base::router_.on_post("/private/infra/manager/access_log_level", [this](http::session_handler& session) {
+		server_base::router_.on_post("/platform/manager/access_log_level", [this](http::session_handler& session) {
 			server_base::logger_.set_access_log_level(session.request().body());
 			auto new_level = server_base::logger_.current_access_log_level_to_string();
 			http::server::configuration_.set("access_log_level", new_level);
@@ -1993,13 +1993,13 @@ public:
 			session.response().status(http::status::ok);
 		});
 
-		server_base::router_.on_get("/private/infra/manager/access_log_level", [this](http::session_handler& session) {
+		server_base::router_.on_get("/platform/manager/access_log_level", [this](http::session_handler& session) {
 			session.response().body() = server_base::logger_.current_access_log_level_to_string();
 			session.response().status(http::status::ok);
 		});
 
 		server_base::router_.on_post(
-			"/private/infra/manager/extended_log_level", [this](http::session_handler& session) {
+			"/platform/manager/extended_log_level", [this](http::session_handler& session) {
 				server_base::logger_.set_extended_log_level(session.request().body());
 				auto new_level = server_base::logger_.current_extended_log_level_to_string();
 				http::server::configuration_.set("extended_log_level", new_level);
@@ -2008,12 +2008,12 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/private/infra/manager/extended_log_level", [this](http::session_handler& session) {
+			"/platform/manager/extended_log_level", [this](http::session_handler& session) {
 				session.response().body() = server_base::logger_.current_extended_log_level_to_string();
 				session.response().status(http::status::ok);
 			});
 
-		server_base::router_.on_get("/private/infra/manager/version", [](http::session_handler& session) {
+		server_base::router_.on_get("/platform/manager/version", [](http::session_handler& session) {
 			std::string version = std::string{ "logic service " } + get_version_ex(PORT_SET, NULL) + std::string{ "/" }
 								  + get_version_ex(PORT_NO, NULL);
 
@@ -2033,7 +2033,7 @@ public:
 			session.response().status(http::status::ok);
 		});
 
-		server_base::router_.on_get("/private/infra/manager/status", [this](http::session_handler& session) {
+		server_base::router_.on_get("/platform/manager/status", [this](http::session_handler& session) {
 			const auto& format = session.request().get<std::string>("Accept", "application/json");
 
 			if (format.find("application/json") != std::string::npos)
@@ -2055,7 +2055,7 @@ public:
 			session.response().status(http::status::ok);
 		});
 
-		server_base::router_.on_get("/private/infra/manager/status/{section}", [this](http::session_handler& session) {
+		server_base::router_.on_get("/platform/manager/status/{section}", [this](http::session_handler& session) {
 			auto section_option = http::server::server_manager::json_status_options::full;
 			const auto& section = session.params().get("section");
 
@@ -2088,7 +2088,7 @@ public:
 			session.response().status(http::status::ok);
 		});
 
-		server_base::router_.on_get("/private/infra/workspaces", [this](http::session_handler& session) {
+		server_base::router_.on_get("/platform/manager/workspaces", [this](http::session_handler& session) {
 			json workspaces_json{};
 			workspaces_.to_json(workspaces_json);
 
@@ -2098,7 +2098,7 @@ public:
 			session.response().assign(http::status::ok, result_json.dump(), "application/json");
 		});
 
-		server_base::router_.on_get("/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
+		server_base::router_.on_get("/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
 			auto& id = session.params().get("workspace_id");
 			auto w = workspaces_.get_workspace(id);
 
@@ -2118,7 +2118,7 @@ public:
 		});
 
 		server_base::router_.on_post(
-			"/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
+			"/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
 
@@ -2141,7 +2141,7 @@ public:
 			});
 
 		server_base::router_.on_delete(
-			"/private/infra/workspaces/{workspace_id}", [this](http::session_handler& session) {
+			"/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				if (workspaces_.delete_workspace(workspace_id))
 				{
@@ -2157,7 +2157,7 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/private/infra/workspaces/{workspace_id}/workgroups", [this](http::session_handler& session) {
+			"/platform/manager/workspaces/{workspace_id}/workgroups", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto w = workspaces_.get_workspace(workspace_id);
 
@@ -2186,7 +2186,7 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
 
@@ -2216,7 +2216,7 @@ public:
 			});
 
 		server_base::router_.on_post(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2249,7 +2249,7 @@ public:
 			});
 
 		server_base::router_.on_delete(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2284,7 +2284,7 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2317,7 +2317,7 @@ public:
 			});
 
 		server_base::router_.on_post(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 
@@ -2352,7 +2352,7 @@ public:
 			});
 
 		server_base::router_.on_delete(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 
@@ -2391,7 +2391,7 @@ public:
 
 		// get info for specific worker {TYPE} in workspace {workspace_id}
 		server_base::router_.on_get(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/parameters/{detail}",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/parameters/{detail}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2433,7 +2433,7 @@ public:
 
 		// get info for specific worker {TYPE} in workspace {workspace_id}
 		server_base::router_.on_put(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/parameters/{detail}",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/parameters/{detail}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2478,7 +2478,7 @@ public:
 
 		// get info for specific worker id for a worker with {name} and {type} in workspace {workspace_id}
 		server_base::router_.on_get(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2518,7 +2518,7 @@ public:
 
 		// get info for specific worker {TYPE} in workspace {workspace_id}
 		server_base::router_.on_get(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2564,7 +2564,7 @@ public:
 
 		// put specific worker {worker_id} of worker {name} and {type} in workspace {workspace_id}
 		server_base::router_.on_put(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2608,7 +2608,7 @@ public:
 
 		// remove specific worker {worker_id} of worker {type} in workspace {workspace_id}
 		server_base::router_.on_delete(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2642,7 +2642,7 @@ public:
 
 		// remove specific worker {worker_id} of worker {type} in workspace {workspace_id}
 		server_base::router_.on_delete(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2704,7 +2704,7 @@ public:
 			});
 
 		server_base::router_.on_put(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}/label",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}/label",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2748,7 +2748,7 @@ public:
 			});
 
 		server_base::router_.on_delete(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}/process",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}/process",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2788,7 +2788,7 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/limits",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2822,7 +2822,7 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2858,7 +2858,7 @@ public:
 			});
 
 		server_base::router_.on_put(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/limits",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2893,7 +2893,7 @@ public:
 
 		// get info for specific worker id for a worker with {name} and {type} in workspace {workspace_id}
 		server_base::router_.on_put(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2938,7 +2938,7 @@ public:
 			});
 
 		server_base::router_.on_patch(
-			"/private/infra/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
+			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2983,7 +2983,7 @@ public:
 				}
 			});
 
-		server_base::router_.on_get("/private/infra/manager/upstreams", [this](http::session_handler& session) {
+		server_base::router_.on_get("/platform/manager/upstreams", [this](http::session_handler& session) {
 			auto include_connections = session.request().query().get<bool>("connections", false);
 			const auto& format = session.request().get<std::string>("Accept", "application/text");
 
@@ -3175,12 +3175,12 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 	http::configuration http_configuration{
 		{ { "server", server_version },
 		  { "http_listen_port_begin", "4000" },
-		  { "private_base", "/private/infra/manager" },
+		  { "private_base", "/platform/manager" },
 		  { "private_ip_white_list", "::/0" },
 		  { "public_ip_white_list", "::/0" },
 		  { "access_log_level", "access_log_all" },
 		  { "access_log_file", "access_log.txt" },
-		  { "extended_log_level", "api" },
+		  { "extended_log_level", "access_log_all" },
 		  { "extended_log_file", "console" },
 		  { "https_enabled", "false" },
 		  { "http_enabled", "true" },

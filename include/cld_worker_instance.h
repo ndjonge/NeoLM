@@ -79,7 +79,7 @@ public:
 		cld_worker_label_ = server_.config().get<std::string>("cld_worker_label", "no_label");
 
 		manager_endpoint_url_ = server_.config().get<std::string>(
-									"cld_manager_endpoint", "http://localhost:4000/private/infra/workspaces")
+									"cld_manager_endpoint", "http://localhost:4000/platform/manager/workspaces")
 								+ "/" + server_.config().get<std::string>("cld_manager_workspace", "workspace-000")
 								+ "/workgroups/"
 								+ server_.config().get<std::string>("cld_manager_workgroup", "anonymous/bshells");
@@ -210,7 +210,7 @@ public:
 	enable_server_as_worker(http::server* server)
 		: workgroup_controller_(workgroup_controller_from_configuration(*server))
 	{
-		// http://localhost:4000/private/infra/workspaces/workspace_000/workgroups/untitled/bshells/worker
+		// http://localhost:4000/platform/manager/workspaces/workspace_000/workgroups/untitled/bshells/worker
 	}
 
 	~enable_server_as_worker(){};
