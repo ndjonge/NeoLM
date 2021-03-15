@@ -150,7 +150,6 @@ public:
 
 		bool is_removable() { return state_ == state::drain || state_ == state::error; }
 
-
 		const std::string& id() const { return id_; }
 
 		void to_string(std::ostringstream& ss)
@@ -355,6 +354,8 @@ public:
 			}
 
 			host_ = base_url.substr(start_of_host, start_of_port - start_of_host);
+
+			state_ = state::up;
 		}
 
 		void update_status_code_metrics(std::int32_t status)
@@ -496,7 +497,7 @@ public:
 	};
 
 	bool async_upstream_request(
-		std::function<void(connection_type&, asio::error_code& error_code)> forward_handler, lgr::logger& logger)
+		std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
 	{
 		bool result = false;
 		static std::atomic<std::uint8_t> rr{ 0 };
@@ -549,13 +550,9 @@ public:
 						connections_guard.unlock();
 						++(selected_upstream->get()->connections_busy_);
 
-						forward_handler(*selected_connection, error_code);
+						forward_handler(*selected_connection);
 
-						if (!error_code)
-							found = true;
-						else
-							found = false;
-
+						found = true;
 						break;
 					}
 				}
@@ -569,7 +566,7 @@ public:
 					}
 					else
 					{
-						logger.api("new upstream connection to {s}\n", selected_upstream->get()->base_url());
+						logger.info("new upstream connection to {s}\n", selected_upstream->get()->base_url());
 						connections_guard.unlock();
 						selected_upstream->get()->add_connection();
 					}
@@ -617,7 +614,7 @@ public:
 			: service_(service)
 			, write_strand_(service)
 			, steady_timer_(service)
-			, session_handler_(configuration, protocol)
+			, session_handler_(configuration.get<std::string>("server", "server_no_id"), configuration.get<int>("keepalive_count", 1024 * 8), configuration.get<int>("keepalive_max", 5), protocol)
 			, server_(server)
 			, protocol_(protocol)
 		{
@@ -653,7 +650,7 @@ public:
 		{
 			server_.logger_.info(
 				"{s}_connection_handler: close {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
-			--server_.manager().connections_current();
+			server_.manager().connections_current().operator--();
 		}
 
 		connection_handler_base(connection_handler_base const&) = delete;
@@ -935,10 +932,8 @@ public:
 				if (upstreams)
 				{
 					auto start_async_result = upstreams->async_upstream_request(
-						[this](http::async::upstreams::connection_type& connection, asio::error_code& error_code) {
-
-							init_connection_to_upstream(connection, error_code);
-
+						[this](http::async::upstreams::connection_type& connection) {
+							init_connection_to_upstream(connection);
 						},
 						server_.logger());
 
@@ -959,22 +954,18 @@ public:
 		}
 
 		void init_connection_to_upstream(
-			http::async::upstreams::connection_type& upstream_connection, asio::error_code& error_code)
+			http::async::upstreams::connection_type& upstream_connection)
 		{
 			asio::error_code error;
-			char peek_buffer[1];
-			if (upstream_connection.socket().is_open() == false)
-			{
-				// failed
-				upstream_connection.error();
-				upstream_connection.owner().set_state(upstreams::upstream::state::drain);
-				error_code = error;
-				return;
-			}
 
-			upstream_connection.socket().non_blocking(true);
-			upstream_connection.socket().receive(asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
-			upstream_connection.socket().non_blocking(false);
+			if (upstream_connection.socket().is_open())
+			{
+				char peek_buffer[1];
+				upstream_connection.socket().non_blocking(true);
+				upstream_connection.socket().receive(
+					asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
+				upstream_connection.socket().non_blocking(false);
+			}
 
 			if (error != asio::error::would_block)
 			{
@@ -987,36 +978,35 @@ public:
 					++upstream_connection.owner().connections_reopened_;
 				}
 
-			asio::ip::tcp::resolver resolver(upstream_connection.socket().get_executor());
+				auto me = this->shared_from_this();
 
-			auto me = this->shared_from_this();
+				upstream_connection.resolver_.async_resolve(
+					asio::ip::tcp::v4(),
+					upstream_connection.host_,
+					upstream_connection.port_,
+					[me, &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
+						if (error_code) return;
 
-			upstream_connection.resolver_.async_resolve(
-				asio::ip::tcp::v4(),
-				upstream_connection.host_,
-				upstream_connection.port_,
-				[me, &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
-					if (error_code) return;
+						auto me_1 = me->shared_from_this();
 
-					auto me_1 = me->shared_from_this();
-
-					asio::async_connect(
-						upstream_connection.socket(),
-						it,
-						[me_1, &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
-							if (error_code)
-							{
-								// failed
-								upstream_connection.error();
-								upstream_connection.owner().set_state(
-									http::async::upstreams::upstream::state::drain);
-							}
-							else
-							{
-								me_1->write_upstream_request(upstream_connection);
-							}
-						});
-				});
+						asio::async_connect(
+							upstream_connection.socket(),
+							it,
+							[me_1,
+							 &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
+								if (error_code)
+								{
+									// failed
+									upstream_connection.error();
+									upstream_connection.owner().set_state(
+										http::async::upstreams::upstream::state::drain);
+								}
+								else
+								{
+									me_1->write_upstream_request(upstream_connection);
+								}
+							});
+					});
 			}
 			else
 			{
@@ -1025,8 +1015,7 @@ public:
 			}
 		}
 
-		void write_upstream_request(
-			http::async::upstreams::connection_type& upstream_connection)
+		void write_upstream_request(http::async::upstreams::connection_type& upstream_connection)
 		{
 
 			session_handler_.request().target(session_handler_.request().url_requested());
@@ -1258,8 +1247,6 @@ public:
 
 		void write_response_complete()
 		{
-			++server_.manager().requests_handled();
-
 			if (routing_.match_result() == http::api::router_match::match_found)
 			{
 				routing_.the_route().metric_response_latency(
@@ -1272,11 +1259,15 @@ public:
 					server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(session_handler_.response()));
 				}
 
+
 				auto log_msg
 					= server_.manager().log_access(session_handler_, routing_.the_route().route_metrics()) + "\n";
 
 				if (private_base_request_ == false)
 				{
+					server_.manager().update_status_code_metrics(
+						http::status::to_int(session_handler_.response().status()));
+
 					server_.logger_.access_log(log_msg);
 					--server_.manager().requests_current(private_base_request_);
 				}
@@ -1292,6 +1283,9 @@ public:
 
 				if (private_base_request_ == false)
 				{
+					server_.manager().update_status_code_metrics(
+						http::status::to_int(session_handler_.response().status()));
+
 					server_.logger_.access_log(log_msg);
 				}
 				else if (private_base_request_ == true)
@@ -1844,7 +1838,7 @@ public:
 
 	async_session(async_session&& rhs) = default;
 
-	void init_connection_to_upstream (http::request_message& request, asio::error_code& error_code)
+	void init_connection_to_upstream(http::request_message& request, asio::error_code& error_code)
 	{
 		asio::error_code error;
 
@@ -1855,7 +1849,7 @@ public:
 			char peek_buffer[1];
 			upstream_connection_.socket().non_blocking(true);
 			upstream_connection_.socket().receive(
-			asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
+				asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
 			upstream_connection_.socket().non_blocking(false);
 		}
 
@@ -1882,7 +1876,7 @@ public:
 					if (error)
 					{
 						auto error_msg = error.message();
-							return;
+						return;
 					}
 
 					auto me_1 = me->shared_from_this();
@@ -2074,7 +2068,6 @@ public:
 						me_connect->upstream_connection_.socket(),
 						it,
 						[me_connect](asio::error_code error_code, asio::ip::tcp::resolver::iterator) {
-
 							if (error_code)
 							{
 								// TODO try next resolve result?
@@ -2087,7 +2080,6 @@ public:
 							{
 								error_code.clear();
 							}
-
 						});
 				});
 		}

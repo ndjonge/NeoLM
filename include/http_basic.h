@@ -3611,11 +3611,11 @@ public:
 
 	~session_handler() = default;
 
-	session_handler(http::configuration& configuration, http::protocol protocol)
-		: configuration_(configuration)
+	session_handler(const std::string& server_id, int keep_alive_count, int keep_alive_timeout, http::protocol protocol)
+		: server_id_(server_id)
+		, keepalive_count_(keep_alive_count) //(configuration.get<int>("keepalive_count", 1024 * 8))
+		, keepalive_max_(keep_alive_timeout) //((configuration.get<int>("keepalive_timeout", 120))
 		, protocol_(protocol)
-		, keepalive_count_(configuration.get<int>("keepalive_count", 1024 * 8))
-		, keepalive_max_(configuration.get<int>("keepalive_timeout", 120))
 		, is_client_allowed_(true)
 		, t0_(std::chrono::steady_clock::now())
 	{
@@ -3634,7 +3634,7 @@ public:
 		typename router_t::request_result_type& route_result,
 		http::status::status_t error_status = http::status::not_found)
 	{
-		response_.set("Server", configuration_.get<std::string>("server", "http/server/0"));
+		response_.set("Server", server_id_);
 		response_.set("Date", util::return_current_time_and_date());
 
 		if (protocol_ == http::protocol::https)
@@ -3810,7 +3810,7 @@ private:
 	http::request_message request_{ *this };
 	http::response_message response_{ *this };
 	http::request_parser request_parser_;
-	http::configuration& configuration_;
+	std::string server_id_;
 	http::api::routing* routing_{ nullptr };
 	http::api::params* params_{ nullptr };
 	http::protocol protocol_{ http::protocol::http };
@@ -5650,13 +5650,22 @@ public:
 		std::string server_information_;
 		std::string router_information_;
 
-		std::atomic<size_t> requests_handled_{ 0 };
 		std::atomic<size_t> connections_accepted_{ 0 };
 		std::atomic<std::int16_t> requests_current_{ 0 };
+
 		std::atomic<std::int16_t> connections_current_{ 0 };
 		std::atomic<std::int16_t> connections_highest_{ 0 };
 
 		std::atomic<std::int64_t> idle_since_{ 0 };
+
+
+		std::atomic<std::uint16_t> responses_1xx_{ 0 };
+		std::atomic<std::uint16_t> responses_2xx_{ 0 };
+		std::atomic<std::uint16_t> responses_3xx_{ 0 };
+		std::atomic<std::uint16_t> responses_4xx_{ 0 };
+		std::atomic<std::uint16_t> responses_5xx_{ 0 };
+		std::atomic<std::uint16_t> responses_tot_{ 0 };
+		std::atomic<std::uint16_t> responses_health_{ 0 };
 
 		std::vector<std::string> access_log_;
 		mutable std::mutex mutex_;
@@ -5679,7 +5688,23 @@ public:
 						.count())
 				   / 1000000000;
 		}
-		std::atomic<size_t>& requests_handled() { return requests_handled_; }
+
+		void update_health_check_metrics() { responses_health_++; }
+
+		void update_status_code_metrics(std::int32_t status)
+		{
+			assert(status >= 100);
+			assert(status < 600);
+
+			if (status >= 100 && status < 200) responses_1xx_++;
+			if (status >= 200 && status < 300) responses_2xx_++;
+			if (status >= 300 && status < 400) responses_3xx_++;
+			if (status >= 400 && status < 500) responses_4xx_++;
+			if (status >= 500 && status < 600) responses_5xx_++;
+
+			responses_tot_++;
+		}
+
 		std::atomic<std::size_t>& connections_accepted() { return connections_accepted_; }
 		std::atomic<std::int16_t>& connections_current()
 		{
@@ -5773,7 +5798,6 @@ public:
 					   << "{\"connections_current\":" << connections_current_ << ","
 					   << "\"connections_accepted\":" << connections_accepted_ << ","
 					   << "\"connections_highest\":" << connections_highest_ << ","
-					   << "\"requests_handled\" : " << requests_handled_ << ","
 					   << "\"requests_current\" : " << requests_current_ << ","
 					   << "\"idle_time\" : "
 					   << (std::chrono::duration<std::int64_t, std::ratio<1, 1>>(
@@ -5822,11 +5846,21 @@ public:
 			ss << "Server Configuration:\n" << server_information_ << "\n";
 
 			ss << "\nStatistics:\n";
+
+
 			ss << "connections_accepted: " << connections_accepted_ << "\n";
 			ss << "connections_highest: " << connections_highest_ << "\n";
 			ss << "connections_current: " << connections_current_ << "\n";
-			ss << "requests_handled: " << requests_handled_ << "\n";
+
 			ss << "requests_current: " << requests_current_ << "\n";
+			ss << "responses_1xx: " << std::to_string(responses_1xx_) << "\n";
+			ss << "responses_2xx: " << std::to_string(responses_2xx_) << "\n";
+			ss << "responses_3xx: " << std::to_string(responses_3xx_) << "\n";
+			ss << "responses_4xx: " << std::to_string(responses_4xx_) << "\n";
+			ss << "responses_5xx: " << std::to_string(responses_5xx_)  << "\n";
+			ss << "responses_tot: " << std::to_string(responses_tot_)  << "\n";
+			ss << "health_checks: " << std::to_string(responses_health_) << "\n";
+
 			ss << "idle_time: "
 			   << (std::chrono::duration<std::int64_t, std::nano>(
 					   std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
@@ -6240,7 +6274,11 @@ public:
 			http::sync::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
 			: server_(server)
 			, client_socket_(std::move(client_socket))
-			, session_handler_(server.configuration_, http::protocol::http) // for now.
+			, session_handler_(
+				  server.configuration_.get<std::string>("server", "server_no_id"),
+				  server.configuration_.get<int>("keepalive_count", 1024 * 8),
+				  server.configuration_.get<int>("keepalive_max", 120),
+				  http::protocol::http) // for now.
 			, connection_timeout_(connection_timeout)
 			, gzip_min_length_(gzip_min_length)
 		{
@@ -6364,7 +6402,6 @@ public:
 							if (private_base_request == false)
 							{
 								--server_.manager().requests_current(private_base_request);
-								++server_.manager().requests_handled();
 							}
 							else
 								server_.manager().requests_current(private_base_request);

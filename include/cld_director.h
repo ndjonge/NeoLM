@@ -585,7 +585,6 @@ public:
 				io_context, base_url, "/" + name_ + "/" + type_ + "/" + worker_id + "_" + worker_label);
 
 			new_worker.first->second.upstream(upstream);
-
 			new_worker.first->second.set_status(worker::status::up);
 		}
 	}
@@ -1973,10 +1972,9 @@ public:
 			workspaces_.from_json(json::object());
 		}
 
-		server_base::router_.on_get("/health", [](http::session_handler& session) {
-			session.response().status(http::status::ok);
-			session.response().type("text");
-			session.response().body() = std::string("Ok") + session.request().body();
+		server_base::router_.on_get(http::server::configuration_.get<std::string>("health_check", "/private/health_check"), [this](http::session_handler& session) {
+			session.response().assign(http::status::ok, "OK");
+			server_base::manager().update_health_check_metrics();
 		});
 
 		server_base::router_.on_post("/platform/manager/mirror", [](http::session_handler& session) {
@@ -3176,22 +3174,23 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 		{ { "server", server_version },
 		  { "http_listen_port_begin", "4000" },
 		  { "private_base", "/platform/manager" },
+		  { "health_check", "/platform/manager/healthcheck" },
 		  { "private_ip_white_list", "::/0" },
 		  { "public_ip_white_list", "::/0" },
-		  { "access_log_level", "access_log_all" },
+		  { "access_log_level", "none" },
 		  { "access_log_file", "access_log.txt" },
-		  { "extended_log_level", "access_log_all" },
+		  { "extended_log_level", "api" },
 		  { "extended_log_file", "console" },
 		  { "https_enabled", "false" },
 		  { "http_enabled", "true" },
 		  { "http_use_portsharding", "false" } },
 		config_options,
 		[](const std::string name, const std::string value, const std::string default_value) {
-			std::ofstream configuration_dump{ "C:\\tmp\\options.txt", std::ios_base::app };
+			//std::ofstream configuration_dump{ "C:\\tmp\\options.txt", std::ios_base::app };
 
-			configuration_dump << "name: '" << name << "', value: '" << value << "', default_value: '" << default_value
-							   << "'\n";
-			configuration_dump.flush();
+			//configuration_dump << "name: '" << name << "', value: '" << value << "', default_value: '" << default_value
+			//				   << "'\n";
+			//configuration_dump.flush();
 		}
 	};
 
