@@ -116,7 +116,6 @@ public:
 			, owner_(owner)
 		{
 			asio::error_code error_code;
-			// reopen(error_code);
 		};
 
 		connection(const connection& s) = delete;
@@ -151,32 +150,6 @@ public:
 
 		bool is_removable() { return state_ == state::drain || state_ == state::error; }
 
-		void reopen(asio::error_code& error)
-		{
-			asio::error_code error_1;
-			// if (socket_.is_open())
-			{
-				socket_.shutdown(asio::socket_base::shutdown_send, error_1);
-				socket_.close();
-
-				++owner_.connections_reopened_;
-			}
-
-			asio::ip::tcp::resolver::query query(asio::ip::tcp::v4(), host_, port_);
-			auto resolved_endpoints = resolver_.resolve(query, error_1);
-
-			asio::connect(socket_, resolved_endpoints.cbegin(), resolved_endpoints.cend(), error_1);
-
-			if (error_1)
-			{
-				error = error_1;
-				// std::cout << "Error: not open\n";
-			}
-			else
-			{
-				error.clear();
-			}
-		}
 
 		const std::string& id() const { return id_; }
 
@@ -963,7 +936,9 @@ public:
 				{
 					auto start_async_result = upstreams->async_upstream_request(
 						[this](http::async::upstreams::connection_type& connection, asio::error_code& error_code) {
-							write_upstream_request(connection, error_code);
+
+							init_connection_to_upstream(connection, error_code);
+
 						},
 						server_.logger());
 
@@ -983,29 +958,18 @@ public:
 			}
 		}
 
-		void write_upstream_request(
+		void init_connection_to_upstream(
 			http::async::upstreams::connection_type& upstream_connection, asio::error_code& error_code)
 		{
 			asio::error_code error;
 			char peek_buffer[1];
-#ifdef LOCAL_TESTING_WITH_RANDOM_FAILURES
-			bool random_failure = 1 + (rand() % 100) == 5;
-#else
-			bool random_failure = false;
-#endif
-
-			if (upstream_connection.socket().is_open() == false || random_failure)
+			if (upstream_connection.socket().is_open() == false)
 			{
-				if (!random_failure) upstream_connection.reopen(error);
-
-				if (error || random_failure)
-				{
-					// failed
-					upstream_connection.error();
-					upstream_connection.owner().set_state(upstreams::upstream::state::drain);
-					error_code = error;
-					return;
-				}
+				// failed
+				upstream_connection.error();
+				upstream_connection.owner().set_state(upstreams::upstream::state::drain);
+				error_code = error;
+				return;
 			}
 
 			upstream_connection.socket().non_blocking(true);
@@ -1014,28 +978,60 @@ public:
 
 			if (error != asio::error::would_block)
 			{
-				upstream_connection.reopen(error);
-
-				if (error)
+				asio::error_code error_1;
+				if (upstream_connection.socket().is_open())
 				{
-					// failed
-					upstream_connection.error();
-					upstream_connection.owner().set_state(upstreams::upstream::state::drain);
-					error_code = error;
-					return;
+					upstream_connection.socket().shutdown(asio::socket_base::shutdown_send, error_1);
+					upstream_connection.socket().close(error_1);
+
+					++upstream_connection.owner().connections_reopened_;
 				}
+
+			asio::ip::tcp::resolver resolver(upstream_connection.socket().get_executor());
+
+			auto me = this->shared_from_this();
+
+			upstream_connection.resolver_.async_resolve(
+				asio::ip::tcp::v4(),
+				upstream_connection.host_,
+				upstream_connection.port_,
+				[me, &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
+					if (error_code) return;
+
+					auto me_1 = me->shared_from_this();
+
+					asio::async_connect(
+						upstream_connection.socket(),
+						it,
+						[me_1, &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
+							if (error_code)
+							{
+								// failed
+								upstream_connection.error();
+								upstream_connection.owner().set_state(
+									http::async::upstreams::upstream::state::drain);
+							}
+							else
+							{
+								me_1->write_upstream_request(upstream_connection);
+							}
+						});
+				});
 			}
+			else
+			{
+				// no need to reconnect, connection still open (due to keepalive)
+				write_upstream_request(upstream_connection);
+			}
+		}
+
+		void write_upstream_request(
+			http::async::upstreams::connection_type& upstream_connection)
+		{
 
 			session_handler_.request().target(session_handler_.request().url_requested());
 			session_handler_.request().set("Accept-Encoding", "gzip");
 			session_handler_.request().reset_if_exists("Expect");
-
-			auto response_delay = session_handler_.request().get<std::int64_t>("X-Delay-Upstream-Response", 0);
-
-			if (response_delay > 0)
-			{
-				std::this_thread::sleep_for(std::chrono::milliseconds{ response_delay });
-			}
 
 			write_buffer_.emplace_back(http::to_string(session_handler_.request()));
 
@@ -1192,13 +1188,35 @@ public:
 
 			if (session_handler_.response().connection_close() == true)
 			{
-				asio::error_code error_code;
-				upstream_connection.reopen(error_code);
+				asio::ip::tcp::resolver resolver(upstream_connection.socket().get_executor());
 
-				if (error_code)
-					upstream_connection.error();
-				else
-					upstream_connection.release();
+				auto me = this->shared_from_this();
+
+				upstream_connection.resolver_.async_resolve(
+					asio::ip::tcp::v4(),
+					upstream_connection.host_,
+					upstream_connection.port_,
+					[me, &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
+						if (error_code) return;
+
+						auto me_1 = me->shared_from_this();
+
+						asio::async_connect(
+							upstream_connection.socket(),
+							it,
+							[me_1,
+							 &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
+								if (error_code)
+								{
+									// failed
+									upstream_connection.error();
+								}
+								else
+								{
+									upstream_connection.release();
+								}
+							});
+					});
 			}
 			else
 			{
@@ -1826,66 +1844,90 @@ public:
 
 	async_session(async_session&& rhs) = default;
 
-	void write_request(http::request_message& request, asio::error_code& error_code)
+	void init_connection_to_upstream (http::request_message& request, asio::error_code& error_code)
 	{
 		asio::error_code error;
-		char peek_buffer[1];
-
-#ifdef LOCAL_TESTING_WITH_RANDOM_FAILURES
-		bool random_failure = 1 + (rand() % 100) == 5;
-#else
-		bool random_failure = false;
-#endif
-
-		if (upstream_connection_.socket().is_open() == false || random_failure)
-		{
-			if (!random_failure) upstream_connection_.reopen(error);
-
-			if (error || random_failure)
-			{
-				// failed
-				upstream_connection_.error();
-				upstream_connection_.owner().set_state(http::async::upstreams::upstream::state::drain);
-				error_code = error;
-				if (random_failure) error_code = asio::error::broken_pipe;
-
-				return;
-			}
-		}
-
-		upstream_connection_.socket().non_blocking(true);
-		upstream_connection_.socket().receive(asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
-		upstream_connection_.socket().non_blocking(false);
-
-		if (error != asio::error::would_block)
-		{
-			upstream_connection_.reopen(error);
-
-			if (error)
-			{
-				// failed
-				upstream_connection_.error();
-				upstream_connection_.owner().set_state(http::async::upstreams::upstream::state::drain);
-				error_code = error;
-
-				return;
-			}
-		}
 
 		write_buffer_.emplace_back(http::to_string(request));
 
+		if (upstream_connection_.socket().is_open() == true)
+		{
+			char peek_buffer[1];
+			upstream_connection_.socket().non_blocking(true);
+			upstream_connection_.socket().receive(
+			asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
+			upstream_connection_.socket().non_blocking(false);
+		}
+
+		if (error != asio::error::would_block)
+		{
+			// connection was not open yet or closed! reopen now.
+			auto me = this->shared_from_this();
+
+			asio::error_code error_1;
+
+			if (upstream_connection_.socket().is_open())
+			{
+				upstream_connection_.socket().shutdown(asio::socket_base::shutdown_send, error_1);
+				upstream_connection_.socket().close(error_1);
+
+				++upstream_connection_.owner().connections_reopened_;
+			}
+
+			upstream_connection_.resolver_.async_resolve(
+				asio::ip::tcp::v4(),
+				upstream_connection_.host_,
+				upstream_connection_.port_,
+				[me](asio::error_code error, asio::ip::tcp::resolver::iterator it) {
+					if (error)
+					{
+						auto error_msg = error.message();
+							return;
+					}
+
+					auto me_1 = me->shared_from_this();
+
+					asio::async_connect(
+						me->upstream_connection_.socket(),
+						it,
+						[me_1](asio::error_code error, asio::ip::tcp::resolver::iterator) {
+							// TODO try next resolve result?
+							if (error)
+							{
+								// failed
+								me_1->upstream_connection_.error();
+								me_1->upstream_connection_.owner().set_state(
+									http::async::upstreams::upstream::state::drain);
+							}
+							else
+							{
+								me_1->write_request(error);
+							}
+						});
+				});
+		}
+		else
+		{
+			// no need to reconnect, connection still open (due to keepalive)
+			error_code.clear();
+			write_request(error_code);
+		}
+	}
+
+	void write_request(asio::error_code& error_code)
+	{
 		auto me = this->shared_from_this();
 
 		asio::async_write(
 			upstream_connection_.socket(),
 			asio::buffer(write_buffer_.front()),
-			[me](asio::error_code const& ec, std::size_t) {
+			[me, error_code](asio::error_code const& ec, std::size_t) {
 				me->write_buffer_.pop_front();
 
 				if (!ec)
 					me->read_response_headers();
 				else
-					me->read_response_body_complete(ec);
+					me->read_response_body_complete(error_code);
 			});
 	}
 
@@ -2017,13 +2059,37 @@ public:
 
 		if (response_.connection_close() == true)
 		{
-			asio::error_code error_code;
-			upstream_connection_.reopen(error_code);
+			auto me_resolve = this->shared_from_this();
 
-			if (error_code)
-				upstream_connection_.error();
-			else
-				upstream_connection_.release();
+			upstream_connection_.resolver_.async_resolve(
+				asio::ip::tcp::v4(),
+				upstream_connection_.host_,
+				upstream_connection_.port_,
+				[me_resolve](asio::error_code error, asio::ip::tcp::resolver::iterator it) {
+					if (error) return;
+
+					auto me_connect = me_resolve->shared_from_this();
+
+					asio::async_connect(
+						me_connect->upstream_connection_.socket(),
+						it,
+						[me_connect](asio::error_code error_code, asio::ip::tcp::resolver::iterator) {
+
+							if (error_code)
+							{
+								// TODO try next resolve result?
+								me_connect->upstream_connection_.error();
+								me_connect->upstream_connection_.owner().set_state(
+									http::async::upstreams::upstream::state::drain);
+								return;
+							}
+							else
+							{
+								error_code.clear();
+							}
+
+						});
+				});
 		}
 		else
 		{
@@ -2077,7 +2143,7 @@ void async_request(
 					std::shared_ptr<async_session> session{ new async_session(
 						*selected_connection, std::move(on_complete)) };
 
-					session->write_request(request, error_code);
+					session->init_connection_to_upstream(request, error_code);
 
 					if (!error_code)
 						found = true;
