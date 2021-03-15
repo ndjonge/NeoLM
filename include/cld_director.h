@@ -1096,8 +1096,7 @@ public:
 			{
 				for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
 				{
-					if (worker_it->second.get_status() != worker::status::up
-						&& worker_it->second.get_status() == worker::status::recover)
+					if (worker_it->second.get_base_url().empty() || worker_it->second.get_status() == worker::status::recover)
 					{
 						++worker_it;
 						continue;
@@ -1109,7 +1108,7 @@ public:
 
 					if ((worker_label != workers_label_required)
 						|| ((workers_requests_max > 1) && (worker_requests >= workers_requests_max))
-						|| ((worker_runtime > 1) && (worker_runtime >= workers_runtime_max)))
+						|| ((workers_runtime_max > 1) && (worker_runtime >= workers_runtime_max)))
 					{
 						http::headers watchdog_headers{ { "Host", "localhost" } };
 
@@ -1171,7 +1170,7 @@ public:
 
 				for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
 				{
-					if (worker_it->second.get_base_url().empty()) // TODO change to status?
+					if (worker_it->second.get_base_url().empty())
 					{
 						++worker_it;
 						continue;
