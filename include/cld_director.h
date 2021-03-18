@@ -2011,36 +2011,14 @@ public:
 				session.response().status(http::status::ok);
 			});
 
-		server_base::router_.on_get("/platform/manager/version", [](http::session_handler& session) {
-			std::string version = std::string{ "logic service " } + get_version_ex(PORT_SET, NULL) + std::string{ "/" }
-								  + get_version_ex(PORT_NO, NULL);
-
-			const auto& format = session.request().get<std::string>("Accept", "application/json");
-
-			if (format.find("application/json") != std::string::npos)
-			{
-				session.response().body() = "{ \"version\" : \"" + util::escape_json(version) + "\"}";
-				session.response().type("json");
-			}
-			else
-			{
-				session.response().body() = version;
-				session.response().type("text");
-			}
-
-			session.response().status(http::status::ok);
-		});
-
 		server_base::router_.on_get("/platform/manager/status", [this](http::session_handler& session) {
-			const auto& format = session.request().get<std::string>("Accept", "application/json");
 
-			if (format.find("application/json") != std::string::npos)
+			const auto& format = session.request().get<std::string>("Accept", "application/json");
+			const auto& format_from_query_parameter = session.request().query().get<std::string>("format", "text");
+
+			if (format.find("application/json") != std::string::npos || format_from_query_parameter == "json")
 			{
-				server_base::manager().server_information(http::server::configuration_.to_json_string());
-				server_base::manager().router_information(server_base::router_.to_json_string());
-				session.response().body()
-					= server_base::manager().to_json_string(http::server::server_manager::json_status_options::full);
-				session.response().type("json");
+				session.response().assign(http::status::ok, server_base::manager().to_json(http::server::server_manager::json_status_options::full).dump(), "json");
 			}
 			else
 			{
@@ -2054,36 +2032,61 @@ public:
 		});
 
 		server_base::router_.on_get("/platform/manager/status/{section}", [this](http::session_handler& session) {
-			auto section_option = http::server::server_manager::json_status_options::full;
+
+			const auto& format = session.request().get<std::string>("Accept", "application/json");
+			const auto& format_from_query_parameter = session.request().query().get<std::string>("format", "text");
 			const auto& section = session.params().get("section");
 
 			if (section == "metrics")
 			{
-				section_option = http::server::server_manager::json_status_options::server_metrics;
+				session.response().assign(
+					http::status::ok,
+					server_base::manager().to_json(http::server::server_manager::json_status_options::server_metrics).dump(),
+					"json");
 			}
 			else if (section == "configuration")
 			{
-				server_base::manager().server_information(http::server::configuration_.to_json_string());
-				section_option = http::server::server_manager::json_status_options::config;
+				session.response().assign(
+					http::status::ok,
+					server_base::manager().to_json(http::server::server_manager::json_status_options::config).dump(),
+					"json");
 			}
 			else if (section == "router")
 			{
-				server_base::manager().router_information(server_base::router_.to_json().dump());
-				section_option = http::server::server_manager::json_status_options::router;
+				session.response().assign(
+					http::status::ok,
+					server_base::manager()
+						.to_json(http::server::server_manager::json_status_options::router)
+						.dump(),
+					"json");
 			}
 			else if (section == "access_log")
 			{
-				section_option = http::server::server_manager::json_status_options::access_log;
+				session.response().assign(
+					http::status::ok,
+					server_base::manager().to_json(http::server::server_manager::json_status_options::access_log).dump(),
+					"json");
+			}
+			else if (section == "version")
+			{
+				std::string version = std::string{ "cld_platform_mgr " } + get_version_ex(PORT_SET, NULL)
+									  + std::string{ "/" } + get_version_ex(PORT_NO, NULL);
+
+				if (format.find("application/json") != std::string::npos || format_from_query_parameter == "json")
+				{
+					session.response().assign(
+						http::status::ok, json::object()["version"].emplace_back(version).dump(), "json");
+				}
+				else
+				{
+					session.response().assign(http::status::ok, std::move(version), "text");
+				}
+
 			}
 			else
 			{
-				session.response().status(http::status::not_found);
-				return;
+				session.response().assign(http::status::not_found);
 			}
-
-			session.response().body() = server_base::manager().to_json_string(section_option, false);
-			session.response().type("json");
-			session.response().status(http::status::ok);
 		});
 
 		server_base::router_.on_get("/platform/manager/workspaces", [this](http::session_handler& session) {

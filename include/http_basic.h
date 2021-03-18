@@ -254,48 +254,48 @@ inline std::string to_upper(std::string input)
 	return input;
 }
 
-inline std::string escape_json(const std::string& s)
-{
-	std::ostringstream ss;
-
-	for (const auto& c : s)
-	{
-		switch (c)
-		{
-			case '"':
-				ss << "\\\"";
-				break;
-			case '\\':
-				ss << "\\\\";
-				break;
-			case '\b':
-				ss << "\\b";
-				break;
-			case '\f':
-				ss << "\\f";
-				break;
-			case '\n':
-				ss << "\\n";
-				break;
-			case '\r':
-				ss << "\\r";
-				break;
-			case '\t':
-				ss << "\\t";
-				break;
-			default:
-				if (static_cast<signed char>(c) >= 0x00 && static_cast<signed char>(c) <= 0x1f)
-				{
-					ss << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)c;
-				}
-				else
-				{
-					ss << c;
-				}
-		}
-	}
-	return ss.str();
-}
+//inline std::string escape_json(const std::string& s)
+//{
+//	std::ostringstream ss;
+//
+//	for (const auto& c : s)
+//	{
+//		switch (c)
+//		{
+//			case '"':
+//				ss << "\\\"";
+//				break;
+//			case '\\':
+//				ss << "\\\\";
+//				break;
+//			case '\b':
+//				ss << "\\b";
+//				break;
+//			case '\f':
+//				ss << "\\f";
+//				break;
+//			case '\n':
+//				ss << "\\n";
+//				break;
+//			case '\r':
+//				ss << "\\r";
+//				break;
+//			case '\t':
+//				ss << "\\t";
+//				break;
+//			default:
+//				if (static_cast<signed char>(c) >= 0x00 && static_cast<signed char>(c) <= 0x1f)
+//				{
+//					ss << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)c;
+//				}
+//				else
+//				{
+//					ss << c;
+//				}
+//		}
+//	}
+//	return ss.str();
+//}
 
 namespace case_insensitive
 {
@@ -1789,19 +1789,19 @@ public:
 		return ss.str();
 	}
 
-	inline std::string to_json_string() const noexcept
-	{
-		std::ostringstream ss;
+	json to_json() const noexcept
+	{ 
+		json configuration_json;
 		std::lock_guard<std::mutex> g(configuration_mutex_);
+
+		configuration_json = json::object();
 
 		for (auto field = fields_.cbegin(); field != fields_.cend(); ++field)
 		{
-			ss << "\"" << field->name << "\":\"" << util::escape_json(field->value) << "\"";
-
-			if (field + 1 != fields_.cend()) ss << ",";
+			configuration_json[field->name] = field->value;
 		}
 
-		return ss.str();
+		return configuration_json;
 	}
 
 	template <typename T>
@@ -3613,8 +3613,8 @@ public:
 
 	session_handler(const std::string& server_id, int keep_alive_count, int keep_alive_timeout, http::protocol protocol)
 		: server_id_(server_id)
-		, keepalive_count_(keep_alive_count) //(configuration.get<int>("keepalive_count", 1024 * 8))
-		, keepalive_max_(keep_alive_timeout) //((configuration.get<int>("keepalive_timeout", 120))
+		, keepalive_count_(keep_alive_count)
+		, keepalive_max_(keep_alive_timeout)
 		, protocol_(protocol)
 		, is_client_allowed_(true)
 		, t0_(std::chrono::steady_clock::now())
@@ -5599,7 +5599,8 @@ class server
 {
 public:
 	server(const http::configuration& configuration)
-		: router_(configuration.get<std::string>("private_base", ""))
+		: manager_(*this)
+		, router_(configuration.get<std::string>("private_base", ""))
 		, configuration_(configuration)
 		, logger_(
 			  configuration.get<std::string>("access_log_file", "access_log.txt"),
@@ -5669,12 +5670,12 @@ public:
 
 		std::vector<std::string> access_log_;
 		mutable std::mutex mutex_;
+		http::server& server_;
 
 	public:
-		server_manager() noexcept
-			: server_information_("")
-			, router_information_("")
-			, idle_since_(std::chrono::steady_clock::now().time_since_epoch().count())
+		server_manager(http::server& server) noexcept
+			: idle_since_(std::chrono::steady_clock::now().time_since_epoch().count()) 
+			, server_(server)
 		{
 			access_log_.reserve(32);
 		};
@@ -5766,76 +5767,86 @@ public:
 			access_log
 		};
 
-		std::string to_json_string(json_status_options options, bool main_object = true) const
+		json to_json(json_status_options options) const
 		{
-			std::ostringstream ss;
+			json result_json = json::object();
 			std::unique_lock<std::mutex> g(mutex_);
-
-			if (main_object) ss << "{";
 
 			switch (options)
 			{
 				case json_status_options::full:
 				{
 					g.unlock();
-					ss << to_json_string(json_status_options::config, false) << ", "
-					   << to_json_string(json_status_options::server_metrics, false) << ", "
-					   << to_json_string(json_status_options::router, false) << ","
-					   << to_json_string(json_status_options::access_log, false);
+					result_json.update(to_json(json_status_options::config));
+					result_json.update(to_json(json_status_options::server_metrics));
+					result_json.update(to_json(json_status_options::router));
+					result_json.update(to_json(json_status_options::access_log));
 					g.lock();
 					break;
 				}
 				case json_status_options::config:
-				{
-					ss << "\"configuration\":"
-					   << "{" << server_information_ << "}";
+				{					
+					result_json["configuration"] = server_.configuration_.to_json();
 					break;
 				}
 				case json_status_options::server_metrics:
 				{
+					result_json["metrics"]["uptime"] = "";
+					result_json["metrics"]["latency"]["min"] = 0.0;
+					result_json["metrics"]["latency"]["max"] = 0.0;
 
-					ss << "\"metrics\": "
-					   << "{\"connections_current\":" << connections_current_ << ","
-					   << "\"connections_accepted\":" << connections_accepted_ << ","
-					   << "\"connections_highest\":" << connections_highest_ << ","
-					   << "\"requests_current\" : " << requests_current_ << ","
-					   << "\"idle_time\" : "
-					   << (std::chrono::duration<std::int64_t, std::ratio<1, 1>>(
-							   std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
-							   .count())
-							  / 1000000000
-					   << "}";
+					result_json["metrics"]["connections"]["active"] = connections_current_.load();
+					result_json["metrics"]["connections"]["highest"] = connections_highest_.load();
+					result_json["metrics"]["connections"]["accepted"] = connections_accepted_.load();
+
+					result_json["metrics"]["responses"]["1xx"] = responses_1xx_.load();
+					result_json["metrics"]["responses"]["2xx"] = responses_2xx_.load();
+					result_json["metrics"]["responses"]["3xx"] = responses_3xx_.load();
+					result_json["metrics"]["responses"]["4xx"] = responses_4xx_.load();
+					result_json["metrics"]["responses"]["5xx"] = responses_5xx_.load();
+					result_json["metrics"]["responses"]["tot"] = responses_tot_.load();
+					result_json["metrics"]["responses"]["health"] = responses_health_.load();
+
+					result_json["metrics"]["requests"]["rate"] = 0.0;
+					result_json["metrics"]["requests"]["active"] = requests_current_.load();
+					result_json["metrics"]["requests"]["tot"] = responses_tot_.load(); // for now.
+					result_json["metrics"]["trafic"]["send"] = 0;
+					result_json["metrics"]["trafic"]["recv"] = 0;
+
 					break;
+
+					//ss << "\"metrics\": "
+					//   << "{\"connections_current\":" << connections_current_ << ","
+					//   << "\"connections_accepted\":" << connections_accepted_ << ","
+					//   << "\"connections_highest\":" << connections_highest_ << ","
+					//   << "\"requests_current\" : " << requests_current_ << ","
+					//   << "\"idle_time\" : "
+					//   << (std::chrono::duration<std::int64_t, std::ratio<1, 1>>(
+					//		   std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
+					//		   .count())
+					//		  / 1000000000
+					//   << "}";
+					//break;
 				}
 				case json_status_options::router:
 				{
-					// ss << "\"router\": {" << router_information_ << "}";
-
-					ss << router_information_;
+					result_json["router"] = server_.router_.to_json();
 					break;
 				}
 				case json_status_options::access_log:
 				{
-					ss << "\"access_log\": [";
+					json tmp = json::array();
+
 					for (auto access_log_entry = access_log_.cbegin(); access_log_entry != access_log_.cend();
 						 ++access_log_entry)
 					{
-						ss << "\"";
-						ss << util::escape_json(*access_log_entry);
-
-						if (access_log_entry + 1 != access_log_.cend())
-							ss << "\",";
-						else
-							ss << "\"";
+						result_json["access_log"].emplace_back(*access_log_entry); 
 					}
-					ss << "]";
 					break;
 				}
 			}
 
-			if (main_object) ss << "}";
-
-			return ss.str();
+			return result_json;
 		}
 
 		std::string to_string() const
