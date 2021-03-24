@@ -496,8 +496,7 @@ public:
 		reason reason_{ reason::not_applicable };
 	};
 
-	bool async_upstream_request(
-		std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
+	bool async_upstream_request(std::function<void(connection_type&)> forward_handler, lgr::logger& logger)
 	{
 		bool result = false;
 		static std::atomic<std::uint8_t> rr{ 0 };
@@ -614,7 +613,11 @@ public:
 			: service_(service)
 			, write_strand_(service)
 			, steady_timer_(service)
-			, session_handler_(configuration.get<std::string>("server", "server_no_id"), configuration.get<int>("keepalive_count", 1024 * 8), configuration.get<int>("keepalive_max", 5), protocol)
+			, session_handler_(
+				  configuration.get<std::string>("server", "server_no_id"),
+				  configuration.get<int>("keepalive_count", 1024 * 8),
+				  configuration.get<int>("keepalive_max", 5),
+				  protocol)
 			, server_(server)
 			, protocol_(protocol)
 		{
@@ -953,8 +956,7 @@ public:
 			}
 		}
 
-		void init_connection_to_upstream(
-			http::async::upstreams::connection_type& upstream_connection)
+		void init_connection_to_upstream(http::async::upstreams::connection_type& upstream_connection)
 		{
 			asio::error_code error;
 
@@ -1259,7 +1261,6 @@ public:
 					server_.logger_.debug("response:\n{s}\n", http::to_dbg_string(session_handler_.response()));
 				}
 
-
 				auto log_msg
 					= server_.manager().log_access(session_handler_, routing_.the_route().route_metrics()) + "\n";
 
@@ -1423,7 +1424,35 @@ public:
 			}
 		}
 
-		bool is_remote_address_allowed(const std::vector<asio::ip::network_v6>&) const { return false; }
+		bool is_remote_address_allowed(const std::vector<asio::ip::network_v6>& networks) const
+		{
+			auto address = socket_.lowest_layer().remote_endpoint().address();
+			bool result = false;
+
+			if (address.is_v4())
+			{
+				// auto address_as_network = asio::ip::network_v4(address.to_v4(), 32);
+
+				// for (const auto& network : networks)
+				//{
+				//	if (address_as_network.canonical() == network.canonical()) return true;
+
+				//	if (address_as_network.is_subnet_of(network.canonical()) == true) return true;
+				//}
+			}
+			else
+			{
+				auto address_as_network = asio::ip::network_v6(address.to_v6(), 128);
+
+				for (const auto& network : networks)
+				{
+					if (address_as_network.canonical() == network.canonical()) return true;
+
+					if (address_as_network.is_subnet_of(network.canonical()) == true) return true;
+				}
+			}
+			return result;
+		}
 
 		void start() override
 		{
@@ -1493,11 +1522,28 @@ public:
 		, io_context_pool_(thread_count_)
 		, http_acceptor_(io_context_pool_.get_io_context())
 		, https_acceptor_(io_context_pool_.get_io_context())
-		, https_ssl_context_(asio::ssl::context::tlsv12)
+		, https_ssl_context_(asio::ssl::context::tls_server)
 	{
 		if (https_enabled_)
 		{
 			asio::error_code error_code;
+			auto tls_protocol = configuration_.get<std::string>("https_tls_protocol", "tls_v1.3");
+
+			if (tls_protocol == "tls_v1.3")
+			{
+				https_ssl_context_.set_options(
+					asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2
+					| asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1 | asio::ssl::context::no_tlsv1_1
+					| asio::ssl::context::no_tlsv1_2 | asio::ssl::context::single_dh_use);
+			}
+			else if (tls_protocol == "tls_v1.2")
+			{
+				https_ssl_context_.set_options(
+					asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2
+					| asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1 | asio::ssl::context::no_tlsv1_1
+					| asio::ssl::context::single_dh_use);
+			}
+
 			https_ssl_context_.use_certificate_chain_file(
 				configuration_.get<std::string>("https_certificate", "server.crt"), error_code);
 

@@ -51,50 +51,56 @@ std::mutex m;
 template <typename S> struct test_sockets
 {
 public:
-	std::set<S> available_sockets_;
+	std::map<std::string, std::set<S>> available_sockets_;
 	std::mutex m_;
 
-	test_sockets(S b, size_t nr)
+	test_sockets(const std::vector<std::string>& tenants, S b, size_t nr) // 8000 64
 	{
-		std::lock_guard<std::mutex> g{ m_ };
-		for (S i = 0; i < nr; i++)
-			available_sockets_.emplace(b + i);
+		for (auto& tenant : tenants)
+		{
+			std::lock_guard<std::mutex> g{ m_ };
+			for (S i = 0; i < nr; i++)
+				available_sockets_[tenant].emplace(b + i);
+		}
 	}
 
-	S aquire()
+	S aquire(const std::string& tenant_id)
 	{
 		std::lock_guard<std::mutex> g{ m_ };
 
-		auto port = *(available_sockets_.begin());
-		available_sockets_.erase(port);
+		auto port = *(available_sockets_[tenant_id].begin());
+		available_sockets_[tenant_id].erase(port);
 		return port;
 	}
 
-	S aquire(S port)
+	S aquire(const std::string& tenant_id, S port)
 	{
 		std::lock_guard<std::mutex> g{ m_ };
 
-		available_sockets_.erase(port);
+		available_sockets_[tenant_id].erase(port);
 
 		return port;
 	}
 
-	void release(const std::string& url)
+	void release(const std::string& tenant_id, const std::string& url)
 	{
 		std::lock_guard<std::mutex> g{ m_ };
 		auto port = url.substr(1 + url.find_last_of(':'));
 
-		available_sockets_.emplace(stoul(port));
+		available_sockets_[tenant_id].emplace(stoul(port));
 	}
 };
 
-static test_sockets<std::uint32_t> _test_sockets{ 8000, 32 };
+static test_sockets<std::uint32_t> _test_sockets{
+	{ "tenant000_prd", "tenant001_prd", "tenant002_prd", "tenant003_prd" }, 8000, 64
+};
+
 } // namespace local_testing
 
 static bool create_bse_process_as_user(
 	const std::string&,
 	const std::string&,
-	const std::string&,
+	const std::string& tenand_id,
 	const std::string&,
 	const std::string&,
 	const std::string& parameters, // for local testing retreive the level this way :(
@@ -107,12 +113,14 @@ static bool create_bse_process_as_user(
 
 	auto worker_id = parameters_as_configuration.get("cld_worker_id");
 	auto worker_label = parameters_as_configuration.get("cld_worker_label");
+	auto worker_workspace = parameters_as_configuration.get("cld_manager_workspace");
+	auto worker_workgroup = parameters_as_configuration.get("cld_manager_workgroup");
 
-	pid = local_testing::_test_sockets.aquire();
+	pid = local_testing::_test_sockets.aquire(tenand_id);
 
 	ec = "";
 
-	std::thread([pid, worker_label, worker_id]() {
+	std::thread([pid, worker_workspace, worker_label, worker_workgroup, worker_id]() {
 		std::lock_guard<std::mutex> g{ local_testing::m };
 		json put_new_instance_json = json::object();
 		std::string ec;
@@ -122,8 +130,8 @@ static bool create_bse_process_as_user(
 		put_new_instance_json["version"] = "test_bshell";
 
 		auto response = http::client::request<http::method::put>(
-			"http://localhost:4000/platform/manager/workspaces/workspace_000/workgroups/untitled/bshells/workers/"
-				+ worker_id,
+			"http://localhost:4000/internal/platform/manager/workspaces/" + worker_workspace + "/workgroups/"
+				+ worker_workgroup + "/workers/" + worker_id,
 			ec,
 			{},
 			put_new_instance_json.dump()); //,std::cerr, true);
@@ -136,8 +144,9 @@ static bool create_bse_process_as_user(
 				throw std::runtime_error{ "error sending \"worker\" registration" };
 			}
 			// else
-			//	std::cout << "http://localhost:5000/platform/manager/workspaces/workspace_000/workgroups/untitled/bshells/"
-			//				 "workers/ send\n";
+			//	std::cout <<
+			//"http://localhost:5000/internal/platform/manager/workspaces/workspace_000/workgroups/untitled/bshells/"
+			//"workers/ send\n";
 		}
 		else
 			throw std::runtime_error{ "error sending \"worker\" registration" };
@@ -351,18 +360,20 @@ namespace cloud
 namespace platform
 {
 
-class applications;
-class application;
 class workspace;
 class workgroups;
 class workspaces;
 
-void to_json(json& j, const applications& value);
-void from_json(const json& j, applications& value);
+namespace output_formating
+{
 
-void to_json(json& j, const application& value);
-void from_json(const json& j, application& value);
+enum class options
+{
+	complete,
+	essential
+};
 
+}
 void to_json(json& j, const workspace& value);
 void from_json(const json& j, workspace& value);
 
@@ -479,11 +490,11 @@ public:
 		worker_label_ = worker_json.value("worker_label", "");
 	}
 
-	void to_json(json& worker_json) const
+	void to_json(json& worker_json, output_formating::options) const
 	{
 		if (!base_url_.empty())
 		{
-			worker_json["link_to_status_url"] = base_url_ + "/platform/worker/status";
+			worker_json["link_to_status_url"] = base_url_ + "/internal/platform/worker/status";
 			worker_json["base_url"] = base_url_;
 			worker_json["version"] = version_;
 
@@ -625,7 +636,7 @@ public:
 		{
 			std::string ec;
 			auto response = http::client::request<http::method::delete_>(
-				worker->second.get_base_url() + "/platform/worker/process", ec, {});
+				worker->second.get_base_url() + "/internal/platform/worker/process", ec, {});
 
 			if (response.status() == http::status::no_content)
 			{
@@ -640,33 +651,42 @@ public:
 	const std::string& get_type(void) const { return type_; }
 	const std::string& get_name(void) const { return name_; }
 
+	const std::string& get_path(void) const { return path_; }
+
 	virtual void from_json(const json& j)
 	{
 		name_ = j.value("name", "anonymous");
+		path_ = j.value("path", "");
+
 		limits_.from_json(j["limits"]);
-		// TODO workers....
 	}
 
 	virtual void from_json(const json& j, const std::string& detail) = 0;
 	virtual void to_json(json& j, const std::string& detail) const = 0;
 
-	virtual void to_json(json& j) const
+	virtual void to_json(json& j, output_formating::options options) const
 	{
 		j["name"] = name_;
 		j["type"] = type_;
 
 		json limits_json;
-		limits_.to_json(limits_json);
+		limits_.to_json(limits_json, options);
 		j["limits"] = limits_json;
 		j["workers"] = json::array();
-		std::lock_guard<std::mutex> g{ workers_mutex_ };
-		for (auto worker = workers_.cbegin(); worker != workers_.cend(); ++worker)
+
+		if (path_.empty() == false) j["path"] = path_;
+
+		if (options == output_formating::options::complete)
 		{
-			json worker_json;
+			std::lock_guard<std::mutex> g{ workers_mutex_ };
+			for (auto worker = workers_.cbegin(); worker != workers_.cend(); ++worker)
+			{
+				json worker_json;
 
-			worker->second.to_json(worker_json);
+				worker->second.to_json(worker_json, options);
 
-			j["workers"].emplace_back(worker_json);
+				j["workers"].emplace_back(worker_json);
+			}
 		}
 	}
 
@@ -886,16 +906,13 @@ public:
 			if (workers_required_ < workers_min_) workers_required_ = workers_min_;
 		}
 
-		void to_json(json& j, const std::string& limit_name = "") const
+		void to_json(json& j, output_formating::options options, const std::string& limit_name = "") const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
+
 			if (limit_name.empty() || limit_name == "workers_required")
 			{
 				j["workers_required"] = workers_required_;
-			}
-			if (limit_name.empty() || limit_name == "workers_actual")
-			{
-				j["workers_actual"] = workers_actual_;
 			}
 			if (limit_name.empty() || limit_name == "workers_min")
 			{
@@ -905,14 +922,6 @@ public:
 			{
 				j["workers_max"] = workers_max_;
 			}
-			if (limit_name.empty() || limit_name == "workers_pending")
-			{
-				j["workers_pending"] = workers_pending_;
-			}
-			if (limit_name.empty() || limit_name == "workers_not_at_label_required")
-			{
-				j["workers_not_at_label_required"] = workers_not_on_label_required_;
-			}
 			if (limit_name.empty() || limit_name == "workers_runtime_max")
 			{
 				j["workers_runtime_max"] = workers_runtime_max_;
@@ -921,17 +930,34 @@ public:
 			{
 				j["workers_requests_max"] = workers_requests_max_;
 			}
+			if (limit_name.empty() || limit_name == "workers_start_at_once_max")
+			{
+				j["workers_start_at_once_max"] = workers_start_at_once_max_;
+			}
 			if (limit_name.empty() || limit_name == "workers_label_required")
 			{
 				j["workers_label_required"] = workers_label_required_;
 			}
-			if (limit_name.empty() || limit_name == "workers_requests_max")
+
+			if (options != output_formating::options::essential)
 			{
-				j["workers_label_actual"] = workers_label_actual_;
-			}
-			if (limit_name.empty() || limit_name == "workers_start_at_once_max")
-			{
-				j["workers_start_at_once_max"] = workers_start_at_once_max_;
+				if (limit_name.empty() || limit_name == "workers_actual")
+				{
+					j["workers_actual"] = workers_actual_;
+				}
+				if (limit_name.empty() || limit_name == "workers_label_actual")
+				{
+					j["workers_label_actual"] = workers_actual_;
+				}
+
+				if (limit_name.empty() || limit_name == "workers_pending")
+				{
+					j["workers_pending"] = workers_pending_;
+				}
+				if (limit_name.empty() || limit_name == "workers_not_at_label_required")
+				{
+					j["workers_not_at_label_required"] = workers_not_on_label_required_;
+				}
 			}
 		}
 
@@ -970,6 +996,7 @@ protected:
 	std::string workspace_id_;
 	std::string type_;
 	std::string tenant_id_;
+	std::string path_;
 
 	limits limits_;
 
@@ -1012,7 +1039,7 @@ public:
 		std::string server_endpoint
 			= configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000");
 
-		server_endpoint += "/platform/manager/workspaces";
+		server_endpoint += "/internal/platform/manager/workspaces";
 
 		std::unique_lock<std::mutex> lock{ workers_mutex_ };
 
@@ -1095,7 +1122,8 @@ public:
 			{
 				for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
 				{
-					if (worker_it->second.get_base_url().empty() || worker_it->second.get_status() == worker::status::recover)
+					if (worker_it->second.get_base_url().empty()
+						|| worker_it->second.get_status() == worker::status::recover)
 					{
 						++worker_it;
 						continue;
@@ -1116,7 +1144,7 @@ public:
 						http::client::async_request<http::method::delete_>(
 							upstreams_,
 							worker_it->second.get_base_url(),
-							"/platform/worker/process",
+							"/internal/platform/worker/process",
 							watchdog_headers,
 							std::string{},
 							[this, base_url, &logger](http::response_message& response, asio::error_code& error_code) {
@@ -1227,7 +1255,7 @@ public:
 						http::client::async_request<http::method::post>(
 							upstreams_,
 							worker_it->second.get_base_url(),
-							"/platform/worker/watchdog",
+							"/internal/platform/worker/watchdog",
 							watchdog_headers,
 							std::string{},
 							[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
@@ -1341,7 +1369,7 @@ public:
 
 						upstreams_.erase_upstream(worker_it->second.get_base_url());
 #ifdef LOCAL_TESTING
-						bse_utils::local_testing::_test_sockets.release(worker_it->second.get_base_url());
+						bse_utils::local_testing::_test_sockets.release(tenant_id_, worker_it->second.get_base_url());
 #endif
 						worker_it = workers_.erase(workers_.find(worker_it->first));
 
@@ -1398,7 +1426,7 @@ public:
 				auto base_url_split = util::split(base_url, ":");
 				auto port = std::atoi(base_url_split[2].c_str());
 
-				bse_utils::local_testing::_test_sockets.aquire(port);
+				bse_utils::local_testing::_test_sockets.aquire(tenant_id_, port);
 			}
 #endif
 
@@ -1455,9 +1483,9 @@ public:
 		if (detail.empty() || detail == "http_options") j["parameters"].emplace("http_options", http_options_);
 	}
 
-	void to_json(json& j) const override
+	void to_json(json& j, output_formating::options options) const override
 	{
-		workgroups::to_json(j);
+		workgroups::to_json(j, options);
 
 		std::unique_lock<std::mutex> guard(workgroups::workers_mutex_);
 		if (bse_.empty() == false) j["parameters"].emplace("bse", bse_);
@@ -1550,9 +1578,9 @@ public:
 		if (detail.empty() || detail == "python_root") j["parameters"].emplace("python_root", rootdir);
 	}
 
-	void to_json(json& j) const override
+	void to_json(json& j, output_formating::options options) const override
 	{
-		workgroups::to_json(j);
+		workgroups::to_json(j, options);
 		j["parameters"].emplace("python_root", rootdir);
 	}
 
@@ -1595,6 +1623,7 @@ private:
 	std::string tenant_id_{};
 	std::string description_{};
 	std::string default_group_{};
+	std::string path_;
 
 	std::vector<std::string> errors;
 	container_type workgroups_;
@@ -1606,6 +1635,9 @@ public:
 	}
 
 	workspace(const workspace&) = delete;
+
+	const std::string& path() const { return path_; }
+	void path(const std::string& path) { path_ = path; }
 
 	const std::string& default_group() const { return default_group_; }
 	void default_group(const std::string& default_group) { default_group_ = default_group; }
@@ -1619,12 +1651,13 @@ public:
 	void clear_errors(void) { errors.clear(); };
 
 public:
-	void to_json(json& workspace) const
+	void to_json(json& workspace, output_formating::options options = output_formating::options::complete) const
 	{
 		workspace["id"] = workspace_id_;
 		workspace["tenant_id"] = tenant_id_;
 		workspace["description"] = description_;
-		workspace["default_group"] = default_group_;
+		if (default_group_.empty() == false) workspace["default_group"] = default_group_;
+		if (path_.empty() == false) workspace["path"] = path_;
 
 		json workgroups_json;
 
@@ -1632,7 +1665,7 @@ public:
 		{
 			json named_worker_json = json::object();
 
-			named_worker.second->to_json(named_worker_json);
+			named_worker.second->to_json(named_worker_json, options);
 
 			workgroups_json.emplace_back(named_worker_json);
 		}
@@ -1681,6 +1714,35 @@ public:
 		return workgroups_.find(key_type{ workgroups_name, workgroups_type });
 	}
 
+	iterator_type find_workgroups(
+		const std::string& workgroups_name, const std::string& workgroups_type, const std::string& url_requested)
+	{
+		iterator_type result = workgroups_.end();
+
+		for (auto workgroup = workgroups_.begin(); workgroup != workgroups_.end(); workgroup++)
+		{
+			if (result == workgroups_.end() && (workgroup->first.first == workgroups_name)
+				&& (workgroup->first.second == workgroups_type) && (workgroup->second->get_path().empty() == true))
+			{
+				result = workgroup; // catch all
+				return result;
+			}
+			else
+			{
+				// if ((workgroup->first.first == workgroups_name) &&(workgroup->first.second == workgroups_type))
+				{
+					auto path = path_ + workgroup->second->get_path();
+					if (url_requested.find(path) == 0)
+					{
+						result = workgroup;
+					}
+				}
+			}
+		}
+
+		return result;
+	}
+
 	void add_workgroups(const std::string& name, std::string type, json& workgroups_json)
 	{
 		for (auto workgroups = workgroups_json.begin(); workgroups != workgroups_json.end(); workgroups++)
@@ -1707,6 +1769,7 @@ public:
 		description_ = j.value("description", "");
 		tenant_id_ = j.value("tenant_id", "");
 		default_group_ = j.value("default_group", "untitled");
+		path_ = j.value("path", "");
 
 		if (j.find("workgroups") != j.end())
 		{
@@ -1817,19 +1880,38 @@ public:
 
 	const_iterator get_workspace(const std::string& id) const { return workspaces_.find(id); }
 
-	workspace* get_tenant_workspace(const std::string& tenant_id) const
+	workspace* get_tenant_workspace(const std::string& tenant_id, const std::string& url_requested = std::string{})
 	{
-		auto result = tenant_lookup_.find(tenant_id);
+		auto result = workspaces_.end();
 
-		if (result != tenant_lookup_.end())
-			return result->second;
+		for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); workspace++)
+		{
+			auto match_level = size_t{};
+
+			if (result == workspaces_.end() && (workspace->second->get_tenant_id() == tenant_id)
+				&& (workspace->second->path().empty() == true))
+			{
+				result = workspace; // catch other
+			}
+			else if ((workspace->second->get_tenant_id() == tenant_id) && (workspace->second->path().empty() == false))
+			{
+				// if requested path starts with specified path....
+				if (url_requested.find(workspace->second->path()) == 0)
+				{
+					result = workspace;
+				}
+			}
+		}
+
+		if (result != workspaces_.end())
+			return result->second.get();
 		else
 			return nullptr;
 	}
 
 	iterator get_workspace(const std::string& id) { return workspaces_.find(id); }
 
-	void to_json(json& j) const
+	void to_json(json& j, output_formating::options options = output_formating::options::complete) const
 	{
 		std::unique_lock<mutex_type> l{ workspaces_mutex_ };
 
@@ -1838,7 +1920,7 @@ public:
 		for (auto& workspace : workspaces_)
 		{
 			auto workspace_json = json{};
-			workspace.second->to_json(workspace_json);
+			workspace.second->to_json(workspace_json, options);
 			j.emplace_back(workspace_json);
 		}
 	}
@@ -1855,77 +1937,6 @@ public:
 inline void to_json(json& j, const workspaces& ws) { ws.to_json(j); }
 inline void from_json(const json& j, workspaces& ws) { ws.from_json(j); }
 
-class application
-{
-private:
-	std::string executable;
-	std::string args;
-	std::string description;
-	std::string id;
-	// exit action
-	// exit delay
-
-public:
-	application(){};
-	~application(){};
-	application(const application&){
-
-	};
-
-	application& operator=(const application&) { return *this; };
-
-	application(application&&) = delete;
-	application& operator=(application&&) = delete;
-
-	int start(void);
-
-	int shutdown(void);
-
-	void from_json(const json& j)
-	{
-		j.at("application").get_to(executable);
-		j.at("arguments").get_to(args);
-		j.at("description").get_to(description);
-		j.at("id").get_to(id);
-	}
-	std::string get_id(void) { return id; }
-};
-
-class applications
-{
-public:
-	using container_type = std::map<const std::string, std::unique_ptr<application>>;
-
-public:
-	void from_json(const json&) {}
-
-	void to_json(json& j) const
-	{
-		j = json::array();
-		j.emplace_back(json::object());
-	}
-
-public:
-	// bool add_application(application& ap)
-	//{
-	//	auto api = apps_.find(ap.get_id());
-	//	if (api == apps_.end())
-	//	{
-	//		(*apps)[ap->get_id()] = ap;
-	//		return true;
-	//	}
-	//	else
-	//	{
-	//		return false;
-	//	}
-	//}
-private:
-	container_type apps_;
-};
-
-inline void to_json(json&, const applications&) {}
-inline void from_json(const json&, applications&) {}
-
 template <typename S> class manager : public S
 {
 protected:
@@ -1933,7 +1944,6 @@ protected:
 
 private:
 	workspaces workspaces_;
-	applications applications_;
 	std::thread director_thread_;
 
 	std::string configuration_file_;
@@ -1951,10 +1961,6 @@ public:
 			try
 			{
 				json manager_configuration_json = json::parse(configuration_stream);
-
-				if (manager_configuration_json.contains("applications") == true)
-					applications_.from_json(manager_configuration_json.at("applications"));
-
 				workspaces_.from_json(manager_configuration_json.at("workspaces"));
 			}
 			catch (json::exception& e)
@@ -1968,36 +1974,39 @@ public:
 		}
 		else
 		{
-			applications_.from_json(json::object());
 			workspaces_.from_json(json::object());
 		}
 
-		server_base::router_.on_get(http::server::configuration_.get<std::string>("health_check", "/private/health_check"), [this](http::session_handler& session) {
-			session.response().assign(http::status::ok, "OK");
-			server_base::manager().update_health_check_metrics();
-		});
+		server_base::router_.on_get(
+			http::server::configuration_.get<std::string>("health_check", "/private/health_check"),
+			[this](http::session_handler& session) {
+				session.response().assign(http::status::ok, "OK");
+				server_base::manager().update_health_check_metrics();
+			});
 
-		server_base::router_.on_post("/platform/manager/mirror", [](http::session_handler& session) {
+		server_base::router_.on_post("/internal/platform/manager/mirror", [](http::session_handler& session) {
 			session.response().status(http::status::ok);
 			session.response().type(session.response().get<std::string>("Content-Type", "text/plain"));
 			session.response().body() = session.request().body();
 		});
 
-		server_base::router_.on_post("/platform/manager/access_log_level", [this](http::session_handler& session) {
-			server_base::logger_.set_access_log_level(session.request().body());
-			auto new_level = server_base::logger_.current_access_log_level_to_string();
-			http::server::configuration_.set("access_log_level", new_level);
-			session.response().body() = server_base::logger_.current_access_log_level_to_string();
-			session.response().status(http::status::ok);
-		});
+		server_base::router_.on_post(
+			"/internal/platform/manager/access_log_level", [this](http::session_handler& session) {
+				server_base::logger_.set_access_log_level(session.request().body());
+				auto new_level = server_base::logger_.current_access_log_level_to_string();
+				http::server::configuration_.set("access_log_level", new_level);
+				session.response().body() = server_base::logger_.current_access_log_level_to_string();
+				session.response().status(http::status::ok);
+			});
 
-		server_base::router_.on_get("/platform/manager/access_log_level", [this](http::session_handler& session) {
-			session.response().body() = server_base::logger_.current_access_log_level_to_string();
-			session.response().status(http::status::ok);
-		});
+		server_base::router_.on_get(
+			"/internal/platform/manager/access_log_level", [this](http::session_handler& session) {
+				session.response().body() = server_base::logger_.current_access_log_level_to_string();
+				session.response().status(http::status::ok);
+			});
 
 		server_base::router_.on_post(
-			"/platform/manager/extended_log_level", [this](http::session_handler& session) {
+			"/internal/platform/manager/extended_log_level", [this](http::session_handler& session) {
 				server_base::logger_.set_extended_log_level(session.request().body());
 				auto new_level = server_base::logger_.current_extended_log_level_to_string();
 				http::server::configuration_.set("extended_log_level", new_level);
@@ -2006,19 +2015,21 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/platform/manager/extended_log_level", [this](http::session_handler& session) {
+			"/internal/platform/manager/extended_log_level", [this](http::session_handler& session) {
 				session.response().body() = server_base::logger_.current_extended_log_level_to_string();
 				session.response().status(http::status::ok);
 			});
 
-		server_base::router_.on_get("/platform/manager/status", [this](http::session_handler& session) {
-
+		server_base::router_.on_get("/internal/platform/manager/status", [this](http::session_handler& session) {
 			const auto& format = session.request().get<std::string>("Accept", "application/json");
 			const auto& format_from_query_parameter = session.request().query().get<std::string>("format", "text");
 
 			if (format.find("application/json") != std::string::npos || format_from_query_parameter == "json")
 			{
-				session.response().assign(http::status::ok, server_base::manager().to_json(http::server::server_manager::json_status_options::full).dump(), "json");
+				session.response().assign(
+					http::status::ok,
+					server_base::manager().to_json(http::server::server_manager::json_status_options::full).dump(),
+					"json");
 			}
 			else
 			{
@@ -2031,65 +2042,72 @@ public:
 			session.response().status(http::status::ok);
 		});
 
-		server_base::router_.on_get("/platform/manager/status/{section}", [this](http::session_handler& session) {
+		server_base::router_.on_get(
+			"/internal/platform/manager/status/{section}", [this](http::session_handler& session) {
+				const auto& format = session.request().get<std::string>("Accept", "application/json");
+				const auto& format_from_query_parameter = session.request().query().get<std::string>("format", "text");
+				const auto& section = session.params().get("section");
 
-			const auto& format = session.request().get<std::string>("Accept", "application/json");
-			const auto& format_from_query_parameter = session.request().query().get<std::string>("format", "text");
-			const auto& section = session.params().get("section");
-
-			if (section == "metrics")
-			{
-				session.response().assign(
-					http::status::ok,
-					server_base::manager().to_json(http::server::server_manager::json_status_options::server_metrics).dump(),
-					"json");
-			}
-			else if (section == "configuration")
-			{
-				session.response().assign(
-					http::status::ok,
-					server_base::manager().to_json(http::server::server_manager::json_status_options::config).dump(),
-					"json");
-			}
-			else if (section == "router")
-			{
-				session.response().assign(
-					http::status::ok,
-					server_base::manager()
-						.to_json(http::server::server_manager::json_status_options::router)
-						.dump(),
-					"json");
-			}
-			else if (section == "access_log")
-			{
-				session.response().assign(
-					http::status::ok,
-					server_base::manager().to_json(http::server::server_manager::json_status_options::access_log).dump(),
-					"json");
-			}
-			else if (section == "version")
-			{
-				std::string version = std::string{ "cld_platform_mgr " } + get_version_ex(PORT_SET, NULL)
-									  + std::string{ "/" } + get_version_ex(PORT_NO, NULL);
-
-				if (format.find("application/json") != std::string::npos || format_from_query_parameter == "json")
+				if (section == "metrics")
 				{
 					session.response().assign(
-						http::status::ok, json::object()["version"].emplace_back(version).dump(), "json");
+						http::status::ok,
+						server_base::manager()
+							.to_json(http::server::server_manager::json_status_options::server_metrics)
+							.dump(),
+						"json");
+				}
+				else if (section == "configuration")
+				{
+					session.response().assign(
+						http::status::ok,
+						server_base::manager()
+							.to_json(http::server::server_manager::json_status_options::config)
+							.dump(),
+						"json");
+				}
+				else if (section == "router")
+				{
+					session.response().assign(
+						http::status::ok,
+						server_base::manager()
+							.to_json(http::server::server_manager::json_status_options::router)
+							.dump(),
+						"json");
+				}
+				else if (section == "access_log")
+				{
+					session.response().assign(
+						http::status::ok,
+						server_base::manager()
+							.to_json(http::server::server_manager::json_status_options::access_log)
+							.dump(),
+						"json");
+				}
+				else if (section == "version")
+				{
+					std::string version = std::string{ "cld_platform_mgr " } + get_version_ex(PORT_SET, NULL)
+										  + std::string{ "/" } + get_version_ex(PORT_NO, NULL);
+
+					if (format.find("application/json") != std::string::npos || format_from_query_parameter == "json")
+					{
+						auto result = json::object();
+						result["version"] = version;
+
+						session.response().assign(http::status::ok, result.dump(), "json");
+					}
+					else
+					{
+						session.response().assign(http::status::ok, std::move(version), "text");
+					}
 				}
 				else
 				{
-					session.response().assign(http::status::ok, std::move(version), "text");
+					session.response().assign(http::status::not_found);
 				}
+			});
 
-			}
-			else
-			{
-				session.response().assign(http::status::not_found);
-			}
-		});
-
-		server_base::router_.on_get("/platform/manager/workspaces", [this](http::session_handler& session) {
+		server_base::router_.on_get("/internal/platform/manager/workspaces", [this](http::session_handler& session) {
 			json workspaces_json{};
 			workspaces_.to_json(workspaces_json);
 
@@ -2099,27 +2117,28 @@ public:
 			session.response().assign(http::status::ok, result_json.dump(), "application/json");
 		});
 
-		server_base::router_.on_get("/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
-			auto& id = session.params().get("workspace_id");
-			auto w = workspaces_.get_workspace(id);
+		server_base::router_.on_get(
+			"/internal/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
+				auto& id = session.params().get("workspace_id");
+				auto w = workspaces_.get_workspace(id);
 
-			if (w != workspaces_.end())
-			{
-				json result_json;
-				result_json["workspace"] = (*(w->second));
-				session.response().assign(http::status::ok, result_json.dump(), "application/json");
-			}
-			else
-			{
-				session.response().assign(
-					http::status::not_found,
-					error_json("404", "workspace_id " + id + " not found").dump(),
-					"application/json");
-			}
-		});
+				if (w != workspaces_.end())
+				{
+					json result_json;
+					result_json["workspace"] = (*(w->second));
+					session.response().assign(http::status::ok, result_json.dump(), "application/json");
+				}
+				else
+				{
+					session.response().assign(
+						http::status::not_found,
+						error_json("404", "workspace_id " + id + " not found").dump(),
+						"application/json");
+				}
+			});
 
 		server_base::router_.on_post(
-			"/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
+			"/internal/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
 
@@ -2142,7 +2161,7 @@ public:
 			});
 
 		server_base::router_.on_delete(
-			"/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
+			"/internal/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				if (workspaces_.delete_workspace(workspace_id))
 				{
@@ -2158,7 +2177,7 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/platform/manager/workspaces/{workspace_id}/workgroups", [this](http::session_handler& session) {
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto w = workspaces_.get_workspace(workspace_id);
 
@@ -2170,7 +2189,7 @@ public:
 					for (auto i = w->second->cbegin(); i != w->second->cend(); ++i)
 					{
 						json workgroups_json;
-						i->second->to_json(workgroups_json);
+						i->second->to_json(workgroups_json, output_formating::options::complete);
 
 						result["workgroups"].emplace_back(workgroups_json);
 					}
@@ -2187,7 +2206,8 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}",
+			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
 
@@ -2201,7 +2221,7 @@ public:
 					for (auto i = workspace->second->cbegin(); i != workspace->second->cend(); ++i)
 					{
 						json workgroups_json;
-						i->second->to_json(workgroups_json);
+						i->second->to_json(workgroups_json, output_formating::options::complete);
 
 						if ((name == i->first.first)) result_json["workgroups"].emplace_back(workgroups_json);
 					}
@@ -2217,7 +2237,8 @@ public:
 			});
 
 		server_base::router_.on_post(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}",
+			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2250,7 +2271,8 @@ public:
 			});
 
 		server_base::router_.on_delete(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}", [this](http::session_handler& session) {
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}",
+			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2285,7 +2307,7 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2301,7 +2323,7 @@ public:
 					for (auto i = workspace->second->cbegin(); i != workspace->second->cend(); ++i)
 					{
 						json workgroups_json;
-						i->second->to_json(workgroups_json);
+						i->second->to_json(workgroups_json, output_formating::options::complete);
 
 						if ((name == i->first.first) && (type == i->first.second))
 							result_json["workgroups"].emplace_back(workgroups_json);
@@ -2318,7 +2340,7 @@ public:
 			});
 
 		server_base::router_.on_post(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 
@@ -2353,7 +2375,7 @@ public:
 			});
 
 		server_base::router_.on_delete(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 
@@ -2392,7 +2414,7 @@ public:
 
 		// get info for specific worker {TYPE} in workspace {workspace_id}
 		server_base::router_.on_get(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/parameters/{detail}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/parameters/{detail}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2434,7 +2456,7 @@ public:
 
 		// get info for specific worker {TYPE} in workspace {workspace_id}
 		server_base::router_.on_put(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/parameters/{detail}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/parameters/{detail}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2479,7 +2501,7 @@ public:
 
 		// get info for specific worker id for a worker with {name} and {type} in workspace {workspace_id}
 		server_base::router_.on_get(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2498,7 +2520,8 @@ public:
 
 						auto worker = workgroups->second->find_worker(worker_id);
 
-						if (worker != workgroups->second->end()) worker->second.to_json(worker_json);
+						if (worker != workgroups->second->end())
+							worker->second.to_json(worker_json, output_formating::options::complete);
 
 						json result;
 						result["worker"] = worker_json;
@@ -2519,7 +2542,7 @@ public:
 
 		// get info for specific worker {TYPE} in workspace {workspace_id}
 		server_base::router_.on_get(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2540,7 +2563,7 @@ public:
 						for (const auto& worker : *workgroups->second)
 						{
 							json worker_json;
-							worker.second.to_json(worker_json);
+							worker.second.to_json(worker_json, output_formating::options::complete);
 
 							result["workers"].emplace_back(worker_json);
 						}
@@ -2565,7 +2588,7 @@ public:
 
 		// put specific worker {worker_id} of worker {name} and {type} in workspace {workspace_id}
 		server_base::router_.on_put(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2609,7 +2632,7 @@ public:
 
 		// remove specific worker {worker_id} of worker {type} in workspace {workspace_id}
 		server_base::router_.on_delete(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2643,7 +2666,7 @@ public:
 
 		// remove specific worker {worker_id} of worker {type} in workspace {workspace_id}
 		server_base::router_.on_delete(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2705,7 +2728,7 @@ public:
 			});
 
 		server_base::router_.on_put(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}/label",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}/label",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2749,7 +2772,7 @@ public:
 			});
 
 		server_base::router_.on_delete(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}/process",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/workers/{worker_id}/process",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2789,7 +2812,7 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2805,7 +2828,7 @@ public:
 					{
 						json result;
 						json limits;
-						workgroups->second->workgroups_limits().to_json(limits);
+						workgroups->second->workgroups_limits().to_json(limits, output_formating::options::complete);
 						result["limits"] = limits;
 						session.response().assign(http::status::ok, result.dump(), "application/json");
 					}
@@ -2823,7 +2846,7 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2841,7 +2864,8 @@ public:
 
 						json result;
 						json limits;
-						workgroups->second->workgroups_limits().to_json(limits, limit_name);
+						workgroups->second->workgroups_limits().to_json(
+							limits, output_formating::options::complete, limit_name);
 						result = limits;
 						session.response().assign(http::status::ok, result.dump(), "application/json");
 					}
@@ -2859,7 +2883,7 @@ public:
 			});
 
 		server_base::router_.on_put(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2894,7 +2918,7 @@ public:
 
 		// get info for specific worker id for a worker with {name} and {type} in workspace {workspace_id}
 		server_base::router_.on_put(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2920,7 +2944,8 @@ public:
 							limit_name,
 							limits,
 							workgroups::limits::from_json_operation::set);
-						workgroups->second->workgroups_limits().to_json(limits["limits"]);
+						workgroups->second->workgroups_limits().to_json(
+							limits["limits"], output_formating::options::complete);
 
 						result = limits;
 						session.response().assign(http::status::ok, result.dump(), "application/json");
@@ -2939,7 +2964,7 @@ public:
 			});
 
 		server_base::router_.on_patch(
-			"/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/{type}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto workspace = workspaces_.get_workspace(workspace_id);
@@ -2966,7 +2991,8 @@ public:
 							limits,
 							workgroups::limits::from_json_operation::add);
 
-						workgroups->second->workgroups_limits().to_json(limits["limits"]);
+						workgroups->second->workgroups_limits().to_json(
+							limits["limits"], output_formating::options::complete);
 
 						result = limits;
 						session.response().assign(http::status::ok, result.dump(), "application/json");
@@ -2984,7 +3010,7 @@ public:
 				}
 			});
 
-		server_base::router_.on_get("/platform/manager/upstreams", [this](http::session_handler& session) {
+		server_base::router_.on_get("/internal/platform/manager/upstreams", [this](http::session_handler& session) {
 			auto include_connections = session.request().query().get<bool>("connections", false);
 			const auto& format = session.request().get<std::string>("Accept", "application/text");
 
@@ -3015,6 +3041,7 @@ public:
 					std::stringstream ss;
 					for (const auto& workgroup : *workspace.second)
 					{
+						ss.str(std::string());
 						if (include_connections)
 							ss << workgroup.second->upstreams_.to_string(
 								workspace.first,
@@ -3036,9 +3063,9 @@ public:
 
 		server_base::router_.on_proxy_pass("/", [this](http::session_handler& session) {
 			auto tenant_id = session.request().get<std::string>("X-Infor-TenantId", "");
-			auto workspace = workspaces_.get_tenant_workspace(tenant_id);
+			auto workspace = workspaces_.get_tenant_workspace(tenant_id, session.request().url_requested());
 
-			bool forwarded = false;
+			session.response().status(http::status::not_found);
 
 			if (workspace != nullptr)
 			{
@@ -3046,31 +3073,35 @@ public:
 					= session.request().get<std::string>("X-Infor-Upstream-Group", workspace->default_group());
 
 				auto workgroup_type = session.request().get<std::string>("X-Infor-Upstream-Type", "bshells");
-				auto workgroup = workspace->find_workgroups(workgroup_name, workgroup_type);
 
-				if (workgroup != workspace->end() && workgroup->second->has_workers_available())
+				auto workgroup
+					= workspace->find_workgroups(workgroup_name, workgroup_type, session.request().url_requested());
+
+				if (workgroup != workspace->end())
 				{
-					if (session.protocol() == http::protocol::https)
+					if (workgroup->second->has_workers_available())
 					{
-						session.request().set("X-Forwarded-Proto", "https");
+						if (session.protocol() == http::protocol::https)
+						{
+							session.request().set("X-Forwarded-Proto", "https");
 
-						session.request().set(
-							"X-Forwarded-Host",
-							session.request().get<std::string>(
+							session.request().set(
 								"X-Forwarded-Host",
-								server_base::configuration_.template get<std::string>(
-									"https_this_server_base_host", "")));
+								session.request().get<std::string>(
+									"X-Forwarded-Host",
+									server_base::configuration_.template get<std::string>(
+										"https_this_server_base_host", "")));
+						}
+
+						session.request().set_attribute<http::async::upstreams*>(
+							"proxy_pass", &workgroup->second->upstreams_);
 					}
-
-					forwarded = true;
-					session.request().set_attribute<http::async::upstreams*>(
-						"proxy_pass", &workgroup->second->upstreams_);
+					else
+					{
+						// can't forward fore some reason. e.g. no workers available.
+						session.response().status(http::status::service_unavailable);
+					}
 				}
-			}
-
-			if (forwarded == false)
-			{
-				session.response().status(http::status::not_found);
 			}
 		});
 
@@ -3103,14 +3134,17 @@ public:
 		}
 	}
 
-	void to_json(json& j) const
+	enum class json_options
 	{
-		json applications_json;
-		json workspaces_json;
-		applications_.to_json(applications_json);
-		workspaces_.to_json(workspaces_json);
+		complete,
+		essential
+	};
 
-		j["applications"] = applications_json;
+	void to_json(json& j, output_formating::options options = output_formating::options::complete) const
+	{
+		json workspaces_json;
+		workspaces_.to_json(workspaces_json, options);
+
 		j["workspaces"] = workspaces_json;
 	}
 
@@ -3131,21 +3165,23 @@ private:
 				workspaces_.direct_workspaces(
 					server_base::get_io_context(), server_base::configuration_, server_base::logger_);
 
-				json manager_json = json::object();
-				to_json(manager_json);
+				// if (workspaces_.is_changed())
+				{
+					json manager_json = json::object();
+					to_json(manager_json, output_formating::options::essential);
+					std::ifstream prev_configuration_file{ configuration_file_, std::ios::binary };
+					std::ofstream bak_config_file{ configuration_file_ + ".bak", std::ios::binary };
 
-				std::ifstream prev_configuration_file{ configuration_file_, std::ios::binary };
-				std::ofstream bak_config_file{ configuration_file_ + ".bak", std::ios::binary };
+					bak_config_file << prev_configuration_file.rdbuf();
+					prev_configuration_file.close();
 
-				bak_config_file << prev_configuration_file.rdbuf();
-				prev_configuration_file.close();
+					std::ofstream new_config_file{ configuration_file_ };
 
-				std::ofstream new_config_file{ configuration_file_ };
+					new_config_file << std::setw(4) << manager_json;
 
-				new_config_file << std::setw(4) << manager_json;
-
-				if (new_config_file.fail() == false)
-					server_base::logger_.info("config saved to: \"{s}\"\n", configuration_file_);
+					if (new_config_file.fail() == false)
+						server_base::logger_.info("config saved to: \"{s}\"\n", configuration_file_);
+				}
 			}
 
 			std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -3176,25 +3212,26 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 	http::configuration http_configuration{
 		{ { "server", server_version },
 		  { "http_listen_port_begin", "4000" },
-		  { "private_base", "/platform/manager" },
-		  { "health_check", "/platform/manager/healthcheck" },
+		  { "private_base", "/internal/platform/manager" },
+		  { "health_check", "/internal/platform/manager/healthcheck" },
 		  { "private_ip_white_list", "::/0" },
 		  { "public_ip_white_list", "::/0" },
-		  { "access_log_level", "none" },
+		  { "access_log_level", "access_log" },
 		  { "access_log_file", "access_log.txt" },
 		  { "extended_log_level", "api" },
 		  { "extended_log_file", "console" },
 		  { "https_enabled", "false" },
 		  { "http_enabled", "true" },
 		  { "http_use_portsharding", "false" } },
-		config_options,
-		[](const std::string name, const std::string value, const std::string default_value) {
-			//std::ofstream configuration_dump{ "C:\\tmp\\options.txt", std::ios_base::app };
+		config_options //,
+		//[](const std::string name, const std::string value, const std::string default_value) {
+		//	// std::ofstream configuration_dump{ "C:\\tmp\\options.txt", std::ios_base::app };
 
-			//configuration_dump << "name: '" << name << "', value: '" << value << "', default_value: '" << default_value
-			//				   << "'\n";
-			//configuration_dump.flush();
-		}
+		//	// configuration_dump << "name: '" << name << "', value: '" << value << "', default_value: '" <<
+		//	// default_value
+		//	//				   << "'\n";
+		//	// configuration_dump.flush();
+		//}
 	};
 
 	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager<http::async::server>>(
@@ -3213,7 +3250,7 @@ inline int start_cld_manager_server(int argc, const char** argv)
 		{ { "cld_config",
 			{ prog_args::arg_t::arg_val, " <config>: filename for the workspace config file or url", "config.json" } },
 		  { "cld_options", { prog_args::arg_t::arg_val, "see doc.", "" } },
-		  { "daemonize", { prog_args::arg_t::flag, "run as daemon" } } });
+		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } } });
 
 	if (cmd_args.process_args() == false)
 	{

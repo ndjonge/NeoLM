@@ -3613,9 +3613,9 @@ public:
 
 	session_handler(const std::string& server_id, int keep_alive_count, int keep_alive_timeout, http::protocol protocol)
 		: server_id_(server_id)
+		, protocol_(protocol)
 		, keepalive_count_(keep_alive_count)
 		, keepalive_max_(keep_alive_timeout)
-		, protocol_(protocol)
 		, is_client_allowed_(true)
 		, t0_(std::chrono::steady_clock::now())
 	{
@@ -5729,11 +5729,12 @@ public:
 			auto response_time = (m.processing_duration_ + m.request_latency_ + m.response_latency_);
 
 			std::string msg = lgr::logger::format<lgr::prefix::access_log>(
-				"{s} - {s} - '{s} {s}' - {d} - {u} - {u} - {u}",
+				"{s} - {s} - \"{s} {s} {s}\" - {d} - {u} - {u} - {u}",
 				session.request().get("X-Forwarded-For", std::string{}),
 				session.request().get("X-Request-ID", std::string{}),
 				http::method::to_string(session.request().method()),
 				session.request().url_requested(),
+				session.request().version(),
 				http::status::to_int(session.response().status()),
 				session.request().content_length(),
 				session.response().content_length(),
@@ -5791,9 +5792,12 @@ public:
 				}
 				case json_status_options::server_metrics:
 				{
-					result_json["metrics"]["uptime"] = "";
-					result_json["metrics"]["latency"]["min"] = 0.0;
-					result_json["metrics"]["latency"]["max"] = 0.0;
+					//result_json["metrics"]["uptime"] = "";
+					//result_json["metrics"]["latency"]["min"] = 0.0;
+					//result_json["metrics"]["latency"]["max"] = 0.0;
+					//result_json["metrics"]["trafic"]["send"] = 0;
+					//result_json["metrics"]["trafic"]["recv"] = 0;
+					//result_json["metrics"]["requests"]["rate"] = 0.0;
 
 					result_json["metrics"]["connections"]["active"] = connections_current_.load();
 					result_json["metrics"]["connections"]["highest"] = connections_highest_.load();
@@ -5804,29 +5808,18 @@ public:
 					result_json["metrics"]["responses"]["3xx"] = responses_3xx_.load();
 					result_json["metrics"]["responses"]["4xx"] = responses_4xx_.load();
 					result_json["metrics"]["responses"]["5xx"] = responses_5xx_.load();
-					result_json["metrics"]["responses"]["tot"] = responses_tot_.load();
+					result_json["metrics"]["responses"]["total"] = responses_tot_.load();
 					result_json["metrics"]["responses"]["health"] = responses_health_.load();
 
-					result_json["metrics"]["requests"]["rate"] = 0.0;
 					result_json["metrics"]["requests"]["active"] = requests_current_.load();
-					result_json["metrics"]["requests"]["tot"] = responses_tot_.load(); // for now.
-					result_json["metrics"]["trafic"]["send"] = 0;
-					result_json["metrics"]["trafic"]["recv"] = 0;
+					result_json["metrics"]["requests"]["total"] = responses_tot_.load(); // for now.
 
+					result_json["metrics"]["idle"]
+						= (std::chrono::duration<std::int64_t, std::nano>(
+							   std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
+							   .count())
+							  / 1000000000;
 					break;
-
-					//ss << "\"metrics\": "
-					//   << "{\"connections_current\":" << connections_current_ << ","
-					//   << "\"connections_accepted\":" << connections_accepted_ << ","
-					//   << "\"connections_highest\":" << connections_highest_ << ","
-					//   << "\"requests_current\" : " << requests_current_ << ","
-					//   << "\"idle_time\" : "
-					//   << (std::chrono::duration<std::int64_t, std::ratio<1, 1>>(
-					//		   std::chrono::steady_clock::now().time_since_epoch().count() - idle_since_.load())
-					//		   .count())
-					//		  / 1000000000
-					//   << "}";
-					//break;
 				}
 				case json_status_options::router:
 				{
@@ -5858,12 +5851,11 @@ public:
 
 			ss << "\nStatistics:\n";
 
-
 			ss << "connections_accepted: " << connections_accepted_ << "\n";
 			ss << "connections_highest: " << connections_highest_ << "\n";
-			ss << "connections_current: " << connections_current_ << "\n";
+			ss << "connections_active: " << connections_current_ << "\n";
 
-			ss << "requests_current: " << requests_current_ << "\n";
+			ss << "requests_active: " << requests_current_ << "\n";
 			ss << "responses_1xx: " << std::to_string(responses_1xx_) << "\n";
 			ss << "responses_2xx: " << std::to_string(responses_2xx_) << "\n";
 			ss << "responses_3xx: " << std::to_string(responses_3xx_) << "\n";

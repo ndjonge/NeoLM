@@ -21,11 +21,11 @@ template <class S> class license_manager
 {
 public:
 private:
-	// /platform/implementer/version
-	// /platform/implementer/status
-	// /platform/implementer/status{1}
-	// /platform/implementer/healthcheck
-	// /platform/implementer/shutdown
+	// /internal/platform/implementer/version
+	// /internal/platform/implementer/status
+	// /internal/platform/implementer/status{1}
+	// /internal/platform/implementer/healthcheck
+	// /internal/platform/implementer/shutdown
 
 	class api_server : public S, public http::upstream::enable_server_as_upstream
 	{
