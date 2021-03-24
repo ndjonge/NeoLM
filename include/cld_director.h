@@ -651,12 +651,15 @@ public:
 	const std::string& get_type(void) const { return type_; }
 	const std::string& get_name(void) const { return name_; }
 
-	const std::string& get_path(void) const { return path_; }
+	const std::vector<std::string>& paths(void) const { return paths_; }
 
 	virtual void from_json(const json& j)
 	{
 		name_ = j.value("name", "anonymous");
-		path_ = j.value("path", "");
+		
+		if (j.contains("paths"))
+			for (auto& path : j.at("paths").items())
+				paths_.emplace_back(path.value());
 
 		limits_.from_json(j["limits"]);
 	}
@@ -674,7 +677,8 @@ public:
 		j["limits"] = limits_json;
 		j["workers"] = json::array();
 
-		if (path_.empty() == false) j["path"] = path_;
+		if (paths_.empty() == false) 
+			j["paths"] = paths_;
 
 		if (options == output_formating::options::complete)
 		{
@@ -996,7 +1000,7 @@ protected:
 	std::string workspace_id_;
 	std::string type_;
 	std::string tenant_id_;
-	std::string path_;
+	std::vector<std::string> paths_;
 
 	limits limits_;
 
@@ -1623,7 +1627,7 @@ private:
 	std::string tenant_id_{};
 	std::string description_{};
 	std::string default_group_{};
-	std::string path_;
+	std::vector<std::string> paths_;
 
 	std::vector<std::string> errors;
 	container_type workgroups_;
@@ -1636,8 +1640,7 @@ public:
 
 	workspace(const workspace&) = delete;
 
-	const std::string& path() const { return path_; }
-	void path(const std::string& path) { path_ = path; }
+	const std::vector<std::string>& paths() const { return paths_; }
 
 	const std::string& default_group() const { return default_group_; }
 	void default_group(const std::string& default_group) { default_group_ = default_group; }
@@ -1657,7 +1660,8 @@ public:
 		workspace["tenant_id"] = tenant_id_;
 		workspace["description"] = description_;
 		if (default_group_.empty() == false) workspace["default_group"] = default_group_;
-		if (path_.empty() == false) workspace["path"] = path_;
+		if (paths_.empty() == false) 
+			workspace["paths"] = paths_;
 
 		json workgroups_json;
 
@@ -1722,19 +1726,21 @@ public:
 		for (auto workgroup = workgroups_.begin(); workgroup != workgroups_.end(); workgroup++)
 		{
 			if (result == workgroups_.end() && (workgroup->first.first == workgroups_name)
-				&& (workgroup->first.second == workgroups_type) && (workgroup->second->get_path().empty() == true))
+				&& (workgroup->first.second == workgroups_type) && (workgroup->second->paths().empty() == true))
 			{
 				result = workgroup; // catch all
 				return result;
 			}
 			else
 			{
-				// if ((workgroup->first.first == workgroups_name) &&(workgroup->first.second == workgroups_type))
+				for (const auto& workspace_path : paths_ )
 				{
-					auto path = path_ + workgroup->second->get_path();
-					if (url_requested.find(path) == 0)
+					for (const auto& workgroup_path : workgroup->second->paths())
 					{
-						result = workgroup;
+						if (url_requested.find(workspace_path + workgroup_path) == 0)
+						{
+							result = workgroup;
+						}
 					}
 				}
 			}
@@ -1769,7 +1775,10 @@ public:
 		description_ = j.value("description", "");
 		tenant_id_ = j.value("tenant_id", "");
 		default_group_ = j.value("default_group", "untitled");
-		path_ = j.value("path", "");
+
+		if (j.contains("paths"))
+			for (auto& path : j.at("paths").items())
+				paths_.emplace_back(path.value());
 
 		if (j.find("workgroups") != j.end())
 		{
@@ -1886,19 +1895,20 @@ public:
 
 		for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); workspace++)
 		{
-			auto match_level = size_t{};
-
 			if (result == workspaces_.end() && (workspace->second->get_tenant_id() == tenant_id)
-				&& (workspace->second->path().empty() == true))
+				&& (workspace->second->paths().empty() == true))
 			{
 				result = workspace; // catch other
 			}
-			else if ((workspace->second->get_tenant_id() == tenant_id) && (workspace->second->path().empty() == false))
+			else if ((workspace->second->get_tenant_id() == tenant_id) && (workspace->second->paths().empty() == false))
 			{
 				// if requested path starts with specified path....
-				if (url_requested.find(workspace->second->path()) == 0)
+				for (const auto& workspace_path : workspace->second->paths())
 				{
-					result = workspace;
+					if (url_requested.find(workspace_path) == 0)
+					{
+						result = workspace;
+					}
 				}
 			}
 		}
