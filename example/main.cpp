@@ -14,56 +14,94 @@
 #include "nlohmann/json.hpp"
 using json = nlohmann::json;
 
-				//
+//   "workgroups": [
+//               {
+//"limits" : {
+//	"workers_label_required" : "v8",
+//	"workers_max" : 8,
+//	"workers_min" : 8,
+//	"workers_requests_max" : 32,
+//	"workers_required" : 8,
+//	"workers_runtime_max" : 2,
+//	"workers_start_at_once_max" : 4
+//},
+//		   "name" : "service_a_e",
+//					"parameters"
+//	: {
+//		"bse" : "D:/Infor/lnmsql/bse",
+//		"bse_bin" : "\\\\view\\enha_BDNT79248.NLBAWPSET7.ndjonge\\obj.dbg.WinX64\\bin",
+//		"bse_user" : "ndjonge",
+//		"cli_options" :
+//			"-httpserver -delay 0 -install -set HTTP_BOOT_PROCESS=otttsthttpboot D:/Infor/lnmsql/bse/http/t.o",
+//		"http_options" : "http_watchdog_timeout:62,log_level:api",
+//		"os_password" : "$2S$80EEA66DF8FBAEB005D7210E2372952C",
+//		"os_user" : "ndjonge@infor.com",
+//		"program" : "ntbshell.exe"
+//	},
+//	  "paths" : [ "/v1", "/service_e", "/external" ],
+//				"type" : "bshells",
 
+namespace tests
+{
+bool add_single_workspace(std::string id)
+{
+	// json workspace_def{
+	//	{ "workspace",
+	//	  { { "id", "workspace_test_" + id },
+	//		{ "tenant_id", "tenant" + id + "_tst" },
+	//		{}
+	//		{ "workgroups",
+	//						  { { { "name", "test_service" },
+	//							  { "type", "bshells" },
+	//							  { "limits",
+	//								{ { "workers_min", 8 },
+	//								  { "workers_max", 8 },
+	//								  { "workers_required", 8 },
+	//									{ "workers_start_at_once_max", 8 } } },
+	//							  { "parameters", { "program", "x" } } } } } } }
+	//};
 
+	json workspace_def
+	{
+		{ "workspace",
+		  { { "id", "workspace_" + id },
+			{ "tenant_id", "tenant" + id + "_tst" },
+							{ "paths", { "/api" } },
+			  { "workgroups",
+				{ { { "name", "tests_service" },
+					{ "type", "bshells" },
+					{ "paths", { "/tests" } },
+					{ "limits",
+					  { { "workers_min", 8 },
+						{ "workers_max", 8 },
+						{ "workers_required", 8 },
+						{ "workers_start_at_once_max", 8 } } },
+					{ "parameters", { "program", "bshell" } } } } } } } };
+
+//		std::cout << workspace_def << "\n";
+		std::string error;
+
+		auto response = http::client::request<http::method::post>(
+			"http://localhost:4000/internal/platform/manager/workspaces", error, {}, workspace_def["workspace"].dump());
+
+		if (error.empty() == false) return false;
+
+		if (response.status() == http::status::conflict)
+		{
+		}
+	}
+} // namespace tests
 
 int main(int argc, const char* argv[])
 {
-	{
-		//// vector of allowed network objects
-		//// return true if client ip converted to network with same width as allowed is same canononical network.
-		//std::string allowed_spec
-		//	= std::string{ "::ffff:127.0.0.0/120" }; //::ffff:192.168.1.0/120;::ffff:10.0.0.0/104"};
-
-		////auto address = asio::ip::make_address_v6("::ffff:192.168.2.1");
-		//auto address = asio::ip::make_address_v6("::ffff:127.0.0.1");
-
-		//for (const auto& allowed_range_spec : util::split(allowed_spec, ";"))
-		//{
-		//	auto spec = util::split(allowed_range_spec, "/");
-		//	auto allowed_address = asio::ip::address_v6::from_string(spec[0]);
-
-		//	auto x = asio::ip::network_v6(allowed_address, std::atoi(spec[1].data()));
-
-		//	auto z = asio::ip::network_v6(address, 128);
-
-		//	std::cout << "ip:" << address.to_string() << " network1:" << x.canonical().to_string()
-		//			  << " network2:" << z.canonical().to_string() 
-		//			  << " result1:" << (x.canonical() == z.canonical()) 
-		//		      << " result2:" << z.is_subnet_of(x.canonical()) << "\n";
-		//}
-
-	}
-
-
-
-
 	network::init();
 	network::ssl::init();
 
-	//http::client::request<http::method::get>(
-	//	"http://nlbalcc/",
-	//	{},
-	//	"",
-	//	[](http::response_message& response, asio::error_code& ec) 
-	//	{
-	//		if (!ec)
-	//			std::cout << "body:" << response.body() << "\n";
-	//	}
-	//);
-
 	start_cld_manager_server(argc, argv);
+
+	for (int i = 0; i < 64; i++)
+		tests::add_single_workspace(std::to_string(100 + i));
+
 	run_cld_manager_server();
 	stop_cld_manager_server();
 }
