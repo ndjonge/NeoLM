@@ -2084,6 +2084,7 @@ public:
 			upstream_connection_.error();
 			response_.reset();
 			response_.status(http::status::bad_gateway);
+			on_complete_(response_, ec);
 			return;
 		}
 		else if (upstream_connection_.should_drain())

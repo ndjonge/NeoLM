@@ -3780,8 +3780,13 @@ public:
 	int keepalive_max() const { return keepalive_max_; };
 
 	http::request_parser& request_parser() { return request_parser_; };
+	
 	http::response_message& response() { return response_; };
 	http::request_message& request() { return request_; };
+
+	const http::response_message& response() const { return response_; };
+	const http::request_message& request() const { return request_; };
+
 	const http::api::params& params() const { return *params_; };
 	const http::api::routing& routing() const { return *routing_; };
 	http::api::routing& routing() { return *routing_; };

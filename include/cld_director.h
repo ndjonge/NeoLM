@@ -128,14 +128,6 @@ static bool create_bse_process_as_user(
 	auto worker_workspace = parameters_as_configuration.get("cld_manager_workspace");
 	auto worker_workgroup = parameters_as_configuration.get("cld_manager_workgroup");
 
-
-	if (worker_workspace == "workspace_test_100")
-	{
-		auto test = "http://localhost:4000/internal/platform/manager/workspaces/" + worker_workspace + "/workgroups/"
-					+ worker_workgroup + "/workers/" + worker_id;
-		auto x = 0;
-	}
-
 	pid = local_testing::_test_sockets.aquire(tenand_id);
 
 	ec = "";
@@ -667,20 +659,49 @@ public:
 		}
 		return result;
 	}
+private:
+
+	std::vector<std::string> paths_;
+
 
 public:
 	const std::string& get_type(void) const { return type_; }
 	const std::string& get_name(void) const { return name_; }
 
-	const std::vector<std::string>& paths(void) const { return paths_; }
+	const std::vector<std::string>& paths() const { return paths_; }
+
+	using route_header_type = std::vector<http::field<std::string>>;
+	route_header_type headers_;
+	const route_header_type headers() const { return headers_; }
 
 	virtual void from_json(const json& j)
 	{
 		name_ = j.value("name", "anonymous");
 
-		if (j.contains("paths"))
-			for (auto& path : j.at("paths").items())
-				paths_.emplace_back(path.value());
+
+        //"routes" : {
+        //    "headers" : [ {"X-Infor-Tenant-Id" : "tenant100_tst"} ],
+        //    "paths": [ "/api", "/internal" ]
+        //},
+
+		if (j.contains("routes"))
+		{
+			if (j["routes"].contains("headers"))
+			{
+				for (auto& header : j["routes"]["headers"].items())
+				{
+					for (auto& header_value : header.value())
+						headers_.emplace_back(header.key(), header_value);
+				}
+			}
+
+			if (j["routes"].contains("paths"))
+			{
+				for (auto& path : j["routes"]["paths"].items())
+					paths_.emplace_back(path.value());
+			}
+		}
+		
 
 		if (j.contains("limits")) limits_.from_json(j["limits"]);
 	}
@@ -698,7 +719,16 @@ public:
 		j["limits"] = limits_json;
 		j["workers"] = json::array();
 
-		if (paths_.empty() == false) j["paths"] = paths_;
+		if (paths_.empty() == false)
+		{
+			j["routes"]["paths"] = paths_;
+		}
+
+		if (headers_.empty() == false)
+		{
+			for (const auto& header : headers_)
+				j["routes"]["headers"][header.name].emplace_back(header.value);
+		}
 
 		// if (options == output_formating::options::complete)
 		{
@@ -1020,7 +1050,7 @@ protected:
 	std::string workspace_id_;
 	std::string type_;
 	std::string tenant_id_;
-	std::vector<std::string> paths_;
+
 
 	limits limits_;
 
@@ -1655,7 +1685,9 @@ private:
 	std::string tenant_id_{};
 	std::string description_{};
 	std::string default_group_{};
+
 	std::vector<std::string> paths_;
+
 
 	std::vector<std::string> errors;
 	container_type workgroups_;
@@ -1669,6 +1701,13 @@ public:
 	workspace(const workspace&) = delete;
 
 	const std::vector<std::string>& paths() const { return paths_; }
+	using route_header_type = std::vector<http::field<std::string>>;
+
+private:
+	route_header_type headers_;
+
+public:
+	const route_header_type headers() const { return headers_; }
 
 	const std::string& default_group() const { return default_group_; }
 	void default_group(const std::string& default_group) { default_group_ = default_group; }
@@ -1688,7 +1727,17 @@ public:
 		workspace["tenant_id"] = tenant_id_;
 		workspace["description"] = description_;
 		if (default_group_.empty() == false) workspace["default_group"] = default_group_;
-		if (paths_.empty() == false) workspace["paths"] = paths_;
+
+		if (paths_.empty() == false)
+		{
+			workspace["routes"]["paths"] = paths_;
+		}
+
+		if (headers_.empty() == false)
+		{
+			for (auto& header : headers_)
+				workspace["routes"]["headers"][header.name].emplace_back(header.value);
+		}
 
 		json workgroups_json;
 
@@ -1745,31 +1794,55 @@ public:
 		return workgroups_.find(key_type{ workgroups_name, workgroups_type });
 	}
 
-	iterator_type find_workgroups(
-		const std::string& workgroups_name, const std::string& workgroups_type, const std::string& url_requested)
+	iterator_type find_workgroups(const http::session_handler session)
 	{
-		iterator_type result = workgroups_.end();
+		auto result = workgroups_.end();
 
 		for (auto workgroup = workgroups_.begin(); workgroup != workgroups_.end(); workgroup++)
 		{
-			if (result == workgroups_.end() && (workgroup->first.first == workgroups_name)
-				&& (workgroup->first.second == workgroups_type) && (workgroup->second->paths().empty() == true))
+			bool header_match = false;
+			bool route_match = false;
+
+			if (workgroup->second->headers().empty() == false)
 			{
-				result = workgroup; // catch all
-				return result;
+				for (const auto& header : workgroup->second->headers())
+				{
+					bool found = false;
+					if (session.request().get<std::string>(header.name, found, "") == header.value && found == true)
+					{
+						result = workgroup;
+						header_match = true;
+						break;
+					}
+				}
 			}
 			else
+			{
+				header_match = true;
+			}
+
+			if (header_match && workgroup->second->paths().empty() == false)
 			{
 				for (const auto& workspace_path : paths_)
 				{
 					for (const auto& workgroup_path : workgroup->second->paths())
 					{
-						if (url_requested.find(workspace_path + workgroup_path) == 0)
+						if (session.request().url_requested().find(workspace_path + workgroup_path) == 0)
 						{
 							result = workgroup;
+							break;
 						}
 					}
 				}
+			}
+			else
+			{
+				route_match = header_match;
+			}
+
+			if (header_match && route_match)
+			{
+				break;
 			}
 		}
 
@@ -1803,9 +1876,24 @@ public:
 		tenant_id_ = j.value("tenant_id", "");
 		default_group_ = j.value("default_group", "untitled");
 
-		if (j.contains("paths"))
-			for (auto& path : j.at("paths").items())
-				paths_.emplace_back(path.value());
+		if (j.contains("routes"))
+		{
+			if (j["routes"].contains("headers"))
+			{
+				for (auto& header : j["routes"]["headers"].items())
+				{
+					auto key = header.key();
+					for (auto& header_value : header.value())
+						headers_.emplace_back(header.key(), header_value);
+				}
+			}
+
+			if (j["routes"].contains("paths"))
+			{
+				for (auto& path : j["routes"]["paths"].items())
+					paths_.emplace_back(path.value());
+			}
+		}
 
 		if (j.find("workgroups") != j.end())
 		{
@@ -1920,27 +2008,54 @@ public:
 
 	const_iterator get_workspace(const std::string& id) const { return workspaces_.find(id); }
 
-	workspace* get_tenant_workspace(const std::string& tenant_id, const std::string& url_requested = std::string{})
+	workspace* get_workspace(const http::session_handler& session)
 	{
 		auto result = workspaces_.end();
 
+
 		for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); workspace++)
 		{
-			if (result == workspaces_.end() && (workspace->second->get_tenant_id() == tenant_id)
-				&& (workspace->second->paths().empty() == true))
+			bool header_match = false;
+			bool route_match = false;
+
+			if (workspace->second->headers().empty() == false)
 			{
-				result = workspace; // catch other
-			}
-			else if ((workspace->second->get_tenant_id() == tenant_id) && (workspace->second->paths().empty() == false))
-			{
-				// if requested path starts with specified path....
-				for (const auto& workspace_path : workspace->second->paths())
+				for (const auto& header : workspace->second->headers())
 				{
-					if (url_requested.find(workspace_path) == 0)
+					bool found = false;
+					if (session.request().get<std::string>(header.name, found, "") != header.value && found == true)
 					{
 						result = workspace;
+						header_match = true;
+						break;
 					}
 				}
+			}
+			else
+			{
+				header_match = true;
+			}
+
+			if (header_match && workspace->second->paths().empty() == false)
+			{
+				for (const auto& workspace_path : workspace->second->paths())
+				{
+					if (session.request().url_requested().find(workspace_path) == 0)
+					{
+						result = workspace;
+						route_match = true;
+						break;
+					}
+				}
+			}
+			else
+			{
+				route_match = header_match;
+			}
+
+			if (header_match && route_match)
+			{
+				break;
 			}
 		}
 
@@ -2002,7 +2117,8 @@ public:
 			try
 			{
 				json manager_configuration_json = json::parse(configuration_stream);
-				workspaces_.from_json(manager_configuration_json.at("workspaces"));
+				if (manager_configuration_json.contains("workspaces") == true)
+					workspaces_.from_json(manager_configuration_json.at("workspaces"));
 			}
 			catch (json::exception& e)
 			{
@@ -3133,20 +3249,23 @@ public:
 		});
 
 		server_base::router_.on_proxy_pass("/", [this](http::session_handler& session) {
-			auto tenant_id = session.request().get<std::string>("X-Infor-TenantId", "");
-			auto workspace = workspaces_.get_tenant_workspace(tenant_id, session.request().url_requested());
+
+			//auto tenant_id = session.request().get<std::string>("X-Infor-TenantId", "");
+			//auto workspace = workspaces_.get_tenant_workspace(tenant_id, session.request().url_requested());
+
+			auto workspace = workspaces_.get_workspace(session);
 
 			session.response().status(http::status::not_found);
 
 			if (workspace != nullptr)
 			{
-				auto workgroup_name
-					= session.request().get<std::string>("X-Infor-Upstream-Group", workspace->default_group());
+				//auto workgroup_name
+				//	= session.request().get<std::string>("X-Infor-Upstream-Group", workspace->default_group());
 
-				auto workgroup_type = session.request().get<std::string>("X-Infor-Upstream-Type", "bshells");
+				//auto workgroup_type = session.request().get<std::string>("X-Infor-Upstream-Type", "bshells");
 
 				auto workgroup
-					= workspace->find_workgroups(workgroup_name, workgroup_type, session.request().url_requested());
+					= workspace->find_workgroups(session);
 
 				if (workgroup != workspace->end())
 				{

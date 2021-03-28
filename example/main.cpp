@@ -66,19 +66,19 @@ bool add_single_workspace(std::string id)
 		{ "workspace",
 		  { { "id", "workspace_" + id },
 			{ "tenant_id", "tenant" + id + "_tst" },
-							{ "paths", { "/api" } },
+			{ "routes", { { "paths", { "/api" } }, { "headers", { { "X-Infor-TenantId", { "tenant_" + id } } } } } },
 			  { "workgroups",
 				{ { { "name", "tests_service" },
 					{ "type", "bshells" },
-					{ "paths", { "/tests" } },
-					{ "limits",
+				  { "routes", { { "paths", { "/tests" } }, { "headers", { { "X-Infor-Company", { id } } } } } },
+				  { "limits",
 					  { { "workers_min", 8 },
 						{ "workers_max", 8 },
 						{ "workers_required", 8 },
 						{ "workers_start_at_once_max", 8 } } },
 					{ "parameters", { "program", "bshell" } } } } } } } };
 
-//		std::cout << workspace_def << "\n";
+		//std::cout << workspace_def.dump(4, ' ') << "\n";
 		std::string error;
 
 		auto response = http::client::request<http::method::post>(
@@ -88,7 +88,10 @@ bool add_single_workspace(std::string id)
 
 		if (response.status() == http::status::conflict)
 		{
+
 		}
+
+
 	}
 } // namespace tests
 
@@ -99,7 +102,7 @@ int main(int argc, const char* argv[])
 
 	start_cld_manager_server(argc, argv);
 
-	for (int i = 0; i < 64; i++)
+	for (int i = 0; i < 32; i++)
 		tests::add_single_workspace(std::to_string(100 + i));
 
 	run_cld_manager_server();
