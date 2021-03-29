@@ -1688,11 +1688,12 @@ class workspace
 public:
 	using key_type = std::pair<std::string, std::string>;
 	using value_type = std::unique_ptr<workgroups>;
-
 	using container_type = std::map<key_type, value_type>;
-
 	using iterator_type = container_type::iterator;
 	using const_iterator_type = container_type::const_iterator;
+	using route_methods_type = std::vector<http::method::method_t>;
+	using route_path_type = std::vector<std::string>;
+	using route_headers_type = std::vector<http::field<std::string>>;
 
 private:
 	std::string server_endpoint_;
@@ -1700,11 +1701,6 @@ private:
 	std::string tenant_id_{};
 	std::string description_{};
 
-	using route_methods_type = std::vector<http::method::method_t>;
-	using route_path_type = std::vector<std::string>;
-	using route_headers_type = std::vector<http::field<std::string>>;
-
-private:
 	route_methods_type methods_;
 	route_path_type paths_;
 	route_headers_type headers_;
@@ -1811,6 +1807,7 @@ public:
 
 	iterator_type find_workgroups(const http::session_handler session)
 	{
+
 		auto result = workgroups_.end();
 
 		for (auto workgroup = workgroups_.begin(); workgroup != workgroups_.end(); workgroup++)
@@ -1963,17 +1960,17 @@ public:
 
 	using iterator = container_type::iterator;
 	using const_iterator = container_type::const_iterator;
-	using mutex_type = std::mutex;
+	using mutex_type = std14::shared_mutex;
 
 private:
 	container_type workspaces_;
-	mutable mutex_type workspaces_mutex_;
 
 	std::string port;
 	std::string base_path;
 	std::string manager_workspace;
 
 	std::atomic<bool> is_changed_{ true };
+	mutable std14::shared_mutex workspaces_mutex_;
 
 public:
 	iterator end() { return workspaces_.end(); }
@@ -1986,9 +1983,9 @@ public:
 	void direct_workspaces(asio::io_context& io_context, const http::configuration& configuration, lgr::logger& logger)
 	{
 		auto t0 = std::chrono::steady_clock::now();
+		std14::shared_lock<mutex_type> l{ workspaces_mutex_ };
 		for (auto& workspace : workspaces_)
 		{
-			std::unique_lock<mutex_type> l{ workspaces_mutex_ };
 			json empty_limits_adjustments = json::object();
 			for (auto& workgroup : *workspace.second)
 				workgroup.second->direct_workers(io_context, configuration, logger);
@@ -2032,14 +2029,19 @@ public:
 		}
 	}
 
-	const_iterator get_workspace(const std::string& id) const { return workspaces_.find(id); }
-
-	workspace* get_workspace(const http::session_handler& session)
+	const_iterator get_workspace_(const std::string& id) const
 	{
-		auto result = workspaces_.end();
+		std14::shared_lock<mutex_type> l{ workspaces_mutex_ };
+		return workspaces_.find(id);
+	}
 
 
-		for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); workspace++)
+	const_iterator find_workspace(const http::session_handler& session) const
+	{
+		std14::shared_lock<mutex_type> l{ workspaces_mutex_ };
+		auto result = workspaces_.cend();
+
+		for (auto workspace = workspaces_.cbegin(); workspace != workspaces_.cend(); workspace++)
 		{
 			bool methods_match = false;
 			bool header_match = false;
@@ -2102,10 +2104,7 @@ public:
 			}
 		}
 
-		if (result != workspaces_.end())
-			return result->second.get();
-		else
-			return nullptr;
+		return result;
 	}
 
 	iterator get_workspace(const std::string& id) { return workspaces_.find(id); }
@@ -2388,6 +2387,7 @@ public:
 		server_base::router_.on_get(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
+
 				auto w = workspaces_.get_workspace(workspace_id);
 
 				if (w != workspaces_.end())
@@ -3293,24 +3293,15 @@ public:
 
 		server_base::router_.on_proxy_pass("/", [this](http::session_handler& session) {
 
-			//auto tenant_id = session.request().get<std::string>("X-Infor-TenantId", "");
-			//auto workspace = workspaces_.get_tenant_workspace(tenant_id, session.request().url_requested());
-
-			auto workspace = workspaces_.get_workspace(session);
-
 			session.response().status(http::status::not_found);
 
-			if (workspace != nullptr)
+			auto workspace = workspaces_.find_workspace(session);
+
+			if (workspace != workspaces_.cend())
 			{
-				//auto workgroup_name
-				//	= session.request().get<std::string>("X-Infor-Upstream-Group", workspace->default_group());
+				auto workgroup = workspace->second->find_workgroups(session);
 
-				//auto workgroup_type = session.request().get<std::string>("X-Infor-Upstream-Type", "bshells");
-
-				auto workgroup
-					= workspace->find_workgroups(session);
-
-				if (workgroup != workspace->end())
+				if (workgroup != workspace->second->end())
 				{
 					if (workgroup->second->has_workers_available())
 					{
@@ -3331,7 +3322,7 @@ public:
 					}
 					else
 					{
-						// can't forward fore some reason. e.g. no workers available.
+						workgroup->second->workgroups_limits().workers_required_upd(1);
 						session.response().status(http::status::service_unavailable);
 					}
 				}

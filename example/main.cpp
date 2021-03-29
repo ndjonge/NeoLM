@@ -75,9 +75,9 @@ bool add_single_workspace(std::string id)
 									  { "methods", { "get", "head", "post" } },
 									  { "headers", { { "X-Infor-Company", { id } } } } } },
 								  { "limits",
-									{ { "workers_min", 8 },
+									{ { "workers_min", 0 },
 									  { "workers_max", 8 },
-									  { "workers_required", 8 },
+									  { "workers_required", 0 },
 									  { "workers_start_at_once_max", 8 } } },
 								  { "parameters", { "program", "bshell" } } } } } } } };
 
