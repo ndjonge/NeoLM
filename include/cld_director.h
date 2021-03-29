@@ -54,65 +54,65 @@ public:
 	std::map<std::string, std::set<S>> available_sockets_;
 	std::mutex m_;
 
-	test_sockets(const std::vector<std::string>& tenants, S b, size_t nr) // 8000 64
+	test_sockets(const std::vector<std::string>& workspaces, S b, size_t nr) // 8000 64
 	{
-		for (auto& tenant : tenants)
+		for (auto& workspace : workspaces)
 		{
 			std::lock_guard<std::mutex> g{ m_ };
 			for (S i = 0; i < nr; i++)
-				available_sockets_[tenant].emplace(b + i);
+				available_sockets_[workspace].emplace(b + i);
 		}
 	}
 
-	S aquire(const std::string& tenant_id)
+	S aquire(const std::string& workspace_id)
 	{
 		std::lock_guard<std::mutex> g{ m_ };
 
-		auto port = *(available_sockets_[tenant_id].begin());
-		available_sockets_[tenant_id].erase(port);
+		auto port = *(available_sockets_[workspace_id].begin());
+		available_sockets_[workspace_id].erase(port);
 		return port;
 	}
 
-	S aquire(const std::string& tenant_id, S port)
+	S aquire(const std::string& workspace_id, S port)
 	{
 		std::lock_guard<std::mutex> g{ m_ };
 
-		available_sockets_[tenant_id].erase(port);
+		available_sockets_[workspace_id].erase(port);
 
 		return port;
 	}
 
-	void release(const std::string& tenant_id, const std::string& url)
+	void release(const std::string& workspace_id, const std::string& url)
 	{
 		std::lock_guard<std::mutex> g{ m_ };
 		auto port = url.substr(1 + url.find_last_of(':'));
 
-		available_sockets_[tenant_id].emplace(stoul(port));
+		available_sockets_[workspace_id].emplace(stoul(port));
 	}
 };
 
 static test_sockets<std::uint32_t> _test_sockets{
-	{ "tenant000_prd", "tenant001_prd", "tenant002_prd", "tenant003_prd", "tenant100_tst", "tenant101_tst",
-	  "tenant102_tst", "tenant103_tst", "tenant104_tst", "tenant105_tst", "tenant106_tst", "tenant107_tst",
-	  "tenant108_tst", "tenant109_tst", "tenant110_tst", "tenant111_tst", "tenant112_tst", "tenant113_tst",
-	  "tenant114_tst", "tenant115_tst", "tenant116_tst", "tenant117_tst",  "tenant118_tst", "tenant119_tst",
-	  "tenant120_tst", "tenant121_tst", "tenant122_tst", "tenant123_tst", "tenant124_tst", "tenant125_tst",
-	  "tenant126_tst", "tenant127_tst", "tenant128_tst", "tenant129_tst", "tenant130_tst", "tenant131_tst",
-	  "tenant132_tst", "tenant133_tst", "tenant134_tst", "tenant135_tst", "tenant136_tst", "tenant137_tst",
-	  "tenant138_tst", "tenant139_tst", "tenant140_tst", "tenant141_tst", "tenant142_tst", "tenant143_tst",
-	  "tenant144_tst", "tenant145_tst", "tenant146_tst", "tenant147_tst", "tenant148_tst", "tenant149_tst",
-	  "tenant150_tst", "tenant151_tst", "tenant152_tst", "tenant153_tst", "tenant154_tst", "tenant155_tst",
-	  "tenant156_tst", "tenant157_tst", "tenant158_tst", "tenant159_tst", "tenant160_tst", "tenant161_tst",
-	  "tenant162_tst", "tenant163_tst" },
-	8000,
-												  64 };
+	{ "workspace_000", "workspace_001", "workspace_002", "workspace_003", "workspace_100", "workspace_101",
+	  "workspace_102", "workspace_103", "workspace_104", "workspace_105", "workspace_106", "workspace_107",
+	  "workspace_108", "workspace_109", "workspace_110", "workspace_111", "workspace_112", "workspace_113",
+	  "workspace_114", "workspace_115", "workspace_116", "workspace_117",  "workspace_118", "workspace_119",
+	  "workspace_120", "workspace_121", "workspace_122", "workspace_123", "workspace_124", "workspace_125",
+	  "workspace_126", "workspace_127", "workspace_128", "workspace_129", "workspace_130", "workspace_131",
+	  "workspace_132", "workspace_133", "workspace_134", "workspace_135", "workspace_136", "workspace_137",
+	  "workspace_138", "workspace_139", "workspace_140", "workspace_141", "workspace_142", "workspace_143",
+	  "workspace_144", "workspace_145", "workspace_146", "workspace_147", "workspace_148", "workspace_149",
+	  "workspace_150", "workspace_151", "workspace_152", "workspace_153", "workspace_154", "workspace_155",
+	  "workspace_156", "workspace_157", "workspace_158", "workspace_159", "workspace_160", "workspace_161",
+	  "workspace_162", "workspace_163" },
+		8000,
+		64 
+	};
 
 } // namespace local_testing
 
 static bool create_bse_process_as_user(
 	const std::string&,
 	const std::string&,
-	const std::string& tenand_id,
 	const std::string&,
 	const std::string&,
 	const std::string& parameters, // for local testing retreive the level this way :(
@@ -128,7 +128,7 @@ static bool create_bse_process_as_user(
 	auto worker_workspace = parameters_as_configuration.get("cld_manager_workspace");
 	auto worker_workgroup = parameters_as_configuration.get("cld_manager_workgroup");
 
-	pid = local_testing::_test_sockets.aquire(tenand_id);
+	pid = local_testing::_test_sockets.aquire(worker_workspace);
 
 	ec = "";
 
@@ -556,8 +556,8 @@ public:
 	using iterator = container_type::iterator;
 	using const_iterator = container_type::const_iterator;
 
-	workgroups(const std::string& workspace_id, const std::string& tenant_id, const std::string& type)
-		: workspace_id_(workspace_id), type_(type), tenant_id_(tenant_id)
+	workgroups(const std::string& workspace_id, const std::string& type)
+		: workspace_id_(workspace_id), type_(type)
 	{
 	}
 
@@ -659,20 +659,25 @@ public:
 		}
 		return result;
 	}
+public:
+
+	using route_methods_type = std::vector<http::method::method_t>;
+	using route_path_type = std::vector<std::string>;
+	using route_headers_type = std::vector<http::field<std::string>>;
+
 private:
-
-	std::vector<std::string> paths_;
-
+	route_methods_type methods_;
+	route_path_type paths_;
+	route_headers_type headers_;
 
 public:
+	const route_path_type& paths() const { return paths_; }
+	const route_headers_type& headers() const { return headers_; }
+	const route_methods_type& methods() const { return methods_; }
+
 	const std::string& get_type(void) const { return type_; }
 	const std::string& get_name(void) const { return name_; }
 
-	const std::vector<std::string>& paths() const { return paths_; }
-
-	using route_header_type = std::vector<http::field<std::string>>;
-	route_header_type headers_;
-	const route_header_type headers() const { return headers_; }
 
 	virtual void from_json(const json& j)
 	{
@@ -700,6 +705,13 @@ public:
 				for (auto& path : j["routes"]["paths"].items())
 					paths_.emplace_back(path.value());
 			}
+
+			if (j["routes"].contains("methods"))
+			{
+				for (auto& method : j["routes"]["methods"].items())
+					methods_.emplace_back(http::method::to_method(util::to_upper(method.value())));
+			}
+
 		}
 		
 
@@ -721,13 +733,20 @@ public:
 
 		if (paths_.empty() == false)
 		{
-			j["routes"]["paths"] = paths_;
+			for (const auto& paths : paths_)
+				j["routes"]["paths"].emplace_back(paths);
 		}
 
 		if (headers_.empty() == false)
 		{
 			for (const auto& header : headers_)
 				j["routes"]["headers"][header.name].emplace_back(header.value);
+		}
+
+		if (methods_.empty() == false)
+		{
+			for (const auto& method : methods_)
+				j["routes"]["methods"].emplace_back(http::method::to_string(method));
 		}
 
 		// if (options == output_formating::options::complete)
@@ -1049,8 +1068,6 @@ protected:
 	std::string name_;
 	std::string workspace_id_;
 	std::string type_;
-	std::string tenant_id_;
-
 
 	limits limits_;
 
@@ -1072,13 +1089,11 @@ private:
 	std::string http_options_;
 
 public:
-	bshell_workgroups(const std::string& workspace_id, const std::string& tenant_id, const json& worker_type_json)
-		: workgroups(workspace_id, tenant_id, worker_type_json["type"])
+	bshell_workgroups(const std::string& workspace_id, const json& worker_type_json)
+		: workgroups(workspace_id, worker_type_json["type"])
 	{
 		from_json(worker_type_json);
 	}
-
-	virtual void set_tenant(const std::string& t) { tenant_id_ = t; };
 
 	virtual void direct_workers(
 		asio::io_context& io_context,
@@ -1142,6 +1157,7 @@ public:
 				lock.unlock();
 				bool success = create_worker_process(
 					server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_label_required, ec);
+
 				lock.lock();
 				if (!success) // todo
 				{
@@ -1428,7 +1444,7 @@ public:
 
 						upstreams_.erase_upstream(worker_it->second.get_base_url());
 #ifdef LOCAL_TESTING
-						bse_utils::local_testing::_test_sockets.release(tenant_id_, worker_it->second.get_base_url());
+						bse_utils::local_testing::_test_sockets.release(workspace_id_, worker_it->second.get_base_url());
 #endif
 						worker_it = workers_.erase(workers_.find(worker_it->first));
 
@@ -1486,7 +1502,7 @@ public:
 					auto base_url_split = util::split(base_url, ":");
 					auto port = std::atoi(base_url_split[2].c_str());
 
-					bse_utils::local_testing::_test_sockets.aquire(tenant_id_, port);
+					bse_utils::local_testing::_test_sockets.aquire(workspace_id_, port);
 				}
 #endif
 
@@ -1600,7 +1616,6 @@ public:
 		return bse_utils::create_bse_process_as_user(
 			bse_,
 			bse_bin_,
-			tenant_id_,
 			os_user_,
 			os_password_,
 			bse_bin_ + (bse_bin_ != "" ? "/" : "") + program_ + std::string{ " " } + parameters.str(),
@@ -1615,8 +1630,8 @@ private:
 	std::string rootdir;
 
 public:
-	python_workgroups(const std::string& workspace_id, const std::string& tenant_id, const json& worker_type_json)
-		: workgroups(workspace_id, tenant_id, "python"), rootdir()
+	python_workgroups(const std::string& workspace_id, const json& worker_type_json)
+		: workgroups(workspace_id, "python"), rootdir()
 	{
 		from_json(worker_type_json);
 	}
@@ -1684,12 +1699,21 @@ private:
 	std::string workspace_id_{};
 	std::string tenant_id_{};
 	std::string description_{};
-	std::string default_group_{};
 
-	std::vector<std::string> paths_;
+	using route_methods_type = std::vector<http::method::method_t>;
+	using route_path_type = std::vector<std::string>;
+	using route_headers_type = std::vector<http::field<std::string>>;
 
+private:
+	route_methods_type methods_;
+	route_path_type paths_;
+	route_headers_type headers_;
 
-	std::vector<std::string> errors;
+public:
+	const route_path_type& paths() const { return paths_; }
+	const route_headers_type& headers() const { return headers_; }
+	const route_methods_type& methods() const { return methods_; }
+
 	container_type workgroups_;
 
 public:
@@ -1700,37 +1724,28 @@ public:
 
 	workspace(const workspace&) = delete;
 
-	const std::vector<std::string>& paths() const { return paths_; }
-	using route_header_type = std::vector<http::field<std::string>>;
-
-private:
-	route_header_type headers_;
-
-public:
-	const route_header_type headers() const { return headers_; }
-
-	const std::string& default_group() const { return default_group_; }
-	void default_group(const std::string& default_group) { default_group_ = default_group; }
-
 	const std::string& get_workspace_id(void) const { return workspace_id_; };
 	void set_workspace_id(const std::string& workspace_id) { workspace_id_ = workspace_id; };
 
 	const std::string& get_description(void) const { return description_; };
 	const std::string& get_tenant_id(void) const { return tenant_id_; };
-	const std::vector<std::string>& get_errors(void) { return errors; };
-	void clear_errors(void) { errors.clear(); };
 
 public:
 	void to_json(json& workspace, output_formating::options options = output_formating::options::complete) const
 	{
 		workspace["id"] = workspace_id_;
-		workspace["tenant_id"] = tenant_id_;
 		workspace["description"] = description_;
-		if (default_group_.empty() == false) workspace["default_group"] = default_group_;
 
 		if (paths_.empty() == false)
 		{
-			workspace["routes"]["paths"] = paths_;
+			for (const auto& paths : paths_)
+				workspace["routes"]["paths"].emplace_back(paths);
+		}
+
+		if (methods_.empty() == false)
+		{
+			for (const auto& method : methods_)
+				workspace["routes"]["methods"].emplace_back(http::method::to_string(method));
 		}
 
 		if (headers_.empty() == false)
@@ -1754,14 +1769,14 @@ public:
 
 private:
 	std::unique_ptr<workgroups>
-	create_workgroups_from_json(const std::string& type, const std::string& tenant_id, const json& worker_type_json)
+	create_workgroups_from_json(const std::string& type, const json& worker_type_json)
 	{
 		if (type == "bshells")
-			return std::unique_ptr<workgroups>{ new bshell_workgroups{ workspace_id_, tenant_id, worker_type_json } };
+			return std::unique_ptr<workgroups>{ new bshell_workgroups{ workspace_id_, worker_type_json } };
 		if (type == "ashells")
-			return std::unique_ptr<workgroups>{ new bshell_workgroups{ workspace_id_, tenant_id, worker_type_json } };
+			return std::unique_ptr<workgroups>{ new bshell_workgroups{ workspace_id_, worker_type_json } };
 		if (type == "python-scripts")
-			return std::unique_ptr<workgroups>{ new python_workgroups{ workspace_id_, tenant_id, worker_type_json } };
+			return std::unique_ptr<workgroups>{ new python_workgroups{ workspace_id_, worker_type_json } };
 		else
 			return nullptr;
 	}
@@ -1800,17 +1815,33 @@ public:
 
 		for (auto workgroup = workgroups_.begin(); workgroup != workgroups_.end(); workgroup++)
 		{
+			bool methods_match = false;
 			bool header_match = false;
-			bool route_match = false;
+			bool path_match = false;
 
-			if (workgroup->second->headers().empty() == false)
+			if (workgroup->second->methods().empty() == false)
+			{
+				for (const auto& method : methods_)
+				{
+					if (session.request().method() == method)
+					{
+						methods_match = true;
+						break;
+					}
+				}
+			}
+			else
+			{
+				methods_match = true;
+			}
+
+			if (methods_match && workgroup->second->headers().empty() == false)
 			{
 				for (const auto& header : workgroup->second->headers())
 				{
 					bool found = false;
 					if (session.request().get<std::string>(header.name, found, "") == header.value && found == true)
 					{
-						result = workgroup;
 						header_match = true;
 						break;
 					}
@@ -1818,7 +1849,7 @@ public:
 			}
 			else
 			{
-				header_match = true;
+				header_match = methods_match;
 			}
 
 			if (header_match && workgroup->second->paths().empty() == false)
@@ -1829,7 +1860,7 @@ public:
 					{
 						if (session.request().url_requested().find(workspace_path + workgroup_path) == 0)
 						{
-							result = workgroup;
+							path_match = true;
 							break;
 						}
 					}
@@ -1837,11 +1868,12 @@ public:
 			}
 			else
 			{
-				route_match = header_match;
+				path_match = header_match && methods_match;
 			}
 
-			if (header_match && route_match)
+			if (methods_match && header_match && path_match)
 			{
+				result = workgroup;
 				break;
 			}
 		}
@@ -1857,7 +1889,7 @@ public:
 
 			if (!type.empty()) (*workgroups)["type"] = type;
 
-			auto new_workgroups = create_workgroups_from_json((*workgroups)["type"], tenant_id_, *workgroups);
+			auto new_workgroups = create_workgroups_from_json((*workgroups)["type"], *workgroups);
 			if (new_workgroups)
 			{
 				this->workgroups_[key_type{ (*workgroups)["name"], (*workgroups)["type"] }] = std::move(new_workgroups);
@@ -1873,8 +1905,6 @@ public:
 	void from_json(const json& j)
 	{
 		description_ = j.value("description", "");
-		tenant_id_ = j.value("tenant_id", "");
-		default_group_ = j.value("default_group", "untitled");
 
 		if (j.contains("routes"))
 		{
@@ -1893,6 +1923,12 @@ public:
 				for (auto& path : j["routes"]["paths"].items())
 					paths_.emplace_back(path.value());
 			}
+
+			if (j["routes"].contains("methods"))
+			{
+				for (auto& method : j["routes"]["methods"].items())
+					methods_.emplace_back(http::method::to_method(util::to_upper(method.value())));
+			}
 		}
 
 		if (j.find("workgroups") != j.end())
@@ -1904,7 +1940,7 @@ public:
 				if (workgroups.value().size())
 				{
 					auto new_workgroups
-						= create_workgroups_from_json(workgroups.value()["type"], tenant_id_, *workgroups);
+						= create_workgroups_from_json(workgroups.value()["type"], *workgroups);
 
 					if (new_workgroups)
 					{
@@ -1924,15 +1960,12 @@ class workspaces
 public:
 	using value_type = std::unique_ptr<workspace>;
 	using container_type = std::map<const std::string, value_type>;
-	using tenant_lookup_type = std::map<const std::string, workspace*>;
 
 	using iterator = container_type::iterator;
 	using const_iterator = container_type::const_iterator;
 	using mutex_type = std::mutex;
 
 private:
-	tenant_lookup_type tenant_lookup_;
-
 	container_type workspaces_;
 	mutable mutex_type workspaces_mutex_;
 
@@ -1977,12 +2010,6 @@ public:
 		{
 			auto new_workspace = workspaces_.insert(container_type::value_type{ id, new workspace{ id, j } });
 
-			if (new_workspace.second)
-			{
-				tenant_lookup_.insert(tenant_lookup_type::value_type{ new_workspace.first->second->get_tenant_id(),
-																	  new_workspace.first->second.get() });
-			}
-
 			result = new_workspace.second; // add_workspace returns true when an inserted happend.
 		}
 
@@ -2000,7 +2027,6 @@ public:
 		}
 		else
 		{
-			tenant_lookup_.erase(i->second->get_tenant_id());
 			workspaces_.erase(i);
 			return true;
 		}
@@ -2015,17 +2041,33 @@ public:
 
 		for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); workspace++)
 		{
+			bool methods_match = false;
 			bool header_match = false;
-			bool route_match = false;
+			bool path_match = false;
 
-			if (workspace->second->headers().empty() == false)
+			if (workspace->second->methods().empty() == false)
+			{
+				for (const auto& method : workspace->second->methods())
+				{
+					if (session.request().method() == method)
+					{
+						methods_match = true;
+						break;
+					}
+				}
+			}
+			else
+			{
+				methods_match = true;
+			}
+
+			if (methods_match && workspace->second->headers().empty() == false)
 			{
 				for (const auto& header : workspace->second->headers())
 				{
 					bool found = false;
-					if (session.request().get<std::string>(header.name, found, "") != header.value && found == true)
+					if (session.request().get<std::string>(header.name, found, "") == header.value && found == true)
 					{
-						result = workspace;
 						header_match = true;
 						break;
 					}
@@ -2033,8 +2075,9 @@ public:
 			}
 			else
 			{
-				header_match = true;
+				header_match = methods_match;
 			}
+
 
 			if (header_match && workspace->second->paths().empty() == false)
 			{
@@ -2042,19 +2085,19 @@ public:
 				{
 					if (session.request().url_requested().find(workspace_path) == 0)
 					{
-						result = workspace;
-						route_match = true;
+						path_match = true;
 						break;
 					}
 				}
 			}
 			else
 			{
-				route_match = header_match;
+				path_match = header_match;
 			}
 
-			if (header_match && route_match)
+			if (methods_match && header_match && path_match)
 			{
+				result = workspace;
 				break;
 			}
 		}

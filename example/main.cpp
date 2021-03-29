@@ -61,38 +61,40 @@ bool add_single_workspace(std::string id)
 	//							  { "parameters", { "program", "x" } } } } } } }
 	//};
 
-	json workspace_def
+	json workspace_def{ { "workspace",
+						  { { "id", "workspace_" + id },
+							{ "routes",
+							  { { "paths", { "/api", "/internal" } },
+								{ "methods", { "get", "head", "post" } },
+								{ "headers", { { "X-Infor-TenantId", { "tenant" + id + "_tst" } } } } } },
+							{ "workgroups",
+							  { { { "name", "tests_service" },
+								  { "type", "bshells" },
+								  { "routes",
+									{ { "paths", { "/tests" } },
+									  { "methods", { "get", "head", "post" } },
+									  { "headers", { { "X-Infor-Company", { id } } } } } },
+								  { "limits",
+									{ { "workers_min", 8 },
+									  { "workers_max", 8 },
+									  { "workers_required", 8 },
+									  { "workers_start_at_once_max", 8 } } },
+								  { "parameters", { "program", "bshell" } } } } } } } };
+
+	std::cout << workspace_def.dump(4, ' ') << "\n";
+	std::string error;
+
+	auto response = http::client::request<http::method::post>(
+		"http://localhost:4000/internal/platform/manager/workspaces", error, {}, workspace_def["workspace"].dump());
+
+	if (error.empty() == false) return false;
+
+	if (response.status() == http::status::conflict)
 	{
-		{ "workspace",
-		  { { "id", "workspace_" + id },
-			{ "tenant_id", "tenant" + id + "_tst" },
-			{ "routes", { { "paths", { "/api" } }, { "headers", { { "X-Infor-TenantId", { "tenant_" + id } } } } } },
-			  { "workgroups",
-				{ { { "name", "tests_service" },
-					{ "type", "bshells" },
-				  { "routes", { { "paths", { "/tests" } }, { "headers", { { "X-Infor-Company", { id } } } } } },
-				  { "limits",
-					  { { "workers_min", 8 },
-						{ "workers_max", 8 },
-						{ "workers_required", 8 },
-						{ "workers_start_at_once_max", 8 } } },
-					{ "parameters", { "program", "bshell" } } } } } } } };
-
-		//std::cout << workspace_def.dump(4, ' ') << "\n";
-		std::string error;
-
-		auto response = http::client::request<http::method::post>(
-			"http://localhost:4000/internal/platform/manager/workspaces", error, {}, workspace_def["workspace"].dump());
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-
-		}
-
-
 	}
+
+	return true;
+}
 } // namespace tests
 
 int main(int argc, const char* argv[])
