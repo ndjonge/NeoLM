@@ -43,24 +43,8 @@ using json = nlohmann::json;
 
 namespace tests
 {
-bool add_single_workspace(std::string id)
+bool add_workspace(std::string id)
 {
-	// json workspace_def{
-	//	{ "workspace",
-	//	  { { "id", "workspace_test_" + id },
-	//		{ "tenant_id", "tenant" + id + "_tst" },
-	//		{}
-	//		{ "workgroups",
-	//						  { { { "name", "test_service" },
-	//							  { "type", "bshells" },
-	//							  { "limits",
-	//								{ { "workers_min", 8 },
-	//								  { "workers_max", 8 },
-	//								  { "workers_required", 8 },
-	//									{ "workers_start_at_once_max", 8 } } },
-	//							  { "parameters", { "program", "x" } } } } } } }
-	//};
-
 	json workspace_def{ { "workspace",
 						  { { "id", "workspace_" + id },
 							{ "routes",
@@ -68,20 +52,21 @@ bool add_single_workspace(std::string id)
 								{ "methods", { "get", "head", "post" } },
 								{ "headers", { { "X-Infor-TenantId", { "tenant" + id + "_tst" } } } } } },
 							{ "workgroups",
-							  { { { "name", "tests_service" },
+							  { { { "name", "service_a000" },
 								  { "type", "bshells" },
 								  { "routes",
-									{ { "paths", { "/tests" } },
+								{ { "paths", { "/tests", "/platform" } },
 									  { "methods", { "get", "head", "post" } },
 									  { "headers", { { "X-Infor-Company", { id } } } } } },
 								  { "limits",
-									{ { "workers_min", 0 },
+									{ { "workers_min", 4 },
 									  { "workers_max", 8 },
-									  { "workers_required", 0 },
+									  { "workers_required", 4 },
 									  { "workers_start_at_once_max", 8 } } },
 								  { "parameters", { "program", "bshell" } } } } } } } };
 
-	std::cout << workspace_def.dump(4, ' ') << "\n";
+
+//	std::cout << workspace_def.dump(4, ' ') << "\n";
 	std::string error;
 
 	auto response = http::client::request<http::method::post>(
@@ -95,6 +80,39 @@ bool add_single_workspace(std::string id)
 
 	return true;
 }
+
+
+bool add_workgroup_to_existing_workspace(std::string workspace_id, std::string workgroup_name) 
+{
+
+
+	json workgroup_def{ { "name", "service_b" + workgroup_name },
+						{ "type", "bshells"}, { "limits",
+												{ { "workers_min", 4 },
+												  { "workers_max", 8 },
+												  { "workers_required", 4 },
+												  { "workers_start_at_once_max", 8 } } } };
+
+
+	std::cout << workgroup_def.dump(4, ' ') << "\n";
+
+	std::string error;
+
+	auto response = http::client::request<http::method::post>(
+		"http://localhost:4000/internal/platform/manager/workspaces/workspace_" + workspace_id + "/workgroups",
+		error,
+		{},
+		workgroup_def.dump());
+
+	if (error.empty() == false) return false;
+
+	if (response.status() == http::status::conflict)
+	{
+	}
+
+	return true;
+}
+
 } // namespace tests
 
 int main(int argc, const char* argv[])
@@ -104,8 +122,11 @@ int main(int argc, const char* argv[])
 
 	start_cld_manager_server(argc, argv);
 
-	for (int i = 0; i < 32; i++)
-		tests::add_single_workspace(std::to_string(100 + i));
+	for (int i = 0; i < 1; i++)
+		tests::add_workspace(std::to_string(100 + i));
+
+	for (int i = 0; i < 1; i++)
+		tests::add_workgroup_to_existing_workspace(std::to_string(100 + i), std::to_string(100 + i));
 
 	run_cld_manager_server();
 	stop_cld_manager_server();

@@ -105,8 +105,8 @@ public:
 		put_new_instance_json["base_url"] = server_.config().get("http_this_server_local_url");
 		put_new_instance_json["version"] = server_.config().get<std::string>("server", "");
 
-		auto response = http::client::request<http::method::put>(
-			manager_endpoint_url_ + "/workers/" + cld_worker_id_, ec, {}, put_new_instance_json.dump());
+		auto response = http::client::request<http::method::post>(
+			manager_endpoint_url_ + "/workers/", ec, {}, put_new_instance_json.dump());
 
 		if (ec.empty())
 		{

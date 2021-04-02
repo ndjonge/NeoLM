@@ -230,7 +230,7 @@ public:
 		include_connections
 	};
 
-	void to_json(const std::string& workspace_id, const std::string& tenant_id, options options, json& result)
+	void to_json(const std::string& workspace_id, options options, json& result)
 	{
 		std::unique_lock<std14::shared_mutex> g{ upstreams_lock_ };
 
@@ -249,11 +249,9 @@ public:
 			else if (upstream->state_ == upstream::state::down)
 				upstream_state = "down";
 
-			upstream_json["tenant_id"] = tenant_id;
 			upstream_json["base_url"] = upstream->base_url_;
 			upstream_json["workspace_id"] = workspace_id;
 			upstream_json["state"] = upstream_state;
-			upstream_json["tenant_id"] = tenant_id;
 
 			upstream_json["connections"]["total"] = connections_total;
 			upstream_json["connections"]["idle"] = connections_idle;
@@ -277,7 +275,7 @@ public:
 		}
 	}
 
-	std::string to_string(const std::string& workspace_id, const std::string& tenant_id, options options)
+	std::string to_string(const std::string& workspace_id, options options)
 	{
 		std::unique_lock<std14::shared_mutex> g{ upstreams_lock_ };
 
@@ -294,8 +292,6 @@ public:
 				upstream_state = "drain";
 			else if (upstream->state_ == upstream::state::down)
 				upstream_state = "down";
-
-			if (tenant_id.empty() == true) ss << tenant_id << ", ";
 
 			ss << upstream->base_url_ << ", "
 			   << "/" << workspace_id << upstream->id_ << ", " << upstream_state
