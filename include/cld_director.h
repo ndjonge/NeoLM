@@ -1749,7 +1749,6 @@ public:
 	const route_headers_type& headers() const { return headers_; }
 	const route_methods_type& methods() const { return methods_; }
 
-	using mutex_type = std14::shared_mutex;
 	mutable mutex_type workgroups_mutex_;
 
 	mutex_type& workgroups_mutex() const { return workgroups_mutex_; }
@@ -2353,7 +2352,7 @@ public:
 		const std::string& worker_id,
 		const M method) const
 	{
-		std14::unique_lock<mutex_type> l{ workspaces_mutex_ };
+		std::unique_lock<mutex_type> l{ workspaces_mutex_ };
 		auto workspace = workspaces_.find(workspace_id);
 		if (workspace != workspaces_.end())
 		{
@@ -2362,7 +2361,7 @@ public:
 			{
 				if ((workgroup.first.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
 				{
-					std::unique_lock<mutex_type> g{ workgroup->second->worker_mutex() };
+					std::unique_lock<mutex_type> g{ workgroup.second->workers_mutex() };
 					for (auto& worker : *(workgroup.second))
 					{
 						if (worker.first == worker_id) return method(worker.second);

@@ -4268,37 +4268,6 @@ public:
 			}
 		}
 
-		void to_string_stream_json(std::stringstream& s, std::vector<std::string>& path)
-		{
-			if (endpoints_)
-			{
-				for (auto endpoint = endpoints_.get()->cbegin(); endpoint != endpoints_.get()->cend(); ++endpoint)
-				{
-					s << "\"";
-					for (auto& element : path)
-						s << "/" << util::escape_json(element);
-
-					s << "|" << http::method::to_string(endpoint->first)
-					  << "\":" << endpoint->second->route_metrics().to_json_string();
-
-					if (endpoint + 1 != endpoints_.get()->cend())
-						s << ",";
-					else if (link_.size() > 0)
-						s << ",";
-				}
-			}
-
-			for (auto link = link_.cbegin(); link != link_.cend(); ++link)
-			{
-				path.push_back(link->first);
-				link->second->to_string_stream_json(s, path);
-
-				if (link + 1 != link_.cend()) s << ",";
-
-				path.pop_back();
-			}
-		}
-
 		void to_string_stream(std::stringstream& s, std::vector<std::string>& path)
 		{
 			if (endpoints_)
