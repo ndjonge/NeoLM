@@ -552,12 +552,23 @@ class workgroups
 {
 public:
 	class limits;
+
+	enum class state
+	{
+		down,
+		up,
+		drain
+	};
+
 	using container_type = std::map<const std::string, worker>;
 	using iterator = container_type::iterator;
 	using const_iterator = container_type::const_iterator;
 	using mutex_type = std14::shared_mutex;
 
-	workgroups(const std::string& workspace_id, const std::string& type) : workspace_id_(workspace_id), type_(type) {}
+	workgroups(const std::string& workspace_id, const std::string& type)
+		: workspace_id_(workspace_id), type_(type), state_(state::up)
+	{
+	}
 	virtual ~workgroups() = default;
 
 	mutex_type& workers_mutex() { return workers_mutex_; }
@@ -571,7 +582,10 @@ public:
 
 	http::async::upstreams upstreams_;
 
-	bool has_workers_available() { return limits_.workers_actual() > 0; }
+	bool has_workers_available() const { return limits_.workers_actual() > 0; }
+	
+	state state() const { return state_; }	
+	void state(const enum cloud::platform::workgroups::state& s) { state_ = s; }
 
 	iterator find_worker(const std::string& worker_id)
 	{
@@ -608,6 +622,25 @@ public:
 		return new_worker.second;
 	}
 
+	bool drain_all_workers()
+	{
+		bool result = false;
+
+		for (auto& worker : workers_)
+		{
+			if (worker.second.get_base_url().empty() == false)
+			{
+				worker.second.set_status(worker::status::drain);
+
+				if (worker.second.upstream().connections_busy_.load() == 0)
+					worker.second.set_status(worker::status::down);
+			}
+			result = true;
+		}
+
+		return result;
+	}
+
 	bool delete_worker(const std::string& id)
 	{
 		bool result = false;
@@ -621,11 +654,7 @@ public:
 
 				if (worker->second.upstream().connections_busy_.load() == 0)
 					worker->second.set_status(worker::status::down);
-
-				//				upstreams_.erase_upstream(worker->second.get_base_url());
-				//				limits_.workers_actual_upd(-1);
 			}
-			//			worker = workers_.erase(worker);
 			result = true;
 		}
 
@@ -663,7 +692,6 @@ private:
 	route_methods_type methods_;
 	route_path_type paths_;
 	route_headers_type headers_;
-
 	mutex_type mutex;
 
 public:
@@ -1061,6 +1089,7 @@ protected:
 	std::string name_;
 	std::string workspace_id_;
 	std::string type_;
+	enum state state_;
 
 	limits limits_;
 
@@ -1694,6 +1723,13 @@ public:
 	using route_headers_type = std::vector<http::field<std::string>>;
 	using mutex_type = std14::shared_mutex;
 
+	enum class state
+	{
+		down,
+		up,
+		drain
+	};
+
 private:
 	std::string server_endpoint_;
 	std::string workspace_id_{};
@@ -1704,6 +1740,9 @@ private:
 	route_path_type paths_;
 	route_headers_type headers_;
 	mutable mutex_type workers_mutex;
+	container_type workgroups_;
+
+	enum state state_;
 
 public:
 	const route_path_type& paths() const { return paths_; }
@@ -1715,7 +1754,9 @@ public:
 
 	mutex_type& workgroups_mutex() const { return workgroups_mutex_; }
 
-	container_type workgroups_;
+	state state() const { return state_; }
+	void state(enum cloud::platform::workspace::state s) { state_ = s; }
+
 
 public:
 	workspace(const std::string workspace_id, const json& json_workspace) : workspace_id_(workspace_id)
@@ -1799,6 +1840,11 @@ public:
 		return end();
 	}
 
+	iterator_type erase_workgroup(iterator_type i) 
+	{ 
+		return workgroups_.erase(i);
+	}
+
 	iterator_type end() { return workgroups_.end(); };
 	iterator_type begin() { return workgroups_.begin(); }
 	const_iterator_type cend() const { return workgroups_.cend(); };
@@ -1808,6 +1854,25 @@ public:
 	{
 		return workgroups_.find(key_type{ workgroups_name, workgroups_type });
 	}
+
+	bool has_workgroups_available() const
+	{ 
+		return workgroups_.empty() == false;
+	}
+
+	bool drain_all_workgroups()
+	{
+		bool result = false;
+
+		for (auto& workgroup : workgroups_)
+		{
+			workgroup.second->state(workgroups::state::drain);
+			result = true;
+		}
+
+		return result;
+	}
+
 
 	void proxy_pass(http::session_handler& session) const
 	{
@@ -1908,12 +1973,19 @@ public:
 		return false;
 	}
 
-	bool delete_workgroups(const std::string&)
+	bool drain_workgroup(const std::string& workgroup_name)
 	{
-		return false;
-		// return workgroups_.erase(this->workgroups_.find(key_type{ name, "bshells" }))
-		//	   != workgroups_.end(); // TODO remove type from key, set to drain
+		bool result = false;
+
+		auto workgroup = workgroups_.find(key_type{ workgroup_name, "bshells" });
+		
+		if (workgroup != workgroups_.end())
+			workgroup->second->state(workgroups::state::drain);
+
+		return result;
 	}
+
+
 
 	void from_json(const json& j)
 	{
@@ -1998,15 +2070,77 @@ public:
 	mutex_type& workspaces_mutex() { return workspaces_mutex_; }
 	const mutex_type& workspaces_mutex() const { return workspaces_mutex_; }
 
+
+	iterator erase_workspace(iterator i) 
+	{ 
+		return workspaces_.erase(i);
+	}
+
+
 	void direct_workspaces(asio::io_context& io_context, const http::configuration& configuration, lgr::logger& logger)
 	{
 		auto t0 = std::chrono::steady_clock::now();
-		std14::shared_lock<mutex_type> l{ workspaces_mutex_ };
-		for (auto& workspace : workspaces_)
+		std14::shared_lock<mutex_type> l1{ workspaces_mutex_ };
+
+		for (auto workspace = workspaces_.begin(); workspace != workspaces_.end();)
 		{
 			json empty_limits_adjustments = json::object();
-			for (auto& workgroup : *workspace.second)
-				workgroup.second->direct_workers(io_context, configuration, logger);
+
+			auto workspace_state = workspace->second->state();	
+			
+
+			if (workspace->second->has_workgroups_available())
+			{
+				std14::shared_lock<mutex_type> l2{ workspace->second->workgroups_mutex() };
+				for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();)
+				{
+					auto workgroup_state = workgroup->second->state();
+
+					workgroup->second->direct_workers(io_context, configuration, logger);
+
+					if (workgroup_state == workgroups::state::drain)
+					{
+						if (workgroup->second->has_workers_available())
+						{
+							workgroup->second->drain_all_workers();
+						}
+						else
+						{
+							workgroup->second->state(workgroups::state::down);
+							workgroup_state = workgroup->second->state();
+						}
+					}
+
+					if (workgroup_state == workgroups::state::down)
+					{
+						workgroup = workspace->second->erase_workgroup(workgroup);
+					}
+					else
+						workgroup++;
+				}
+
+				if (workspace_state == workspace::state::drain)
+				{
+
+					if (workspace->second->has_workgroups_available())
+					{
+						workspace->second->drain_all_workgroups();
+					}
+					else
+					{
+						workspace->second->state(workspace::state::down);
+						workspace_state = workspace->second->state();
+					}
+				}
+
+			}
+
+			if (workspace_state == workspace::state::down)
+			{
+				workspace = erase_workspace(workspace);
+			}
+			else
+				workspace++;
 		}
 		auto t1 = std::chrono::steady_clock::now();
 
@@ -2031,7 +2165,7 @@ public:
 		return result;
 	}
 
-	bool delete_workspace(const std::string id)
+	bool drain_workspace(const std::string id)
 	{
 		std::unique_lock<mutex_type> l{ workspaces_mutex_ };
 		auto i = workspaces_.find(id);
@@ -2114,8 +2248,6 @@ public:
 		}
 	}
 
-	iterator get_workspace(const std::string& id) { return workspaces_.find(id); }
-
 	template <class M> bool select(const std::string& workspace_id, const M method) const
 	{
 		std14::shared_lock<mutex_type> l{ workspaces_mutex_ };
@@ -2155,7 +2287,8 @@ public:
 			std14::shared_lock<mutex_type> g{ workspace->second->workgroups_mutex() };
 			for (const auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first.first == workgroup_name)) return method(*workgroup.second);
+				if ((workgroup.first.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
+					return method(*workgroup.second);
 			}
 		}
 
@@ -2173,7 +2306,7 @@ public:
 
 			for (auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first.first == workgroup_name))
+				if ((workgroup.first.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
 				{
 					auto result = method(*workgroup.second);
 					is_changed().store(result);
@@ -2200,7 +2333,7 @@ public:
 			std14::shared_lock<mutex_type> g{ workspace->second->workgroups_mutex() };
 			for (const auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first.first == workgroup_name))
+				if ((workgroup.first.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
 				{
 					for (const auto& worker : *(workgroup.second))
 					{
@@ -2227,7 +2360,7 @@ public:
 			std::unique_lock<mutex_type> g{ workspace->second->workgroups_mutex() };
 			for (const auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first.first == workgroup_name))
+				if ((workgroup.first.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
 				{
 					std::unique_lock<mutex_type> g{ workgroup->second->worker_mutex() };
 					for (auto& worker : *(workgroup.second))
@@ -2512,16 +2645,19 @@ public:
 		server_base::router_.on_delete(
 			"/internal/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				if (workspaces_.delete_workspace(workspace_id))
-				{
-					workspaces_.is_changed().store(true);
-					session.response().assign(http::status::no_content);
-				}
-				else
+
+				auto result = workspaces_.change(
+					workspace_id, [&session](workspace& workspace) {
+						workspace.state(workspace::state::drain);
+						session.response().assign(http::status::accepted);
+						return true;
+					});
+
+				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json("404", "workspace_id " + workspace_id + " not found").dump(),
+						error_json(http::status::to_string(session.response().status()), "").dump(),
 						"application/json");
 				}
 			});
@@ -2558,10 +2694,10 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 
 				auto result = workspaces_.select(
 					workspace_id, workgroup_name, [&session, workspace_id](const workgroups& workgroups) {
@@ -2612,24 +2748,16 @@ public:
 			});
 
 		server_base::router_.on_delete(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}",
 			[this](http::session_handler& session) {
-				auto& workspace_id = session.params().get("workspace_id");
+				const auto& workspace_id = session.params().get("workspace_id");
+				const auto& workgroup_name = session.params().get("workgroup_name");
 
-				auto result = workspaces_.change(workspace_id, [&session, workspace_id](workspace& workspace) {
-					json workgroup_json = json::parse(session.request().body());
-
-					const auto& workgroup_name = workgroup_json.at("name");
-
-					if (workspace.delete_workgroups(workgroup_name) == true)
-					{
+				auto result = workspaces_.change(
+					workspace_id, workgroup_name, [&session, workspace_id, workgroup_name](workgroups& workgroup) {
+						workgroup.state(workgroups::state::drain);
 						session.response().assign(http::status::accepted);
 						return true;
-					}
-					else
-					{
-						return false;
-					}
 				});
 
 				if (result == false)
@@ -2642,10 +2770,10 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/parameters",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/parameters",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 
 				auto result = workspaces_.select(workspace_id, workgroup_name, [&session](const workgroups& workgroup) {
 					json result_json;
@@ -2665,10 +2793,10 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/parameters/{detail}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/parameters/{detail}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& detail = session.params().get("detail");
 
 				auto result
@@ -2690,10 +2818,10 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/workers/{worker_id}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/workers/{worker_id}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& worker_id = session.params().get("worker_id");
 
 				auto result
@@ -2714,10 +2842,10 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/workers",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/workers",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 
 				auto result
 					= workspaces_.select(workspace_id, workgroup_name, [&session](const workgroups& workgroup) {
@@ -2744,11 +2872,11 @@ public:
 			});
 
 		server_base::router_.on_post(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/workers",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/workers",
 			[this](http::session_handler& session) {
 
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 
 				auto result
 					= workspaces_.change(workspace_id, workgroup_name, [&session, this](workgroups& workgroup) {
@@ -2777,10 +2905,10 @@ public:
 			});
 
 		server_base::router_.on_delete(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/workers/{worker_id}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/workers/{worker_id}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& worker_id = session.params().get("worker_id");
 
 				auto result
@@ -2804,10 +2932,10 @@ public:
 			});
 
 		server_base::router_.on_delete(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/workers/{worker_id}/process",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/workers/{worker_id}/process",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& worker_id = session.params().get("worker_id");
 
 				auto result
@@ -2830,10 +2958,10 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/limits",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/limits",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 
 				auto result = workspaces_.select(workspace_id, workgroup_name, [&session](const workgroups& workgroup) {
 					json result_json;
@@ -2856,10 +2984,10 @@ public:
 			});
 
 		server_base::router_.on_get(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/limits/{limit_name}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 
 				auto result = workspaces_.select(workspace_id, workgroup_name, [&session](const workgroups& workgroup) {
 					json result_json;
@@ -2885,10 +3013,10 @@ public:
 			});
 
 		server_base::router_.on_put(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/limits",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/limits",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 
 				auto result = workspaces_.change(workspace_id, workgroup_name, [&session](workgroups& workgroup) {
 					
@@ -2922,10 +3050,10 @@ public:
 			});
 
 		server_base::router_.on_put(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/limits/{limit_name}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& limit_name = session.params().get("limit_name");
 
 
@@ -2967,10 +3095,10 @@ public:
 			});
 
 		server_base::router_.on_patch(
-			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{name}/limits/{limit_name}",
+			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/limits/{limit_name}",
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
-				auto& workgroup_name = session.params().get("name");
+				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& limit_name = session.params().get("limit_name");
 
 

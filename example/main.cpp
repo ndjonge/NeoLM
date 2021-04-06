@@ -82,7 +82,7 @@ bool add_workspace(std::string id)
 }
 
 
-bool add_workgroup_to_existing_workspace(std::string workspace_id, std::string workgroup_name) 
+bool add_workgroup(std::string workspace_id, std::string workgroup_name) 
 {
 
 
@@ -94,7 +94,7 @@ bool add_workgroup_to_existing_workspace(std::string workspace_id, std::string w
 												  { "workers_start_at_once_max", 8 } } } };
 
 
-	std::cout << workgroup_def.dump(4, ' ') << "\n";
+	//std::cout << workgroup_def.dump(4, ' ') << "\n";
 
 	std::string error;
 
@@ -113,6 +113,44 @@ bool add_workgroup_to_existing_workspace(std::string workspace_id, std::string w
 	return true;
 }
 
+bool remove_workgroup(std::string workspace_id, std::string workgroup_name)
+{
+	std::string error;
+
+	auto response = http::client::request<http::method::delete_>(
+		"http://localhost:4000/internal/platform/manager/workspaces/workspace_" + workspace_id + "/workgroups/service_b"
+			+ workgroup_name,
+		error,
+		{});
+
+	if (error.empty() == false) return false;
+
+	if (response.status() == http::status::conflict)
+	{
+	}
+
+	return true;
+}
+
+bool remove_workspace(std::string workspace_id)
+{
+	std::string error;
+
+	auto response = http::client::request<http::method::delete_>(
+		"http://localhost:4000/internal/platform/manager/workspaces/workspace_" + workspace_id,
+		error,
+		{});
+
+	if (error.empty() == false) return false;
+
+	if (response.status() == http::status::conflict)
+	{
+	}
+
+	return true;
+}
+
+
 } // namespace tests
 
 int main(int argc, const char* argv[])
@@ -126,8 +164,18 @@ int main(int argc, const char* argv[])
 		tests::add_workspace(std::to_string(100 + i));
 
 	for (int i = 0; i < 1; i++)
-		tests::add_workgroup_to_existing_workspace(std::to_string(100 + i), std::to_string(100 + i));
+		tests::add_workgroup(std::to_string(100 + i), std::to_string(100 + i));
+
+
+	std::this_thread::sleep_for(std::chrono::seconds(10));
+
+	for (int i = 0; i < 1; i++)
+		tests::remove_workgroup(std::to_string(100 + i), std::to_string(100 + i));
+
+	for (int i = 0; i < 1; i++)
+		tests::remove_workspace(std::to_string(100 + i));
 
 	run_cld_manager_server();
+
 	stop_cld_manager_server();
 }
