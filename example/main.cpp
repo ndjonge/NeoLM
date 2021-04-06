@@ -160,19 +160,19 @@ int main(int argc, const char* argv[])
 
 	start_cld_manager_server(argc, argv);
 
-	for (int i = 0; i < 1; i++)
+	for (int i = 0; i < 10; i++)
 		tests::add_workspace(std::to_string(100 + i));
 
-	for (int i = 0; i < 1; i++)
+	for (int i = 0; i < 4; i++)
 		tests::add_workgroup(std::to_string(100 + i), std::to_string(100 + i));
 
 
 	std::this_thread::sleep_for(std::chrono::seconds(10));
 
-	for (int i = 0; i < 1; i++)
+	for (int i = 0; i < 4; i++)
 		tests::remove_workgroup(std::to_string(100 + i), std::to_string(100 + i));
 
-	for (int i = 0; i < 1; i++)
+	for (int i = 0; i < 9; i++)
 		tests::remove_workspace(std::to_string(100 + i));
 
 	run_cld_manager_server();
