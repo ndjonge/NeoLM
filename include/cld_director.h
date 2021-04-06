@@ -1758,7 +1758,7 @@ public:
 
 
 public:
-	workspace(const std::string workspace_id, const json& json_workspace) : workspace_id_(workspace_id)
+	workspace(const std::string workspace_id, const json& json_workspace) : workspace_id_(workspace_id), state_(state::up)
 	{
 		from_json(json_workspace);
 	}
