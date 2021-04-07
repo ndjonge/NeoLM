@@ -395,6 +395,7 @@ public:
 		const std::string& base_url() const { return base_url_; }
 		const std::string& id() const { return id_; }
 		void set_state(upstream::state state) { state_ = state; }
+		upstream::state get_state() const { return state_; }
 
 		void add_connection()
 		{
@@ -416,7 +417,7 @@ public:
 			}
 		}
 
-		std::atomic<state> state_{ state::down };
+		std::atomic<upstream::state> state_{ state::down };
 		std::string base_url_;
 		asio::io_context& io_context_;
 		std::string host_;

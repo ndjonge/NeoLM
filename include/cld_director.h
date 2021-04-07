@@ -1371,12 +1371,17 @@ public:
 										&& response.status() != http::status::no_content))
 								{
 									worker.set_status(worker::status::drain);
-									logger.api(
-										"/{s}/{s}/{s}: failed health check for worker {s}\n",
-										workspace_id_,
-										type_,
-										name_,
-										worker.get_base_url());
+
+									if (worker.upstream().get_state() != http::async::upstreams::upstream::state::drain
+										&& error_code == asio::error::connection_refused)
+									{
+										logger.api(
+											"/{s}/{s}/{s}: failed health check for worker {s}\n",
+											workspace_id_,
+											type_,
+											name_,
+											worker.get_base_url());
+									}
 								}
 
 								return;
@@ -1713,7 +1718,7 @@ public:
 class workspace
 {
 public:
-	using key_type = std::pair<std::string, std::string>;
+	using key_type = std::string;
 	using value_type = std::unique_ptr<workgroups>;
 	using container_type = std::map<key_type, value_type>;
 	using iterator_type = container_type::iterator;
@@ -1822,23 +1827,6 @@ private:
 	}
 
 public:
-	iterator_type find_workgroups(const json& j)
-	{
-		std::string workgroups_name{};
-		std::string workgroups_type{};
-
-		j.at("type").get_to(workgroups_type);
-
-		if (j.find("name") != j.end())
-		{
-			j.at("name").get_to(workgroups_name);
-
-			return find_workgroups(workgroups_name, workgroups_type);
-		}
-
-		return end();
-	}
-
 	iterator_type erase_workgroup(iterator_type i) 
 	{ 
 		return workgroups_.erase(i);
@@ -1848,11 +1836,6 @@ public:
 	iterator_type begin() { return workgroups_.begin(); }
 	const_iterator_type cend() const { return workgroups_.cend(); };
 	const_iterator_type cbegin() const { return workgroups_.cbegin(); }
-
-	iterator_type find_workgroups(const std::string& workgroups_name, const std::string& workgroups_type)
-	{
-		return workgroups_.find(key_type{ workgroups_name, workgroups_type });
-	}
 
 	bool has_workgroups_available() const
 	{ 
@@ -1964,7 +1947,7 @@ public:
 		if (new_workgroups)
 		{
 			auto result
-				= workgroups_.insert(std::pair<key_type, value_type>(key_type(name, type), std::move(new_workgroups)));
+				= workgroups_.insert(std::pair<key_type, value_type>(key_type{ name }, std::move(new_workgroups)));
 
 			return result.second;
 		}
@@ -1976,7 +1959,7 @@ public:
 	{
 		bool result = false;
 
-		auto workgroup = workgroups_.find(key_type{ workgroup_name, "bshells" });
+		auto workgroup = workgroups_.find(key_type{ workgroup_name });
 		
 		if (workgroup != workgroups_.end())
 			workgroup->second->state(workgroups::state::drain);
@@ -2027,7 +2010,7 @@ public:
 
 					if (new_workgroups)
 					{
-						this->workgroups_[key_type{ workgroups.value()["name"], workgroups.value()["type"] }]
+						this->workgroups_[key_type{ workgroups.value()["name"]}]
 							= std::move(new_workgroups);
 					}
 				}
@@ -2117,22 +2100,22 @@ public:
 					else
 						workgroup++;
 				}
-
-				if (workspace_state == workspace::state::drain)
-				{
-
-					if (workspace->second->has_workgroups_available())
-					{
-						workspace->second->drain_all_workgroups();
-					}
-					else
-					{
-						workspace->second->state(workspace::state::down);
-						workspace_state = workspace->second->state();
-					}
-				}
-
 			}
+
+			if (workspace_state == workspace::state::drain)
+			{
+
+				if (workspace->second->has_workgroups_available())
+				{
+					workspace->second->drain_all_workgroups();
+				}
+				else
+				{
+					workspace->second->state(workspace::state::down);
+					workspace_state = workspace->second->state();
+				}
+			}
+
 
 			if (workspace_state == workspace::state::down)
 			{
@@ -2286,7 +2269,7 @@ public:
 			std14::shared_lock<mutex_type> g{ workspace->second->workgroups_mutex() };
 			for (const auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
+				if ((workgroup.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
 					return method(*workgroup.second);
 			}
 		}
@@ -2305,7 +2288,7 @@ public:
 
 			for (auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
+				if ((workgroup.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
 				{
 					auto result = method(*workgroup.second);
 					is_changed().store(result);
@@ -2332,7 +2315,7 @@ public:
 			std14::shared_lock<mutex_type> g{ workspace->second->workgroups_mutex() };
 			for (const auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
+				if ((workgroup.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
 				{
 					for (const auto& worker : *(workgroup.second))
 					{

@@ -43,27 +43,27 @@ using json = nlohmann::json;
 
 namespace tests
 {
-bool add_workspace(std::string id)
-{
-	json workspace_def{ { "workspace",
-						  { { "id", "workspace_" + id },
-							{ "routes",
-							  { { "paths", { "/api", "/internal" } },
-								{ "methods", { "get", "head", "post" } },
-								{ "headers", { { "X-Infor-TenantId", { "tenant" + id + "_tst" } } } } } },
-							{ "workgroups",
-							  { { { "name", "service_a000" },
-								  { "type", "bshells" },
-								  { "routes",
-								{ { "paths", { "/tests", "/platform" } },
-									  { "methods", { "get", "head", "post" } },
-									  { "headers", { { "X-Infor-Company", { id } } } } } },
-								  { "limits",
-									{ { "workers_min", 4 },
-									  { "workers_max", 8 },
-									  { "workers_required", 4 },
-									  { "workers_start_at_once_max", 8 } } },
-								  { "parameters", { "program", "bshell" } } } } } } } };
+bool add_workspace(std::string workspace_id, std::string tenant_id){ json workspace_def{
+	{ "workspace",
+						  { { "id", workspace_id },
+		{ "routes",
+		  { { "paths", { "/api", "/internal" } },
+			{ "methods", { "get", "head", "post" } },
+			{ "headers", { { "X-Infor-TenantId", { tenant_id } } } } } } } } };
+		//,
+							//{ "workgroups",
+							//  { { { "name", "service_a000" },
+							//	  { "type", "bshells" },
+							//	  { "routes",
+							//	{ { "paths", { "/tests", "/platform" } },
+							//		  { "methods", { "get", "head", "post" } },
+							//		  { "headers", { { "X-Infor-Company", { id } } } } } },
+							//	  { "limits",
+							//		{ { "workers_min", 4 },
+							//		  { "workers_max", 8 },
+							//		  { "workers_required", 4 },
+							//		  { "workers_start_at_once_max", 8 } } },
+							//	  { "parameters", { "program", "bshell" } } } } } } } };
 
 
 //	std::cout << workspace_def.dump(4, ' ') << "\n";
@@ -86,11 +86,11 @@ bool add_workgroup(std::string workspace_id, std::string workgroup_name)
 {
 
 
-	json workgroup_def{ { "name", "service_b" + workgroup_name },
+	json workgroup_def{ { "name", workgroup_name },
 						{ "type", "bshells"}, { "limits",
-												{ { "workers_min", 4 },
-												  { "workers_max", 8 },
-												  { "workers_required", 4 },
+												{ { "workers_min", 1 },
+												  { "workers_max", 16 },
+												  { "workers_required", 1 },
 												  { "workers_start_at_once_max", 8 } } } };
 
 
@@ -99,7 +99,7 @@ bool add_workgroup(std::string workspace_id, std::string workgroup_name)
 	std::string error;
 
 	auto response = http::client::request<http::method::post>(
-		"http://localhost:4000/internal/platform/manager/workspaces/workspace_" + workspace_id + "/workgroups",
+		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id + "/workgroups",
 		error,
 		{},
 		workgroup_def.dump());
@@ -113,12 +113,37 @@ bool add_workgroup(std::string workspace_id, std::string workgroup_name)
 	return true;
 }
 
+bool increase_workgroup_limits(std::string workspace_id, std::string workgroup_name)
+{
+	json limits_def{ { "limits", { { "workers_required", 8 } } } };
+
+	// std::cout << workgroup_def.dump(4, ' ') << "\n";
+
+	std::string error;
+
+	auto response = http::client::request<http::method::put>(
+		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name
+		 + "/limits/workers_required",
+		error,
+		{},
+		limits_def.dump());
+
+	if (error.empty() == false) return false;
+
+	if (response.status() == http::status::conflict)
+	{
+	}
+
+	return true;
+}
+
+
 bool remove_workgroup(std::string workspace_id, std::string workgroup_name)
 {
 	std::string error;
 
 	auto response = http::client::request<http::method::delete_>(
-		"http://localhost:4000/internal/platform/manager/workspaces/workspace_" + workspace_id + "/workgroups/service_b"
+		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/"
 			+ workgroup_name,
 		error,
 		{});
@@ -137,7 +162,7 @@ bool remove_workspace(std::string workspace_id)
 	std::string error;
 
 	auto response = http::client::request<http::method::delete_>(
-		"http://localhost:4000/internal/platform/manager/workspaces/workspace_" + workspace_id,
+		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id,
 		error,
 		{});
 
@@ -161,19 +186,25 @@ int main(int argc, const char* argv[])
 	start_cld_manager_server(argc, argv);
 
 	for (int i = 0; i < 10; i++)
-		tests::add_workspace(std::to_string(100 + i));
+		tests::add_workspace("workspace_" + std::to_string(100 + i), "tenant" + std::to_string(100 + i) + "_tst");
 
-	for (int i = 0; i < 4; i++)
-		tests::add_workgroup(std::to_string(100 + i), std::to_string(100 + i));
-
+	for (int i = 0; i < 10; i++)
+		tests::add_workgroup("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
 
 	std::this_thread::sleep_for(std::chrono::seconds(10));
 
-	for (int i = 0; i < 4; i++)
-		tests::remove_workgroup(std::to_string(100 + i), std::to_string(100 + i));
+	for (int i = 0; i < 10; i++)
+		tests::increase_workgroup_limits("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
+
+	std::this_thread::sleep_for(std::chrono::seconds(10));
 
 	for (int i = 0; i < 9; i++)
-		tests::remove_workspace(std::to_string(100 + i));
+		tests::remove_workgroup("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
+
+	std::this_thread::sleep_for(std::chrono::seconds(10));
+
+	for (int i = 0; i < 9; i++)
+		tests::remove_workspace("workspace_" + std::to_string(100 + i));
 
 	run_cld_manager_server();
 
