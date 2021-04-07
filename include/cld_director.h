@@ -2342,7 +2342,7 @@ public:
 			std::unique_lock<mutex_type> g{ workspace->second->workgroups_mutex() };
 			for (const auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
+				if ((workgroup.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
 				{
 					std::unique_lock<mutex_type> g{ workgroup.second->workers_mutex() };
 					for (auto& worker : *(workgroup.second))
