@@ -185,26 +185,29 @@ int main(int argc, const char* argv[])
 
 	start_cld_manager_server(argc, argv);
 
-	for (int i = 0; i < 10; i++)
-		tests::add_workspace("workspace_" + std::to_string(100 + i), "tenant" + std::to_string(100 + i) + "_tst");
+	while (1)
+	{
+		for (int i = 0; i < 10; i++)
+			tests::add_workspace("workspace_" + std::to_string(100 + i), "tenant" + std::to_string(100 + i) + "_tst");
 
-	for (int i = 0; i < 10; i++)
-		tests::add_workgroup("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
+		for (int i = 0; i < 10; i++)
+			tests::add_workgroup("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
 
-	std::this_thread::sleep_for(std::chrono::seconds(10));
+		std::this_thread::sleep_for(std::chrono::seconds(10));
 
-	for (int i = 0; i < 10; i++)
-		tests::increase_workgroup_limits("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
+		for (int i = 0; i < 10; i++)
+			tests::increase_workgroup_limits("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
 
-	std::this_thread::sleep_for(std::chrono::seconds(10));
+		std::this_thread::sleep_for(std::chrono::seconds(10));
 
-	for (int i = 0; i < 9; i++)
-		tests::remove_workgroup("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
+		for (int i = 0; i < 9; i++)
+			tests::remove_workgroup("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
 
-	std::this_thread::sleep_for(std::chrono::seconds(10));
+		std::this_thread::sleep_for(std::chrono::seconds(10));
 
-	for (int i = 0; i < 9; i++)
-		tests::remove_workspace("workspace_" + std::to_string(100 + i));
+		for (int i = 0; i < 9; i++)
+			tests::remove_workspace("workspace_" + std::to_string(100 + i));	
+	}
 
 	run_cld_manager_server();
 
