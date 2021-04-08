@@ -588,7 +588,7 @@ public:
 	{
 	protected:
 		asio::io_context& service_;
-		asio::io_context::strand write_strand_;
+		//asio::io_context::strand write_strand_;
 		asio::streambuf in_packet_{ 8192 };
 		asio::steady_timer steady_timer_;
 		http::transfer_encoding_chunked_parser chunked_parser_{};
@@ -607,7 +607,7 @@ public:
 		connection_handler_base(
 			asio::io_context& service, server& server, http::configuration& configuration, protocol protocol)
 			: service_(service)
-			, write_strand_(service)
+//			, write_strand_(service)
 			, steady_timer_(service)
 			, session_handler_(
 				  configuration.get<std::string>("server", "server_no_id"),
@@ -1237,10 +1237,10 @@ public:
 			asio::async_write(
 				socket_base(),
 				asio::buffer(this->write_buffer_.front()),
-				write_strand_.wrap([me](asio::error_code, std::size_t) {
+				[me](asio::error_code, std::size_t) {
 					me->write_buffer_.pop_front();
 					me->write_response_complete();
-				}));
+				});
 		}
 
 		void write_response_complete()

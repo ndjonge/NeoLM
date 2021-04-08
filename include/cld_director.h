@@ -156,10 +156,6 @@ static bool create_bse_process_as_user(
 			{
 				throw std::runtime_error{ "error sending \"worker\" registration" };
 			}
-			// else
-			//	std::cout <<
-			//"http://localhost:5000/internal/platform/manager/workspaces/workspace_000/workgroups/untitled/bshells/"
-			//"workers/ send\n";
 		}
 		else
 			throw std::runtime_error{ "error sending \"worker\" registration" };

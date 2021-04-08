@@ -234,7 +234,7 @@ int main(int argc, const char* argv[])
 		for (int i = 0; i < workspace_count; i++)
 			tests::remove_workspace("workspace_" + std::to_string(100 + i));	
 
-		std::this_thread::sleep_for(std::chrono::seconds(10));
+		std::this_thread::sleep_for(std::chrono::seconds(30));
 	}
 
 	run_cld_manager_server();
