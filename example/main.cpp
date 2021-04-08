@@ -206,12 +206,17 @@ int main(int argc, const char* argv[])
 
 	start_cld_manager_server(argc, argv);
 
-	while (1)
-	{
-		const auto workspace_count = 1;
-		const auto workgroup_count = 1;
+	const auto workspace_count = 1;
+	const auto workgroup_count = 1;
+	const auto run_count = 4;
 
-		tests::generate_requests("/api/tests/1k", -1);
+	for (int n = 0; n != run_count; n++)
+	{
+
+		tests::generate_requests("/api/tests/1k", 200);
+		tests::generate_requests("/api/tests/1k", 200);
+		tests::generate_requests("/api/tests/1k", 200);
+		tests::generate_requests("/api/tests/1k", 200);
 
 		for (int i = 0; i < workspace_count; i++)
 			tests::add_workspace("workspace_" + std::to_string(100 + i), "tenant" + std::to_string(100 + i) + "_tst");
@@ -234,10 +239,10 @@ int main(int argc, const char* argv[])
 		for (int i = 0; i < workspace_count; i++)
 			tests::remove_workspace("workspace_" + std::to_string(100 + i));	
 
-		std::this_thread::sleep_for(std::chrono::seconds(30));
+		std::this_thread::sleep_for(std::chrono::seconds(10));
 	}
 
-	run_cld_manager_server();
+	//run_cld_manager_server();
 
 	stop_cld_manager_server();
 };
