@@ -173,8 +173,29 @@ bool remove_workspace(std::string workspace_id)
 	}
 
 	return true;
-}
+} 
 
+bool generate_requests(const std::string& request_url, int count) 
+{ 
+	std::thread{ [count, request_url]() {
+		for (int i = 0; i != count; i++)
+		{
+			std::string error;
+			auto response = http::client::request<http::method::get>(
+				"http://localhost:4000" + request_url, error, { { "X-Infor-TenantId", "tenant100_tst" } }, {});
+
+			if (response.status() == http::status::not_found)
+			{
+			}
+			else
+			{
+			}
+		}
+	} }.detach();
+
+
+	return true;
+}
 
 } // namespace tests
 
@@ -187,29 +208,36 @@ int main(int argc, const char* argv[])
 
 	while (1)
 	{
-		for (int i = 0; i < 10; i++)
+		const auto workspace_count = 1;
+		const auto workgroup_count = 1;
+
+		tests::generate_requests("/api/tests/1k", -1);
+
+		for (int i = 0; i < workspace_count; i++)
 			tests::add_workspace("workspace_" + std::to_string(100 + i), "tenant" + std::to_string(100 + i) + "_tst");
 
-		for (int i = 0; i < 10; i++)
+		for (int i = 0; i < workgroup_count; i++)
 			tests::add_workgroup("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
 
 		std::this_thread::sleep_for(std::chrono::seconds(10));
 
-		for (int i = 0; i < 10; i++)
+		for (int i = 0; i < workgroup_count; i++)
 			tests::increase_workgroup_limits("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
 
 		std::this_thread::sleep_for(std::chrono::seconds(10));
 
-		for (int i = 0; i < 9; i++)
+		for (int i = 0; i < workgroup_count; i++)
 			tests::remove_workgroup("workspace_" + std::to_string(100 + i), "workgroup_" + std::to_string(i));
 
 		std::this_thread::sleep_for(std::chrono::seconds(10));
 
-		for (int i = 0; i < 9; i++)
+		for (int i = 0; i < workspace_count; i++)
 			tests::remove_workspace("workspace_" + std::to_string(100 + i));	
+
+		std::this_thread::sleep_for(std::chrono::seconds(10));
 	}
 
 	run_cld_manager_server();
 
 	stop_cld_manager_server();
-}
+};

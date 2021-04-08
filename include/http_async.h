@@ -500,7 +500,7 @@ public:
 
 		std14::shared_lock<std14::shared_mutex> upstreams_guard{ upstreams_lock_ };
 
-		auto selected_upstream = upstreams_.cbegin() + (++rr % upstreams_.size());
+		auto selected_upstream = upstreams_.cbegin() + (++rr % (upstreams_.empty() ? 1 : upstreams_.size())); 
 
 		for (auto probe_upstream = upstreams_.cbegin(); probe_upstream != upstreams_.cend(); probe_upstream++)
 		{
@@ -573,8 +573,7 @@ public:
 		}
 		else
 		{
-
-			logger.api("failed to find a suitable upstream\n");
+			logger.info("failed to find a suitable upstream\n");
 			result = false;
 		}
 		return result;
@@ -939,7 +938,7 @@ public:
 
 					if (start_async_result == false)
 					{
-						session_handler_.response().status(http::status::bad_gateway);
+						session_handler_.response().status(http::status::service_unavailable);
 						write_response();
 					}
 				}
@@ -1159,7 +1158,7 @@ public:
 			{
 				upstream_connection.error();
 				session_handler_.response().reset();
-				session_handler_.response().status(http::status::bad_gateway);
+				session_handler_.response().status(http::status::service_unavailable);
 				write_response();
 				return;
 			}
@@ -2080,7 +2079,7 @@ public:
 		{
 			upstream_connection_.error();
 			response_.reset();
-			response_.status(http::status::bad_gateway);
+			response_.status(http::status::service_unavailable);
 			on_complete_(response_, ec);
 			return;
 		}

@@ -607,6 +607,8 @@ public:
 		auto new_worker = workers_.emplace(std::pair<const std::string, worker>(
 			worker_id, worker{ worker_id, worker_label, base_url, version, process_id }));
 
+		auto result = new_worker.second;
+
 		if (new_worker.second == false) new_worker.first->second.from_json(j);
 
 		if (base_url.empty() == false)
@@ -617,9 +619,11 @@ public:
 
 			new_worker.first->second.upstream(upstream);
 			new_worker.first->second.set_status(worker::status::up);
+
+			result = true;
 		}
 
-		return new_worker.second;
+		return result;
 	}
 
 	bool drain_all_workers()
@@ -1848,7 +1852,8 @@ public:
 
 		for (auto& workgroup : workgroups_)
 		{
-			workgroup.second->state(workgroups::state::drain);
+			if (workgroup.second->state()== workgroups::state::up)
+				workgroup.second->state(workgroups::state::drain);
 			result = true;
 		}
 
@@ -3166,14 +3171,7 @@ public:
 		});
 
 		server_base::router_.on_proxy_pass("/", [this](http::session_handler& session) {
-			session.response().status(http::status::not_found);
-
-			// session.request().set(
-			//	"X-Forwarded-Host",
-			//	session.request().get<std::string>(
-			//		"X-Forwarded-Host",
-			//		server_base::configuration_.template get<std::string>("https_this_server_base_host", "")));
-
+			session.response().status(http::status::service_unavailable);
 			workspaces_.proxy_pass(session);
 		});
 
