@@ -1719,18 +1719,14 @@ class configuration
 public:
 	using iterator = std::vector<http::field<std::string>>::iterator;
 	using value_type = http::field<std::string>;
-	using on_configuration_change
-		= std::function<void(const std::string& name, const std::string& value, const std::string& default_value)>;
 
 public:
 	configuration() = default;
 
 	configuration(
 		std::initializer_list<configuration::value_type> init_list,
-		const std::string& string_options = "",
-		on_configuration_change on_configuration_change_handler
-		= [](const std::string&, const std::string&, const std::string&) {})
-		: fields_(init_list), on_configuration_change_(on_configuration_change_handler)
+		const std::string& string_options = "")
+		: fields_(init_list)
 	{
 		const auto& split_string_options = util::split(string_options, ",");
 
@@ -1744,32 +1740,28 @@ public:
 
 	configuration(const http::configuration& c)
 	{
-		std::lock_guard<std::mutex> g(configuration_mutex_);
+		std::unique_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 		fields_ = c.fields_;
-		on_configuration_change_ = c.on_configuration_change_;
 	};
 
 	configuration(http::configuration&& c) noexcept
 	{
-		std::lock_guard<std::mutex> g(configuration_mutex_);
+		std::unique_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 		fields_ = c.fields_;
-		on_configuration_change_ = c.on_configuration_change_;
 	};
 
 	configuration& operator=(const http::configuration& c)
 	{
-		std::lock_guard<std::mutex> g(configuration_mutex_);
+		std::unique_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 		fields_ = c.fields_;
-		on_configuration_change_ = c.on_configuration_change_;
 
 		return *this;
 	};
 
 	configuration& operator=(http::configuration&& c) noexcept
 	{
-		std::lock_guard<std::mutex> g(configuration_mutex_);
+		std::unique_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 		fields_ = c.fields_;
-		on_configuration_change_ = c.on_configuration_change_;
 		return *this;
 	};
 
@@ -1779,7 +1771,7 @@ public:
 	{
 		std::ostringstream ss;
 
-		std::lock_guard<std::mutex> g(configuration_mutex_);
+		std14::shared_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 
 		for (auto&& field : fields_)
 		{
@@ -1792,7 +1784,7 @@ public:
 	json to_json() const noexcept
 	{ 
 		json configuration_json;
-		std::lock_guard<std::mutex> g(configuration_mutex_);
+		std14::shared_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 
 		configuration_json = json::object();
 
@@ -1809,16 +1801,19 @@ public:
 	get(const std::string& name, const T default_value = T()) const
 	{
 		T return_value = default_value;
-		std::lock_guard<std::mutex> g(configuration_mutex_);
+		bool default_used = false;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return util::case_sensitive::equal_to<std::string>()(f.name, name);
-		});
+		{
+			std14::shared_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 
-		if (i != std::end(fields_)) return_value = i->value == "true";
+			auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+				return util::case_sensitive::equal_to<std::string>()(f.name, name);
+			});
 
-		on_configuration_change_(
-			name, return_value == true ? "true" : "false", default_value == true ? "true" : "false");
+			if (i != std::end(fields_)) return_value = i->value == "true";
+		}
+
+		if (default_used) set(name, std::to_string(return_value));
 
 		return static_cast<T>(return_value);
 	}
@@ -1828,16 +1823,22 @@ public:
 	get(const std::string& name, const T default_value = T()) const
 	{
 		T return_value = default_value;
-		std::lock_guard<std::mutex> g(configuration_mutex_);
+		bool default_used = false;
+		{
+			std14::shared_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return (util::case_sensitive::equal_to<std::string>()(f.name, name));
-		});
+			auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+				return (util::case_sensitive::equal_to<std::string>()(f.name, name));
+			});
 
-		if (i != std::end(fields_))
-			return_value = static_cast<T>(std::stoi(i->value)); // TODO klopt dit nog? T is_integral
+			if (i != std::end(fields_))
+				return_value = static_cast<T>(std::stoi(i->value));
+			else
+				default_used = true;
+		}
 
-		on_configuration_change_(name, std::to_string(return_value), std::to_string(default_value));
+		if (default_used) 
+			set(name, std::to_string(return_value));
 
 		return static_cast<T>(return_value);
 	}
@@ -1847,43 +1848,62 @@ public:
 	get(const std::string& name, const T& default_value = T()) const
 	{
 		T return_value = default_value;
-		std::lock_guard<std::mutex> g(configuration_mutex_);
+		bool default_used = false;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
-			return (util::case_sensitive::equal_to<std::string>()(f.name, name));
-		});
+		{
+			std14::shared_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 
-		if (i != std::end(fields_)) return_value = i->value;
+			auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<std::string>& f) {
+				return (util::case_sensitive::equal_to<std::string>()(f.name, name));
+			});
 
-		on_configuration_change_(name, return_value, default_value);
+			if (i != std::end(fields_)) 
+				return_value = i->value;
+			else
+				default_used = true;
+		}
 
+		if (default_used)
+		{
+			set(name, return_value);
+		}
 		return return_value;
 	}
 
 	inline const std::string get(const char* name) const
 	{
-		std::lock_guard<std::mutex> g(configuration_mutex_);
 		static const std::string not_found = "";
+		std::string return_value = not_found;
+		bool default_used = false;
 
-		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) {
-			return (util::case_insensitive::equal_to<std::string>()(f.name, name));
-		});
+		{
+			std14::shared_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 
-		if (i == std::end(fields_))
-		{
-			on_configuration_change_(name, not_found, not_found);
-			return not_found;
+			auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) {
+				return (util::case_insensitive::equal_to<std::string>()(f.name, name));
+			});
+
+			if (i == std::end(fields_))
+			{
+				default_used = true;
+			}
+			else
+			{
+				return_value =  i->value;
+			}
 		}
-		else
+
+		if (default_used)
 		{
-			on_configuration_change_(name, i->value, not_found);
-			return i->value;
+			set(name, return_value);
 		}
+		return return_value;
+
 	}
 
-	inline void set(const std::string& name, const std::string& value)
+	inline void set(const std::string& name, const std::string& value) const
 	{
-		std::lock_guard<std::mutex> g(configuration_mutex_);
+		std::unique_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const value_type& f) {
 			return util::case_sensitive::equal_to<std::string>()(f.name, name);
@@ -1901,14 +1921,13 @@ public:
 
 	inline size_t size() const noexcept
 	{
-		std::lock_guard<std::mutex> g(configuration_mutex_);
+		std14::shared_lock<std14::shared_mutex> lock_guard(configuration_mutex_);
 		return fields_.size();
 	}
 
 private:
-	std::vector<http::field<std::string>> fields_;
-	mutable std::mutex configuration_mutex_;
-	on_configuration_change on_configuration_change_;
+	mutable std::vector<http::field<std::string>> fields_;
+	mutable std14::shared_mutex configuration_mutex_;
 };
 
 enum message_specializations

@@ -39,6 +39,223 @@
 
 using json = nlohmann::json;
 
+
+namespace tests
+{
+bool add_workspace(std::string workspace_id, std::string tenant_id)
+{
+	json workspace_def{ { "workspace",
+						  { { "id", workspace_id },
+							{ "routes",
+							  { { "paths", { "/api", "/internal" } },
+								{ "methods", { "get", "head", "post" } },
+								{ "headers", { { "X-Infor-TenantId", { tenant_id } } } } } } } } };
+	//,
+	//{ "workgroups",
+	//  { { { "name", "service_a000" },
+	//	  { "type", "bshells" },
+	//	  { "routes",
+	//	{ { "paths", { "/tests", "/platform" } },
+	//		  { "methods", { "get", "head", "post" } },
+	//		  { "headers", { { "X-Infor-Company", { id } } } } } },
+	//	  { "limits",
+	//		{ { "workers_min", 4 },
+	//		  { "workers_max", 8 },
+	//		  { "workers_required", 4 },
+	//		  { "workers_start_at_once_max", 8 } } },
+	//	  { "parameters", { "program", "bshell" } } } } } } } };
+
+	//	std::cout << workspace_def.dump(4, ' ') << "\n";
+	std::string error;
+
+	auto response = http::client::request<http::method::post>(
+		"http://localhost:4000/internal/platform/manager/workspaces", error, {}, workspace_def["workspace"].dump());
+
+	if (error.empty() == false) return false;
+
+	if (response.status() == http::status::conflict)
+	{
+	}
+
+	return true;
+}
+
+bool add_workgroup(std::string workspace_id, std::string workgroup_name)
+{
+
+	json workgroup_def{ { "name", workgroup_name },
+						{ "type", "bshells" },
+						{ "limits",
+						  { { "workers_min", 0 },
+							{ "workers_max", 16 },
+							{ "workers_required", 0 },
+							{ "workers_start_at_once_max", 8 } } } };
+
+	// std::cout << workgroup_def.dump(4, ' ') << "\n";
+
+	std::string error;
+
+	auto response = http::client::request<http::method::post>(
+		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id + "/workgroups",
+		error,
+		{},
+		workgroup_def.dump());
+
+	if (error.empty() == false) return false;
+
+	if (response.status() == http::status::conflict)
+	{
+	}
+
+	return true;
+}
+
+bool increase_workgroup_limits(std::string workspace_id, std::string workgroup_name)
+{
+	json limits_def{ { "limits", { { "workers_required", 8 } } } };
+
+	// std::cout << workgroup_def.dump(4, ' ') << "\n";
+
+	std::string error;
+
+	auto response = http::client::request<http::method::put>(
+		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name
+			+ "/limits/workers_required",
+		error,
+		{},
+		limits_def.dump());
+
+	if (error.empty() == false) return false;
+
+	if (response.status() == http::status::conflict)
+	{
+	}
+
+	return true;
+}
+
+bool remove_workgroup(std::string workspace_id, std::string workgroup_name)
+{
+	std::string error;
+
+	auto response = http::client::request<http::method::delete_>(
+		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name,
+		error,
+		{});
+
+	if (error.empty() == false) return false;
+
+	if (response.status() == http::status::conflict)
+	{
+	}
+
+	return true;
+}
+
+bool remove_workspace(std::string workspace_id)
+{
+	std::string error;
+
+	auto response = http::client::request<http::method::delete_>(
+		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id, error, {});
+
+	if (error.empty() == false) return false;
+
+	if (response.status() == http::status::conflict)
+	{
+	}
+
+	return true;
+}
+
+bool generate_proxied_requests(const std::string& request_url, std::string tenant, int count)
+{
+	std::thread{ [count, request_url, tenant]() {
+		for (int i = 0; i != count; i++)
+		{
+			std::string error;
+			auto response = http::client::request<http::method::get>(
+				"http://localhost:4000" + request_url,
+				error,
+				{ { "X-Infor-TenantId", tenant }, { "Connection", "close" } },
+				{});
+
+			if (response.status() == http::status::not_found)
+			{
+			}
+			else
+			{
+			}
+		}
+	} }.detach();
+
+	return true;
+}
+
+bool generate_proxied_requests(const std::string& request_url, int count)
+{
+	std::thread{ [count, request_url]() {
+		for (int i = 0; i != count; i++)
+		{
+			std::string error;
+			auto response = http::client::request<http::method::get>(
+				"http://localhost:4000" + request_url, error, { { "Connection", "close" }}, {});
+
+			if (response.status() == http::status::not_found)
+			{
+			}
+			else
+			{
+			}
+		}
+	} }.detach();
+
+	return true;
+}
+
+bool run()
+{
+	const auto workspace_count = 4;
+	const auto workgroup_count = 4;
+	const auto run_count = 30;
+
+	for (int n = 0; n != run_count; n++)
+	{
+		for (int i = 0; i < workspace_count; i++)
+			tests::add_workspace("workspace_" + std::to_string(100 + i), "tenant" + std::to_string(100 + i) + "_tst");
+
+		for (int j = 0; j < workspace_count; j++)
+			for (int i = 0; i < workgroup_count; i++)
+				tests::add_workgroup("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
+
+		for (int j = 0; j < workspace_count; j++)
+			for (int i = 0; i < workgroup_count; i++)
+				tests::increase_workgroup_limits("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
+
+		for (int i = 0; i < workspace_count; i++)
+			tests::generate_proxied_requests("/api/tests/1k", "tenant" + std::to_string(100 + i) + "_tst", 100);
+
+		for (int i = 0; i < workspace_count; i++)
+			tests::generate_proxied_requests("/internal/platform/manager/workspaces", 100);
+
+		std::this_thread::sleep_for(std::chrono::seconds(30));
+
+		for (int j = 0; j < workspace_count; j++)
+			for (int i = 0; i < workgroup_count; i++)
+				tests::remove_workgroup("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
+
+		for (int i = 0; i < workspace_count; i++)
+			tests::remove_workspace("workspace_" + std::to_string(100 + i));
+
+		std::this_thread::sleep_for(std::chrono::seconds(30));
+	}
+
+	return true;
+}
+
+} // namespace tests
+
+
 namespace bse_utils
 {
 
@@ -154,7 +371,7 @@ static bool create_bse_process_as_user(
 			if (response.status() != http::status::ok && response.status() != http::status::created
 				&& response.status() != http::status::no_content && response.status() != http::status::conflict)
 			{
-				throw std::runtime_error{ "error sending \"worker\" registration" };
+				//throw std::runtime_error{ "error sending \"worker\" registration" };
 			}
 		}
 		else
@@ -483,9 +700,14 @@ public:
 		{
 			startup_t1_ = std::chrono::steady_clock::now();
 		}
-		else if (s == status::drain)
+		else if (upstream_ && s == status::drain)
 		{
 			upstream_->set_state(http::async::upstreams::upstream::state::drain);
+		}
+		else if (
+			(upstream_ == nullptr) && (s == status::drain && ((status_ == status::recover) || (status_ == status::starting))))
+		{
+			return;
 		}
 
 		status_ = s;
@@ -628,12 +850,12 @@ public:
 
 		for (auto& worker : workers_)
 		{
-			if (worker.second.get_base_url().empty() == false)
 			{
 				worker.second.set_status(worker::status::drain);
 
-				if (worker.second.upstream().connections_busy_.load() == 0)
-					worker.second.set_status(worker::status::down);
+				if (worker.second.get_status() == worker::status::drain)
+					if (worker.second.upstream().connections_busy_.load() == 0)
+						worker.second.set_status(worker::status::down);
 			}
 			result = true;
 		}
@@ -1149,11 +1371,12 @@ public:
 		do
 		{
 			auto workers_required_to_add = limits_.workers_required_to_add();
+
 			auto workers_label_required = limits_.workers_label_required();
 			auto workers_runtime_max = limits_.workers_runtime_max();
 			auto workers_requests_max = limits_.workers_requests_max();
 
-			if (limits_.workers_required() > 0)
+			if (limits_.workers_required() > 0 )
 			{
 				logger.api(
 					"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, "
@@ -1172,42 +1395,45 @@ public:
 
 			if (rescan) rescan = false;
 
-			for (std::int16_t n = 0; n < workers_required_to_add; n++)
+//			if (state() == workgroups::state::up)
 			{
-				std::uint32_t process_id = 0;
-				std::string worker_id;
-				lock.unlock();
-				bool success = create_worker_process(
-					server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_label_required, ec);
-
-				lock.lock();
-				if (!success) // todo
+				for (std::int16_t n = 0; n < workers_required_to_add; n++)
 				{
-					logger.api(
-						"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
-						workspace_id_,
-						type_,
-						name_,
-						1 + n,
-						workers_required_to_add,
-						ec);
-				}
-				else
-				{
-					logger.api(
-						"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
-						workspace_id_,
-						type_,
-						name_,
-						1 + n,
-						workers_required_to_add,
-						static_cast<int>(process_id),
-						worker_id);
+					std::uint32_t process_id = 0;
+					std::string worker_id;
+					lock.unlock();
+					bool success = create_worker_process(
+						server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_label_required, ec);
 
-					workers_.emplace(
-						std::pair<const std::string, worker>(worker_id, worker{ worker_id, workers_label_required }));
+					lock.lock();
+					if (!success) // todo
+					{
+						logger.api(
+							"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
+							workspace_id_,
+							type_,
+							name_,
+							1 + n,
+							workers_required_to_add,
+							ec);
+					}
+					else
+					{
+						logger.api(
+							"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
+							workspace_id_,
+							type_,
+							name_,
+							1 + n,
+							workers_required_to_add,
+							static_cast<int>(process_id),
+							worker_id);
 
-					limits_.workers_pending_upd(1);
+						workers_.emplace(
+							std::pair<const std::string, worker>(worker_id, worker{ worker_id, workers_label_required }));
+
+						limits_.workers_pending_upd(1);
+					}
 				}
 			}
 
@@ -1721,8 +1947,8 @@ public:
 	using key_type = std::string;
 	using value_type = std::unique_ptr<workgroups>;
 	using container_type = std::map<key_type, value_type>;
-	using iterator_type = container_type::iterator;
-	using const_iterator_type = container_type::const_iterator;
+	using iterator = container_type::iterator;
+	using const_iterator = container_type::const_iterator;
 	using route_methods_type = std::vector<http::method::method_t>;
 	using route_path_type = std::vector<std::string>;
 	using route_headers_type = std::vector<http::field<std::string>>;
@@ -1827,15 +2053,15 @@ private:
 	}
 
 public:
-	iterator_type erase_workgroup(iterator_type i) 
+	iterator erase_workgroup(iterator i) 
 	{ 
 		return workgroups_.erase(i);
 	}
 
-	iterator_type end() { return workgroups_.end(); };
-	iterator_type begin() { return workgroups_.begin(); }
-	const_iterator_type cend() const { return workgroups_.cend(); };
-	const_iterator_type cbegin() const { return workgroups_.cbegin(); }
+	iterator end() { return workgroups_.end(); };
+	iterator begin() { return workgroups_.begin(); }
+	const_iterator cend() const { return workgroups_.cend(); };
+	const_iterator cbegin() const { return workgroups_.cbegin(); }
 
 	bool has_workgroups_available() const
 	{ 
@@ -2060,30 +2286,25 @@ public:
 	}
 
 
-	void direct_workspaces(asio::io_context& io_context, const http::configuration& configuration, lgr::logger& logger)
+	void cleanup_workspaces(lgr::logger& logger)
 	{
-		auto t0 = std::chrono::steady_clock::now();
-		std14::shared_lock<mutex_type> l1{ workspaces_mutex_ };
+		std::unique_lock<mutex_type> l1{ workspaces_mutex_ };
 
 		for (auto workspace = workspaces_.begin(); workspace != workspaces_.end();)
 		{
-			json empty_limits_adjustments = json::object();
-
 			auto workspace_state = workspace->second->state();	
-			
 
 			if (workspace->second->has_workgroups_available())
 			{
-				std14::shared_lock<mutex_type> l2{ workspace->second->workgroups_mutex() };
+				std::unique_lock<mutex_type> l2{ workspace->second->workgroups_mutex() };
 				for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();)
 				{
 					auto workgroup_state = workgroup->second->state();
 
-					workgroup->second->direct_workers(io_context, configuration, logger);
-
 					if (workgroup_state == workgroups::state::drain)
 					{
-						if (workgroup->second->has_workers_available())
+						//if (workgroup->second->has_workers_available())
+						if ((workgroup->second->workgroups_limits().workers_actual() > 0) || (workgroup->second->workgroups_limits().workers_pending() > 0))
 						{
 							workgroup->second->drain_all_workers();
 						}
@@ -2096,6 +2317,7 @@ public:
 
 					if (workgroup_state == workgroups::state::down)
 					{
+						logger.api("workspace: {s}, erase worker: {s}\n", workspace->first, workgroup->first);
 						workgroup = workspace->second->erase_workgroup(workgroup);
 					}
 					else
@@ -2105,7 +2327,6 @@ public:
 
 			if (workspace_state == workspace::state::drain)
 			{
-
 				if (workspace->second->has_workgroups_available())
 				{
 					workspace->second->drain_all_workgroups();
@@ -2117,17 +2338,51 @@ public:
 				}
 			}
 
-
 			if (workspace_state == workspace::state::down)
 			{
+				logger.api("erase workspace: {s}\n", workspace->first);
 				workspace = erase_workspace(workspace);
 			}
 			else
 				workspace++;
 		}
-		auto t1 = std::chrono::steady_clock::now();
+	}
 
+	void direct_workspaces(asio::io_context& io_context, const http::configuration& configuration, lgr::logger& logger)
+	{
+		auto t0 = std::chrono::steady_clock::now();
+		bool needs_cleanup = false;
+
+		{
+			std14::shared_lock<mutex_type> l1{ workspaces_mutex_ };
+
+			for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); ++workspace)
+			{
+				json empty_limits_adjustments = json::object();
+
+				if (workspace->second->state() != workspace::state::up)
+					needs_cleanup = true;
+
+				if (workspace->second->has_workgroups_available())
+				{
+					std14::shared_lock<mutex_type> l2{ workspace->second->workgroups_mutex() };
+					for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end(); ++workgroup)
+					{
+						if (workgroup->second->state() != workgroups::state::up) 
+							needs_cleanup = true;
+
+						workgroup->second->direct_workers(io_context, configuration, logger);
+					}
+				}
+			}
+		}
+
+		auto t1 = std::chrono::steady_clock::now();
 		auto elapsed = t1 - t0;
+
+		if (needs_cleanup) 
+			cleanup_workspaces(logger);
+
 		logger.api("{u} workspaces took {d}msec\n", workspaces_.size(), elapsed.count() / 1000000);
 	}
 
@@ -2231,54 +2486,71 @@ public:
 		}
 	}
 
-	template <class M> bool select(const std::string& workspace_id, const M method) const
+	template <class M> bool select(const std::string& workspace_id, const M method, std::string& error_message) const
 	{
 		std14::shared_lock<mutex_type> l{ workspaces_mutex_ };
 		auto workspace = workspaces_.find(workspace_id);
 
 		if (workspace != workspaces_.end())
 		{
-			return method(*workspace->second);
+			return method(*workspace->second, error_message);
 		}
 		else
-			return false;
+		{
+			error_message = workspace_id + " does not exits in workspace collection";
+		}
+		return false;
 	}
 
-	template <class M> bool change(const std::string& workspace_id, const M method)
+
+	template <class M> bool change(const std::string& workspace_id, const M method, std::string& error_message)
 	{
 		std::unique_lock<mutex_type> l{ workspaces_mutex_ };
 		auto workspace = workspaces_.find(workspace_id);
 
 		if (workspace != workspaces_.end())
 		{
-			auto result = method(*workspace->second);
+			auto result = method(*workspace->second, error_message);
 			is_changed().store(result);
 			return result;
 		}
 		else
-			return false;
+		{
+			error_message = workspace_id + " does not exits in workspace collection";
+		}
+		return false;
 	}
 
 	template <class M>
-	bool select(const std::string& workspace_id, const std::string& workgroup_name, const M method) const
+	bool select(
+		const std::string& workspace_id,
+		const std::string& workgroup_name,
+		const M method,
+		std::string& error_message) const
 	{
 		std14::shared_lock<mutex_type> l{ workspaces_mutex_ };
 		auto workspace = workspaces_.find(workspace_id);
 
-		if (workspace != workspaces_.end())
+		if (workspace != workspaces_.end() && workspace->second->state() == workspace::state::up)
 		{
 			std14::shared_lock<mutex_type> g{ workspace->second->workgroups_mutex() };
 			for (const auto& workgroup : *(workspace->second))
 			{
 				if ((workgroup.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
-					return method(*workgroup.second);
+					return method(*workgroup.second, error_message);
 			}
+			error_message = workgroup_name + " does not exists in workgroup collection ";
 		}
-
+		else
+		{
+			error_message = workspace_id + " does not exits in workspace collection";
+		}
 		return false;
 	}
 
-	template <class M> bool change(const std::string& workspace_id, const std::string& workgroup_name, const M method)
+	template <class M>
+	bool change(
+		const std::string& workspace_id, const std::string& workgroup_name, const M method, std::string& error_message)
 	{
 		std::unique_lock<mutex_type> l{ workspaces_mutex_ };
 		auto workspace = workspaces_.find(workspace_id);
@@ -2289,13 +2561,18 @@ public:
 
 			for (auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
+				if ((workgroup.first == workgroup_name))
 				{
-					auto result = method(*workgroup.second);
+					auto result = method(*workgroup.second, error_message);
 					is_changed().store(result);
 					return result;
 				}
 			}
+			error_message = workgroup_name + " does not exits in workgroup collection";
+		}
+		else
+		{
+			error_message = workspace_id + " does not exits in workspace collection";
 		}
 
 		return false;
@@ -2306,12 +2583,13 @@ public:
 		const std::string& workspace_id,
 		const std::string& workgroup_name,
 		const std::string& worker_id,
-		const M method) const
+		const M method,
+		std::string& error_message) const
 	{
 		std14::shared_lock<mutex_type> l{ workspaces_mutex_ };
 
 		auto workspace = workspaces_.find(workspace_id);
-		if (workspace != workspaces_.end())
+		if (workspace != workspaces_.end() && workspace->second->state() == workspace::state::up)
 		{
 			std14::shared_lock<mutex_type> g{ workspace->second->workgroups_mutex() };
 			for (const auto& workgroup : *(workspace->second))
@@ -2320,12 +2598,17 @@ public:
 				{
 					for (const auto& worker : *(workgroup.second))
 					{
-						if (worker.first == worker_id) return method(worker.second);
+						if (worker.first == worker_id) return method(worker.second, error_message);
 					}
 				}
+				error_message = worker_id  + " does not exits in workers collection";
 			}
+			if (error_message.empty()) error_message = workgroup_name + " does not exits in workgroup collection";
 		}
-
+		else
+		{
+			error_message = workspace_id + " does not exits in workspace collection";
+		}
 		return false;
 	}
 
@@ -2334,7 +2617,8 @@ public:
 		const std::string& workspace_id,
 		const std::string& workgroup_name,
 		const std::string& worker_id,
-		const M method) const
+		const M method,
+		std::string& error_message) const
 	{
 		std::unique_lock<mutex_type> l{ workspaces_mutex_ };
 		auto workspace = workspaces_.find(workspace_id);
@@ -2343,18 +2627,23 @@ public:
 			std::unique_lock<mutex_type> g{ workspace->second->workgroups_mutex() };
 			for (const auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
+				if ((workgroup.first == workgroup_name))
 				{
 					std::unique_lock<mutex_type> g{ workgroup.second->workers_mutex() };
 					for (auto& worker : *(workgroup.second))
 					{
-						if (worker.first == worker_id) return method(worker.second);
+						if (worker.first == worker_id) return method(worker.second, error_message);
 					}
+					error_message = worker_id + " does not exits in workers collection";
 				}
 			}
+			if (error_message.empty()) error_message = workgroup_name + " does not exits in workgroup collection";
 		}
-
-		return false;
+		else
+		{
+			error_message = workspace_id + " does not exits in workspace collection";
+			return false;
+		}
 	}
 
 	void to_json(json& j, output_formating::options options = output_formating::options::complete) const
@@ -2574,21 +2863,21 @@ public:
 		server_base::router_.on_get(
 			"/internal/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
+				auto error_message = std::string{};
 
-				auto result = workspaces_.select(workspace_id, [&session](workspace& workspace) {
+				auto result = workspaces_.select(workspace_id, [&session](workspace& workspace, std::string&) {
 					json result_json;
 					result_json["workspace"] = workspace;
 					session.response().assign(http::status::ok, result_json.dump(), "application/json");
 					return true;
-				});
+				}, error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
 						error_json(
-							http::status::to_string(session.response().status()),
-							"workspace_id " + workspace_id + " not found")
+							http::status::to_int(session.response().status()), error_message)
 							.dump(),
 						"application/json");
 				}
@@ -2620,36 +2909,39 @@ public:
 
 				session.response().assign(
 					http::status::bad_request,
-					error_json(http::status::to_string(session.response().status()), ex.what()),
+					error_json(http::status::to_int(session.response().status()), ex.what()),
 					"application/json");
 			}
 		});
 
 		server_base::router_.on_delete(
 			"/internal/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
+				auto error_message = std::string{};
+	
 				auto& workspace_id = session.params().get("workspace_id");
 
 				auto result = workspaces_.change(
-					workspace_id, [&session](workspace& workspace) {
+					workspace_id, [&session](workspace& workspace, std::string&) {
 						workspace.state(workspace::state::drain);
 						session.response().assign(http::status::accepted);
 						return true;
-					});
+				}, error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
 
 		server_base::router_.on_get(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups", [this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 
-				auto result = workspaces_.select(workspace_id, [&session](workspace& workspace) {
+				auto result = workspaces_.select(workspace_id, [&session](workspace& workspace, std::string&) {
 					json result;
 					result["workgroups"] = json::array();
 
@@ -2662,14 +2954,16 @@ public:
 					session.response().assign(http::status::ok, result.dump(), "application/json");
 
 					return true;
-				});
+					},
+					error_message
+				);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
 						error_json(
-							http::status::to_string(session.response().status()),
+							http::status::to_int(session.response().status()),
 							"workspace_id " + workspace_id + " not found")
 							.dump(),
 						"application/json");
@@ -2681,29 +2975,33 @@ public:
 			[this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
+				auto error_message = std::string{};
 
 				auto result = workspaces_.select(
-					workspace_id, workgroup_name, [&session, workspace_id](const workgroups& workgroups) {
+					workspace_id, workgroup_name, [&session, workspace_id](const workgroups& workgroups, std::string&) {
 						json result_json;
 						workgroups.to_json(result_json, output_formating::options::complete);
 						session.response().assign(http::status::ok, result_json.dump(), "application/json");
 						return true;
-					});
+					},error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
 
 		server_base::router_.on_post(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups", [this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 
-				auto result = workspaces_.change(workspace_id, [&session, workspace_id](workspace& workspace) {
+				auto result = workspaces_.change(
+					workspace_id,
+					[&session, workspace_id](workspace& workspace, std::string&) {
 					json workgroup_json = json::parse(session.request().body());
 
 					const auto& workgroup_name = workgroup_json.at("name");
@@ -2719,13 +3017,13 @@ public:
 					}
 
 					return true;
-				});
+				}, error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -2733,21 +3031,24 @@ public:
 		server_base::router_.on_delete(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 				const auto& workspace_id = session.params().get("workspace_id");
 				const auto& workgroup_name = session.params().get("workgroup_name");
 
 				auto result = workspaces_.change(
-					workspace_id, workgroup_name, [&session, workspace_id, workgroup_name](workgroups& workgroup) {
+					workspace_id,
+					workgroup_name,
+					[&session, workspace_id, workgroup_name](workgroups& workgroup, std::string&) {
 						workgroup.state(workgroups::state::drain);
 						session.response().assign(http::status::accepted);
 						return true;
-				});
+				}, error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -2755,22 +3056,26 @@ public:
 		server_base::router_.on_get(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/parameters",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 
-				auto result = workspaces_.select(workspace_id, workgroup_name, [&session](const workgroups& workgroup) {
+				auto result = workspaces_.select(
+					workspace_id,
+					workgroup_name,
+					[&session](const workgroups& workgroup, std::string&) {
 					json result_json;
 					workgroup.to_json(result_json, std::string{});
 
 					session.response().assign(http::status::ok, result_json.dump(), "application/json");
 					return true;
-				});
+				}, error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -2778,24 +3083,28 @@ public:
 		server_base::router_.on_get(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/parameters/{detail}",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
+
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& detail = session.params().get("detail");
 
-				auto result
-					= workspaces_.select(workspace_id, workgroup_name, [&session, detail](const workgroups& workgroup) {
+				auto result = workspaces_.select(
+					workspace_id,
+					workgroup_name,
+					[&session, detail](const workgroups& workgroup, std::string&) {
 						  json result_json;
 						  workgroup.to_json(result_json, detail);
 
 						  session.response().assign(http::status::ok, result_json.dump(), "application/json");
 						  return true;
-					  });
+					  }, error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -2803,23 +3112,25 @@ public:
 		server_base::router_.on_get(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/workers/{worker_id}",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& worker_id = session.params().get("worker_id");
 
 				auto result
-					= workspaces_.select(workspace_id, workgroup_name, worker_id, [&session](const worker& worker) {
+					= workspaces_.select(workspace_id, workgroup_name, worker_id, [&session](const worker& worker, std::string&) {
 						  json result_json;
 						  worker.to_json(result_json, output_formating::options::complete);
 						  session.response().assign(http::status::ok, result_json.dump(), "application/json");
 						  return true;
-					  });
+					},
+					error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -2827,11 +3138,14 @@ public:
 		server_base::router_.on_get(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/workers",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 
-				auto result
-					= workspaces_.select(workspace_id, workgroup_name, [&session](const workgroups& workgroup) {
+				auto result = workspaces_.select(
+					workspace_id,
+					workgroup_name,
+					[&session](const workgroups& workgroup, std::string&) {
 						  json result_json;
 						  json worker_json;
 
@@ -2843,13 +3157,14 @@ public:
 
 						  session.response().assign(http::status::ok, result_json.dump(), "application/json");
 						  return true;
-					  });
+					},
+					error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -2857,12 +3172,15 @@ public:
 		server_base::router_.on_post(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/workers",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 
-				auto result
-					= workspaces_.change(workspace_id, workgroup_name, [&session, this](workgroups& workgroup) {
+				auto result = workspaces_.change(
+					workspace_id,
+					workgroup_name,
+					[&session, this](workgroups& workgroup, std::string&) {
 
 					json worker_json = json::parse(session.request().body());
 					const std::string& worker_label = worker_json["worker_label"];
@@ -2876,13 +3194,14 @@ public:
 						session.response().assign(http::status::conflict);
 
 					return true;
-				});
+					},
+					error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -2890,12 +3209,15 @@ public:
 		server_base::router_.on_delete(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/workers/{worker_id}",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& worker_id = session.params().get("worker_id");
 
-				auto result
-					= workspaces_.change(workspace_id, workgroup_name, [&session, worker_id](workgroups& workgroup) {
+				auto result = workspaces_.change(
+					workspace_id,
+					workgroup_name,
+					[&session, worker_id](workgroups& workgroup, std::string&) {
 
 					auto result = workgroup.delete_worker(worker_id);
 
@@ -2903,13 +3225,14 @@ public:
 						session.response().assign(http::status::no_content);
 
 					return result;
-				});
+					},
+					error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -2917,25 +3240,29 @@ public:
 		server_base::router_.on_delete(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/workers/{worker_id}/process",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& worker_id = session.params().get("worker_id");
 
-				auto result
-					= workspaces_.change(workspace_id, workgroup_name, [&session, worker_id](workgroups& workgroup) {
+				auto result = workspaces_.change(
+					workspace_id,
+					workgroup_name,
+					[&session, worker_id](workgroups& workgroup, std::string&) {
 
 						  auto result = workgroup.delete_worker_process(worker_id);
 
 						  if (result) session.response().assign(http::status::no_content);
 
 						  return result;
-					  });
+					},
+					error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -2943,10 +3270,14 @@ public:
 		server_base::router_.on_get(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/limits",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 
-				auto result = workspaces_.select(workspace_id, workgroup_name, [&session](const workgroups& workgroup) {
+				auto result = workspaces_.select(
+					workspace_id,
+					workgroup_name,
+					[&session](const workgroups& workgroup, std::string&) {
 					json result_json;
 					json limits_json;
 					workgroup.workgroups_limits().to_json(limits_json, output_formating::options::complete);
@@ -2955,13 +3286,14 @@ public:
 
 					session.response().assign(http::status::ok, result_json.dump(), "application/json");
 					return true;
-				});
+					},
+					error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -2969,10 +3301,14 @@ public:
 		server_base::router_.on_get(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/limits/{limit_name}",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 
-				auto result = workspaces_.select(workspace_id, workgroup_name, [&session](const workgroups& workgroup) {
+				auto result = workspaces_.select(
+					workspace_id,
+					workgroup_name,
+					[&session](const workgroups& workgroup, std::string&) {
 					json result_json;
 					json limits_json;
 
@@ -2984,13 +3320,14 @@ public:
 
 					session.response().assign(http::status::ok, result_json.dump(), "application/json");
 					return true;
-				});
+					},
+					error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -2998,10 +3335,14 @@ public:
 		server_base::router_.on_put(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/limits",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 
-				auto result = workspaces_.change(workspace_id, workgroup_name, [&session](workgroups& workgroup) {
+				auto result = workspaces_.change(
+					workspace_id,
+					workgroup_name,
+					[&session](workgroups& workgroup, std::string&) {
 					
 					json result_json;
 					try 
@@ -3020,13 +3361,14 @@ public:
 						return false;
 					}
 
-				});
+				},
+					error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 
@@ -3035,13 +3377,16 @@ public:
 		server_base::router_.on_put(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/limits/{limit_name}",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& limit_name = session.params().get("limit_name");
 
 
 				auto result = workspaces_.change(
-					workspace_id, workgroup_name, [&session, &limit_name, this](workgroups& workgroup) {
+					workspace_id,
+					workgroup_name,
+					[&session, &limit_name, this](workgroups& workgroup, std::string&) {
 					try
 					{
 						json limits_json = json::parse(session.request().body());
@@ -3065,13 +3410,14 @@ public:
 						// TODO error response handling
 						return false;
 					}
-				});
+					},
+					error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 
@@ -3080,13 +3426,16 @@ public:
 		server_base::router_.on_patch(
 			"/internal/platform/manager/workspaces/{workspace_id}/workgroups/{workgroup_name}/limits/{limit_name}",
 			[this](http::session_handler& session) {
+				auto error_message = std::string{};
 				auto& workspace_id = session.params().get("workspace_id");
 				auto& workgroup_name = session.params().get("workgroup_name");
 				auto& limit_name = session.params().get("limit_name");
 
 
 				auto result = workspaces_.change(
-					workspace_id, workgroup_name, [&session, &limit_name, this](workgroups& workgroup) {
+					workspace_id,
+					workgroup_name,
+					[&session, &limit_name, this](workgroups& workgroup, std::string&) {
 					try
 					{
 						json limits_json = json::parse(session.request().body());
@@ -3111,13 +3460,14 @@ public:
 						// TODO error response handling
 						return false;
 					}
-				});
+					},
+					error_message);
 
 				if (result == false)
 				{
 					session.response().assign(
 						http::status::not_found,
-						error_json(http::status::to_string(session.response().status()), "").dump(),
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
 						"application/json");
 				}
 			});
@@ -3257,7 +3607,7 @@ private:
 	}
 
 public:
-	static json error_json(const std::string& code, const std::string& message)
+	static json error_json(const int code, const std::string& message)
 	{
 		json error_json;
 		error_json["error"].emplace_back(json{ { "code", code }, { "message", message } });
@@ -3271,7 +3621,7 @@ static std::unique_ptr<manager<http::async::server>> cpm_server_;
 } // namespace platform
 } // namespace cloud
 
-inline int start_cld_manager_server(std::string config_file, std::string config_options, bool run_as_daemon)
+inline bool start_cld_manager_server(std::string config_file, std::string config_options, bool run_as_daemon, bool run_selftests)
 {
 	std::string server_version = std::string{ "ln-cld-mgr" };
 
@@ -3291,26 +3641,26 @@ inline int start_cld_manager_server(std::string config_file, std::string config_
 		  { "https_enabled", "false" },
 		  { "http_enabled", "true" },
 		  { "http_use_portsharding", "false" } },
-		config_options //,
-		//[](const std::string name, const std::string value, const std::string default_value) {
-		//	// std::ofstream configuration_dump{ "C:\\tmp\\options.txt", std::ios_base::app };
-
-		//	// configuration_dump << "name: '" << name << "', value: '" << value << "', default_value: '" <<
-		//	// default_value
-		//	//				   << "'\n";
-		//	// configuration_dump.flush();
-		//}
+		config_options
 	};
+
+	if (run_selftests)
+	{
+		config_file = "selftest.json";
+	}
 
 	cloud::platform::cpm_server_ = std::unique_ptr<cloud::platform::manager<http::async::server>>(
 		new cloud::platform::manager<http::async::server>(http_configuration, config_file));
 
-	cloud::platform::cpm_server_->start();
+	auto result  = cloud::platform::cpm_server_->start() == http::server::state::active;
 
-	return 0;
+	if (run_selftests) 
+		result = tests::run();
+
+	return result;
 }
 
-inline int start_cld_manager_server(int argc, const char** argv)
+inline bool start_cld_manager_server(int argc, const char** argv)
 {
 	prog_args::arguments_t cmd_args(
 		argc,
@@ -3318,7 +3668,8 @@ inline int start_cld_manager_server(int argc, const char** argv)
 		{ { "cld_config",
 			{ prog_args::arg_t::arg_val, " <config>: filename for the workspace config file or url", "config.json" } },
 		  { "cld_options", { prog_args::arg_t::arg_val, "see doc.", "" } },
-		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } } });
+		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } },
+		  { "selftests", { prog_args::arg_t::flag, "run selftests" } } });
 
 	if (cmd_args.process_args() == false)
 	{
@@ -3327,7 +3678,10 @@ inline int start_cld_manager_server(int argc, const char** argv)
 	}
 
 	return start_cld_manager_server(
-		cmd_args.get_val("cld_config"), cmd_args.get_val("cld_options"), cmd_args.get_val("daemonize") == "true");
+		cmd_args.get_val("cld_config"),
+		cmd_args.get_val("cld_options"),
+		cmd_args.get_val("daemonize") == "true",
+		cmd_args.get_val("selftests") == "true");
 }
 
 inline void run_cld_manager_server()
