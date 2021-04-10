@@ -217,7 +217,7 @@ bool run()
 {
 	const auto workspace_count = 4;
 	const auto workgroup_count = 4;
-	const auto run_count = 30;
+	const auto run_count = -1;
 
 	for (int n = 0; n != run_count; n++)
 	{
@@ -238,7 +238,7 @@ bool run()
 		for (int i = 0; i < workspace_count; i++)
 			tests::generate_proxied_requests("/internal/platform/manager/workspaces", 100);
 
-		std::this_thread::sleep_for(std::chrono::seconds(30));
+		std::this_thread::sleep_for(std::chrono::seconds(10));
 
 		for (int j = 0; j < workspace_count; j++)
 			for (int i = 0; i < workgroup_count; i++)
@@ -247,7 +247,7 @@ bool run()
 		for (int i = 0; i < workspace_count; i++)
 			tests::remove_workspace("workspace_" + std::to_string(100 + i));
 
-		std::this_thread::sleep_for(std::chrono::seconds(30));
+		std::this_thread::sleep_for(std::chrono::seconds(10));
 	}
 
 	return true;
