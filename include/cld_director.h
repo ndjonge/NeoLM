@@ -1395,7 +1395,6 @@ public:
 
 			if (rescan) rescan = false;
 
-//			if (state() == workgroups::state::up)
 			{
 				for (std::int16_t n = 0; n < workers_required_to_add; n++)
 				{
@@ -1406,6 +1405,12 @@ public:
 						server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_label_required, ec);
 
 					lock.lock();
+					if (state() != workgroups::state::up) 
+					{
+						assert(false);
+						break;
+					}
+
 					if (!success) // todo
 					{
 						logger.api(

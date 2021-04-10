@@ -354,6 +354,17 @@ public:
 			state_ = state::up;
 		}
 
+		~upstream() 
+		{ 
+			std::unique_lock<std::mutex> lock_guard{ connection_mutex_ };
+			state_ = state::down;
+
+			assert(connections_busy_ == 0);
+			assert(state_ == state::down);
+
+			connections_.clear();
+		}
+
 		void update_status_code_metrics(std::int32_t status)
 		{
 			assert(status >= 100);
@@ -1069,8 +1080,8 @@ public:
 
 			if (result == http::response_parser::result_type::good)
 			{
-				session_handler_.request().set("X-Request-ID", upstream_connection.id());
 				// TODO: enable via config?
+				// session_handler_.request().set("X-Request-ID", upstream_connection.id());
 				// session_handler_.response().set("X-Upstream-Server", upstream_connection.id());
 
 				auto content_length = session_handler_.response().content_length();
@@ -2093,43 +2104,40 @@ public:
 		upstream_connection_.owner().update_health_check_metrics();
 
 		on_complete_(response_, ec);
+		upstream_connection_.release();
 
-		if (response_.connection_close() == true)
-		{
-			auto me_resolve = this->shared_from_this();
+		//if (response_.connection_close() == true)
+		//{
+		//	auto me_resolve = this->shared_from_this();
 
-			upstream_connection_.resolver_.async_resolve(
-				asio::ip::tcp::v4(),
-				upstream_connection_.host_,
-				upstream_connection_.port_,
-				[me_resolve](asio::error_code error, asio::ip::tcp::resolver::iterator it) {
-					if (error) return;
+		//	upstream_connection_.resolver_.async_resolve(
+		//		asio::ip::tcp::v4(),
+		//		upstream_connection_.host_,
+		//		upstream_connection_.port_,
+		//		[me_resolve](asio::error_code error, asio::ip::tcp::resolver::iterator it) {
+		//			if (error) return;
 
-					auto me_connect = me_resolve->shared_from_this();
+		//			auto me_connect = me_resolve->shared_from_this();
 
-					asio::async_connect(
-						me_connect->upstream_connection_.socket(),
-						it,
-						[me_connect](asio::error_code error_code, asio::ip::tcp::resolver::iterator) {
-							if (error_code)
-							{
-								// TODO try next resolve result?
-								me_connect->upstream_connection_.error();
-								me_connect->upstream_connection_.owner().set_state(
-									http::async::upstreams::upstream::state::drain);
-								return;
-							}
-							else
-							{
-								error_code.clear();
-							}
-						});
-				});
-		}
-		else
-		{
-			upstream_connection_.release();
-		}
+		//			asio::async_connect(
+		//				me_connect->upstream_connection_.socket(),
+		//				it,
+		//				[me_connect](asio::error_code error_code, asio::ip::tcp::resolver::iterator) {
+		//					if (error_code)
+		//					{
+		//						// TODO try next resolve result?
+		//						me_connect->upstream_connection_.error();
+		//						me_connect->upstream_connection_.owner().set_state(
+		//							http::async::upstreams::upstream::state::drain);
+		//						return;
+		//					}
+		//					else
+		//					{
+		//						error_code.clear();
+		//					}
+		//				});
+		//		});
+		//}
 	}
 
 private:
@@ -2235,6 +2243,7 @@ http::response_message request(
 		});
 
 	io_context.run();
+	local_upstream.set_state(http::async::upstreams::upstream::state::down);
 
 	return result;
 }
@@ -2271,6 +2280,8 @@ void request(
 	async_request<method>(local_upstream, request_url, additional_headers, body, std::move(on_complete));
 
 	io_context.run();
+
+	local_upstream.set_state(http::async::upstreams::upstream::state::down);
 }
 
 } // namespace client
