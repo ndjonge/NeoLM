@@ -4,7 +4,9 @@ project("cld_mgr" VERSION 0.0.1 LANGUAGES CXX)
 
 include_directories("include")
 
-add_executable(${PROJECT_NAME} example/cld_mgr.cpp "include/prog_args.h" "include/cld_worker_instance.h")
+
+add_executable("${PROJECT_NAME}" src/cld_mgr.cpp "include/prog_args.h" "include/cld_worker_instance.h")
+add_executable("${PROJECT_NAME}_wrk" src/cld_wrk.cpp "include/prog_args.h" "include/cld_worker_instance.h")
 
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -46,9 +48,13 @@ include_directories(${ASIO_INCLUDE_DIR})
 include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
 
-target_link_libraries( ${PROJECT_NAME} OpenSSL::SSL OpenSSL::Crypto)
-target_link_libraries( ${PROJECT_NAME} ZLIB::ZLIB)
-target_link_libraries( ${PROJECT_NAME} OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB) 
+target_link_libraries( "${PROJECT_NAME}" OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries( "${PROJECT_NAME}" ZLIB::ZLIB)
+target_link_libraries( "${PROJECT_NAME}" OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB) 
+
+target_link_libraries( "${PROJECT_NAME}_wrk" OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries( "${PROJECT_NAME}_wrk" ZLIB::ZLIB)
+target_link_libraries( "${PROJECT_NAME}_wrk" OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB) 
 
 if(WIN32)
     add_definitions(-DLOCAL_TESTING)
