@@ -9,8 +9,13 @@
 
 #define CURL_STATICLIB
 
-#ifndef LOCAL_TESTING
+#ifdef USE_VCPKG_INCLUDES
+#include "nlohmann/json.hpp"
+#else
 #include "nlohmann_json.hpp"
+#endif
+
+#ifndef LOCAL_TESTING
 #include "baanlogin.h"
 #include "bdaemon.h"
 #include <curl/curl.h>
@@ -29,7 +34,6 @@
 #define BAAN_WINSTATION_NAME "baan"
 #define BAAN_DESKTOP_NAME "desktop"
 #define PORT_SET "9.4x"
-#include "nlohmann/json.hpp"
 #endif
 
 #include "http_async.h"
@@ -80,16 +84,17 @@ bool add_workspace(std::string workspace_id, std::string tenant_id)
 	return true;
 }
 
-bool add_workgroup(std::string workspace_id, std::string workgroup_name)
+bool add_workgroup(std::string workspace_id, std::string workgroup_name, int required, int start_at_once)
 {
 
 	json workgroup_def{ { "name", workgroup_name },
 						{ "type", "bshells" },
+						{ "parameters", { { "program", "cld_wrk.exe" } } },
 						{ "limits",
-						  { { "workers_min", 0 },
+						  { { "workers_min", required },
 							{ "workers_max", 16 },
-							{ "workers_required", 0 },
-							{ "workers_start_at_once_max", 8 } } } };
+							{ "workers_required", required },
+							{ "workers_start_at_once_max", start_at_once } } } };
 
 	// std::cout << workgroup_def.dump(4, ' ') << "\n";
 
@@ -110,9 +115,9 @@ bool add_workgroup(std::string workspace_id, std::string workgroup_name)
 	return true;
 }
 
-bool increase_workgroup_limits(std::string workspace_id, std::string workgroup_name)
+bool increase_workgroup_limits(std::string workspace_id, std::string workgroup_name, int required)
 {
-	json limits_def{ { "limits", { { "workers_required", 8 } } } };
+	json limits_def{ { "limits", { { "workers_required", required } } } };
 
 	// std::cout << workgroup_def.dump(4, ' ') << "\n";
 
@@ -215,9 +220,12 @@ bool generate_proxied_requests(const std::string& request_url, int count)
 
 bool run()
 {
-	const auto workspace_count = 4;
-	const auto workgroup_count = 4;
+	const auto workspace_count = 1;
+	const auto workgroup_count = 1;
 	const auto run_count = -1;
+	const auto worker_count = 8;
+	const auto worker_start_at_once_count = 4;
+	const auto requests_count = 20;
 
 	for (int n = 0; n != run_count; n++)
 	{
@@ -226,19 +234,24 @@ bool run()
 
 		for (int j = 0; j < workspace_count; j++)
 			for (int i = 0; i < workgroup_count; i++)
-				tests::add_workgroup("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
+				tests::add_workgroup("workspace_" + std::to_string(100 + j),
+									 "workgroup_" + std::to_string(i),
+									 worker_count,
+									 worker_start_at_once_count);
 
 		for (int j = 0; j < workspace_count; j++)
 			for (int i = 0; i < workgroup_count; i++)
-				tests::increase_workgroup_limits("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
+				tests::increase_workgroup_limits(
+					"workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i), worker_count);
 
 		for (int i = 0; i < workspace_count; i++)
-			tests::generate_proxied_requests("/api/tests/1k", "tenant" + std::to_string(100 + i) + "_tst", 50);
+			tests::generate_proxied_requests(
+				"/api/tests/1k", "tenant" + std::to_string(100 + i) + "_tst", requests_count);
 
 		for (int i = 0; i < workspace_count; i++)
-			tests::generate_proxied_requests("/internal/platform/manager/workspaces", 50);
+			tests::generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
 
-		std::this_thread::sleep_for(std::chrono::seconds(10));
+		std::this_thread::sleep_for(std::chrono::seconds(60));
 
 		for (int j = 0; j < workspace_count; j++)
 			for (int i = 0; i < workgroup_count; i++)
@@ -259,7 +272,7 @@ bool run()
 namespace bse_utils
 {
 
-#ifdef LOCAL_TESTING
+#ifdef LOCAL_TESTING_WITH_NGINX_BACKEND
 
 namespace local_testing
 {
@@ -332,6 +345,7 @@ static bool create_bse_process_as_user(
 	const std::string&,
 	const std::string&,
 	const std::string&,
+	const std::string&,
 	const std::string& parameters, // for local testing retreive the level this way :(
 	std::uint32_t& pid,
 	std::string& ec)
@@ -399,8 +413,14 @@ static bool create_bse_process_as_user(
 	auto user_ok = user == "" || CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0);
 #else
 	HANDLE requested_user_token = 0;
+
+#ifndef LOCAL_TESTING
 	auto user_ok = CheckUserInfo(
 		user.data(), password.data(), NULL, 0, NULL, 0, &requested_user_token, eWindowsLogonType_Default);
+#else
+	auto user_ok = (user == "" && password == "");
+	OpenProcessToken(GetCurrentProcess(), TOKEN_READ, &requested_user_token);
+#endif
 	if (!user_ok)
 	{
 		// TODO more info about failure.
@@ -435,52 +455,95 @@ static bool create_bse_process_as_user(
 		STARTUPINFO siStartInfo{ 0 };
 		siStartInfo.cb = sizeof(STARTUPINFO);
 
-		snprintf(desktop, sizeof(desktop), "%s\\%s", BAAN_WINSTATION_NAME, BAAN_DESKTOP_NAME);
-
-		siStartInfo.lpDesktop = desktop;
 		auto error = GetLastError();
 
-		std::string command_cpy = command;
-		if (0)
+		auto cwd = bse.data();
+
+		if (bse.empty())
 		{
-			command_cpy = "C:\\Windows\\System32\\notepad.exe";
+			cwd = nullptr; // use current workdir
+		}
+		else
+		{
+			snprintf(desktop, sizeof(desktop), "%s\\%s", BAAN_WINSTATION_NAME, BAAN_DESKTOP_NAME);
+			siStartInfo.lpDesktop = desktop;
 		}
 
-		error = 0;
-		result = CreateProcessAsUser(
-			requested_user_token, /* Handle to logged-on user */
-			NULL, /* module name */
-			const_cast<LPSTR>(command_cpy.data()), /* command line */
-			NULL, /* process security attributes */
-			NULL, /* thread security attributes */
-			FALSE, /* inherits handles */
-			CREATE_NEW_PROCESS_GROUP | /* New root process */
-				DETACHED_PROCESS | /* Create NO console!! */
-				CREATE_DEFAULT_ERROR_MODE | NORMAL_PRIORITY_CLASS,
-			const_cast<LPSTR>(ss.str().data()), /* new environment block */
-			bse.data(), /* current working directory name */
-			&siStartInfo,
-			&piProcInfo /* Returns thread */
-		);
 
-		char buf[256];
-		FormatMessage(
-			FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-			NULL,
-			GetLastError(),
-			MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-			buf,
-			(sizeof(buf) / sizeof(char)),
-			NULL);
+		std::string command_cpy = command;
 
-		ec.assign(buf, std::strlen(buf));
+		if (user.empty())
+		{
+			error = 0;
+			result = CreateProcess(
+				cwd, 
+				const_cast<LPSTR>(command_cpy.data()), 
+				NULL, 
+				NULL, 
+				FALSE, 
+				CREATE_NEW_PROCESS_GROUP | /* New root process */
+					DETACHED_PROCESS | /* Create NO console!! */
+					CREATE_DEFAULT_ERROR_MODE | NORMAL_PRIORITY_CLASS,
+				NULL, 
+				NULL, 
+				&siStartInfo, 
+				&piProcInfo
+			);
+		}
+		else
+		{
 
-		if (result) pid = piProcInfo.dwProcessId;
+			error = 0;
+			result = CreateProcessAsUser(
+				requested_user_token, /* Handle to logged-on user */
+				NULL, /* module name */
+				const_cast<LPSTR>(command_cpy.data()), /* command line */
+				NULL, /* process security attributes */
+				NULL, /* thread security attributes */
+				FALSE, /* inherits handles */
+				CREATE_NEW_PROCESS_GROUP | /* New root process */
+					DETACHED_PROCESS | /* Create NO console!! */
+					CREATE_DEFAULT_ERROR_MODE | NORMAL_PRIORITY_CLASS,
+				const_cast<LPSTR>(ss.str().data()), /* new environment block */
+				cwd, /* current working directory name */
+				&siStartInfo,
+				&piProcInfo /* Returns thread */
+			);
+		}
+
+
+		if (result) 
+		{
+			pid = piProcInfo.dwProcessId;
+
+			if (1)
+				std::cout << "CMD: " << command_cpy << "\n";
+		}
+		else
+		{
+			char buf[256];
+			FormatMessage(
+				FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+				NULL,
+				GetLastError(),
+				MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+				buf,
+				(sizeof(buf) / sizeof(char)),
+				NULL);
+
+			ec.assign(buf, std::strlen(buf));
+			ec += "\n running this command: (" + command_cpy + ")";
+		}
+
 
 		CloseHandle(piProcInfo.hThread);
 		CloseHandle(piProcInfo.hProcess);
-		RevertToSelf();
-		CloseHandle(requested_user_token);
+
+		if (user.empty() == false)
+		{
+			RevertToSelf();
+			CloseHandle(requested_user_token);
+		}
 	}
 #endif
 
@@ -851,7 +914,14 @@ public:
 		for (auto& worker : workers_)
 		{
 			{
-				worker.second.set_status(worker::status::drain);
+				std::string ec;
+				auto response = http::client::request<http::method::delete_>(
+					worker.second.get_base_url() + "/internal/platform/worker/process", ec, {});
+
+				if (response.status() == http::status::no_content)
+				{
+					worker.second.set_status(worker::status::drain);
+				}
 
 				if (worker.second.get_status() == worker::status::drain)
 					if (worker.second.upstream().connections_busy_.load() == 0)
@@ -1704,7 +1774,7 @@ public:
 							worker_it->second.get_base_url());
 
 						upstreams_.erase_upstream(worker_it->second.get_base_url());
-#ifdef LOCAL_TESTING
+#ifdef LOCAL_TESTING_WITH_NGINX_BACKEND
 						bse_utils::local_testing::_test_sockets.release(
 							workspace_id_, worker_it->second.get_base_url());
 #endif
@@ -1729,15 +1799,15 @@ public:
 		if (j.contains("parameters"))
 		{
 			try
-			{ // TODO optional parameters bse, bse_bin, bse_user, os_user and os_password.
-				j["parameters"].at("bse").get_to(bse_);
-				j["parameters"].at("bse_bin").get_to(bse_bin_);
-				j["parameters"].at("bse_user").get_to(bse_user_);
-				j["parameters"].at("os_user").get_to(os_user_);
-				j["parameters"].at("os_password").get_to(os_password_);
-				j["parameters"].at("cli_options").get_to(cli_options_);
-				j["parameters"].at("http_options").get_to(http_options_);
-				j["parameters"].at("program").get_to(program_);
+			{ 
+				bse_ = j["parameters"].value("bse", "");
+				bse_bin_ = j["parameters"].value("bse_bin", bse_.empty() ? "": bse_ + "/bin");
+				bse_user_ = j["parameters"].value("bse_user", "");
+				os_user_ = j["parameters"].value("os_user", "");
+				os_password_ = j["parameters"].value("os_password", "");
+				cli_options_ = j["parameters"].value("cli_options", "");
+				http_options_ = j["parameters"].value("http_options", "");
+				program_ = j["parameters"].value("program", "");
 			}
 			catch (json::exception&)
 			{
@@ -1762,7 +1832,7 @@ public:
 				auto process_id = worker_json.value().value("process_id", 1234);
 				auto base_url = worker_json.value().value("base_url", "");
 
-#if defined(LOCAL_TESTING)
+#if defined(LOCAL_TESTING_WITH_NGINX_BACKEND)
 				if (base_url.empty() == false)
 				{
 					auto base_url_split = util::split(base_url, ":");
@@ -1879,6 +1949,7 @@ public:
 		return bse_utils::create_bse_process_as_user(
 			bse_,
 			bse_bin_,
+			"",
 			os_user_,
 			os_password_,
 			bse_bin_ + (bse_bin_ != "" ? "/" : "") + program_ + std::string{ " " } + parameters.str(),
@@ -2388,7 +2459,7 @@ public:
 		if (needs_cleanup) 
 			cleanup_workspaces(logger);
 
-		logger.api("{u} workspaces took {d}msec\n", workspaces_.size(), elapsed.count() / 1000000);
+		logger.info("{u} workspaces took {d}msec\n", workspaces_.size(), elapsed.count() / 1000000);
 	}
 
 public:
@@ -3044,6 +3115,7 @@ public:
 					workspace_id,
 					workgroup_name,
 					[&session, workspace_id, workgroup_name](workgroups& workgroup, std::string&) {
+						
 						workgroup.state(workgroups::state::drain);
 						session.response().assign(http::status::accepted);
 						return true;

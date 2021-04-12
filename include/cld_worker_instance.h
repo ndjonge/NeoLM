@@ -102,6 +102,7 @@ public:
 
 		put_new_instance_json["process_id"] = pid;
 		put_new_instance_json["worker_label"] = cld_worker_label_;
+		put_new_instance_json["worker_id"] = cld_worker_id_;
 		put_new_instance_json["base_url"] = server_.config().get("http_this_server_local_url");
 		put_new_instance_json["version"] = server_.config().get<std::string>("server", "");
 

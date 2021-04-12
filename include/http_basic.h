@@ -29,7 +29,7 @@
 #include <vector>
 #include <zlib.h>
 
-#if !defined(LOCAL_TESTING)
+#if !defined(USE_VCPKG_INCLUDES)
 #include "nlohmann_json.hpp"
 #else
 #include "nlohmann/json.hpp"
