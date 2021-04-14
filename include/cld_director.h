@@ -460,8 +460,12 @@ static bool create_bse_process_as_user(
 		}
 		ss << char{ 0 };
 
-		PROCESS_INFORMATION piProcInfo = { 0 };
-		STARTUPINFO siStartInfo{ 0 };
+		PROCESS_INFORMATION piProcInfo = { };
+		STARTUPINFO siStartInfo{ };
+
+		std::memset(&piProcInfo, 0, sizeof(PROCESS_INFORMATION));
+		std::memset(&siStartInfo, 0, sizeof(STARTUPINFO));
+
 		siStartInfo.cb = sizeof(STARTUPINFO);
 
 		auto error = GetLastError();
