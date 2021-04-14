@@ -89,7 +89,11 @@ bool add_workgroup(std::string workspace_id, std::string workgroup_name, int req
 
 	json workgroup_def{ { "name", workgroup_name },
 						{ "type", "bshells" },
+#ifdef _WIN32
 						{ "parameters", { { "program", "cld_wrk.exe" } } },
+#else
+						{ "parameters", { { "program", "cld_wrk" } } },
+#endif
 						{ "limits",
 						  { { "workers_min", required },
 							{ "workers_max", 16 },
@@ -408,9 +412,14 @@ static bool create_bse_process_as_user(
 	std::string& ec)
 {
 	bool result = false;
+
 #ifndef _WIN32
 	// If user is empty then start process as same user
+#ifndef LOCAL_TESTING
 	auto user_ok = user == "" || CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0);
+#else
+	auto user_ok = user == "";
+#endif
 #else
 	HANDLE requested_user_token = 0;
 
@@ -556,7 +565,18 @@ static bool create_bse_process_as_user(
 	}
 	else
 	{
-		auto argv = split_string(command.data());
+		std::vector<char*> argv;
+		auto command_args = util::split(command.data(), " ");
+
+		for (auto& arg : command_args)
+		{
+			size_t arg_1_size = strlen(arg.c_str());
+			char* arg_1 = new char[arg_1_size];
+			std::strncpy(arg_1, arg.c_str(), arg_1_size);				
+			argv.push_back(arg_1);
+		}
+
+		argv.push_back(nullptr);
 
 		// TODO required_environment_vars not needed to start process in (tenant) jail.
 		const char* required_environment_vars[] = { "PATH",		 "CLASSPATH",	 "CLASSPATH", "SLMHOME", "SLM_RUNTIME",
@@ -614,14 +634,19 @@ static bool create_bse_process_as_user(
 
 			if (user != "")
 			{
+#if !defined(LOCAL_TESTING)
 				if (ImpersonateUser(user.data(), NULL, 0, NULL) == -1)
+#else
+				if(true)
+#endif
 				{
+
 					printf("error on impersonating user %s, error :%d\n", user.data(), errno);
 					_exit(1);
 				}
 			}
 
-			if (execve(*argv, argv, envp.data()) == -1)
+			if (execve(argv[0], &argv[0], envp.data()) == -1)
 			{
 				printf("error on execve: %d\n", errno);
 				_exit(1);

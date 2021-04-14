@@ -186,35 +186,31 @@ public:
 				}
 			});
 
-		server_base::router_.on_delete(
-			configuration_.get<std::string>("private_base", "/internal/platform/worker") + "/process",
+		server_base::router_.on_delete("/internal/platform/worker/process",
 			[this](http::session_handler& session) {
 				session.response().status(http::status::no_content);
 				session.response().body() = std::string("");
 				session.response().set("Connection", "close");
 
-				deactivate();
+				server_base::deactivate();
 			});
 
 
-		if (configuration_.get<std::int32_t>("http_watchdog_idle_timeout", 0) > 0)
-		{
 			server_base::router_.on_post(
-				configuration_.get<std::string>("private_base", "/internal/platform/worker") + "/watchdog",
+				"/internal/platform/worker/watchdog",
 				[this](http::session_handler& session) {
-					manager().idle_time_reset();
+				server_base::manager().idle_time_reset();
 					session.response().status(http::status::ok);
 				});
-		}
 
 		server_base::router_.on_idle([this](bool is_idle_timeout_execeeded) {
 			if (is_idle_timeout_execeeded == true)
 			{
-				deactivate();
+			server_base::deactivate();
 			}
 			else
 			{
-				logger_.info("idle \n {s} \n", manager().to_string());
+			server_base::logger_.info("idle \n {s} \n", server_base::manager().to_string());
 			}
 		});
 

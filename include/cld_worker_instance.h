@@ -75,14 +75,14 @@ protected:
 public:
 	worker(const http::server& server) : worker_base(server)
 	{
-		cld_worker_id_ = server_.config().get<std::string>("cld_worker_id", "no_id");
-		cld_worker_label_ = server_.config().get<std::string>("cld_worker_label", "no_label");
+		cld_worker_id_ = server_.config().template get<std::string>("cld_worker_id", "no_id");
+		cld_worker_label_ = server_.config().template get<std::string>("cld_worker_label", "no_label");
 
 		manager_endpoint_url_
-			= server_.config().get<std::string>(
+			= server_.config().template get<std::string>(
 				  "cld_manager_endpoint", "http://localhost:4000/internal/platform/manager/workspaces")
-			  + "/" + server_.config().get<std::string>("cld_manager_workspace", "workspace-000") + "/workgroups/"
-			  + server_.config().get<std::string>("cld_manager_workgroup", "anonymous/bshells");
+			  + "/" + server_.config().template get<std::string>("cld_manager_workspace", "workspace-000") + "/workgroups/"
+			  + server_.config().template get<std::string>("cld_manager_workgroup", "anonymous/bshells");
 	}
 
 	virtual result add() noexcept override
@@ -104,7 +104,7 @@ public:
 		put_new_instance_json["worker_label"] = cld_worker_label_;
 		put_new_instance_json["worker_id"] = cld_worker_id_;
 		put_new_instance_json["base_url"] = server_.config().get("http_this_server_local_url");
-		put_new_instance_json["version"] = server_.config().get<std::string>("server", "");
+		put_new_instance_json["version"] = server_.config().template get<std::string>("server", "");
 
 		auto response = http::client::request<http::method::post>(
 			manager_endpoint_url_ + "/workers/", ec, {}, put_new_instance_json.dump());
