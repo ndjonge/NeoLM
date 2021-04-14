@@ -6420,18 +6420,16 @@ public:
 
 							if (routing.match_result() == http::api::router_match::match_found)
 							{
-								auto t1 = std::chrono::duration<std::uint64_t, std::nano>(
-											  std::chrono::steady_clock::now() - t0)
-											  .count()
-										  / 1000;
+								auto t1 = std::chrono::duration_cast<std::chrono::milliseconds>(
+											  std::chrono::steady_clock::now() - t0).count();
 
-								routing.the_route().metric_response_latency(t1);
+								routing.the_route().metric_response_latency(static_cast<std::uint64_t>(t1));
 
 								auto log_msg = server_.manager().log_access(
 												   session_handler_, routing.the_route().route_metrics())
 											   + "\n";
 
-								if (server_.logger_.current_access_log_level() >= lgr::level::access_log)
+								if (private_base_request == false && server_.logger_.current_access_log_level() >= lgr::level::access_log)
 								{
 									server_.logger_.access_log(log_msg);
 								}
