@@ -413,6 +413,21 @@ static bool create_bse_process_as_user(
 {
 	bool result = false;
 
+	std::vector<char*> argv;
+	auto command_args = util::split(command.data(), " ");
+
+	for (auto& arg : command_args)
+	{
+		size_t arg_1_size = strlen(arg.c_str());
+		char* arg_1 = new char[arg_1_size+1];
+		std::strncpy(arg_1, arg.c_str(), arg_1_size);
+		arg_1[arg_1_size] = 0;
+		argv.push_back(arg_1);
+	}
+
+	argv.push_back(nullptr);
+
+
 #ifndef _WIN32
 	// If user is empty then start process as same user
 #ifndef LOCAL_TESTING
@@ -571,9 +586,8 @@ static bool create_bse_process_as_user(
 		for (auto& arg : command_args)
 		{
 			size_t arg_1_size = strlen(arg.c_str());
-			char* arg_1 = new char[arg_1_size + 1];
-			std::strncpy(arg_1, arg.c_str(), arg_1_size);
-			arg_1[arg_1_size] = 0;
+			char* arg_1 = new char[arg_1_size];
+			std::strncpy(arg_1, arg.c_str(), arg_1_size);				
 			argv.push_back(arg_1);
 		}
 
