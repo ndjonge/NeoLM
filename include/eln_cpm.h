@@ -354,7 +354,7 @@ namespace tests
 	#ifdef _WIN32
 							{ "parameters", {{  "program", "eln_cpm.exe" } , { "cli_options", "-selftests_worker" }} },
 	#else
-		{ "parameters", { { "program", "eln_cpm" } }, { "cli_options", "-selftests_worker" } },
+		{ "parameters", { { "program", "eln_cpm" } , { "cli_options", "-selftests_worker" }} },
 	#endif
 							{ "limits",
 							  { { "workers_min", required },
