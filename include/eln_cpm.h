@@ -263,10 +263,10 @@ namespace tests
 			config_options
 		};
 
-		cloud::platform::cld_wrk_server_ = std::unique_ptr<cloud::platform::worker<http::sync::server>>(
-			new cloud::platform::worker<http::sync::server>(http_configuration));
+		cld_wrk_server_ = std::unique_ptr<worker<http::sync::server>>(
+			new worker<http::sync::server>(http_configuration));
 
-		auto result = cloud::platform::cld_wrk_server_->start() == http::server::state::active;
+		auto result = cld_wrk_server_->start() == http::server::state::active;
 
 		return result;
 	}
@@ -292,7 +292,7 @@ namespace tests
 
 	inline void run_cld_wrk_server()
 	{
-		while (cloud::platform::cld_wrk_server_->is_active())
+		while (cld_wrk_server_->is_active())
 		{
 			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
@@ -300,8 +300,8 @@ namespace tests
 
 	inline int stop_cld_wrk_server()
 	{
-		cloud::platform::cld_wrk_server_->stop();
-		cloud::platform::cld_wrk_server_.release();
+		cld_wrk_server_->stop();
+		cld_wrk_server_.release();
 		return 0;
 	}
 
@@ -352,9 +352,9 @@ namespace tests
 		json workgroup_def{ { "name", workgroup_name },
 							{ "type", "bshells" },
 	#ifdef _WIN32
-							{ "parameters", { { "program", "cld_wrk.exe" } } },
+							{ "parameters", {{  "program", "eln_cpm.exe" } , { "cli_options", "-selftests_worker" }} },
 	#else
-							{ "parameters", { { "program", "cld_wrk" } } },
+		{ "parameters", { { "program", "eln_cpm" } }, { "cli_options", "-selftests_worker" } },
 	#endif
 							{ "limits",
 							  { { "workers_min", required },
@@ -448,7 +448,7 @@ namespace tests
 				auto response = http::client::request<http::method::get>(
 					"http://localhost:4000" + request_url,
 					error,
-					{ { "X-Infor-TenantId", tenant }, { "Connection", "close" } },
+					{ { "X-Infor-TenantId", tenant } },
 					{});
 
 				if (response.status() == http::status::not_found)
@@ -470,7 +470,7 @@ namespace tests
 			{
 				std::string error;
 				auto response = http::client::request<http::method::get>(
-					"http://localhost:4000" + request_url, error, { { "Connection", "close" }}, {});
+					"http://localhost:4000" + request_url, error, {}, {});
 
 				if (response.status() == http::status::not_found)
 				{
@@ -678,20 +678,27 @@ namespace bse_utils
 #ifndef _WIN32
 		// If user is empty then start process as same user
 #ifndef LOCAL_TESTING
-		auto user_ok = user == "" || CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0);
+		auto user_ok = (user.empty() && password.empty()) || CheckUserInfo(user.data(), password.data(), NULL, 0, NULL, 0);
 #else
-		auto user_ok = user == "";
+		auto user_ok = user.empty() && password.empty();
 #endif
 #else
 		HANDLE requested_user_token = 0;
-
+		auto user_ok = false;
+		if (user.empty() && password.empty())
+		{
+			user_ok = OpenProcessToken(GetCurrentProcess(), TOKEN_READ, &requested_user_token);
+		}
+		else
+		{
 #ifndef LOCAL_TESTING
-		auto user_ok = CheckUserInfo(
-			user.data(), password.data(), NULL, 0, NULL, 0, &requested_user_token, eWindowsLogonType_Default);
+			user_ok = CheckUserInfo(
+				user.data(), password.data(), NULL, 0, NULL, 0, &requested_user_token, eWindowsLogonType_Default);
 #else
-		auto user_ok = (user == "" && password == "");
-		OpenProcessToken(GetCurrentProcess(), TOKEN_READ, &requested_user_token);
+			user_ok = OpenProcessToken(GetCurrentProcess(), TOKEN_READ, &requested_user_token);
 #endif
+		}
+
 		if (!user_ok)
 		{
 			// TODO more info about failure.
@@ -791,7 +798,7 @@ namespace bse_utils
 			{
 				pid = piProcInfo.dwProcessId;
 
-				if (0)
+				if (1)
 					std::cout << "worker_command: " << command_cpy << "\n";
 			}
 			else
@@ -1664,9 +1671,7 @@ namespace cloud
 				asio::io_context& io_context,
 				const http::configuration& configuration,
 				lgr::logger& logger,
-				const std::string & = std::string{},
-				const json& limits_adjustments = json{},
-				workgroups::limits::from_json_operation = workgroups::limits::from_json_operation::ignore)
+				bool workspace_is_updated)
 				= 0;
 
 		protected:
@@ -1705,11 +1710,8 @@ namespace cloud
 				asio::io_context& io_context,
 				const http::configuration& configuration,
 				lgr::logger& logger,
-				const std::string& limit_name,
-				const json& limits_adjustments,
-				workgroups::limits::from_json_operation operation) override
+				bool workspace_is_updated) override
 			{
-				bool rescan{ false };
 				std::string ec{};
 				std::string server_endpoint
 					= configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000");
@@ -1718,368 +1720,348 @@ namespace cloud
 
 				std::unique_lock<mutex_type> lock{ workers_mutex_ };
 
-				if (limits_adjustments.contains("limits") == true)
+				auto workers_required_to_add = limits_.workers_required_to_add();
+
+				auto workers_label_required = limits_.workers_label_required();
+				auto workers_runtime_max = limits_.workers_runtime_max();
+				auto workers_requests_max = limits_.workers_requests_max();
+
+				if (workspace_is_updated)
 				{
-					auto workers_required = limits_.workers_required();
-					auto workers_min = limits_.workers_min();
-
-					limits_.from_json(limits_adjustments["limits"], limit_name, operation);
-
-					if (limits_.workers_required() - workers_required > 4) return;
-
-					if (limits_.workers_min() - workers_min > 4) return;
+					logger.api(
+						"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, "
+						"label_required: {s}\n",
+						workspace_id_,
+						type_,
+						name_,
+						limits_.workers_actual(),
+						limits_.workers_pending(),
+						limits_.workers_required(),
+						limits_.workers_min(),
+						limits_.workers_max(),
+						limits_.workers_label_actual(),
+						workers_label_required);
 				}
 
-				do
+				for (std::int16_t n = 0; n < workers_required_to_add; n++)
 				{
-					auto workers_required_to_add = limits_.workers_required_to_add();
+					std::uint32_t process_id = 0;
+					std::string worker_id;
+					lock.unlock();
+					bool success = create_worker_process(
+						server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_label_required, ec);
 
-					auto workers_label_required = limits_.workers_label_required();
-					auto workers_runtime_max = limits_.workers_runtime_max();
-					auto workers_requests_max = limits_.workers_requests_max();
+					lock.lock();
+					if (state() != workgroups::state::up)
+					{
+						//assert(false);
+						break;
+					}
 
-					if (limits_.workers_required() > 0)
+					if (!success) // todo
 					{
 						logger.api(
-							"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, "
-							"label_required: {s}\n",
+							"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
 							workspace_id_,
 							type_,
 							name_,
-							limits_.workers_actual(),
-							limits_.workers_pending(),
-							limits_.workers_required(),
-							limits_.workers_min(),
-							limits_.workers_max(),
-							limits_.workers_label_actual(),
-							workers_label_required);
+							1 + n,
+							workers_required_to_add,
+							ec);
 					}
-
-					if (rescan) rescan = false;
-
+					else
 					{
-						for (std::int16_t n = 0; n < workers_required_to_add; n++)
-						{
-							std::uint32_t process_id = 0;
-							std::string worker_id;
-							lock.unlock();
-							bool success = create_worker_process(
-								server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_label_required, ec);
+						logger.api(
+							"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
+							workspace_id_,
+							type_,
+							name_,
+							1 + n,
+							workers_required_to_add,
+							static_cast<int>(process_id),
+							worker_id);
 
-							lock.lock();
-							if (state() != workgroups::state::up)
+						workers_.emplace(
+							std::pair<const std::string, worker>(worker_id, worker{ worker_id, workers_label_required }));
+
+						limits_.workers_pending_upd(1);
+					}
+				}
+
+				if (workers_required_to_add < 0)
+				{
+					for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+					{
+						if (worker_it->second.get_base_url().empty()
+							|| worker_it->second.get_status() == worker::status::recover)
+						{
+							++worker_it;
+							continue;
+						}
+						auto& worker = worker_it->second;
+						auto worker_label = worker_it->second.worker_label();
+						auto worker_runtime = worker_it->second.runtime();
+						auto worker_requests = worker_it->second.upstream().responses_tot_.load();
+
+						if ((worker_label != workers_label_required)
+							|| ((workers_requests_max > 1) && (worker_requests >= workers_requests_max))
+							|| ((workers_runtime_max > 1) && (worker_runtime >= workers_runtime_max))
+							|| (worker_it == workers_.begin()))
+						{
+							http::headers watchdog_headers{ { "Host", "localhost" } };
+
+							std::string base_url = worker_it->second.get_base_url();
+
+							http::client::async_request<http::method::delete_>(
+								upstreams_,
+								worker_it->second.get_base_url(),
+								"/internal/platform/worker/process",
+								watchdog_headers,
+								std::string{},
+								[this, base_url, &logger](http::response_message& response, asio::error_code& error_code) {
+									if (!error_code
+										&& (response.status() == http::status::ok
+											|| response.status() == http::status::no_content
+#ifdef LOCAL_TESTING
+											|| response.status() == http::status::method_not_allowed // nginx test setup
+																										// returns this
+#endif //  LOCAL_TESTING
+											))
+									{
+										logger.api(
+											"/{s}/{s}/{s}: process deleted for {s}\n",
+											workspace_id_,
+											type_,
+											name_,
+											base_url);
+									}
+									else if (
+										error_code
+										|| (response.status() != http::status::ok
+											&& response.status() != http::status::no_content))
+									{
+										logger.api(
+											"/{s}/{s}/{s}: failed to delete process {s}\n",
+											workspace_id_,
+											type_,
+											name_,
+											base_url);
+									}
+
+									return;
+								});
+
+							worker.set_status(worker::status::drain);
+							workers_required_to_add++;
+
+							if (workers_required_to_add == 0)
 							{
-								//assert(false);
 								break;
 							}
+						}
+						++worker_it;
+					}
+				}
 
-							if (!success) // todo
+				//		if (limits_adjustments.contains("limits") == false)
+				{
+					std::int16_t workers_watchdogs_feeded = 0;
+					std::int16_t workers_on_label_required = 0;
+					std::int16_t workers_not_on_label_required = 0;
+					std::int16_t workers_runtime_max_reached = 0;
+					std::int16_t workers_responses_max_reached = 0;
+
+					for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+					{
+						if (worker_it->second.get_base_url().empty())
+						{
+							++worker_it;
+							continue;
+						}
+
+						auto& worker = worker_it->second;
+
+						auto worker_label = worker_it->second.worker_label();
+
+						if (worker_it->second.get_status() == worker::status::up
+							|| worker_it->second.get_status() == worker::status::starting)
+						{
+							if (worker_label != workers_label_required)
 							{
-								logger.api(
-									"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
-									workspace_id_,
-									type_,
-									name_,
-									1 + n,
-									workers_required_to_add,
-									ec);
+								workers_not_on_label_required++;
 							}
 							else
 							{
-								logger.api(
-									"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
-									workspace_id_,
-									type_,
-									name_,
-									1 + n,
-									workers_required_to_add,
-									static_cast<int>(process_id),
-									worker_id);
+								workers_on_label_required++;
 
-								workers_.emplace(
-									std::pair<const std::string, worker>(worker_id, worker{ worker_id, workers_label_required }));
-
-								limits_.workers_pending_upd(1);
+								if (worker.upstream().responses_tot_.load() >= workers_requests_max)
+								{
+									workers_responses_max_reached++;
+								}
+								else if (worker.runtime() >= workers_runtime_max)
+								{
+									workers_runtime_max_reached++;
+								}
 							}
+
+							if (worker_label != limits_.workers_label_actual()) limits_.workers_label_actual(worker_label);
 						}
-					}
 
-					if (workers_required_to_add < 0)
-					{
-						for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+						if (worker_it->second.get_status() == worker::status::recover)
 						{
-							if (worker_it->second.get_base_url().empty()
-								|| worker_it->second.get_status() == worker::status::recover)
-							{
-								++worker_it;
-								continue;
-							}
-							auto& worker = worker_it->second;
-							auto worker_label = worker_it->second.worker_label();
-							auto worker_runtime = worker_it->second.runtime();
-							auto worker_requests = worker_it->second.upstream().responses_tot_.load();
+							auto& upstream = upstreams_.add_upstream(
+								io_context,
+								worker_it->second.get_base_url(),
+								"/" + name_ + "/" + type_ + "/" + worker_it->first + "/"
+								+ worker_it->second.worker_label());
 
-							if ((worker_label != workers_label_required)
-								|| ((workers_requests_max > 1) && (worker_requests >= workers_requests_max))
-								|| ((workers_runtime_max > 1) && (worker_runtime >= workers_runtime_max))
-								|| (worker_it == workers_.begin()))
-							{
-								http::headers watchdog_headers{ { "Host", "localhost" } };
+							worker_it->second.upstream(upstream);
 
-								std::string base_url = worker_it->second.get_base_url();
+							worker_it->second.set_status(worker::status::up);
+						}
 
-								http::client::async_request<http::method::delete_>(
-									upstreams_,
-									worker_it->second.get_base_url(),
-									"/internal/platform/worker/process",
-									watchdog_headers,
-									std::string{},
-									[this, base_url, &logger](http::response_message& response, asio::error_code& error_code) {
-										if (!error_code
-											&& (response.status() == http::status::ok
-												|| response.status() == http::status::no_content
-#ifdef LOCAL_TESTING
-												|| response.status() == http::status::method_not_allowed // nginx test setup
-																										  // returns this
-#endif //  LOCAL_TESTING
-												))
+						if (worker_it->second.get_status() == worker::status::up)
+						{
+							auto workers_feed_watchdog = workers_watchdogs_feeded++ < limits_.workers_min();
+
+							http::headers watchdog_headers{
+								{ "Host", "localhost" }, { "X-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" }
+							};
+
+							http::client::async_request<http::method::post>(
+								upstreams_,
+								worker_it->second.get_base_url(),
+								"/internal/platform/worker/watchdog",
+								watchdog_headers,
+								std::string{},
+								[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
+									if (!error_code
+										&& (response.status() == http::status::ok
+											|| response.status() == http::status::no_content)
+										&& worker.get_status() != worker::status::up)
+									{
+										worker.set_status(worker::status::up);
+									}
+									else if (
+										error_code
+										|| (response.status() != http::status::ok
+											&& response.status() != http::status::no_content))
+									{
+										worker.set_status(worker::status::drain);
+
+										if (worker.upstream().get_state() != http::async::upstreams::upstream::state::drain
+											&& error_code == asio::error::connection_refused)
 										{
 											logger.api(
-												"/{s}/{s}/{s}: process deleted for {s}\n",
+												"/{s}/{s}/{s}: failed health check for worker {s}\n",
 												workspace_id_,
 												type_,
 												name_,
-												base_url);
+												worker.get_base_url());
 										}
-										else if (
-											error_code
-											|| (response.status() != http::status::ok
-												&& response.status() != http::status::no_content))
-										{
-											logger.api(
-												"/{s}/{s}/{s}: failed to delete process {s}\n",
-												workspace_id_,
-												type_,
-												name_,
-												base_url);
-										}
+									}
 
-										return;
-									});
-
-								worker.set_status(worker::status::drain);
-								workers_required_to_add++;
-
-								if (workers_required_to_add == 0)
-								{
-									break;
-								}
-							}
-							++worker_it;
+									return;
+								});
 						}
+
+						++worker_it;
 					}
 
-					if (limits_adjustments.contains("limits") == false)
+					auto workers_to_start = workers_not_on_label_required;
+					limits_.workers_not_on_label_required(workers_not_on_label_required);
+
+					if (workers_on_label_required + limits_.workers_pending() != limits_.workers_required())
 					{
-						std::int16_t workers_watchdogs_feeded = 0;
-						std::int16_t workers_on_label_required = 0;
-						std::int16_t workers_not_on_label_required = 0;
-						std::int16_t workers_runtime_max_reached = 0;
-						std::int16_t workers_responses_max_reached = 0;
+						workers_to_start = workers_not_on_label_required;
+					}
+					else if (workers_requests_max > 0 && workers_responses_max_reached > 0)
+					{
+						workers_to_start = workers_responses_max_reached;
+					}
+					else if (workers_runtime_max_reached > 0 && workers_runtime_max_reached > 0)
+					{
+						workers_to_start = workers_runtime_max_reached;
+					}
 
-						for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+					if (workers_to_start > limits_.workers_start_at_once_max())
+						workers_to_start = limits_.workers_start_at_once_max();
+
+					for (std::int16_t n = 0; n < workers_to_start; n++)
+					{
+						std::uint32_t process_id = 0;
+						std::string worker_id;
+						lock.unlock();
+						bool success = create_worker_process(
+							server_endpoint,
+							workspace_id_,
+							type_,
+							name_,
+							process_id,
+							worker_id,
+							workers_label_required,
+							ec);
+
+						lock.lock();
+						if (!success) // todo
 						{
-							if (worker_it->second.get_base_url().empty())
-							{
-								++worker_it;
-								continue;
-							}
-
-							auto& worker = worker_it->second;
-
-							auto worker_label = worker_it->second.worker_label();
-
-							if (worker_it->second.get_status() == worker::status::up
-								|| worker_it->second.get_status() == worker::status::starting)
-							{
-								if (worker_label != workers_label_required)
-								{
-									workers_not_on_label_required++;
-								}
-								else
-								{
-									workers_on_label_required++;
-
-									if (worker.upstream().responses_tot_.load() >= workers_requests_max)
-									{
-										workers_responses_max_reached++;
-									}
-									else if (worker.runtime() >= workers_runtime_max)
-									{
-										workers_runtime_max_reached++;
-									}
-								}
-
-								if (worker_label != limits_.workers_label_actual()) limits_.workers_label_actual(worker_label);
-							}
-
-							if (worker_it->second.get_status() == worker::status::recover)
-							{
-								auto& upstream = upstreams_.add_upstream(
-									io_context,
-									worker_it->second.get_base_url(),
-									"/" + name_ + "/" + type_ + "/" + worker_it->first + "/"
-									+ worker_it->second.worker_label());
-
-								worker_it->second.upstream(upstream);
-
-								worker_it->second.set_status(worker::status::up);
-							}
-
-							if (worker_it->second.get_status() == worker::status::up)
-							{
-								auto workers_feed_watchdog = workers_watchdogs_feeded++ < limits_.workers_min();
-
-								http::headers watchdog_headers{
-									{ "Host", "localhost" }, { "X-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" }
-								};
-
-								http::client::async_request<http::method::post>(
-									upstreams_,
-									worker_it->second.get_base_url(),
-									"/internal/platform/worker/watchdog",
-									watchdog_headers,
-									std::string{},
-									[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
-										if (!error_code
-											&& (response.status() == http::status::ok
-												|| response.status() == http::status::no_content)
-											&& worker.get_status() != worker::status::up)
-										{
-											worker.set_status(worker::status::up);
-										}
-										else if (
-											error_code
-											|| (response.status() != http::status::ok
-												&& response.status() != http::status::no_content))
-										{
-											worker.set_status(worker::status::drain);
-
-											if (worker.upstream().get_state() != http::async::upstreams::upstream::state::drain
-												&& error_code == asio::error::connection_refused)
-											{
-												logger.api(
-													"/{s}/{s}/{s}: failed health check for worker {s}\n",
-													workspace_id_,
-													type_,
-													name_,
-													worker.get_base_url());
-											}
-										}
-
-										return;
-									});
-							}
-
-							++worker_it;
-						}
-
-						auto workers_to_start = workers_not_on_label_required;
-						limits_.workers_not_on_label_required(workers_not_on_label_required);
-
-						if (workers_on_label_required + limits_.workers_pending() != limits_.workers_required())
-						{
-							workers_to_start = workers_not_on_label_required;
-						}
-						else if (workers_requests_max > 0 && workers_responses_max_reached > 0)
-						{
-							workers_to_start = workers_responses_max_reached;
-						}
-						else if (workers_runtime_max_reached > 0 && workers_runtime_max_reached > 0)
-						{
-							workers_to_start = workers_runtime_max_reached;
-						}
-
-						if (workers_to_start > limits_.workers_start_at_once_max())
-							workers_to_start = limits_.workers_start_at_once_max();
-
-						for (std::int16_t n = 0; n < workers_to_start; n++)
-						{
-							std::uint32_t process_id = 0;
-							std::string worker_id;
-							lock.unlock();
-							bool success = create_worker_process(
-								server_endpoint,
+							logger.api(
+								"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
 								workspace_id_,
 								type_,
 								name_,
-								process_id,
-								worker_id,
-								workers_label_required,
+								1 + n,
+								workers_required_to_add,
 								ec);
-
-							lock.lock();
-							if (!success) // todo
-							{
-								logger.api(
-									"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
-									workspace_id_,
-									type_,
-									name_,
-									1 + n,
-									workers_required_to_add,
-									ec);
-							}
-							else
-							{
-								logger.api(
-									"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
-									workspace_id_,
-									type_,
-									name_,
-									1 + n,
-									workers_required_to_add,
-									static_cast<int>(process_id),
-									worker_id);
-
-								workers_.emplace(std::pair<const std::string, worker>(
-									worker_id, worker{ worker_id, workers_label_required }));
-							}
 						}
-
-						for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+						else
 						{
-							if (worker_it->second.get_status() == worker::status::drain)
-							{
-								if (worker_it->second.upstream().connections_busy_.load() == 0)
-									worker_it->second.set_status(worker::status::down);
-							}
+							logger.api(
+								"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
+								workspace_id_,
+								type_,
+								name_,
+								1 + n,
+								workers_required_to_add,
+								static_cast<int>(process_id),
+								worker_id);
 
-							if (worker_it->second.get_status() == worker::status::down)
-							{
-								logger.api(
-									"/{s}/{s}/{s} delete {s} {s}\n",
-									workspace_id_,
-									type_,
-									name_,
-									worker_it->first,
-									worker_it->second.get_base_url());
-
-								upstreams_.erase_upstream(worker_it->second.get_base_url());
-#ifdef LOCAL_TESTING_WITH_NGINX_BACKEND
-								bse_utils::local_testing::_test_sockets.release(
-									workspace_id_, worker_it->second.get_base_url());
-#endif
-								worker_it = workers_.erase(workers_.find(worker_it->first));
-
-								limits_.workers_actual_upd(-1);
-							}
-							else
-								worker_it++;
+							workers_.emplace(std::pair<const std::string, worker>(
+								worker_id, worker{ worker_id, workers_label_required }));
 						}
 					}
 
-				} while (rescan);
+					for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+					{
+						if (worker_it->second.get_status() == worker::status::drain)
+						{
+							if (worker_it->second.upstream().connections_busy_.load() == 0)
+								worker_it->second.set_status(worker::status::down);
+						}
+
+						if (worker_it->second.get_status() == worker::status::down)
+						{
+							logger.api(
+								"/{s}/{s}/{s} delete {s} {s}\n",
+								workspace_id_,
+								type_,
+								name_,
+								worker_it->first,
+								worker_it->second.get_base_url());
+
+							upstreams_.erase_upstream(worker_it->second.get_base_url());
+#ifdef LOCAL_TESTING_WITH_NGINX_BACKEND
+							bse_utils::local_testing::_test_sockets.release(
+								workspace_id_, worker_it->second.get_base_url());
+#endif
+							worker_it = workers_.erase(workers_.find(worker_it->first));
+
+							limits_.workers_actual_upd(-1);
+						}
+						else
+							worker_it++;
+					}
+				}
 			};
 
 			void from_json(const json& j) override
@@ -2291,9 +2273,7 @@ namespace cloud
 				asio::io_context&,
 				const http::configuration&,
 				lgr::logger&,
-				const std::string&,
-				const json&,
-				workgroups::limits::from_json_operation) override {};
+				bool) override {};
 
 			virtual bool create_worker_process(
 				const std::string&,
@@ -2671,7 +2651,6 @@ namespace cloud
 
 							if (workgroup_state == workgroups::state::drain)
 							{
-								//if (workgroup->second->has_workers_available())
 								if ((workgroup->second->workgroups_limits().workers_actual() > 0) || (workgroup->second->workgroups_limits().workers_pending() > 0))
 								{
 									workgroup->second->drain_all_workers();
@@ -2714,6 +2693,7 @@ namespace cloud
 					else
 						workspace++;
 				}
+				is_changed_ = true;
 			}
 
 			void direct_workspaces(asio::io_context& io_context, const http::configuration& configuration, lgr::logger& logger)
@@ -2726,8 +2706,6 @@ namespace cloud
 
 					for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); ++workspace)
 					{
-						json empty_limits_adjustments = json::object();
-
 						if (workspace->second->state() != workspace::state::up)
 							needs_cleanup = true;
 
@@ -2739,7 +2717,7 @@ namespace cloud
 								if (workgroup->second->state() != workgroups::state::up)
 									needs_cleanup = true;
 
-								workgroup->second->direct_workers(io_context, configuration, logger);
+								workgroup->second->direct_workers(io_context, configuration, logger, is_changed());
 							}
 						}
 					}
@@ -3755,18 +3733,13 @@ namespace cloud
 						auto result = workspaces_.change(
 							workspace_id,
 							workgroup_name,
-							[&session, &limit_name, this](workgroups& workgroup, std::string&) {
+							[&session, &limit_name](workgroups& workgroup, std::string&) {
 								try
 								{
 									json limits_json = json::parse(session.request().body());
 									json result_json;
-									workgroup.direct_workers(
-										server_base::get_io_context(),
-										server_base::configuration_,
-										server_base::logger_,
-										limit_name,
-										limits_json,
-										workgroups::limits::from_json_operation::set);
+
+									workgroup.workgroups_limits().from_json(limits_json, limit_name, workgroups::limits::from_json_operation::set);
 
 									workgroup.workgroups_limits().to_json(
 										result_json, output_formating::options::complete, limit_name);
@@ -3804,19 +3777,13 @@ namespace cloud
 						auto result = workspaces_.change(
 							workspace_id,
 							workgroup_name,
-							[&session, &limit_name, this](workgroups& workgroup, std::string&) {
+							[&session, &limit_name](workgroups& workgroup, std::string&) {
 								try
 								{
 									json limits_json = json::parse(session.request().body());
 									json result_json;
 
-									workgroup.direct_workers(
-										server_base::get_io_context(),
-										server_base::configuration_,
-										server_base::logger_,
-										limit_name,
-										limits_json,
-										workgroups::limits::from_json_operation::add);
+									workgroup.workgroups_limits().from_json(limits_json, limit_name, workgroups::limits::from_json_operation::add);
 
 									workgroup.workgroups_limits().to_json(
 										result_json, output_formating::options::complete, limit_name);
@@ -4015,7 +3982,7 @@ inline bool start_eln_cpm_server(std::string config_file, std::string config_opt
 
 	if (run_selftests)
 	{
-		config_file = "selftest.json";
+		config_file = "selftest-" + std::to_string(getpid()) + ".json";
 	}
 
 	cloud::platform::eln_cpm_server_ = std::unique_ptr<cloud::platform::manager<http::async::server>>(
@@ -4038,7 +4005,10 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 			{ prog_args::arg_t::arg_val, " <config>: filename for the workspace config file or url", "config.json" } },
 		  { "options", { prog_args::arg_t::arg_val, "<options>: see doc.", "" } },
 		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } },
-		  { "selftests", { prog_args::arg_t::flag, "run selftests" } } });
+		  { "httpserver_options", { prog_args::arg_t::arg_val, "<options>: see doc.", "" } },
+		  { "selftests", { prog_args::arg_t::flag, "run selftests" } },
+		{ "selftests_worker", { prog_args::arg_t::flag, "false" } } }
+	);
 
 	if (cmd_args.process_args() == false)
 	{
@@ -4046,11 +4016,23 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 		exit(1);
 	}
 
-	return start_eln_cpm_server(
-		cmd_args.get_val("config"),
-		cmd_args.get_val("options"),
-		cmd_args.get_val("daemonize") == "true",
-		cmd_args.get_val("selftests") == "true");
+	if (cmd_args.get_val("selftests_worker") == "")
+		return start_eln_cpm_server(
+			cmd_args.get_val("config"),
+			cmd_args.get_val("options"),
+			cmd_args.get_val("daemonize") == "true",
+			cmd_args.get_val("selftests") == "true");
+	else
+	{
+		tests::start_cld_wrk_server(
+			cmd_args.get_val("httpserver_options"),
+			cmd_args.get_val("daemonize") == "true");
+
+		tests::run_cld_wrk_server();
+		tests::stop_cld_wrk_server();
+
+		exit(0);
+	}
 }
 
 inline void run_eln_cpm_server()

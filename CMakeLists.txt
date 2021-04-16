@@ -4,12 +4,9 @@ project("cld_mgr" VERSION 0.0.1 LANGUAGES CXX)
 
 include_directories("include")
 
+set(CLD_MGR_TARGET "eln_cpm")
 
-set(CLD_WRK_TARGET "cld_wrk")
-set(CLD_MGR_TARGET "cld_mgr")
-
-add_executable("${CLD_MGR_TARGET}" src/cld_mgr.cpp "include/prog_args.h" "include/cld_worker_instance.h")
-add_executable("${CLD_WRK_TARGET}" src/cld_wrk.cpp "include/prog_args.h" "include/cld_worker_instance.h"  "include/cld_wrk.h")
+add_executable("${CLD_MGR_TARGET}" src/eln_cpm.cpp)
 
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -53,10 +50,6 @@ include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
 
 message("cld_wrk:" ${CLD_WRK_TARGET})
 message("cld_wrk:" ${CLD_MGR_TARGET})
-
-target_link_libraries( ${CLD_WRK_TARGET} OpenSSL::SSL OpenSSL::Crypto)
-target_link_libraries( ${CLD_WRK_TARGET} ZLIB::ZLIB)
-target_link_libraries( ${CLD_WRK_TARGET} OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB) 
 
 target_link_libraries( ${CLD_MGR_TARGET} OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries( ${CLD_MGR_TARGET} ZLIB::ZLIB)
