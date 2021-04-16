@@ -18,3 +18,5 @@ sudo apt install libpthread-stubs0-dev
 ./vcpkg install asio:x64-linux
 ./vcpkg install nlohmann-json:x64-linux
 ./vcpkg install curl:x64-linux
+
+(mkdir debug;cd debug;cmake .. -DCMAKE_TOOLCHAIN_FILE=~/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE=debug;cd ..;)
