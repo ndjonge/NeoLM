@@ -5659,7 +5659,11 @@ namespace http
 			std::atomic<std::uint16_t> responses_4xx_{ 0 };
 			std::atomic<std::uint16_t> responses_5xx_{ 0 };
 			std::atomic<std::uint16_t> responses_tot_{ 0 };
+			std::atomic<std::uint16_t> responses_diff_{ 0 };
 			std::atomic<std::uint16_t> responses_health_{ 0 };
+			std::atomic<std::uint16_t> rate_{ 0 };
+			std::atomic<std::chrono::steady_clock::time_point> sample_timepoint_;
+
 
 			std::vector<std::string> access_log_;
 			mutable std::mutex mutex_;
@@ -5712,7 +5716,14 @@ namespace http
 				{
 					idle_since_.store(std::chrono::steady_clock::now().time_since_epoch().count());
 				}
+
 				return requests_current_;
+			}
+
+			void update_rate()
+			{
+				rate_.store(static_cast<std::uint16_t>(responses_tot_ - responses_diff_));
+				responses_diff_.store(responses_tot_);
 			}
 
 			std::string log_access(http::session_handler& session, http::api::routing::metrics m)
@@ -5796,6 +5807,7 @@ namespace http
 					result_json["metrics"]["connections"]["highest"] = connections_highest_.load();
 					result_json["metrics"]["connections"]["accepted"] = connections_accepted_.load();
 
+
 					result_json["metrics"]["responses"]["1xx"] = responses_1xx_.load();
 					result_json["metrics"]["responses"]["2xx"] = responses_2xx_.load();
 					result_json["metrics"]["responses"]["3xx"] = responses_3xx_.load();
@@ -5805,7 +5817,8 @@ namespace http
 					result_json["metrics"]["responses"]["health"] = responses_health_.load();
 
 					result_json["metrics"]["requests"]["active"] = requests_current_.load();
-					result_json["metrics"]["requests"]["total"] = responses_tot_.load(); // for now.
+					result_json["metrics"]["requests"]["total"] = responses_tot_.load();
+					result_json["metrics"]["requests"]["rate"] = rate_.load();
 
 					result_json["metrics"]["idle"]
 						= (std::chrono::duration<std::int64_t, std::nano>(
@@ -5849,6 +5862,8 @@ namespace http
 				ss << "connections_active: " << connections_current_ << "\n";
 
 				ss << "requests_active: " << requests_current_ << "\n";
+				ss << "request/s: " << std::to_string(rate_) << "\n";
+
 				ss << "responses_1xx: " << std::to_string(responses_1xx_) << "\n";
 				ss << "responses_2xx: " << std::to_string(responses_2xx_) << "\n";
 				ss << "responses_3xx: " << std::to_string(responses_3xx_) << "\n";
@@ -5856,6 +5871,7 @@ namespace http
 				ss << "responses_5xx: " << std::to_string(responses_5xx_) << "\n";
 				ss << "responses_tot: " << std::to_string(responses_tot_) << "\n";
 				ss << "health_checks: " << std::to_string(responses_health_) << "\n";
+
 
 				ss << "idle_time: "
 					<< (std::chrono::duration<std::int64_t, std::nano>(

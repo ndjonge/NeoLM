@@ -382,16 +382,17 @@ namespace http
 
 				}
 
+
 				void update_health_check_metrics() { 
 					responses_health_++; 
 
-					auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - sample_timepoint_).count();
+					auto t_diff = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - sample_timepoint_.load()).count();
 
 					responses_diff_ = responses_tot_ - responses_diff_;
 
 					sample_timepoint_ = std::chrono::steady_clock::now();
 
-					rate_ = ((responses_diff_ / t_diff) / 1000);
+					rate_.store(static_cast<std::uint16_t>(responses_diff_.load() * 1000 / t_diff));
 
 				}
 
@@ -410,8 +411,7 @@ namespace http
 				std::atomic<std::uint16_t> responses_diff_{ 0 };
 				std::atomic<std::uint16_t> responses_health_{ 0 };
 				std::atomic<std::uint16_t> rate_{ 0 };
-
-				std::chrono::steady_clock::time_point sample_timepoint_;
+				std::atomic<std::chrono::steady_clock::time_point> sample_timepoint_;
 
 				std::string host() const
 				{
@@ -1545,6 +1545,7 @@ namespace http
 				, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 				, max_request_content_length_(configuration.get<size_t>("max_request_content_length", 1024 * 1024 * 16))
 				, io_context_pool_(thread_count_)
+				, steady_timer_(io_context_pool_.get_io_context())
 				, http_acceptor_(io_context_pool_.get_io_context())
 				, https_acceptor_(io_context_pool_.get_io_context())
 				, https_ssl_context_(asio::ssl::context::tls_server)
@@ -1627,13 +1628,25 @@ namespace http
 
 			virtual ~server()
 			{
+				steady_timer_.cancel();
 				if (is_active() || is_activating()) this->stop();
 
 				logger_.debug("server deleted\n");
 			}
 
+			void on_server_timer(const asio::error_code&)
+			{
+				manager().update_rate();
+
+				steady_timer_.expires_from_now(std::chrono::seconds(1));
+				steady_timer_.async_wait([this](const asio::error_code& ec) {on_server_timer(ec); });
+			}
+
 			virtual server::state start() override
 			{
+				steady_timer_.expires_from_now(std::chrono::seconds(1));
+				steady_timer_.async_wait([this](const asio::error_code& ec) {on_server_timer(ec);});
+
 				auto http_handler = std::make_shared<server::connection_handler_http>(
 					io_context_pool_.get_io_context(), *this, configuration_);
 
@@ -1881,6 +1894,7 @@ namespace http
 			};
 
 			io_context_pool io_context_pool_;
+			asio::steady_timer steady_timer_;
 
 			asio::ip::tcp::acceptor http_acceptor_;
 			asio::ip::tcp::acceptor https_acceptor_;
