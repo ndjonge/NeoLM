@@ -304,6 +304,8 @@ namespace http
 						<< ", 4xx: " << std::to_string(upstream->responses_4xx_)
 						<< ", 5xx: " << std::to_string(upstream->responses_5xx_)
 						<< ", tot: " << std::to_string(upstream->responses_tot_)
+						<< ", rps: " << std::to_string(upstream->rate_)
+
 						<< ", health: " << std::to_string(upstream->responses_health_) << "\n";
 
 					if (options == options::include_connections)
@@ -377,9 +379,21 @@ namespace http
 					if (status >= 500 && status < 600) responses_5xx_++;
 
 					responses_tot_++;
+
 				}
 
-				void update_health_check_metrics() { responses_health_++; }
+				void update_health_check_metrics() { 
+					responses_health_++; 
+
+					auto t_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - sample_timepoint_).count();
+
+					responses_diff_ = responses_tot_ - responses_diff_;
+
+					sample_timepoint_ = std::chrono::steady_clock::now();
+
+					rate_ = ((responses_diff_ / t_diff) / 1000);
+
+				}
 
 				containter_type& connections() { return connections_; }
 
@@ -393,7 +407,11 @@ namespace http
 				std::atomic<std::uint16_t> responses_4xx_{ 0 };
 				std::atomic<std::uint16_t> responses_5xx_{ 0 };
 				std::atomic<std::uint16_t> responses_tot_{ 0 };
+				std::atomic<std::uint16_t> responses_diff_{ 0 };
 				std::atomic<std::uint16_t> responses_health_{ 0 };
+				std::atomic<std::uint16_t> rate_{ 0 };
+
+				std::chrono::steady_clock::time_point sample_timepoint_;
 
 				std::string host() const
 				{
