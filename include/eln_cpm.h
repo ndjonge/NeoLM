@@ -489,9 +489,9 @@ namespace tests
 		const auto workspace_count = 1;
 		const auto workgroup_count = 1;
 		const auto run_count = -1;
-		const auto worker_count = 8;
+		const auto worker_count = 0;
 		const auto worker_start_at_once_count = 4;
-		const auto requests_count = 20;
+		const auto requests_count = 0;
 
 		for (int n = 0; n != run_count; n++)
 		{
@@ -517,7 +517,7 @@ namespace tests
 			for (int i = 0; i < workspace_count; i++)
 				tests::generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
 
-			std::this_thread::sleep_for(std::chrono::seconds(60));
+			std::this_thread::sleep_for(std::chrono::seconds(120));
 
 			for (int j = 0; j < workspace_count; j++)
 				for (int i = 0; i < workgroup_count; i++)
@@ -2504,11 +2504,22 @@ namespace cloud
 
 							session.request().set_attribute<http::async::upstreams*>(
 								"proxy_pass", &workgroup.second->upstreams_);
+
 						}
 						else
 						{
-							// workgroup.second->workgroups_limits().workers_required_upd(1);
-							session.response().status(http::status::service_unavailable);
+							if (workgroup.second->workgroups_limits().workers_max() > 0)
+							{
+								const std::int16_t queue_retry_timeout = 1;
+								workgroup.second->workgroups_limits().workers_required_upd(1);
+
+								session.request().set_attribute<std::int16_t>(
+									"queued", queue_retry_timeout);
+							}
+							else
+							{ 
+								session.response().status(http::status::service_unavailable);
+							}
 						}
 						break;
 					}

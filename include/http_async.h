@@ -619,7 +619,6 @@ namespace http
 				asio::io_context& service_;
 				//asio::io_context::strand write_strand_;
 				asio::streambuf in_packet_{ 8192 };
-				asio::steady_timer steady_timer_;
 				http::transfer_encoding_chunked_parser chunked_parser_{};
 
 				std::deque<std::string> write_buffer_;
@@ -632,12 +631,12 @@ namespace http
 				std::vector<asio::ip::network_v6> public_ip_white_list_{};
 
 				bool private_base_request_{ false };
+				asio::steady_timer queued_timer_;
+				asio::steady_timer timeout_timer_;
 
 				connection_handler_base(
 					asio::io_context& service, server& server, http::configuration& configuration, protocol protocol)
 					: service_(service)
-					//			, write_strand_(service)
-					, steady_timer_(service)
 					, session_handler_(
 						configuration.get<std::string>("server", "server_no_id"),
 						configuration.get<int>("keepalive_count", 1024 * 8),
@@ -645,6 +644,8 @@ namespace http
 						protocol)
 					, server_(server)
 					, protocol_(protocol)
+					, queued_timer_(service)
+					, timeout_timer_(service)
 				{
 					server_.logger_.info(
 						"{s}_connection_handler: start {u}\n", http::to_string(protocol_), reinterpret_cast<uintptr_t>(this));
@@ -702,10 +703,10 @@ namespace http
 
 				void set_timeout()
 				{
-					steady_timer_.expires_from_now(std::chrono::seconds(session_handler_.keepalive_max()));
+					timeout_timer_.expires_from_now(std::chrono::seconds(session_handler_.keepalive_max()));
 
 					auto me = this->shared_from_this();
-					steady_timer_.async_wait([me](asio::error_code const& ec) {
+					timeout_timer_.async_wait([me](asio::error_code const& ec) {
 						if (!ec) me->stop();
 						});
 				}
@@ -713,7 +714,7 @@ namespace http
 				void cancel_timeout()
 				{
 					asio::error_code ec;
-					steady_timer_.cancel(ec);
+					timeout_timer_.cancel(ec);
 				}
 
 				void read_request_headers()
@@ -953,6 +954,23 @@ namespace http
 						}
 
 						session_handler_.t2() = std::chrono::steady_clock::now();
+
+						auto queue
+							= session_handler_.request().template get_attribute<std::int16_t>("queued", 0);
+
+						if (queue)
+						{
+							queued_timer_.expires_from_now(std::chrono::seconds{queue});
+							auto original_ec = ec;
+							session_handler_.request().template set_attribute<std::int16_t>("queued", 0);
+
+							auto me = this->shared_from_this();
+							queued_timer_.async_wait([me, next_upstream, original_ec](const asio::error_code& ec) {
+								me->read_request_body_complete(original_ec, size_t{ 0 }, next_upstream);
+							});
+
+							return;
+						}
 
 						auto upstreams
 							= session_handler_.request().template get_attribute<http::async::upstreams*>("proxy_pass", nullptr);
@@ -1545,7 +1563,7 @@ namespace http
 				, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 				, max_request_content_length_(configuration.get<size_t>("max_request_content_length", 1024 * 1024 * 16))
 				, io_context_pool_(thread_count_)
-				, steady_timer_(io_context_pool_.get_io_context())
+				, request_rate_timer_(io_context_pool_.get_io_context())
 				, http_acceptor_(io_context_pool_.get_io_context())
 				, https_acceptor_(io_context_pool_.get_io_context())
 				, https_ssl_context_(asio::ssl::context::tls_server)
@@ -1628,7 +1646,7 @@ namespace http
 
 			virtual ~server()
 			{
-				steady_timer_.cancel();
+				request_rate_timer_.cancel();
 				if (is_active() || is_activating()) this->stop();
 
 				logger_.debug("server deleted\n");
@@ -1638,14 +1656,14 @@ namespace http
 			{
 				manager().update_rate();
 
-				steady_timer_.expires_from_now(std::chrono::seconds(1));
-				steady_timer_.async_wait([this](const asio::error_code& ec) {on_server_timer(ec); });
+				request_rate_timer_.expires_from_now(std::chrono::seconds(1));
+				request_rate_timer_.async_wait([this](const asio::error_code& ec) {on_server_timer(ec); });
 			}
 
 			virtual server::state start() override
 			{
-				steady_timer_.expires_from_now(std::chrono::seconds(1));
-				steady_timer_.async_wait([this](const asio::error_code& ec) {on_server_timer(ec);});
+				request_rate_timer_.expires_from_now(std::chrono::seconds(1));
+				request_rate_timer_.async_wait([this](const asio::error_code& ec) {on_server_timer(ec);});
 
 				auto http_handler = std::make_shared<server::connection_handler_http>(
 					io_context_pool_.get_io_context(), *this, configuration_);
@@ -1894,7 +1912,7 @@ namespace http
 			};
 
 			io_context_pool io_context_pool_;
-			asio::steady_timer steady_timer_;
+			asio::steady_timer request_rate_timer_;
 
 			asio::ip::tcp::acceptor http_acceptor_;
 			asio::ip::tcp::acceptor https_acceptor_;
