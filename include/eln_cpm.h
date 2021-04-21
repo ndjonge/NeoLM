@@ -1469,6 +1469,19 @@ namespace cloud
 					return workers_label_required_;
 				}
 
+				std::int16_t workers_queue_retry_timeout()
+				{
+					std::lock_guard<std::mutex> m{ limits_mutex_ };
+					return workers_queue_retry_timeout_;
+				}
+
+				std::int16_t worker_scale_out_factor()
+				{
+					std::lock_guard<std::mutex> m{ limits_mutex_ };
+					return worker_scale_out_factor_;
+				}
+
+
 				void workers_pending_upd(std::int16_t value)
 				{
 					std::lock_guard<std::mutex> m{ limits_mutex_ };
@@ -1519,13 +1532,29 @@ namespace cloud
 					workers_label_actual_ = value;
 				}
 
-				void workers_not_on_label_required(std::int16_t value) { workers_not_on_label_required_ = value; }
+				void workers_not_on_label_required(std::int16_t value) 
+				{ 
+					workers_not_on_label_required_ = value; 
+				}
 
 				void workers_start_at_once_max(std::int16_t value)
 				{
 					std::lock_guard<std::mutex> m{ limits_mutex_ };
 					workers_start_at_once_max_ = value;
 				}
+
+				void  workers_queue_retry_timeout(std::int16_t value)
+				{
+					std::lock_guard<std::mutex> m{ limits_mutex_ };
+					workers_queue_retry_timeout_ = value;
+				}
+
+				void worker_scale_out_factor(std::int16_t value)
+				{
+					std::lock_guard<std::mutex> m{ limits_mutex_ };
+					worker_scale_out_factor_ = value;
+				}
+
 
 				enum class from_json_operation
 				{
@@ -1560,6 +1589,12 @@ namespace cloud
 
 						if (limit_name.empty() || limit_name == "workers_start_at_once_max")
 							workers_start_at_once_max_ = j.value("workers_start_at_once_max", std::int16_t{ 4 });
+
+						if (limit_name.empty() || limit_name == "workers_queue_retry_timeout")
+							workers_queue_retry_timeout_ = j.value("workers_queue_retry_timeout", std::int16_t{ 1 });
+
+						if (limit_name.empty() || limit_name == "worker_scale_out_factor")
+							worker_scale_out_factor_ = j.value("worker_scale_out_factor", std::int16_t{ 1 });
 					}
 					else
 					{
@@ -1583,6 +1618,13 @@ namespace cloud
 
 						if (limit_name.empty() || limit_name == "workers_start_at_once_max")
 							workers_start_at_once_max_ += j.value("workers_start_at_once_max", std::int16_t{ 4 });
+
+						if (limit_name.empty() || limit_name == "workers_queue_retry_timeout")
+							workers_queue_retry_timeout_ += j.value("workers_queue_retry_timeout", std::int16_t{ 1 });
+
+						if (limit_name.empty() || limit_name == "worker_scale_out_factor")
+							worker_scale_out_factor_ += j.value("worker_scale_out_factor", std::int16_t{ 1 });
+
 					}
 
 					if (workers_min_ > workers_max_) workers_min_ = workers_max_;
@@ -1639,10 +1681,22 @@ namespace cloud
 						{
 							j["workers_pending"] = workers_pending_;
 						}
+
 						if (limit_name.empty() || limit_name == "workers_not_at_label_required")
 						{
 							j["workers_not_at_label_required"] = workers_not_on_label_required_;
 						}
+
+						if (limit_name.empty() || limit_name == "workers_queue_retry_timeout")
+						{
+							j["workers_queue_retry_timeout"] = workers_queue_retry_timeout_;
+						}
+
+						if (limit_name.empty() || limit_name == "worker_scale_out_factor")
+						{
+							j["worker_scale_out_factor"] = worker_scale_out_factor_;
+						}
+
 					}
 				}
 
@@ -1662,6 +1716,10 @@ namespace cloud
 				std::int16_t workers_requests_max_{ 0 };
 
 				std::int16_t workers_start_at_once_max_{ 4 };
+				
+				std::int16_t workers_queue_retry_timeout_{ 1 };
+				std::int16_t worker_scale_out_factor_{ 1 };
+
 				mutable std::mutex limits_mutex_;
 			};
 
@@ -2511,8 +2569,10 @@ namespace cloud
 						{
 							if (workgroup.second->workgroups_limits().workers_max() > 0)
 							{
-								const std::int16_t queue_retry_timeout = 1;
-								workgroup.second->workgroups_limits().workers_required_upd(1);
+								std::int16_t queue_retry_timeout = workgroup.second->workgroups_limits().workers_queue_retry_timeout();
+								std::int16_t scale_out_factor = workgroup.second->workgroups_limits().worker_scale_out_factor();
+
+								workgroup.second->workgroups_limits().workers_required_upd(scale_out_factor);
 
 								session.request().set_attribute<std::int16_t>(
 									"queued", queue_retry_timeout);

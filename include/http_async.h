@@ -965,7 +965,7 @@ namespace http
 							session_handler_.request().template set_attribute<std::int16_t>("queued", 0);
 
 							auto me = this->shared_from_this();
-							queued_timer_.async_wait([me, next_upstream, original_ec](const asio::error_code& ec) {
+							queued_timer_.async_wait([me, next_upstream, original_ec](const asio::error_code&) {
 								me->read_request_body_complete(original_ec, size_t{ 0 }, next_upstream);
 							});
 
