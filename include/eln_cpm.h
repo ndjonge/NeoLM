@@ -484,14 +484,15 @@ namespace tests
 		return true;
 	}
 
-	inline bool run()
+	inline bool run(
+		const int workspace_count = 1,
+		const int workgroup_count = 1,
+		const int run_count = -1,
+		const int worker_count = 0,
+		const int worker_start_at_once_count = 4,
+		const int requests_count = 30,
+		const int stay_alive_time = 30)
 	{
-		const auto workspace_count = 1;
-		const auto workgroup_count = 1;
-		const auto run_count = -1;
-		const auto worker_count = 0;
-		const auto worker_start_at_once_count = 4;
-		const auto requests_count = 0;
 
 		for (int n = 0; n != run_count; n++)
 		{
@@ -517,7 +518,7 @@ namespace tests
 			for (int i = 0; i < workspace_count; i++)
 				tests::generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
 
-			std::this_thread::sleep_for(std::chrono::seconds(120));
+			std::this_thread::sleep_for(std::chrono::seconds(stay_alive_time));
 
 			for (int j = 0; j < workspace_count; j++)
 				for (int i = 0; i < workgroup_count; i++)
