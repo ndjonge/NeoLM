@@ -799,8 +799,7 @@ namespace bse_utils
 			{
 				pid = piProcInfo.dwProcessId;
 
-				if (1)
-					std::cout << "worker_command: " << command_cpy << "\n";
+				ec = command_cpy;
 			}
 			else
 			{
@@ -895,6 +894,8 @@ namespace bse_utils
 			}
 			envp.push_back(strdup(ss.str().data()));
 			envp.push_back(nullptr);
+
+			ec = command;
 
 			signal(SIGCHLD, SIG_IGN);
 
@@ -2572,7 +2573,8 @@ namespace cloud
 								std::int16_t queue_retry_timeout = workgroup.second->workgroups_limits().workers_queue_retry_timeout();
 								std::int16_t scale_out_factor = workgroup.second->workgroups_limits().worker_scale_out_factor();
 
-								workgroup.second->workgroups_limits().workers_required_upd(scale_out_factor);
+								if (workgroup.second->workgroups_limits().workers_pending() == 0)
+									workgroup.second->workgroups_limits().workers_required_upd(scale_out_factor);
 
 								session.request().set_attribute<std::int16_t>(
 									"queued", queue_retry_timeout);
@@ -4029,7 +4031,7 @@ namespace cloud
 	} // namespace platform
 } // namespace cloud
 
-inline bool start_eln_cpm_server(std::string config_file, std::string config_options, bool run_as_daemon, bool run_selftests)
+inline bool start_eln_cpm_server(std::string config_file, std::string config_options, bool run_as_daemon, bool run_selftests, std::string selftest_options)
 {
 	std::string server_version = std::string{ "eln_cpm" };
 
@@ -4063,7 +4065,21 @@ inline bool start_eln_cpm_server(std::string config_file, std::string config_opt
 	auto result = cloud::platform::eln_cpm_server_->start() == http::server::state::active;
 
 	if (run_selftests)
-		result = tests::run();
+	{
+		using test_configuration = http::configuration;
+
+		test_configuration test_options{ {}, selftest_options };
+
+		result = tests::run(
+			test_options.get<int>("workspaces", 1),
+			test_options.get<int>("workgroup", 1),
+			test_options.get<int>("runs", -1),
+			test_options.get<int>("workers_min", 0),
+			test_options.get<int>("workers_start_at_once", 1),
+			test_options.get<int>("requests", 0),
+			test_options.get<int>("stay_alive_time", 6000)
+		);
+	}
 
 	return result;
 }
@@ -4079,6 +4095,7 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } },
 		  { "httpserver_options", { prog_args::arg_t::arg_val, "<options>: see doc.", "" } },
 		  { "selftests", { prog_args::arg_t::flag, "run selftests" } },
+		  { "selftests_options", { prog_args::arg_t::arg_val, "<options>: see doc." } },
 		{ "selftests_worker", { prog_args::arg_t::flag, "false" } } }
 	);
 
@@ -4093,7 +4110,8 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 			cmd_args.get_val("config"),
 			cmd_args.get_val("options"),
 			cmd_args.get_val("daemonize") == "true",
-			cmd_args.get_val("selftests") == "true");
+			cmd_args.get_val("selftests") == "true",
+			cmd_args.get_val("selftests_options"));
 	else
 	{
 		tests::start_cld_wrk_server(
