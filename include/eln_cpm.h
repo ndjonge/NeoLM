@@ -4068,11 +4068,11 @@ inline bool start_eln_cpm_server(std::string config_file, std::string config_opt
 	{
 		using test_configuration = http::configuration;
 
-		test_configuration test_options{ {}, selftest_options };
+		test_configuration test_options{ {}, std::string{selftest_options} };
 
 		result = tests::run(
 			test_options.get<int>("workspaces", 1),
-			test_options.get<int>("workgroup", 1),
+			test_options.get<int>("workgroups", 1),
 			test_options.get<int>("runs", -1),
 			test_options.get<int>("workers_min", 0),
 			test_options.get<int>("workers_start_at_once", 1),
