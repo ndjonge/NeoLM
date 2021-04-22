@@ -1214,6 +1214,7 @@ namespace cloud
 
 				for (auto& worker : workers_)
 				{
+					if (worker.second.get_base_url().empty() == false)
 					{
 						std::string ec;
 						auto response = http::client::request<http::method::delete_>(
@@ -1738,7 +1739,7 @@ namespace cloud
 			std::string name_;
 			std::string workspace_id_;
 			std::string type_;
-			enum state state_;
+			std::atomic<enum state> state_;
 
 			limits limits_;
 
@@ -3607,7 +3608,13 @@ namespace cloud
 								const std::string& worker_label = worker_json["worker_label"];
 								const std::string& worker_id = worker_json["worker_id"];
 
-								auto result = workgroup.add_worker(worker_id, worker_label, worker_json, server_base::get_io_context());
+								auto result = false;
+
+								if (workgroup.state() == workgroups::state::up)
+									result = workgroup.add_worker(worker_id, worker_label, worker_json, server_base::get_io_context());
+								else
+									workgroup.workgroups_limits().workers_pending_upd(-1);
+
 
 								if (result)
 									session.response().assign(http::status::no_content);
