@@ -491,6 +491,7 @@ namespace tests
 		const int worker_count = 0,
 		const int worker_start_at_once_count = 4,
 		const int requests_count = 30,
+		const bool clean_up = false,
 		const int stay_alive_time = 30)
 	{
 
@@ -517,6 +518,9 @@ namespace tests
 
 			for (int i = 0; i < workspace_count; i++)
 				tests::generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
+
+			if (n +1 == run_count && clean_up == false)
+				break;
 
 			std::this_thread::sleep_for(std::chrono::seconds(stay_alive_time));
 
@@ -4084,6 +4088,7 @@ inline bool start_eln_cpm_server(std::string config_file, std::string config_opt
 			test_options.get<int>("workers_min", 0),
 			test_options.get<int>("workers_start_at_once", 1),
 			test_options.get<int>("requests", 0),
+			test_options.get<bool>("cleanup", true),
 			test_options.get<int>("stay_alive_time", 6000)
 		);
 	}

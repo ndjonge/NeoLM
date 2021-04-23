@@ -3630,11 +3630,12 @@ namespace http
 
 		~session_handler() = default;
 
-		session_handler(const std::string& server_id, int keep_alive_count, int keep_alive_timeout, http::protocol protocol)
+		session_handler(const std::string& server_id, int keep_alive_count, int keep_alive_timeout, int gzip_min_size, http::protocol protocol)
 			: server_id_(server_id)
 			, protocol_(protocol)
 			, keepalive_count_(keep_alive_count)
 			, keepalive_max_(keep_alive_timeout)
+			, gzip_min_size_(gzip_min_size)
 			, is_client_allowed_(true)
 			, t0_(std::chrono::steady_clock::now())
 		{
@@ -3659,7 +3660,8 @@ namespace http
 			if (protocol_ == http::protocol::https)
 				response_.set("Strict-Transport-Security", "max-age=315360000; includeSubdomains");
 
-			if (response_.get("Content-Type", std::string{}).empty()) response_.type("text");
+			if (response_.get("Content-Type", std::string{}).empty()) 
+				response_.type("text");
 
 			switch (route_result.match_result())
 			{
@@ -3680,6 +3682,20 @@ namespace http
 				response_.status(error_status);
 				break;
 			}
+			}
+
+			// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the
+			// word "gzip".
+			// TODO: "Accept-Encoding: gzip;q=0" means *no* gzip
+			// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip
+			// is good
+			if ((gzip_min_size_ < response_.body().size())
+				&& (request().get("Accept-Encoding", std::string{}).find("gzip")
+					!= std::string::npos))
+			{
+				response_.body() = gzip::compress(response_.body().c_str(), response_.body().size());
+				response_.set("Content-Encoding", "gzip");
+				response_.set("Content-Length", std::to_string(response_.body().size()));
 			}
 
 			if (request().method() == http::method::unknown)
@@ -3841,6 +3857,7 @@ namespace http
 
 		int keepalive_count_;
 		int keepalive_max_;
+		size_t gzip_min_size_;
 		bool is_client_allowed_;
 
 		std::chrono::steady_clock::time_point t0_;
@@ -5931,7 +5948,6 @@ namespace http
 				, https_listen_port_(network::tcp::socket::invalid_socket)
 				, endpoint_https_(configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
 				, connection_timeout_(configuration.get<int>("keepalive_timeout", 5))
-				, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 			{
 				logger_.debug("server created\n");
 			}
@@ -6125,7 +6141,7 @@ namespace http
 							{
 								auto new_connection_handler
 									= std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
-										*this, std::move(https_socket), connection_timeout_, gzip_min_length_);
+										*this, std::move(https_socket), connection_timeout_, configuration_.get<int>("gzip_min_size", 1024));
 
 								std::thread connection_thread(
 									[new_connection_handler]() { new_connection_handler->proceed(); });
@@ -6253,7 +6269,7 @@ namespace http
 							if (http_socket.lowest_layer() != network::tcp::socket::invalid_socket)
 							{
 								auto new_connection_handler = std::make_shared<connection_handler<network::tcp::socket>>(
-									*this, std::move(http_socket), connection_timeout_, gzip_min_length_);
+									*this, std::move(http_socket), connection_timeout_, configuration_.get<int>("gzip_min_size", 1024));
 
 								std::thread connection_thread(
 									[new_connection_handler]() { new_connection_handler->proceed(); });
@@ -6283,16 +6299,17 @@ namespace http
 			{
 			public:
 				connection_handler(
-					http::sync::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_length)
+					http::sync::server& server, S&& client_socket, int connection_timeout, size_t gzip_min_size)
 					: server_(server)
 					, client_socket_(std::move(client_socket))
 					, session_handler_(
 						server.configuration_.get<std::string>("server", "server_no_id"),
 						server.configuration_.get<int>("keepalive_count", 1024 * 8),
 						server.configuration_.get<int>("keepalive_max", 120),
+						server.configuration_.get<int>("gzip_min_size", 1024),
 						http::protocol::http) // for now.
 					, connection_timeout_(connection_timeout)
-					, gzip_min_length_(gzip_min_length)
+					, gzip_min_size_(gzip_min_size)
 				{
 					server_.logger_.debug("connection_handler: created\n");
 				}
@@ -6427,7 +6444,7 @@ namespace http
 									// TODO: "Accept-Encoding: gzip;q=0" means *no* gzip
 									// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip
 									// is good
-									if ((gzip_min_length_ < response.body().size())
+									if ((gzip_min_size_ < response.body().size())
 										&& (session_handler_.request().get("Accept-Encoding", std::string{}).find("gzip")
 											!= std::string::npos))
 									{
@@ -6523,7 +6540,7 @@ namespace http
 				S client_socket_;
 				http::session_handler session_handler_;
 				int connection_timeout_;
-				size_t gzip_min_length_;
+				size_t gzip_min_size_;
 				void reset_session() { session_handler_.reset(); }
 			};
 
@@ -6547,8 +6564,6 @@ namespace http
 			network::tcp::v6 endpoint_https_;
 
 			int connection_timeout_;
-			size_t gzip_min_length_;
-
 			std::mutex configuration_mutex_;
 
 			std::thread http_connection_thread_;

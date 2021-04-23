@@ -641,6 +641,7 @@ namespace http
 						configuration.get<std::string>("server", "server_no_id"),
 						configuration.get<int>("keepalive_count", 1024 * 8),
 						configuration.get<int>("keepalive_max", 5),
+						configuration.get<int>("gzip_min_size", 1024),
 						protocol)
 					, server_(server)
 					, protocol_(protocol)
@@ -1064,7 +1065,6 @@ namespace http
 				{
 
 					session_handler_.request().target(session_handler_.request().url_requested());
-					session_handler_.request().set("Accept-Encoding", "gzip");
 					session_handler_.request().reset_if_exists("Expect");
 
 					write_buffer_.emplace_back(http::to_string(session_handler_.request()));
@@ -1278,6 +1278,8 @@ namespace http
 					auto me = this->shared_from_this();
 
 					session_handler_.set_response_headers<http::api::router<>>(routing_, session_handler_.response().status());
+
+
 
 					write_buffer_.emplace_back(http::to_string(session_handler_.response()));
 
@@ -1560,7 +1562,6 @@ namespace http
 				, https_listen_port_end_(configuration.get<int16_t>("https_listen_port_end", https_listen_port_begin_))
 				, https_listen_port_(network::tcp::socket::invalid_socket)
 				, https_listen_address_(configuration.get<std::string>("https_listen_address", "::0"))
-				, gzip_min_length_(configuration.get<size_t>("gzip_min_length", 1024 * 10))
 				, max_request_content_length_(configuration.get<size_t>("max_request_content_length", 1024 * 1024 * 16))
 				, io_context_pool_(thread_count_)
 				, request_rate_timer_(io_context_pool_.get_io_context())
@@ -1867,7 +1868,6 @@ namespace http
 			std::atomic<network::socket_t> https_listen_port_;
 			std::string https_listen_address_;
 
-			size_t gzip_min_length_;
 			size_t max_request_content_length_;
 			size_t max_request_content_length() const { return max_request_content_length_; }
 
