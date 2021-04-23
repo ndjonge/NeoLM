@@ -2875,9 +2875,20 @@ namespace http
 		{
 			out.clear();
 			out.reserve(in.size());
+			bool query_part = false;
+
 			for (std::size_t i = 0; i < in.size(); ++i)
 			{
-				if (in[i] == '%')
+				if (in[i] == '?' && options == url_decode_options::path)
+				{
+					query_part = true;
+				}
+
+				if (query_part)
+				{
+					out += in[i];
+				}
+				else if (in[i] == '%')
 				{
 					if (i + 3 <= in.size())
 					{
