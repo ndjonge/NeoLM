@@ -5688,7 +5688,6 @@ public:
 		std::atomic<std::uint16_t> responses_diff_{ 0 };
 		std::atomic<std::uint16_t> responses_health_{ 0 };
 		std::atomic<std::uint16_t> rate_{ 0 };
-		std::atomic<std::chrono::steady_clock::time_point> sample_timepoint_;
 
 		std::vector<std::string> access_log_;
 		mutable std::mutex mutex_;

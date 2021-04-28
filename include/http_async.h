@@ -383,16 +383,11 @@ public:
 		void update_health_check_metrics()
 		{
 			responses_health_++;
+			auto responses_diff = responses_tot_ - responses_prev_;
 
-			auto t_diff = std::chrono::duration_cast<std::chrono::nanoseconds>(
-							  std::chrono::steady_clock::now() - sample_timepoint_.load())
-							  .count();
+			rate_.store(static_cast<std::uint16_t>(responses_diff / 2));
 
-			responses_diff_ = responses_tot_ - responses_diff_;
-
-			sample_timepoint_ = std::chrono::steady_clock::now();
-
-			rate_.store(static_cast<std::uint16_t>(responses_diff_.load() * 1000 / t_diff));
+			responses_prev_.store(responses_tot_);
 		}
 
 		containter_type& connections() { return connections_; }
@@ -407,10 +402,9 @@ public:
 		std::atomic<std::uint16_t> responses_4xx_{ 0 };
 		std::atomic<std::uint16_t> responses_5xx_{ 0 };
 		std::atomic<std::uint16_t> responses_tot_{ 0 };
-		std::atomic<std::uint16_t> responses_diff_{ 0 };
+		std::atomic<std::uint16_t> responses_prev_{ 0 };
 		std::atomic<std::uint16_t> responses_health_{ 0 };
 		std::atomic<std::uint16_t> rate_{ 0 };
-		std::atomic<std::chrono::steady_clock::time_point> sample_timepoint_;
 
 		std::string host() const
 		{
