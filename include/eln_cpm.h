@@ -4079,7 +4079,7 @@ inline bool start_eln_cpm_server(std::string config_file, std::string config_opt
 	{
 		using test_configuration = http::configuration;
 
-		test_configuration test_options{ {}, std::string{selftest_options} };
+		test_configuration test_options( {}, std::string{selftest_options} );
 
 		result = tests::run(
 			test_options.get<int>("workspaces", 1),
