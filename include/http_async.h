@@ -387,7 +387,7 @@ public:
 
 			rate_.store(static_cast<std::uint16_t>(responses_diff / 2));
 
-			responses_prev_.store(responses_tot_);
+			responses_prev_.store(responses_tot_);		
 		}
 
 		containter_type& connections() { return connections_; }
