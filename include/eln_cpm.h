@@ -195,7 +195,10 @@ public:
 		});
 
 		server_base::router_.on_post("/internal/platform/worker/watchdog", [this](http::session_handler& session) {
-			server_base::manager().idle_time_reset();
+			if (session.request().has("X-Infor-Feed-Watchdog") == true)
+			{
+				server_base::manager().idle_time_reset();
+			}
 			session.response().status(http::status::ok);
 		});
 
@@ -342,11 +345,13 @@ inline bool add_workgroup(
 	int required,
 	int start_at_once)
 {
-	if (worker_options.empty())
-		worker_options = "-selftests_worker";
-	else
-		worker_options += " -selftests_worker";
-
+	if (worker_cmd.find("eln_cpm") == 0)
+	{
+		if (worker_options.empty())
+			worker_options = "-selftests_worker";
+		else
+			worker_options += " -selftests_worker";
+	}
 	json workgroup_def{ { "name", workgroup_name },
 						{ "type", "bshells" },
 #ifdef _WIN32
@@ -363,7 +368,6 @@ inline bool add_workgroup(
 							{ "workers_max", 16 },
 							{ "workers_required", required },
 							{ "workers_start_at_once_max", start_at_once } } } };
-
 	// std::cout << workgroup_def.dump(4, ' ') << "\n";
 
 	std::string error;
@@ -496,6 +500,7 @@ inline bool run(const configuration& test_configuration)
 
 	const std::string& worker_cmd = test_configuration.get<std::string>("worker_cmd", "eln_cmd");
 	const std::string& worker_options = test_configuration.get<std::string>("worker_options", "");
+
 	const std::string& worker_bse = test_configuration.get<std::string>("bse", "");
 	const std::string& worker_bse_bin = test_configuration.get<std::string>("bse_bin", "");
 
@@ -511,6 +516,7 @@ inline bool run(const configuration& test_configuration)
 					"workgroup_" + std::to_string(i),
 					worker_bse,
 					worker_bse_bin,
+					worker_cmd,
 					worker_options,
 					worker_count,
 					worker_start_at_once_count);
@@ -756,7 +762,7 @@ static bool create_bse_process_as_user(
 		{
 			cwd = nullptr; // use current workdir
 		}
-		else
+		else if (user.empty() == false && password.empty() == false)
 		{
 			snprintf(desktop, sizeof(desktop), "%s\\%s", BAAN_WINSTATION_NAME, BAAN_DESKTOP_NAME);
 			siStartInfo.lpDesktop = desktop;
@@ -768,7 +774,7 @@ static bool create_bse_process_as_user(
 		{
 			error = 0;
 			result = CreateProcess(
-				cwd,
+				NULL,
 				const_cast<LPSTR>(command_cpy.data()),
 				NULL,
 				NULL,
@@ -776,8 +782,8 @@ static bool create_bse_process_as_user(
 				CREATE_NEW_PROCESS_GROUP | /* New root process */
 					DETACHED_PROCESS | /* Create NO console!! */
 					CREATE_DEFAULT_ERROR_MODE | NORMAL_PRIORITY_CLASS,
-				NULL,
-				NULL,
+				const_cast<LPSTR>(ss.str().data()), /* new environment block */
+				cwd,
 				&siStartInfo,
 				&piProcInfo);
 		}
@@ -1728,7 +1734,7 @@ public:
 	const limits& workgroups_limits() const { return limits_; }
 	limits& workgroups_limits() { return limits_; }
 
-	virtual void direct_workers(
+	virtual bool direct_workers(
 		asio::io_context& io_context,
 		const http::configuration& configuration,
 		lgr::logger& logger,
@@ -1767,7 +1773,7 @@ public:
 		from_json(worker_type_json);
 	}
 
-	virtual void direct_workers(
+	virtual bool direct_workers(
 		asio::io_context& io_context,
 		const http::configuration& configuration,
 		lgr::logger& logger,
@@ -1782,27 +1788,10 @@ public:
 		std::unique_lock<mutex_type> lock{ workers_mutex_ };
 
 		auto workers_required_to_add = limits_.workers_required_to_add();
-
 		auto workers_label_required = limits_.workers_label_required();
 		auto workers_runtime_max = limits_.workers_runtime_max();
 		auto workers_requests_max = limits_.workers_requests_max();
 
-		if (workspace_is_updated)
-		{
-			logger.api(
-				"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, "
-				"label_required: {s}\n",
-				workspace_id_,
-				type_,
-				name_,
-				limits_.workers_actual(),
-				limits_.workers_pending(),
-				limits_.workers_required(),
-				limits_.workers_min(),
-				limits_.workers_max(),
-				limits_.workers_label_actual(),
-				workers_label_required);
-		}
 
 		for (std::int16_t n = 0; n < workers_required_to_add; n++)
 		{
@@ -1897,14 +1886,21 @@ public:
 								|| (response.status() != http::status::ok
 									&& response.status() != http::status::no_content))
 							{
-								logger.api(
-									"/{s}/{s}/{s}: failed to delete process {s}\n",
-									workspace_id_,
-									type_,
-									name_,
-									base_url);
-							}
+								if (error_code == asio::error::connection_refused)
+								{
+									// worker already gone...
+								}
+								else
+								{
+									logger.api(
+										"/{s}/{s}/{s}: failed to delete process {s}\n",
+										workspace_id_,
+										type_,
+										name_,
+										base_url);
+								}
 
+							}
 							return;
 						});
 
@@ -1920,6 +1916,8 @@ public:
 			}
 		}
 
+
+		bool is_group_changed{false};
 		//		if (limits_adjustments.contains("limits") == false)
 		{
 			std::int16_t workers_watchdogs_feeded = 0;
@@ -1981,8 +1979,7 @@ public:
 					auto workers_feed_watchdog = workers_watchdogs_feeded++ < limits_.workers_min();
 
 					http::headers watchdog_headers{ { "Host", "localhost" },
-													{ "X-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" } };
-
+													{ "X-Infor-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" } };
 					http::client::async_request<http::method::post>(
 						upstreams_,
 						worker_it->second.get_base_url(),
@@ -2104,11 +2101,32 @@ public:
 					worker_it = workers_.erase(workers_.find(worker_it->first));
 
 					limits_.workers_actual_upd(-1);
+					is_group_changed = true;
 				}
 				else
 					worker_it++;
 			}
 		}
+
+		if (workspace_is_updated || is_group_changed)
+		{
+			logger.api(
+				"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, "
+				"label_required: {s}\n",
+				workspace_id_,
+				type_,
+				name_,
+				limits_.workers_actual(),
+				limits_.workers_pending(),
+				limits_.workers_required(),
+				limits_.workers_min(),
+				limits_.workers_max(),
+				limits_.workers_label_actual(),
+				workers_label_required);
+		}
+
+
+		return is_group_changed;
 	};
 
 	void from_json(const json& j) override
@@ -2255,11 +2273,18 @@ public:
 
 		worker_id = "worker_" + std::to_string(worker_ids_++);
 
-		parameters << "-httpserver_options cpm_endpoint:" << manager_endpoint
+		parameters << "-httpserver -httpserver_options cpm_endpoint:" << manager_endpoint
 				   << ",cpm_workgroup_membership_type:worker,cpm_workspace:" << workspace_id
 				   << ",cpm_worker_id:" << worker_id << ",cpm_worker_label:" << worker_label
 				   << ",cpm_workgroup:" << worker_name;
 
+		if (http_options_.find("http_watchdog_idle_timeout") == std::string::npos)
+		{
+			if (http_options_.empty()) 
+				http_options_ = "http_watchdog_idle_timeout:15";
+			else
+				http_options_ += ",http_watchdog_idle_timeout:15";
+		}
 		if (!http_options_.empty())
 			parameters << "," << http_options_ << " ";
 		else if (!cli_options_.empty())
@@ -2273,7 +2298,7 @@ public:
 			"",
 			os_user_,
 			os_password_,
-			bse_bin_ + (bse_bin_ != "" ? "/" : "") + program_ + std::string{ " " } + parameters.str(),
+			bse_bin_ + (bse_bin_ != "" ? "\\" : "") + program_ + std::string{ " " } + parameters.str(),
 			pid,
 			ec);
 	}
@@ -2316,7 +2341,7 @@ public:
 		j["parameters"].emplace("python_root", rootdir);
 	}
 
-	virtual void direct_workers(asio::io_context&, const http::configuration&, lgr::logger&, bool) override{};
+	virtual bool direct_workers(asio::io_context&, const http::configuration&, lgr::logger&, bool) override{return false;}
 
 	virtual bool create_worker_process(
 		const std::string&,
@@ -2549,7 +2574,9 @@ public:
 						std::int16_t scale_out_factor = workgroup.second->workgroups_limits().worker_scale_out_factor();
 
 						if (workgroup.second->workgroups_limits().workers_pending() == 0)
+						{
 							workgroup.second->workgroups_limits().workers_required_upd(scale_out_factor);
+						}
 
 						session.request().set_attribute<std::int16_t>("queued", queue_retry_timeout);
 					}
@@ -2666,7 +2693,8 @@ public:
 	const_iterator cend() const { return workspaces_.cend(); }
 	const_iterator cbegin() const { return workspaces_.cbegin(); }
 
-	std::atomic<bool>& is_changed() { return is_changed_; }
+	const std::atomic<bool>& is_changed() const { return is_changed_; }
+	void is_changed(bool value) { is_changed_ = value; }
 
 	mutex_type& workspaces_mutex() { return workspaces_mutex_; }
 	const mutex_type& workspaces_mutex() const { return workspaces_mutex_; }
@@ -2756,7 +2784,7 @@ public:
 					{
 						if (workgroup->second->state() != workgroups::state::up) needs_cleanup = true;
 
-						workgroup->second->direct_workers(io_context, configuration, logger, is_changed());
+						is_changed_ = is_changed_ || workgroup->second->direct_workers(io_context, configuration, logger, is_changed());
 					}
 				}
 			}
@@ -2894,7 +2922,7 @@ public:
 		if (workspace != workspaces_.end())
 		{
 			auto result = method(*workspace->second, error_message);
-			is_changed().store(result);
+			is_changed(result);
 			return result;
 		}
 		else
@@ -2947,7 +2975,7 @@ public:
 				if ((workgroup.first == workgroup_name))
 				{
 					auto result = method(*workgroup.second, error_message);
-					is_changed().store(result);
+					is_changed(result);
 					return result;
 				}
 			}
@@ -3620,7 +3648,15 @@ public:
 					workspace_id,
 					workgroup_name,
 					[&session, worker_id](workgroups& workgroup, std::string&) {
+						json worker_json = json::parse(session.request().body());
 						auto result = workgroup.delete_worker(worker_id);
+
+						if (worker_json.contains("limits"))
+						{
+							std::int16_t required = worker_json["limits"]["workers_required"];
+
+							workgroup.workgroups_limits().workers_required_upd(required);
+						}
 
 						if (result) session.response().assign(http::status::no_content);
 
@@ -3983,7 +4019,7 @@ private:
 					if (new_config_file.fail() == false)
 						server_base::logger_.api("config saved to: \"{s}\"\n", configuration_file_);
 
-					workspaces_.is_changed().store(false);
+					workspaces_.is_changed(false);
 				}
 			}
 
@@ -4044,8 +4080,6 @@ inline bool start_eln_cpm_server(
 
 	if (run_selftests)
 	{
-		using test_configuration = http::configuration;
-
 		result = tests::run(tests::configuration({}, std::string{ selftest_options }));
 	}
 
