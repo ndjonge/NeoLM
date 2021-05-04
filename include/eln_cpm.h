@@ -271,6 +271,7 @@ inline bool start_cld_wrk_server(int argc, const char** argv)
 		argc,
 		argv,
 		{ { "httpserver_options", { prog_args::arg_t::arg_val, "see doc.", "" } },
+		  { "httpserver", { prog_args::arg_t::flag, "http_server" } } ,
 		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } } });
 
 	if (cmd_args.process_args() == false)
@@ -348,9 +349,9 @@ inline bool add_workgroup(
 	if (worker_cmd.find("eln_cpm") == 0)
 	{
 		if (worker_options.empty())
-			worker_options = "-selftests_worker";
+			worker_options = "-selftests_worker ";
 		else
-			worker_options += " -selftests_worker";
+			worker_options += " -selftests_worker ";
 	}
 	json workgroup_def{ { "name", workgroup_name },
 						{ "type", "bshells" },
@@ -367,6 +368,7 @@ inline bool add_workgroup(
 						  { { "workers_min", required },
 							{ "workers_max", 16 },
 							{ "workers_required", required },
+							{ "workers_runtime_max", 1 },
 							{ "workers_start_at_once_max", start_at_once } } } };
 	// std::cout << workgroup_def.dump(4, ' ') << "\n";
 
@@ -498,7 +500,7 @@ inline bool run(const configuration& test_configuration)
 	const bool clean_up = test_configuration.get<bool>("cleanup", true);
 	const int stay_alive_time = test_configuration.get<int>("stay_alive_time", 6000);
 
-	const std::string& worker_cmd = test_configuration.get<std::string>("worker_cmd", "eln_cmd");
+	const std::string& worker_cmd = test_configuration.get<std::string>("worker_cmd", "eln_cpm");
 	const std::string& worker_options = test_configuration.get<std::string>("worker_options", "");
 
 	const std::string& worker_bse = test_configuration.get<std::string>("bse", "");
@@ -735,7 +737,7 @@ static bool create_bse_process_as_user(
 		ss << "BSE=" << bse << char{ 0 };
 		ss << "BSE_BIN=" << bse_bin << char{ 0 };
 		ss << "BSE_SHLIB=" << bse_bin << "\\..\\shlib" << char{ 0 };
-		ss << "TENAND_ID=" << tenand_id << char{ 0 };
+		ss << "TENANT_ID=" << tenand_id << char{ 0 };
 
 		for (auto var : required_environment_vars)
 		{
@@ -780,7 +782,7 @@ static bool create_bse_process_as_user(
 				NULL,
 				FALSE,
 				CREATE_NEW_PROCESS_GROUP | /* New root process */
-					DETACHED_PROCESS | /* Create NO console!! */
+//					DETACHED_PROCESS | /* Create NO console!! */
 					CREATE_DEFAULT_ERROR_MODE | NORMAL_PRIORITY_CLASS,
 				const_cast<LPSTR>(ss.str().data()), /* new environment block */
 				cwd,
@@ -1840,7 +1842,8 @@ public:
 
 		if (workers_required_to_add < 0)
 		{
-			for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+
+			for (auto worker_it = workers_.rbegin(); worker_it != workers_.rend(); )
 			{
 				if (worker_it->second.get_base_url().empty()
 					|| worker_it->second.get_status() == worker::status::recover)
@@ -1848,15 +1851,16 @@ public:
 					++worker_it;
 					continue;
 				}
+
 				auto& worker = worker_it->second;
 				auto worker_label = worker_it->second.worker_label();
 				auto worker_runtime = worker_it->second.runtime();
 				auto worker_requests = worker_it->second.upstream().responses_tot_.load();
 
 				if ((worker_label != workers_label_required)
-					|| ((workers_requests_max > 1) && (worker_requests >= workers_requests_max))
-					|| ((workers_runtime_max > 1) && (worker_runtime >= workers_runtime_max))
-					|| (worker_it == workers_.begin()))
+					|| ((workers_requests_max >= 1) && (worker_requests >= workers_requests_max))
+					|| ((workers_runtime_max >= 1) && (worker_runtime >= workers_runtime_max))
+					|| (workers_.begin()->first == worker_it->first))
 				{
 					http::headers watchdog_headers{ { "Host", "localhost" } };
 
@@ -1953,7 +1957,8 @@ public:
 						{
 							workers_responses_max_reached++;
 						}
-						else if (worker.runtime() >= workers_runtime_max)
+						
+						if (worker.runtime() >= workers_runtime_max)
 						{
 							workers_runtime_max_reached++;
 						}
@@ -2521,8 +2526,10 @@ public:
 			{
 				for (const auto& header : workgroup.second->headers())
 				{
-					bool found = false;
-					if (session.request().get<std::string>(header.name, found, "") == header.value && found == true)
+					//bool found = false;
+					//if (session.request().get<std::string>(header.name, found, "") == header.value && found == true)
+
+					if (session.request().get<std::string>(header.name, "") == header.value)
 					{
 						header_match = true;
 						break;
@@ -2861,8 +2868,10 @@ public:
 			{
 				for (const auto& header : workspace.second->headers())
 				{
-					bool found = false;
-					if (session.request().get<std::string>(header.name, found, "") == header.value && found == true)
+					//bool found = false;
+					//if (session.request().get<std::string>(header.name, found, "") == header.value && found == true)
+
+					if (session.request().get<std::string>(header.name, "") == header.value)
 					{
 						header_match = true;
 						break;
@@ -2909,7 +2918,7 @@ public:
 		}
 		else
 		{
-			error_message = workspace_id + " does not exits in workspace collection";
+			error_message = workspace_id + " does not exists in workspace collection";
 		}
 		return false;
 	}
@@ -2927,7 +2936,7 @@ public:
 		}
 		else
 		{
-			error_message = workspace_id + " does not exits in workspace collection";
+			error_message = workspace_id + " does not exist in workspace collection";
 		}
 		return false;
 	}
@@ -2954,7 +2963,7 @@ public:
 		}
 		else
 		{
-			error_message = workspace_id + " does not exits in workspace collection";
+			error_message = workspace_id + " does not exist in workspace collection";
 		}
 		return false;
 	}
@@ -2979,11 +2988,11 @@ public:
 					return result;
 				}
 			}
-			error_message = workgroup_name + " does not exits in workgroup collection";
+			error_message = workgroup_name + " does not exist in workgroup collection";
 		}
 		else
 		{
-			error_message = workspace_id + " does not exits in workspace collection";
+			error_message = workspace_id + " does not exist in workspace collection";
 		}
 
 		return false;
@@ -3012,13 +3021,13 @@ public:
 						if (worker.first == worker_id) return method(worker.second, error_message);
 					}
 				}
-				error_message = worker_id + " does not exits in workers collection";
+				error_message = worker_id + " does not exist in workers collection";
 			}
-			if (error_message.empty()) error_message = workgroup_name + " does not exits in workgroup collection";
+			if (error_message.empty()) error_message = workgroup_name + " does not exist in workgroup collection";
 		}
 		else
 		{
-			error_message = workspace_id + " does not exits in workspace collection";
+			error_message = workspace_id + " does not exist in workspace collection";
 		}
 		return false;
 	}
@@ -3045,14 +3054,14 @@ public:
 					{
 						if (worker.first == worker_id) return method(worker.second, error_message);
 					}
-					error_message = worker_id + " does not exits in workers collection";
+					error_message = worker_id + " does not exist in workers collection";
 				}
 			}
-			if (error_message.empty()) error_message = workgroup_name + " does not exits in workgroup collection";
+			if (error_message.empty()) error_message = workgroup_name + " does not exist in workgroup collection";
 		}
 		else
 		{
-			error_message = workspace_id + " does not exits in workspace collection";
+			error_message = workspace_id + " does not exist in workspace collection";
 			return false;
 		}
 	}
@@ -3825,7 +3834,7 @@ public:
 							json result_json;
 
 							workgroup.workgroups_limits().from_json(
-								limits_json, limit_name, workgroups::limits::from_json_operation::set);
+								limits_json["limits"], limit_name, workgroups::limits::from_json_operation::set);
 
 							workgroup.workgroups_limits().to_json(
 								result_json, output_formating::options::complete, limit_name);
@@ -3868,7 +3877,7 @@ public:
 							json result_json;
 
 							workgroup.workgroups_limits().from_json(
-								limits_json, limit_name, workgroups::limits::from_json_operation::add);
+								limits_json["limits"], limit_name, workgroups::limits::from_json_operation::add);
 
 							workgroup.workgroups_limits().to_json(
 								result_json, output_formating::options::complete, limit_name);
@@ -4095,6 +4104,7 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 			{ prog_args::arg_t::arg_val, " <config>: filename for the workspace config file or url", "config.json" } },
 		  { "options", { prog_args::arg_t::arg_val, "<options>: see doc.", "" } },
 		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } },
+		  { "httpserver", { prog_args::arg_t::flag, "internal" } },
 		  { "httpserver_options", { prog_args::arg_t::arg_val, "<options>: see doc.", "" } },
 		  { "selftests", { prog_args::arg_t::flag, "run selftests" } },
 		  { "selftests_options", { prog_args::arg_t::arg_val, "<options>: see doc." } },

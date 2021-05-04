@@ -3662,7 +3662,7 @@ public:
 	const std::string& parse_error_reason() const { return request_parser_.error_reason(); }
 
 	template <typename router_t>
-	void set_response_headers(
+	void handle_response(
 		typename router_t::request_result_type& route_result,
 		http::status::status_t error_status = http::status::not_found)
 	{
@@ -6433,7 +6433,7 @@ public:
 							http::api::router<>::request_result_type routing
 								= session_handler_.handle_request(server_.router_);
 
-							session_handler_.set_response_headers<http::api::router<>>(routing);
+							session_handler_.handle_response<http::api::router<>>(routing);
 
 							t0 = std::chrono::steady_clock::now();
 
@@ -6448,19 +6448,19 @@ public:
 								server_.manager().requests_current(private_base_request);
 							}
 
-							// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the
-							// word "gzip".
-							// TODO: "Accept-Encoding: gzip;q=0" means *no* gzip
-							// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip
-							// is good
-							if ((gzip_min_size_ < response.body().size())
-								&& (session_handler_.request().get("Accept-Encoding", std::string{}).find("gzip")
-									!= std::string::npos))
-							{
-								response.body() = gzip::compress(response.body().c_str(), response.body().size());
-								response.set("Content-Encoding", "gzip");
-								response.set("Content-Length", std::to_string(response.body().size()));
-							}
+							//// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the
+							//// word "gzip".
+							//// TODO: "Accept-Encoding: gzip;q=0" means *no* gzip
+							//// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip
+							//// is good
+							//if ((gzip_min_size_ < response.body().size())
+							//	&& (session_handler_.request().get("Accept-Encoding", std::string{}).find("gzip")
+							//		!= std::string::npos))
+							//{
+							//	response.body() = gzip::compress(response.body().c_str(), response.body().size());
+							//	response.set("Content-Encoding", "gzip");
+							//	response.set("Content-Length", std::to_string(response.body().size()));
+							//}
 
 							(void)network::write(client_socket_, http::to_string(response));
 

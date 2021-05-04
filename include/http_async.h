@@ -256,7 +256,7 @@ public:
 			upstream_json["connections"]["total"] = connections_total;
 			upstream_json["connections"]["idle"] = connections_idle;
 			upstream_json["connections"]["busy"] = upstream->connections_busy_.load();
-			upstream_json["connections"]["reopend"] = upstream->connections_reopened_.load();
+			upstream_json["connections"]["reopened"] = upstream->connections_reopened_.load();
 
 			upstream_json["responses"]["1xx"] = upstream->responses_1xx_.load();
 			upstream_json["responses"]["2xx"] = upstream->responses_2xx_.load();
@@ -297,7 +297,7 @@ public:
 			   << "/" << workspace_id << upstream->id_ << ", " << upstream_state
 			   << ", connections(total: " << std::to_string(connections_total) << ", "
 			   << "idle: " << std::to_string(connections_idle) << ", busy: " << std::to_string(connections_busy_)
-			   << ", reopend: " << std::to_string(upstream->connections_reopened_) << ")"
+			   << ", reopened: " << std::to_string(upstream->connections_reopened_) << ")"
 			   << ", 1xx: " << std::to_string(upstream->responses_1xx_)
 			   << ", 2xx: " << std::to_string(upstream->responses_2xx_)
 			   << ", 3xx: " << std::to_string(upstream->responses_3xx_)
@@ -1269,7 +1269,7 @@ public:
 		{
 			auto me = this->shared_from_this();
 
-			session_handler_.set_response_headers<http::api::router<>>(routing_, session_handler_.response().status());
+			session_handler_.handle_response<http::api::router<>>(routing_, session_handler_.response().status());
 
 			write_buffer_.emplace_back(http::to_string(session_handler_.response()));
 
