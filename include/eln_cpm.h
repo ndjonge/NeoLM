@@ -298,6 +298,16 @@ inline int stop_cld_wrk_server()
 	return 0;
 }
 
+class test_base
+{
+
+private:
+	std::string base_url_;
+	tests::configuration configuration_;
+
+public:
+	class test_base(const std::string& base_url, tests::configuration& configuration) : base_url_(base_url), configuration_(configuration) {}
+
 inline bool add_workspace(std::string workspace_id, std::string tenant_id)
 {
 	json workspace_def{ { "workspace",
@@ -325,7 +335,7 @@ inline bool add_workspace(std::string workspace_id, std::string tenant_id)
 	std::string error;
 
 	auto response = http::client::request<http::method::post>(
-		"http://localhost:4000/internal/platform/manager/workspaces", error, {}, workspace_def["workspace"].dump());
+		base_url_ + "/internal/platform/manager/workspaces", error, {}, workspace_def["workspace"].dump());
 
 	if (error.empty() == false) return false;
 
@@ -375,7 +385,7 @@ inline bool add_workgroup(
 	std::string error;
 
 	auto response = http::client::request<http::method::post>(
-		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id + "/workgroups",
+		base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups",
 		error,
 		{},
 		workgroup_def.dump());
@@ -398,7 +408,7 @@ inline bool increase_workgroup_limits(std::string workspace_id, std::string work
 	std::string error;
 
 	auto response = http::client::request<http::method::put>(
-		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name
+		base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name
 			+ "/limits/workers_required",
 		error,
 		{},
@@ -418,7 +428,7 @@ inline bool remove_workgroup(std::string workspace_id, std::string workgroup_nam
 	std::string error;
 
 	auto response = http::client::request<http::method::delete_>(
-		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name,
+		base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name,
 		error,
 		{});
 
@@ -436,7 +446,7 @@ inline bool remove_workspace(std::string workspace_id)
 	std::string error;
 
 	auto response = http::client::request<http::method::delete_>(
-		"http://localhost:4000/internal/platform/manager/workspaces/" + workspace_id, error, {});
+		base_url_ + "/internal/platform/manager/workspaces/" + workspace_id, error, {});
 
 	if (error.empty() == false) return false;
 
@@ -449,12 +459,13 @@ inline bool remove_workspace(std::string workspace_id)
 
 inline bool generate_proxied_requests(const std::string& request_url, std::string tenant, int count)
 {
-	std::thread{ [count, request_url, tenant]() {
+	auto base_url = base_url_;
+	std::thread{ [base_url, count, request_url, tenant]() {
 		for (int i = 0; i != count; i++)
 		{
 			std::string error;
 			auto response = http::client::request<http::method::get>(
-				"http://localhost:4000" + request_url, error, { { "X-Infor-TenantId", tenant } }, {});
+				base_url + request_url, error, { { "X-Infor-TenantId", tenant } }, {});
 
 			if (response.status() == http::status::not_found)
 			{
@@ -470,12 +481,13 @@ inline bool generate_proxied_requests(const std::string& request_url, std::strin
 
 inline bool generate_proxied_requests(const std::string& request_url, int count)
 {
-	std::thread{ [count, request_url]() {
+	auto base_url = base_url_;
+	std::thread{ [base_url, count, request_url]() {
 		for (int i = 0; i != count; i++)
 		{
 			std::string error;
 			auto response
-				= http::client::request<http::method::get>("http://localhost:4000" + request_url, error, {}, {});
+				= http::client::request<http::method::get>(base_url + request_url, error, {}, {});
 
 			if (response.status() == http::status::not_found)
 			{
@@ -489,31 +501,31 @@ inline bool generate_proxied_requests(const std::string& request_url, int count)
 	return true;
 }
 
-inline bool run(const configuration& test_configuration)
+inline bool run()
 {
-	const int workspace_count = test_configuration.get<int>("workspaces", 1);
-	const int workgroup_count = test_configuration.get<int>("workgroups", 1);
-	const int run_count = test_configuration.get<int>("runs", -1);
-	const int worker_count = test_configuration.get<int>("workers_min", 0);
-	const int worker_start_at_once_count = test_configuration.get<int>("workers_start_at_once", 1);
-	const int requests_count = test_configuration.get<int>("requets", 0);
-	const bool clean_up = test_configuration.get<bool>("cleanup", true);
-	const int stay_alive_time = test_configuration.get<int>("stay_alive_time", 6000);
+	const int workspace_count = configuration_.get<int>("workspaces", 1);
+	const int workgroup_count = configuration_.get<int>("workgroups", 1);
+	const int run_count = configuration_.get<int>("runs", -1);
+	const int worker_count = configuration_.get<int>("workers_min", 0);
+	const int worker_start_at_once_count = configuration_.get<int>("workers_start_at_once", 1);
+	const int requests_count = configuration_.get<int>("requets", 0);
+	const bool clean_up = configuration_.get<bool>("cleanup", true);
+	const int stay_alive_time = configuration_.get<int>("stay_alive_time", 6000);
 
-	const std::string& worker_cmd = test_configuration.get<std::string>("worker_cmd", "eln_cpm");
-	const std::string& worker_options = test_configuration.get<std::string>("worker_options", "");
+	const std::string& worker_cmd = configuration_.get<std::string>("worker_cmd", "eln_cpm");
+	const std::string& worker_options = configuration_.get<std::string>("worker_options", "");
 
-	const std::string& worker_bse = test_configuration.get<std::string>("bse", "");
-	const std::string& worker_bse_bin = test_configuration.get<std::string>("bse_bin", "");
+	const std::string& worker_bse = configuration_.get<std::string>("bse", "");
+	const std::string& worker_bse_bin = configuration_.get<std::string>("bse_bin", "");
 
 	for (int n = 0; n != run_count; n++)
 	{
 		for (int i = 0; i < workspace_count; i++)
-			tests::add_workspace("workspace_" + std::to_string(100 + i), "tenant" + std::to_string(100 + i) + "_tst");
+			add_workspace("workspace_" + std::to_string(100 + i), "tenant" + std::to_string(100 + i) + "_tst");
 
 		for (int j = 0; j < workspace_count; j++)
 			for (int i = 0; i < workgroup_count; i++)
-				tests::add_workgroup(
+				add_workgroup(
 					"workspace_" + std::to_string(100 + j),
 					"workgroup_" + std::to_string(i),
 					worker_bse,
@@ -525,15 +537,15 @@ inline bool run(const configuration& test_configuration)
 
 		for (int j = 0; j < workspace_count; j++)
 			for (int i = 0; i < workgroup_count; i++)
-				tests::increase_workgroup_limits(
+				increase_workgroup_limits(
 					"workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i), worker_count);
 
 		for (int i = 0; i < workspace_count; i++)
-			tests::generate_proxied_requests(
+			generate_proxied_requests(
 				"/api/tests/1k", "tenant" + std::to_string(100 + i) + "_tst", requests_count);
 
 		for (int i = 0; i < workspace_count; i++)
-			tests::generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
+			generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
 
 		if (n + 1 == run_count && clean_up == false) break;
 
@@ -541,16 +553,18 @@ inline bool run(const configuration& test_configuration)
 
 		for (int j = 0; j < workspace_count; j++)
 			for (int i = 0; i < workgroup_count; i++)
-				tests::remove_workgroup("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
+				remove_workgroup("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
 
 		for (int i = 0; i < workspace_count; i++)
-			tests::remove_workspace("workspace_" + std::to_string(100 + i));
+			remove_workspace("workspace_" + std::to_string(100 + i));
 
 		std::this_thread::sleep_for(std::chrono::seconds(10));
 	}
 
 	return true;
 }
+
+};
 
 } // namespace tests
 
@@ -782,7 +796,7 @@ static bool create_bse_process_as_user(
 				NULL,
 				FALSE,
 				CREATE_NEW_PROCESS_GROUP | /* New root process */
-//					DETACHED_PROCESS | /* Create NO console!! */
+					DETACHED_PROCESS | /* Create NO console!! */
 					CREATE_DEFAULT_ERROR_MODE | NORMAL_PRIORITY_CLASS,
 				const_cast<LPSTR>(ss.str().data()), /* new environment block */
 				cwd,
@@ -1024,7 +1038,7 @@ private:
 	std::string base_url_{};
 	std::string version_{};
 	std::int32_t process_id_;
-	std::chrono::steady_clock::time_point startup_t0_;
+	std::chrono::steady_clock::time_point startup_t0_{};
 	std::chrono::steady_clock::time_point startup_t1_{};
 
 	std::atomic<status> status_{ status::down };
@@ -1044,6 +1058,7 @@ public:
 		, version_(version)
 		, process_id_(process_id)
 		, startup_t0_(std::chrono::steady_clock::now())
+		, startup_t1_(std::chrono::steady_clock::now())
 		, status_(worker::status::starting)
 	{
 	}
@@ -1055,6 +1070,7 @@ public:
 		, version_(worker.version_)
 		, process_id_(worker.process_id_)
 		, startup_t0_(worker.startup_t0_)
+		, startup_t1_(worker.startup_t1_)
 		, status_(worker.status_.load())
 	{
 	}
@@ -1070,6 +1086,7 @@ public:
 	void worker_label(const std::string& level) { worker_label_ = level; }
 
 	int get_process_id() const { return process_id_; };
+	std::int64_t startup_latency() const { return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startup_t0_).count(); }
 
 	status get_status() const { return status_; }
 	void set_status(status s)
@@ -1793,13 +1810,14 @@ public:
 		auto workers_label_required = limits_.workers_label_required();
 		auto workers_runtime_max = limits_.workers_runtime_max();
 		auto workers_requests_max = limits_.workers_requests_max();
-
+		bool is_group_changed = false;
 
 		for (std::int16_t n = 0; n < workers_required_to_add; n++)
 		{
 			std::uint32_t process_id = 0;
 			std::string worker_id;
 			lock.unlock();
+			is_group_changed = true;
 			bool success = create_worker_process(
 				server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_label_required, ec);
 
@@ -1910,6 +1928,7 @@ public:
 
 					worker.set_status(worker::status::drain);
 					workers_required_to_add++;
+					is_group_changed = true;
 
 					if (workers_required_to_add == 0)
 					{
@@ -1920,197 +1939,213 @@ public:
 			}
 		}
 
+		std::int16_t workers_watchdogs_feeded = 0;
+		std::int16_t workers_on_label_required = 0;
+		std::int16_t workers_not_on_label_required = 0;
+		std::int16_t workers_runtime_max_reached = 0;
+		std::int16_t workers_responses_max_reached = 0;
+		std::int16_t workers_startup_latency_max_ = 8000;
 
-		bool is_group_changed{false};
-		//		if (limits_adjustments.contains("limits") == false)
+		for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
 		{
-			std::int16_t workers_watchdogs_feeded = 0;
-			std::int16_t workers_on_label_required = 0;
-			std::int16_t workers_not_on_label_required = 0;
-			std::int16_t workers_runtime_max_reached = 0;
-			std::int16_t workers_responses_max_reached = 0;
-
-			for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+			if (worker_it->second.get_base_url().empty())
 			{
-				if (worker_it->second.get_base_url().empty())
-				{
-					++worker_it;
-					continue;
-				}
+				auto is_worker_too_late = (workers_startup_latency_max_ - worker_it->second.startup_latency()) < 0;
 
-				auto& worker = worker_it->second;
-
-				auto worker_label = worker_it->second.worker_label();
-
-				if (worker_it->second.get_status() == worker::status::up
-					|| worker_it->second.get_status() == worker::status::starting)
-				{
-					if (worker_label != workers_label_required)
-					{
-						workers_not_on_label_required++;
-					}
-					else
-					{
-						workers_on_label_required++;
-
-						if (worker.upstream().responses_tot_.load() >= workers_requests_max)
-						{
-							workers_responses_max_reached++;
-						}
-						
-						if (worker.runtime() >= workers_runtime_max)
-						{
-							workers_runtime_max_reached++;
-						}
-					}
-
-					if (worker_label != limits_.workers_label_actual()) limits_.workers_label_actual(worker_label);
-				}
-
-				if (worker_it->second.get_status() == worker::status::recover)
-				{
-					auto& upstream = upstreams_.add_upstream(
-						io_context,
-						worker_it->second.get_base_url(),
-						"/" + name_ + "/" + type_ + "/" + worker_it->first + "/" + worker_it->second.worker_label());
-
-					worker_it->second.upstream(upstream);
-
-					worker_it->second.set_status(worker::status::up);
-				}
-
-				if (worker_it->second.get_status() == worker::status::up)
-				{
-					auto workers_feed_watchdog = workers_watchdogs_feeded++ < limits_.workers_min();
-
-					http::headers watchdog_headers{ { "Host", "localhost" },
-													{ "X-Infor-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" } };
-					http::client::async_request<http::method::post>(
-						upstreams_,
-						worker_it->second.get_base_url(),
-						"/internal/platform/worker/watchdog",
-						watchdog_headers,
-						std::string{},
-						[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
-							if (!error_code
-								&& (response.status() == http::status::ok
-									|| response.status() == http::status::no_content)
-								&& worker.get_status() != worker::status::up)
-							{
-								worker.set_status(worker::status::up);
-							}
-							else if (
-								error_code
-								|| (response.status() != http::status::ok
-									&& response.status() != http::status::no_content))
-							{
-								worker.set_status(worker::status::drain);
-
-								if (worker.upstream().get_state() != http::async::upstreams::upstream::state::drain
-									&& error_code == asio::error::connection_refused)
-								{
-									logger.api(
-										"/{s}/{s}/{s}: failed health check for worker {s}\n",
-										workspace_id_,
-										type_,
-										name_,
-										worker.get_base_url());
-								}
-							}
-
-							return;
-						});
-				}
-
-				++worker_it;
-			}
-
-			auto workers_to_start = workers_not_on_label_required;
-			limits_.workers_not_on_label_required(workers_not_on_label_required);
-
-			if (workers_on_label_required + limits_.workers_pending() != limits_.workers_required())
-			{
-				workers_to_start = workers_not_on_label_required;
-			}
-			else if (workers_requests_max > 0 && workers_responses_max_reached > 0)
-			{
-				workers_to_start = workers_responses_max_reached;
-			}
-			else if (workers_runtime_max_reached > 0 && workers_runtime_max_reached > 0)
-			{
-				workers_to_start = workers_runtime_max_reached;
-			}
-
-			if (workers_to_start > limits_.workers_start_at_once_max())
-				workers_to_start = limits_.workers_start_at_once_max();
-
-			for (std::int16_t n = 0; n < workers_to_start; n++)
-			{
-				std::uint32_t process_id = 0;
-				std::string worker_id;
-				lock.unlock();
-				bool success = create_worker_process(
-					server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_label_required, ec);
-
-				lock.lock();
-				if (!success) // todo
+				if (is_worker_too_late)
 				{
 					logger.api(
-						"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
-						workspace_id_,
-						type_,
-						name_,
-						1 + n,
-						workers_required_to_add,
-						ec);
-				}
-				else
-				{
-					logger.api(
-						"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
-						workspace_id_,
-						type_,
-						name_,
-						1 + n,
-						workers_required_to_add,
-						static_cast<int>(process_id),
-						worker_id);
-
-					workers_.emplace(
-						std::pair<const std::string, worker>(worker_id, worker{ worker_id, workers_label_required }));
-				}
-			}
-
-			for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
-			{
-				if (worker_it->second.get_status() == worker::status::drain)
-				{
-					if (worker_it->second.upstream().connections_busy_.load() == 0)
-						worker_it->second.set_status(worker::status::down);
-				}
-
-				if (worker_it->second.get_status() == worker::status::down)
-				{
-					logger.api(
-						"/{s}/{s}/{s} delete {s} {s}\n",
+						"/{s}/{s}/{s}: {s} failed to start as an upstream server in {d} msec.\n",
 						workspace_id_,
 						type_,
 						name_,
 						worker_it->first,
-						worker_it->second.get_base_url());
+						workers_startup_latency_max_);
 
-					upstreams_.erase_upstream(worker_it->second.get_base_url());
-#ifdef LOCAL_TESTING_WITH_NGINX_BACKEND
-					bse_utils::local_testing::_test_sockets.release(workspace_id_, worker_it->second.get_base_url());
-#endif
-					worker_it = workers_.erase(workers_.find(worker_it->first));
-
-					limits_.workers_actual_upd(-1);
+					worker_it = workers_.erase(worker_it);
+					limits_.workers_pending_upd(-1);
 					is_group_changed = true;
 				}
 				else
-					worker_it++;
+					++worker_it;
+
+				continue;
 			}
+
+			auto& worker = worker_it->second;
+
+			auto worker_label = worker_it->second.worker_label();
+
+			if (worker_it->second.get_status() == worker::status::up
+				|| worker_it->second.get_status() == worker::status::starting)
+			{
+				if (worker_label != workers_label_required)
+				{
+					workers_not_on_label_required++;
+				}
+				else
+				{
+					workers_on_label_required++;
+
+					if ((worker.upstream().responses_tot_.load() >= workers_requests_max) && (workers_requests_max > 0))
+					{
+						workers_responses_max_reached++;
+					}
+					
+					if ((worker.runtime() >= workers_runtime_max) && (workers_runtime_max > 0))
+					{
+						workers_runtime_max_reached++;
+					}
+				}
+
+				if (worker_label != limits_.workers_label_actual()) limits_.workers_label_actual(worker_label);
+			}
+
+			if (worker_it->second.get_status() == worker::status::recover)
+			{
+				auto& upstream = upstreams_.add_upstream(
+					io_context,
+					worker_it->second.get_base_url(),
+					"/" + name_ + "/" + type_ + "/" + worker_it->first + "/" + worker_it->second.worker_label());
+
+				worker_it->second.upstream(upstream);
+
+				worker_it->second.set_status(worker::status::up);
+				is_group_changed = true;
+			}
+
+			if (worker_it->second.get_status() == worker::status::up)
+			{
+				auto workers_feed_watchdog = workers_watchdogs_feeded++ < limits_.workers_min();
+
+				http::headers watchdog_headers{ { "Host", "localhost" },
+												{ "X-Infor-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" } };
+				http::client::async_request<http::method::post>(
+					upstreams_,
+					worker_it->second.get_base_url(),
+					"/internal/platform/worker/watchdog",
+					watchdog_headers,
+					std::string{},
+					[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
+						if (!error_code
+							&& (response.status() == http::status::ok
+								|| response.status() == http::status::no_content)
+							&& worker.get_status() != worker::status::up)
+						{
+							worker.set_status(worker::status::up);
+						}
+						else if (
+							error_code
+							|| (response.status() != http::status::ok
+								&& response.status() != http::status::no_content))
+						{
+							worker.set_status(worker::status::drain);
+
+							if (worker.upstream().get_state() != http::async::upstreams::upstream::state::drain
+								&& error_code == asio::error::connection_refused)
+							{
+								logger.api(
+									"/{s}/{s}/{s}: failed health check for worker {s}\n",
+									workspace_id_,
+									type_,
+									name_,
+									worker.get_base_url());
+							}
+						}
+
+						return;
+					});
+			}
+
+			++worker_it;
+		}
+
+		auto workers_to_start = workers_not_on_label_required;
+		limits_.workers_not_on_label_required(workers_not_on_label_required);
+
+		if (workers_on_label_required + limits_.workers_pending() != limits_.workers_required())
+		{
+			workers_to_start = workers_not_on_label_required;
+		}
+		else if (workers_requests_max > 0 && workers_responses_max_reached > 0)
+		{
+			workers_to_start = workers_responses_max_reached;
+		}
+		else if (workers_runtime_max > 0 && workers_runtime_max_reached > 0)
+		{
+			workers_to_start = workers_runtime_max_reached;
+		}
+
+		if (workers_to_start > limits_.workers_start_at_once_max())
+			workers_to_start = limits_.workers_start_at_once_max();
+
+		for (std::int16_t n = 0; n < workers_to_start; n++)
+		{
+			std::uint32_t process_id = 0;
+			std::string worker_id;
+			lock.unlock();
+			bool success = create_worker_process(
+				server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_label_required, ec);
+
+			lock.lock();
+			if (!success) // todo
+			{
+				logger.api(
+					"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
+					workspace_id_,
+					type_,
+					name_,
+					1 + n,
+					workers_to_start,
+					ec);
+			}
+			else
+			{
+				is_group_changed = true;
+				logger.api(
+					"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
+					workspace_id_,
+					type_,
+					name_,
+					1 + n,
+					workers_to_start,
+					static_cast<int>(process_id),
+					worker_id);
+
+				workers_.emplace(
+					std::pair<const std::string, worker>(worker_id, worker{ worker_id, workers_label_required }));
+			}
+		}
+
+		for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+		{
+			if (worker_it->second.get_status() == worker::status::drain)
+			{
+				if (worker_it->second.upstream().connections_busy_.load() == 0)
+					worker_it->second.set_status(worker::status::down);
+			}
+
+			if (worker_it->second.get_status() == worker::status::down)
+			{
+				logger.api(
+					"/{s}/{s}/{s} delete {s} {s}\n",
+					workspace_id_,
+					type_,
+					name_,
+					worker_it->first,
+					worker_it->second.get_base_url());
+
+				upstreams_.erase_upstream(worker_it->second.get_base_url());
+#ifdef LOCAL_TESTING_WITH_NGINX_BACKEND
+				bse_utils::local_testing::_test_sockets.release(workspace_id_, worker_it->second.get_base_url());
+#endif
+				worker_it = workers_.erase(workers_.find(worker_it->first));
+
+				limits_.workers_actual_upd(-1);
+				is_group_changed = true;
+			}
+			else
+				worker_it++;
 		}
 
 		if (workspace_is_updated || is_group_changed)
@@ -4089,7 +4124,9 @@ inline bool start_eln_cpm_server(
 
 	if (run_selftests)
 	{
-		result = tests::run(tests::configuration({}, std::string{ selftest_options }));
+		tests::test_base test{http_configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
+
+		result = test.run();
 	}
 
 	return result;

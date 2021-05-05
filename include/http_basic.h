@@ -3700,8 +3700,10 @@ public:
 		// TODO: "Accept-Encoding: gzip;q=0" means *no* gzip
 		// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip
 		// is good
+
 		if ((gzip_min_size_ < response_.body().size())
-			&& (request().get("Accept-Encoding", std::string{}).find("gzip") != std::string::npos))
+			&& (request().get("Accept-Encoding", std::string{}).find("gzip") != std::string::npos)
+			&& (response().get<std::string>("Content-Encoding", "") != "gzip")) // e.g. proxied responses might already be zipped
 		{
 			response_.body() = gzip::compress(response_.body().c_str(), response_.body().size());
 			response_.set("Content-Encoding", "gzip");
@@ -6447,20 +6449,6 @@ public:
 							{
 								server_.manager().requests_current(private_base_request);
 							}
-
-							//// TODO: Currently we use gzip encoding whenever the Accept-Encoding header contains the
-							//// word "gzip".
-							//// TODO: "Accept-Encoding: gzip;q=0" means *no* gzip
-							//// TODO: "Accept-Encoding: gzip;q=0.2, deflate;q=0.5" means preferably deflate, but gzip
-							//// is good
-							//if ((gzip_min_size_ < response.body().size())
-							//	&& (session_handler_.request().get("Accept-Encoding", std::string{}).find("gzip")
-							//		!= std::string::npos))
-							//{
-							//	response.body() = gzip::compress(response.body().c_str(), response.body().size());
-							//	response.set("Content-Encoding", "gzip");
-							//	response.set("Content-Length", std::to_string(response.body().size()));
-							//}
 
 							(void)network::write(client_socket_, http::to_string(response));
 
