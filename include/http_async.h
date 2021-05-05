@@ -14,14 +14,22 @@
 // declaration
 #endif
 
-#include <asio.hpp>
+
 #ifdef USE_WOLFSSL
+#include "infor_ssl.h"
 #ifndef ASIO_USE_WOLFSSL
 #define ASIO_USE_WOLFSSL
 #endif
-#include "infor_ssl.h"
+
+#ifdef WIN32
+#undef _POSIX_THREADS
 #endif
+
+#endif
+
+#include <asio.hpp>
 #include <asio/ssl.hpp>
+
 #if defined(WIN32)
 #pragma warning(pop)
 #endif
@@ -1562,19 +1570,27 @@ public:
 			asio::error_code error_code;
 			auto tls_protocol = configuration_.get<std::string>("https_tls_protocol", "tls_v1.3");
 
+			auto cypher_suite = configuration_.get<std::string>(
+				"https_cypher_list",
+				"TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-"
+				"CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:"
+				"ECDHE-RSA-AES256-SHA384");
+
+			SSL_CTX_set_cipher_list(https_ssl_context_.native_handle(), cypher_suite.data());
+
 			if (tls_protocol == "tls_v1.3")
 			{
 				https_ssl_context_.set_options(
 					asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2
 					| asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1 | asio::ssl::context::no_tlsv1_1
-					| asio::ssl::context::no_tlsv1_2 | asio::ssl::context::single_dh_use);
+					| asio::ssl::context::no_tlsv1_2 | asio::ssl::context::single_dh_use | SSL_OP_CIPHER_SERVER_PREFERENCE);
 			}
 			else if (tls_protocol == "tls_v1.2")
 			{
 				https_ssl_context_.set_options(
 					asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2
 					| asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1 | asio::ssl::context::no_tlsv1_1
-					| asio::ssl::context::single_dh_use);
+					| asio::ssl::context::single_dh_use | SSL_OP_CIPHER_SERVER_PREFERENCE);
 			}
 
 			https_ssl_context_.use_certificate_chain_file(
@@ -1604,19 +1620,12 @@ public:
 					configuration_.get<std::string>("https_certificate_key", "server.key"));
 			}
 
-			auto cypher_suite = configuration_.get<std::string>(
-				"https_cypher_list",
-				"ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-"
-				"CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:"
-				"ECDHE-RSA-AES256-SHA384");
 
-			SSL_CTX_set_cipher_list(https_ssl_context_.native_handle(), cypher_suite.data());
-
-			https_ssl_context_.set_options(
-				asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3
-					| asio::ssl::context::no_tlsv1 | asio::ssl::context::single_dh_use
-					| SSL_OP_CIPHER_SERVER_PREFERENCE,
-				error_code);
+			//https_ssl_context_.set_options(
+			//	asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3
+			//		| asio::ssl::context::no_tlsv1 | asio::ssl::context::single_dh_use
+			//		| SSL_OP_CIPHER_SERVER_PREFERENCE,
+			//	error_code);
 
 			if (error_code)
 			{
