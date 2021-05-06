@@ -306,7 +306,7 @@ private:
 	tests::configuration configuration_;
 
 public:
-	class test_base(const std::string& base_url, tests::configuration& configuration) : base_url_(base_url), configuration_(configuration) {}
+	test_base(const std::string& base_url, const tests::configuration& configuration) : base_url_(base_url), configuration_(configuration) {}
 
 inline bool add_workspace(std::string workspace_id, std::string tenant_id)
 {
@@ -1831,7 +1831,7 @@ public:
 			if (!success) // todo
 			{
 				logger.api(
-					"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
+					"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s} (limits)\n",
 					workspace_id_,
 					type_,
 					name_,
@@ -1842,7 +1842,7 @@ public:
 			else
 			{
 				logger.api(
-					"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
+					"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s} (limits)\n",
 					workspace_id_,
 					type_,
 					name_,
@@ -1858,7 +1858,7 @@ public:
 			}
 		}
 
-		if (workers_required_to_add < 0)
+		if (workers_required_to_add + limits_.workers_pending() < 0)
 		{
 
 			for (auto worker_it = workers_.rbegin(); worker_it != workers_.rend(); )
@@ -1930,7 +1930,7 @@ public:
 					workers_required_to_add++;
 					is_group_changed = true;
 
-					if (workers_required_to_add == 0)
+					if (workers_required_to_add + limits_.workers_pending() == 0)
 					{
 						break;
 					}
@@ -2091,7 +2091,7 @@ public:
 			if (!success) // todo
 			{
 				logger.api(
-					"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s}\n",
+					"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s} (reload)\n",
 					workspace_id_,
 					type_,
 					name_,
@@ -2103,7 +2103,7 @@ public:
 			{
 				is_group_changed = true;
 				logger.api(
-					"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s}\n",
+					"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s} (reload)\n",
 					workspace_id_,
 					type_,
 					name_,
@@ -2114,6 +2114,8 @@ public:
 
 				workers_.emplace(
 					std::pair<const std::string, worker>(worker_id, worker{ worker_id, workers_label_required }));
+
+				limits_.workers_pending_upd(1);
 			}
 		}
 
