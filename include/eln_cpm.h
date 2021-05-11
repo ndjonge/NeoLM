@@ -979,7 +979,7 @@ namespace platform
 {
 
 class workspace;
-class workgroups;
+class workgroup;
 class workspaces;
 
 namespace output_formating
@@ -992,15 +992,6 @@ enum class options
 };
 
 }
-void to_json(json& j, const workspace& value);
-void from_json(const json& j, workspace& value);
-
-void to_json(json& j, const workgroups& v);
-void from_json(const json& j, workgroups& v);
-
-void to_json(json& j, const workspaces&);
-void from_json(const json& j, workspaces&);
-
 class worker
 {
 public:
@@ -1162,7 +1153,7 @@ public:
 //
 // Implementor
 //
-class workgroups
+class workgroup
 {
 public:
 	class limits;
@@ -1179,11 +1170,11 @@ public:
 	using const_iterator = container_type::const_iterator;
 	using mutex_type = std14::shared_mutex;
 
-	workgroups(const std::string& workspace_id, const std::string& type)
+	workgroup(const std::string& workspace_id, const std::string& type)
 		: workspace_id_(workspace_id), type_(type), state_(state::up)
 	{
 	}
-	virtual ~workgroups() = default;
+	virtual ~workgroup() = default;
 
 	mutex_type& workers_mutex() { return workers_mutex_; }
 
@@ -1199,7 +1190,7 @@ public:
 	bool has_workers_available() const { return limits_.workers_actual() > 0; }
 
 	state state() const { return state_; }
-	void state(const enum cloud::platform::workgroups::state& s) { state_ = s; }
+	void state(const enum cloud::platform::workgroup::state& s) { state_ = s; }
 
 	iterator find_worker(const std::string& worker_id)
 	{
@@ -1525,11 +1516,17 @@ public:
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			workers_required_ = value;
+
+			if (workers_required_ > workers_max_) workers_required_ = workers_max_;
+			if (workers_required_ < workers_min_) workers_required_ = workers_min_;
 		}
 		void workers_required_upd(std::int16_t value)
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			workers_required_ += value;
+
+			if (workers_required_ > workers_max_) workers_required_ = workers_max_;
+			if (workers_required_ < workers_min_) workers_required_ = workers_min_;
 		}
 		void workers_actual(std::int16_t value)
 		{
@@ -1753,6 +1750,9 @@ public:
 	const limits& workgroups_limits() const { return limits_; }
 	limits& workgroups_limits() { return limits_; }
 
+	const std::atomic<bool>& is_changed() const { return is_changed_; }
+	void is_changed(bool value) { is_changed_.store(value); }
+
 	virtual bool direct_workers(
 		asio::io_context& io_context,
 		const http::configuration& configuration,
@@ -1765,6 +1765,7 @@ protected:
 	std::string workspace_id_;
 	std::string type_;
 	std::atomic<enum state> state_;
+	std::atomic<bool> is_changed_;
 
 	limits limits_;
 
@@ -1772,7 +1773,7 @@ protected:
 	mutable mutex_type workers_mutex_;
 };
 
-class bshell_workgroups : public workgroups
+class bshell_workgroup : public workgroup
 {
 
 private:
@@ -1786,8 +1787,8 @@ private:
 	std::string http_options_;
 
 public:
-	bshell_workgroups(const std::string& workspace_id, const json& worker_type_json)
-		: workgroups(workspace_id, worker_type_json["type"])
+	bshell_workgroup(const std::string& workspace_id, const json& worker_type_json)
+		: workgroup(workspace_id, worker_type_json["type"])
 	{
 		from_json(worker_type_json);
 	}
@@ -1796,7 +1797,7 @@ public:
 		asio::io_context& io_context,
 		const http::configuration& configuration,
 		lgr::logger& logger,
-		bool workspace_is_updated) override
+		bool is_workspace_updated) override
 	{
 		std::string ec{};
 		std::string server_endpoint
@@ -1804,25 +1805,26 @@ public:
 
 		server_endpoint += "/internal/platform/manager/workspaces";
 
+
 		std::unique_lock<mutex_type> lock{ workers_mutex_ };
 
 		auto workers_required_to_add = limits_.workers_required_to_add();
 		auto workers_label_required = limits_.workers_label_required();
 		auto workers_runtime_max = limits_.workers_runtime_max();
 		auto workers_requests_max = limits_.workers_requests_max();
-		bool is_group_changed = false;
+		bool is_group_changed = is_changed();
+		is_changed(false);
 
 		for (std::int16_t n = 0; n < workers_required_to_add; n++)
 		{
 			std::uint32_t process_id = 0;
 			std::string worker_id;
 			lock.unlock();
-			is_group_changed = true;
 			bool success = create_worker_process(
 				server_endpoint, workspace_id_, type_, name_, process_id, worker_id, workers_label_required, ec);
 
 			lock.lock();
-			if (state() != workgroups::state::up)
+			if (state() != workgroup::state::up)
 			{
 				// assert(false);
 				break;
@@ -1855,12 +1857,12 @@ public:
 					std::pair<const std::string, worker>(worker_id, worker{ worker_id, workers_label_required }));
 
 				limits_.workers_pending_upd(1);
+				is_group_changed = true;
 			}
 		}
 
 		if (workers_required_to_add + limits_.workers_pending() < 0)
 		{
-
 			for (auto worker_it = workers_.rbegin(); worker_it != workers_.rend(); )
 			{
 				if (worker_it->second.get_base_url().empty()
@@ -1875,60 +1877,64 @@ public:
 				auto worker_runtime = worker_it->second.runtime();
 				auto worker_requests = worker_it->second.upstream().responses_tot_.load();
 
-				if ((worker_label != workers_label_required)
+				if (worker_it->second.get_status() != worker::status::up
+					|| (worker_label != workers_label_required)
 					|| ((workers_requests_max >= 1) && (worker_requests >= workers_requests_max))
 					|| ((workers_runtime_max >= 1) && (worker_runtime >= workers_runtime_max))
 					|| (workers_.begin()->first == worker_it->first))
 				{
-					http::headers watchdog_headers{ { "Host", "localhost" } };
+					if (worker_it->second.get_status() == worker::status::up)
+					{
+						http::headers watchdog_headers{ { "Host", "localhost" } };
 
-					std::string base_url = worker_it->second.get_base_url();
+						std::string base_url = worker_it->second.get_base_url();
 
-					http::client::async_request<http::method::delete_>(
-						upstreams_,
-						worker_it->second.get_base_url(),
-						"/internal/platform/worker/process",
-						watchdog_headers,
-						std::string{},
-						[this, base_url, &logger](http::response_message& response, asio::error_code& error_code) {
-							if (!error_code
-								&& (response.status() == http::status::ok
-									|| response.status() == http::status::no_content
-#ifdef LOCAL_TESTING
-									|| response.status() == http::status::method_not_allowed // nginx test setup
-																							 // returns this
-#endif //  LOCAL_TESTING
-									))
-							{
-								logger.api(
-									"/{s}/{s}/{s}: process deleted for {s}\n", workspace_id_, type_, name_, base_url);
-							}
-							else if (
-								error_code
-								|| (response.status() != http::status::ok
-									&& response.status() != http::status::no_content))
-							{
-								if (error_code == asio::error::connection_refused)
-								{
-									// worker already gone...
-								}
-								else
+						http::client::async_request<http::method::delete_>(
+							upstreams_,
+							worker_it->second.get_base_url(),
+							"/internal/platform/worker/process",
+							watchdog_headers,
+							std::string{},
+							[this, base_url, &logger](http::response_message& response, asio::error_code& error_code) {
+								if (!error_code
+									&& (response.status() == http::status::ok
+										|| response.status() == http::status::no_content
+	#ifdef LOCAL_TESTING
+										|| response.status() == http::status::method_not_allowed // nginx test setup
+																								 // returns this
+	#endif //  LOCAL_TESTING
+										))
 								{
 									logger.api(
-										"/{s}/{s}/{s}: failed to delete process {s}\n",
-										workspace_id_,
-										type_,
-										name_,
-										base_url);
+										"/{s}/{s}/{s}: process deleted for {s} (limits)\n", workspace_id_, type_, name_, base_url);
 								}
+								else if (
+									error_code
+									|| (response.status() != http::status::ok
+										&& response.status() != http::status::no_content))
+								{
+									if (error_code == asio::error::connection_refused)
+									{
+										// worker already gone...
+									}
+									else
+									{
+										logger.api(
+											"/{s}/{s}/{s}: failed to delete process {s} (limits)\n",
+											workspace_id_,
+											type_,
+											name_,
+											base_url);
+									}
 
-							}
-							return;
-						});
+								}
+								return;
+							});
+	
+						worker.set_status(worker::status::drain);
+					}
 
-					worker.set_status(worker::status::drain);
 					workers_required_to_add++;
-					is_group_changed = true;
 
 					if (workers_required_to_add + limits_.workers_pending() == 0)
 					{
@@ -1945,6 +1951,23 @@ public:
 		std::int16_t workers_runtime_max_reached = 0;
 		std::int16_t workers_responses_max_reached = 0;
 		std::int16_t workers_startup_latency_max_ = 8000;
+
+		//if (is_group_changed)
+		//{
+		//	logger.api(
+		//		"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, "
+		//		"label_required: {s}\n",
+		//		workspace_id_,
+		//		type_,
+		//		name_,
+		//		limits_.workers_actual(),
+		//		limits_.workers_pending(),
+		//		limits_.workers_required(),
+		//		limits_.workers_min(),
+		//		limits_.workers_max(),
+		//		limits_.workers_label_actual(),
+		//		workers_label_required);
+		//}
 
 		for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
 		{
@@ -2011,7 +2034,6 @@ public:
 				worker_it->second.upstream(upstream);
 
 				worker_it->second.set_status(worker::status::up);
-				is_group_changed = true;
 			}
 
 			if (worker_it->second.get_status() == worker::status::up)
@@ -2101,7 +2123,6 @@ public:
 			}
 			else
 			{
-				is_group_changed = true;
 				logger.api(
 					"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s} (reload)\n",
 					workspace_id_,
@@ -2115,6 +2136,7 @@ public:
 				workers_.emplace(
 					std::pair<const std::string, worker>(worker_id, worker{ worker_id, workers_label_required }));
 
+				is_group_changed = true;
 				limits_.workers_pending_upd(1);
 			}
 		}
@@ -2148,9 +2170,9 @@ public:
 			}
 			else
 				worker_it++;
-		}
+		}		
 
-		if (workspace_is_updated || is_group_changed)
+		if (is_group_changed || is_changed() || is_workspace_updated)
 		{
 			logger.api(
 				"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, "
@@ -2167,7 +2189,6 @@ public:
 				workers_label_required);
 		}
 
-
 		return is_group_changed;
 	};
 
@@ -2175,7 +2196,7 @@ public:
 	{
 		std::unique_lock<mutex_type> g(workers_mutex_);
 
-		workgroups::from_json(j);
+		workgroup::from_json(j);
 
 		if (j.contains("parameters"))
 		{
@@ -2277,7 +2298,7 @@ public:
 
 	void to_json(json& j, output_formating::options options) const override
 	{
-		workgroups::to_json(j, options);
+		workgroup::to_json(j, options);
 
 		std14::shared_lock<mutex_type> g(workers_mutex_);
 		if (bse_.empty() == false) j["parameters"].emplace("bse", bse_);
@@ -2346,23 +2367,23 @@ public:
 	}
 };
 
-class python_workgroups : public workgroups
+class python_workgroup : public workgroup
 {
 private:
 	std::string rootdir;
 
 public:
-	python_workgroups(const std::string& workspace_id, const json& worker_type_json)
-		: workgroups(workspace_id, "python"), rootdir()
+	python_workgroup(const std::string& workspace_id, const json& worker_type_json)
+		: workgroup(workspace_id, "python"), rootdir()
 	{
 		from_json(worker_type_json);
 	}
 
-	virtual ~python_workgroups(){};
+	virtual ~python_workgroup(){};
 
 	void from_json(const json& j) override
 	{
-		workgroups::from_json(j);
+		workgroup::from_json(j);
 		json d(j.at("parameters"));
 		d.at("python_root").get_to(rootdir);
 	}
@@ -2379,7 +2400,7 @@ public:
 
 	void to_json(json& j, output_formating::options options) const override
 	{
-		workgroups::to_json(j, options);
+		workgroup::to_json(j, options);
 		j["parameters"].emplace("python_root", rootdir);
 	}
 
@@ -2403,7 +2424,7 @@ class workspace
 {
 public:
 	using key_type = std::string;
-	using value_type = std::unique_ptr<workgroups>;
+	using value_type = std::unique_ptr<workgroup>;
 	using container_type = std::map<key_type, value_type>;
 	using iterator = container_type::iterator;
 	using const_iterator = container_type::const_iterator;
@@ -2498,14 +2519,14 @@ public:
 	}
 
 private:
-	std::unique_ptr<workgroups> create_workgroups_from_json(const std::string& type, const json& workgroups_json)
+	std::unique_ptr<workgroup> create_workgroup_from_json(const std::string& type, const json& workgroup_json)
 	{
 		if (type == "bshells")
-			return std::unique_ptr<workgroups>{ new bshell_workgroups{ workspace_id_, workgroups_json } };
+			return std::unique_ptr<workgroup>{ new bshell_workgroup{ workspace_id_, workgroup_json } };
 		if (type == "ashells")
-			return std::unique_ptr<workgroups>{ new bshell_workgroups{ workspace_id_, workgroups_json } };
+			return std::unique_ptr<workgroup>{ new bshell_workgroup{ workspace_id_, workgroup_json } };
 		if (type == "python-scripts")
-			return std::unique_ptr<workgroups>{ new python_workgroups{ workspace_id_, workgroups_json } };
+			return std::unique_ptr<workgroup>{ new python_workgroup{ workspace_id_, workgroup_json } };
 		else
 			return nullptr;
 	}
@@ -2526,7 +2547,7 @@ public:
 
 		for (auto& workgroup : workgroups_)
 		{
-			if (workgroup.second->state() == workgroups::state::up) workgroup.second->state(workgroups::state::drain);
+			if (workgroup.second->state() == workgroup::state::up) workgroup.second->state(workgroup::state::drain);
 			result = true;
 		}
 
@@ -2634,14 +2655,14 @@ public:
 		}
 	}
 
-	bool add_workgroups(const std::string& name, const std::string& type, json& workgroups_json)
+	bool add_workgroup(const std::string& name, const std::string& type, json& workgroup_json)
 	{
-		auto new_workgroups = create_workgroups_from_json(type, workgroups_json);
+		auto new_workgroup = create_workgroup_from_json(type, workgroup_json);
 
-		if (new_workgroups)
+		if (new_workgroup)
 		{
 			auto result
-				= workgroups_.insert(std::pair<key_type, value_type>(key_type{ name }, std::move(new_workgroups)));
+				= workgroups_.insert(std::pair<key_type, value_type>(key_type{ name }, std::move(new_workgroup)));
 
 			return result.second;
 		}
@@ -2655,7 +2676,7 @@ public:
 
 		auto workgroup = workgroups_.find(key_type{ workgroup_name });
 
-		if (workgroup != workgroups_.end()) workgroup->second->state(workgroups::state::drain);
+		if (workgroup != workgroups_.end()) workgroup->second->state(workgroup::state::drain);
 
 		return result;
 	}
@@ -2693,15 +2714,15 @@ public:
 		{
 			json json_workgroups = j.at("workgroups");
 
-			for (auto workgroups = json_workgroups.cbegin(); workgroups != json_workgroups.cend(); workgroups++)
+			for (auto workgroup = json_workgroups.cbegin(); workgroup != json_workgroups.cend(); workgroup++)
 			{
-				if (workgroups.value().size())
+				if (workgroup.value().size())
 				{
-					auto new_workgroups = create_workgroups_from_json(workgroups.value()["type"], *workgroups);
+					auto new_workgroup = create_workgroup_from_json(workgroup.value()["type"], *workgroup);
 
-					if (new_workgroups)
+					if (new_workgroup)
 					{
-						this->workgroups_[key_type{ workgroups.value()["name"] }] = std::move(new_workgroups);
+						workgroups_[key_type{ workgroup.value()["name"] }] = std::move(new_workgroup);
 					}
 				}
 			}
@@ -2760,7 +2781,7 @@ public:
 				{
 					auto workgroup_state = workgroup->second->state();
 
-					if (workgroup_state == workgroups::state::drain)
+					if (workgroup_state == workgroup::state::drain)
 					{
 						if ((workgroup->second->workgroups_limits().workers_actual() > 0)
 							|| (workgroup->second->workgroups_limits().workers_pending() > 0))
@@ -2769,12 +2790,12 @@ public:
 						}
 						else
 						{
-							workgroup->second->state(workgroups::state::down);
+							workgroup->second->state(workgroup::state::down);
 							workgroup_state = workgroup->second->state();
 						}
 					}
 
-					if (workgroup_state == workgroups::state::down)
+					if (workgroup_state == workgroup::state::down)
 					{
 						logger.api("workspace: {s}, erase worker: {s}\n", workspace->first, workgroup->first);
 						workgroup = workspace->second->erase_workgroup(workgroup);
@@ -2815,7 +2836,7 @@ public:
 
 		{
 			std14::shared_lock<mutex_type> l1{ workspaces_mutex_ };
-
+			auto is_changed_new = false;
 			for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); ++workspace)
 			{
 				if (workspace->second->state() != workspace::state::up) needs_cleanup = true;
@@ -2826,13 +2847,15 @@ public:
 					for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();
 						 ++workgroup)
 					{
-						if (workgroup->second->state() != workgroups::state::up) needs_cleanup = true;
-
-						is_changed_ = is_changed_ || workgroup->second->direct_workers(io_context, configuration, logger, is_changed());
+						if (workgroup->second->state() != workgroup::state::up) needs_cleanup = true;
+						
+						is_changed_new |= workgroup->second->direct_workers(io_context, configuration, logger, is_changed_);
 					}
 				}
 			}
+			is_changed(is_changed_new);
 		}
+
 
 		auto t1 = std::chrono::steady_clock::now();
 		auto elapsed = t1 - t0;
@@ -2993,7 +3016,7 @@ public:
 			std14::shared_lock<mutex_type> g{ workspace->second->workgroups_mutex() };
 			for (const auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
+				if ((workgroup.first == workgroup_name) && (workgroup.second->state() == workgroup::state::up))
 					return method(*workgroup.second, error_message);
 			}
 			error_message = workgroup_name + " does not exists in workgroup collection ";
@@ -3022,6 +3045,7 @@ public:
 				{
 					auto result = method(*workgroup.second, error_message);
 					is_changed(result);
+					workgroup.second->is_changed(result);
 					return result;
 				}
 			}
@@ -3051,7 +3075,7 @@ public:
 			std14::shared_lock<mutex_type> g{ workspace->second->workgroups_mutex() };
 			for (const auto& workgroup : *(workspace->second))
 			{
-				if ((workgroup.first == workgroup_name) && (workgroup.second->state() == workgroups::state::up))
+				if ((workgroup.first == workgroup_name) && (workgroup.second->state() == workgroup::state::up))
 				{
 					for (const auto& worker : *(workgroup.second))
 					{
@@ -3086,10 +3110,16 @@ public:
 			{
 				if ((workgroup.first == workgroup_name))
 				{
+
 					std::unique_lock<mutex_type> g{ workgroup.second->workers_mutex() };
 					for (auto& worker : *(workgroup.second))
 					{
-						if (worker.first == worker_id) return method(worker.second, error_message);
+						if (worker.first == worker_id) 
+						{
+							auto result = method(worker.second, error_message);
+							workgroup.second->is_changed(result);
+							return result;
+						}
 					}
 					error_message = worker_id + " does not exist in workers collection";
 				}
@@ -3441,9 +3471,9 @@ public:
 				auto result = workspaces_.select(
 					workspace_id,
 					workgroup_name,
-					[&session, workspace_id](const workgroups& workgroups, std::string&) {
+					[&session, workspace_id](const workgroup& workgroup, std::string&) {
 						json result_json;
-						workgroups.to_json(result_json, output_formating::options::complete);
+						workgroup.to_json(result_json, output_formating::options::complete);
 						session.response().assign(http::status::ok, result_json.dump(), "application/json");
 						return true;
 					},
@@ -3471,7 +3501,7 @@ public:
 						const auto& workgroup_name = workgroup_json.at("name");
 						const auto& workgroup_type = workgroup_json.at("type");
 
-						if (workspace.add_workgroups(workgroup_name, workgroup_type, workgroup_json) == true)
+						if (workspace.add_workgroup(workgroup_name, workgroup_type, workgroup_json) == true)
 						{
 							session.response().assign(http::status::created);
 						}
@@ -3503,8 +3533,8 @@ public:
 				auto result = workspaces_.change(
 					workspace_id,
 					workgroup_name,
-					[&session, workspace_id, workgroup_name](workgroups& workgroup, std::string&) {
-						workgroup.state(workgroups::state::drain);
+					[&session, workspace_id, workgroup_name](workgroup& workgroup, std::string&) {
+						workgroup.state(workgroup::state::drain);
 						session.response().assign(http::status::accepted);
 						return true;
 					},
@@ -3529,7 +3559,7 @@ public:
 				auto result = workspaces_.select(
 					workspace_id,
 					workgroup_name,
-					[&session](const workgroups& workgroup, std::string&) {
+					[&session](const workgroup& workgroup, std::string&) {
 						json result_json;
 						workgroup.to_json(result_json, std::string{});
 
@@ -3559,7 +3589,7 @@ public:
 				auto result = workspaces_.select(
 					workspace_id,
 					workgroup_name,
-					[&session, detail](const workgroups& workgroup, std::string&) {
+					[&session, detail](const workgroup& workgroup, std::string&) {
 						json result_json;
 						workgroup.to_json(result_json, detail);
 
@@ -3616,7 +3646,7 @@ public:
 				auto result = workspaces_.select(
 					workspace_id,
 					workgroup_name,
-					[&session](const workgroups& workgroup, std::string&) {
+					[&session](const workgroup& workgroup, std::string&) {
 						json result_json;
 						json worker_json;
 
@@ -3651,14 +3681,14 @@ public:
 				auto result = workspaces_.change(
 					workspace_id,
 					workgroup_name,
-					[&session, this](workgroups& workgroup, std::string&) {
+					[&session, this](workgroup& workgroup, std::string&) {
 						json worker_json = json::parse(session.request().body());
 						const std::string& worker_label = worker_json["worker_label"];
 						const std::string& worker_id = worker_json["worker_id"];
 
 						auto result = false;
 
-						if (workgroup.state() == workgroups::state::up)
+						if (workgroup.state() == workgroup::state::up)
 							result = workgroup.add_worker(
 								worker_id, worker_label, worker_json, server_base::get_io_context());
 						else
@@ -3693,7 +3723,7 @@ public:
 				auto result = workspaces_.change(
 					workspace_id,
 					workgroup_name,
-					[&session, worker_id](workgroups& workgroup, std::string&) {
+					[&session, worker_id](workgroup& workgroup, std::string&) {
 						json worker_json = json::parse(session.request().body());
 						auto result = workgroup.delete_worker(worker_id);
 
@@ -3731,7 +3761,7 @@ public:
 				auto result = workspaces_.change(
 					workspace_id,
 					workgroup_name,
-					[&session, worker_id](workgroups& workgroup, std::string&) {
+					[&session, worker_id](workgroup& workgroup, std::string&) {
 						auto result = workgroup.delete_worker_process(worker_id);
 
 						if (result) session.response().assign(http::status::no_content);
@@ -3759,7 +3789,7 @@ public:
 				auto result = workspaces_.select(
 					workspace_id,
 					workgroup_name,
-					[&session](const workgroups& workgroup, std::string&) {
+					[&session](const workgroup& workgroup, std::string&) {
 						json result_json;
 						json limits_json;
 						workgroup.workgroups_limits().to_json(limits_json, output_formating::options::complete);
@@ -3790,7 +3820,7 @@ public:
 				auto result = workspaces_.select(
 					workspace_id,
 					workgroup_name,
-					[&session](const workgroups& workgroup, std::string&) {
+					[&session](const workgroup& workgroup, std::string&) {
 						json result_json;
 						json limits_json;
 
@@ -3825,7 +3855,7 @@ public:
 				auto result = workspaces_.change(
 					workspace_id,
 					workgroup_name,
-					[&session](workgroups& workgroup, std::string&) {
+					[&session](workgroup& workgroup, std::string&) {
 						json result_json;
 						try
 						{
@@ -3864,14 +3894,14 @@ public:
 				auto result = workspaces_.change(
 					workspace_id,
 					workgroup_name,
-					[&session, &limit_name](workgroups& workgroup, std::string&) {
+					[&session, &limit_name](workgroup& workgroup, std::string&) {
 						try
 						{
 							json limits_json = json::parse(session.request().body());
 							json result_json;
 
 							workgroup.workgroups_limits().from_json(
-								limits_json["limits"], limit_name, workgroups::limits::from_json_operation::set);
+								limits_json["limits"], limit_name, workgroup::limits::from_json_operation::set);
 
 							workgroup.workgroups_limits().to_json(
 								result_json, output_formating::options::complete, limit_name);
@@ -3907,14 +3937,14 @@ public:
 				auto result = workspaces_.change(
 					workspace_id,
 					workgroup_name,
-					[&session, &limit_name](workgroups& workgroup, std::string&) {
+					[&session, &limit_name](workgroup& workgroup, std::string&) {
 						try
 						{
 							json limits_json = json::parse(session.request().body());
 							json result_json;
 
 							workgroup.workgroups_limits().from_json(
-								limits_json["limits"], limit_name, workgroups::limits::from_json_operation::add);
+								limits_json["limits"], limit_name, workgroup::limits::from_json_operation::add);
 
 							workgroup.workgroups_limits().to_json(
 								result_json, output_formating::options::complete, limit_name);
@@ -4063,7 +4093,7 @@ private:
 					new_config_file << std::setw(4) << manager_json;
 
 					if (new_config_file.fail() == false)
-						server_base::logger_.api("config saved to: \"{s}\"\n", configuration_file_);
+						server_base::logger_.info("config saved to: \"{s}\"\n", configuration_file_);
 
 					workspaces_.is_changed(false);
 				}
