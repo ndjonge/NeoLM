@@ -4,14 +4,15 @@ project("cld_mgr" VERSION 0.0.1 LANGUAGES CXX)
 
 include_directories("include")
 
-set(CLD_MGR_TARGET "eln_cpm")
+set(CPM_TARGET "eln_cpm")
+set(CPD_TARGET "eln_cpd")
 
-add_executable("${CLD_MGR_TARGET}" src/eln_cpm.cpp)
+add_executable("${CPM_TARGET}" src/eln_cpm.cpp "include/eln_cpd.h")
+add_executable("${CPD_TARGET}" "src/eln_cpd.cpp" "include/eln_cpd.h")
 
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 set (CMAKE_CXX_EXTENSIONS OFF)
-
 
 if(MSVC)
   if(CMAKE_CXX_FLAGS MATCHES "/W[0-4]")
@@ -54,11 +55,16 @@ include_directories(${ASIO_INCLUDE_DIR})
 include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
 
-message("eln_cpm:" ${CLD_WRK_TARGET})
+message("eln_cpm:" ${CPM_TARGET})
+target_link_libraries( ${CPM_TARGET} OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries( ${CPM_TARGET} ZLIB::ZLIB)
+target_link_libraries( ${CPM_TARGET} OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB) 
 
-target_link_libraries( ${CLD_MGR_TARGET} OpenSSL::SSL OpenSSL::Crypto)
-target_link_libraries( ${CLD_MGR_TARGET} ZLIB::ZLIB)
-target_link_libraries( ${CLD_MGR_TARGET} OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB) 
+message("eln_cpc:" ${CPD_TARGET})
+target_link_libraries( ${CPD_TARGET} OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries( ${CPD_TARGET} ZLIB::ZLIB)
+target_link_libraries( ${CPD_TARGET} OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB) 
+
 
 if(WIN32)
     add_definitions(-DUSE_VCPKG_INCLUDES)
@@ -74,6 +80,7 @@ else()
     add_definitions(-DHTTP_DO_NOT_USE_CURL)
     add_definitions(-DUSE_VCPKG_INCLUDES)
     add_definitions(-DHTTP_DO_NOT_USE_CURL -DLOCAL_TESTING -std=c++11 -Wall -Wreorder -g -fsanitize=thread -fno-omit-frame-pointer) 
-    target_link_libraries( ${CLD_MGR_TARGET} Threads::Threads -fsanitize=thread -fno-omit-frame-pointer) 
+    target_link_libraries( ${CPM_TARGET} Threads::Threads -fsanitize=thread -fno-omit-frame-pointer) 
+    target_link_libraries( ${CPD_TARGET} Threads::Threads -fsanitize=thread -fno-omit-frame-pointer) 
 endif()
 
