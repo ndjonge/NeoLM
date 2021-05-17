@@ -310,14 +310,10 @@ public:
 	virtual bool run() = 0;
 };
 
-class cpm_test : public test
+class cpm_test_as_lb : public test
 {
-private:
-	std::string base_url_;
-	tests::configuration configuration_;
-
 public:
-	cpm_test(const std::string& base_url, const tests::configuration& configuration) : test(base_url, configuration) {}
+	cpm_test_as_lb(const std::string& base_url, const tests::configuration& configuration) : test(base_url, configuration) {}
 
 	bool add_workspace(std::string workspace_id, std::string tenant_id)
 	{
@@ -344,43 +340,54 @@ public:
 	bool add_workgroup(
 		std::string workspace_id,
 		std::string workgroup_name,
-		std::string worker_bse,
-		std::string worker_bse_bin,
-		std::string worker_cmd,
-		std::string worker_options,
-		int required,
-		int start_at_once)
+		std::string worker_endpoint,
+		std::string worker_options)
 	{
-		if (worker_cmd.find("eln_cpm") == 0)
-		{
-			if (worker_options.empty())
-				worker_options = "-selftests_worker ";
-			else
-				worker_options += " -selftests_worker ";
-		}
 		json workgroup_def{ { "name", workgroup_name },
-							{ "type", "bshells" },
-	#ifdef _WIN32
+							{ "type", "upstream" },
 							{ "parameters",
-							  { { "program", worker_cmd + ".exe" },
-								{ "cli_options", worker_options },
-								{ "bse", worker_bse },
-								{ "bse_bin", worker_bse_bin } } },
-	#else
-							{ "parameters", { { "program", worker_cmd }, { "cli_options", worker_options } } },
-	#endif
+							  { } },
 							{ "limits",
-							  { { "workers_min", required },
-								{ "workers_max", 16 },
-								{ "workers_required", required },
-								{ "workers_runtime_max", 1 },
-								{ "workers_start_at_once_max", start_at_once } } } };
-		// std::cout << workgroup_def.dump(4, ' ') << "\n";
+							  { } } };
 
 		std::string error;
 
 		auto response = http::client::request<http::method::post>(
 			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups",
+			error,
+			{},
+			workgroup_def.dump());
+
+		if (error.empty() == false) return false;
+
+		if (response.status() == http::status::conflict)
+		{
+		}
+
+		return true;
+	}
+
+	bool add_worker(
+		std::string workspace_id,
+		std::string workgroup_name,
+		std::string worker_id,
+		std::string worker_label,
+		std::string worker_endpoint)
+	{
+		json workgroup_def{ { "name", workgroup_name },
+							{ "type", "upstream" },
+							{ "worker_label", worker_label },
+							{ "worker_id", worker_id },
+							{ "base_url", worker_endpoint },
+							{ "parameters",
+							  { } },
+							{ "limits",
+							  { } } };
+
+		std::string error;
+
+		auto response = http::client::request<http::method::post>(
+			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name + "/workers",
 			error,
 			{},
 			workgroup_def.dump());
@@ -501,39 +508,36 @@ public:
 		const int workspace_count = configuration_.get<int>("workspaces", 1);
 		const int workgroup_count = configuration_.get<int>("workgroups", 1);
 		const int run_count = configuration_.get<int>("runs", -1);
-		const int worker_count = configuration_.get<int>("workers_min", 0);
-		const int worker_start_at_once_count = configuration_.get<int>("workers_start_at_once", 1);
 		const int requests_count = configuration_.get<int>("requets", 0);
 		const bool clean_up = configuration_.get<bool>("cleanup", true);
 		const int stay_alive_time = configuration_.get<int>("stay_alive_time", 6000);
 
-		const std::string& worker_cmd = configuration_.get<std::string>("worker_cmd", "eln_cpm");
+		const std::string& worker_endpoint = configuration_.get<std::string>("worker_endpoint", "http://192.168.2.250:");
+
 		const std::string& worker_options = configuration_.get<std::string>("worker_options", "");
 
-		const std::string& worker_bse = configuration_.get<std::string>("bse", "");
-		const std::string& worker_bse_bin = configuration_.get<std::string>("bse_bin", "");
 
 		for (int n = 0; n != run_count; n++)
 		{
 			for (int i = 0; i < workspace_count; i++)
-				add_workspace("workspace_" + std::to_string(100 + i), "tenant" + std::to_string(100 + i) + "_tst");
+				add_workspace("workspace_" + std::to_string(100 + i), "");//"tenant" + std::to_string(100 + i) + "_tst");
 
 			for (int j = 0; j < workspace_count; j++)
 				for (int i = 0; i < workgroup_count; i++)
 					add_workgroup(
 						"workspace_" + std::to_string(100 + j),
 						"workgroup_" + std::to_string(i),
-						worker_bse,
-						worker_bse_bin,
-						worker_cmd,
-						worker_options,
-						worker_count,
-						worker_start_at_once_count);
+						worker_endpoint + std::to_string(8000+i),
+						worker_options);
 
 			for (int j = 0; j < workspace_count; j++)
-				for (int i = 0; i < workgroup_count; i++)
-					increase_workgroup_limits(
-						"workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i), worker_count);
+					for (int i = 0; i < workgroup_count; i++)
+						add_worker(
+							"workspace_" + std::to_string(100 + j),
+							"workgroup_" + std::to_string(i),
+							"instance-" + std::to_string(8000+i),
+							"v1",
+							worker_endpoint + std::to_string(8000+i));
 
 			for (int i = 0; i < workspace_count; i++)
 				generate_proxied_requests(
@@ -561,14 +565,12 @@ public:
 
 };
 
-class cpm_test_as_lb : public test
+class cpm_test : public test
 {
 private:
-	std::string base_url_;
-	tests::configuration configuration_;
 
 public:
-	cpm_test_as_lb(const std::string& base_url, const tests::configuration& configuration) : test(base_url, configuration) {}
+	cpm_test(const std::string& base_url, const tests::configuration& configuration) : test(base_url, configuration) {}
 
 	bool add_workspace(std::string workspace_id, std::string tenant_id)
 	{
@@ -1569,11 +1571,6 @@ public:
 	{
 		name_ = j.value("name", "anonymous");
 
-		//"routes" : {
-		//    "headers" : [ {"X-Infor-Tenant-Id" : "tenant100_tst"} ],
-		//    "paths": [ "/api", "/internal" ]
-		//},
-
 		if (j.contains("routes"))
 		{
 			if (j["routes"].contains("headers"))
@@ -2017,6 +2014,108 @@ protected:
 
 	container_type workers_;
 	mutable mutex_type workers_mutex_;
+};
+
+class upstream_workgroup : public workgroup
+{
+public:
+	upstream_workgroup(const std::string& workspace_id, const json& worker_type_json)
+		: workgroup(workspace_id, worker_type_json["type"])
+	{
+		from_json(worker_type_json, "");
+	}
+
+	virtual bool direct_workers(
+		asio::io_context& io_context,
+		const http::configuration& configuration,
+		lgr::logger& logger,
+		bool is_workspace_updated) override
+	{
+		std::unique_lock<mutex_type> lock{ workers_mutex_ };
+
+		for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+		{
+			auto& worker = worker_it->second;
+
+			if (worker_it->second.get_status() == worker::status::up)
+			{
+				http::headers watchdog_headers{ { "Host", "localhost" } };
+
+				http::client::async_request<http::method::post>(
+					upstreams_,
+					worker_it->second.get_base_url(),
+					"/internal/platform/worker/watchdog",
+					watchdog_headers,
+					std::string{},
+					[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
+						if (!error_code
+							&& (response.status() == http::status::ok
+								|| response.status() == http::status::no_content)
+							&& worker.get_status() != worker::status::up)
+						{
+							worker.set_status(worker::status::up);
+						}
+						else if (
+							error_code
+							|| (response.status() != http::status::ok
+								&& response.status() != http::status::no_content))
+						{
+							worker.set_status(worker::status::drain);
+
+							if (worker.upstream().get_state() != http::async::upstreams::upstream::state::drain
+								&& error_code == asio::error::connection_refused)
+							{
+								logger.api(
+									"/{s}/{s}/{s}: failed health check for worker {s}\n",
+									workspace_id_,
+									type_,
+									name_,
+									worker.get_base_url());
+							}
+						}
+
+						return;
+					});
+			}
+
+			++worker_it;
+		}
+
+		return true;
+	}
+
+	void from_json(const json&, const std::string&) override
+	{
+		std::unique_lock<mutex_type> g(workers_mutex_);
+	}
+
+	void from_json(const json& j) override
+	{
+		workgroup::from_json(j);
+	}
+
+	void to_json(json&, const std::string&) const override
+	{
+		std14::shared_lock<mutex_type> g(workers_mutex_);
+	}
+
+	void to_json(json& j, output_formating::options options) const override
+	{
+		workgroup::to_json(j, options);
+	}
+
+	virtual bool create_worker_process(
+		const std::string&,
+		const std::string&, // workspace_id,
+		const std::string&, // worker_type,
+		const std::string&, // worker_name,
+		std::uint32_t&, // pid,
+		std::string&,
+		const std::string&,
+		std::string&) override
+	{
+		return false;
+	};
 };
 
 class bshell_workgroup : public workgroup
@@ -2767,11 +2866,11 @@ public:
 private:
 	std::unique_ptr<workgroup> create_workgroup_from_json(const std::string& type, const json& workgroup_json)
 	{
-		if (type == "bshells")
+		if (type == "bshell")
 			return std::unique_ptr<workgroup>{ new bshell_workgroup{ workspace_id_, workgroup_json } };
-		if (type == "ashells")
-			return std::unique_ptr<workgroup>{ new bshell_workgroup{ workspace_id_, workgroup_json } };
-		if (type == "python-scripts")
+		if (type == "upstream")
+			return std::unique_ptr<workgroup>{ new upstream_workgroup{ workspace_id_, workgroup_json } };
+		if (type == "python")
 			return std::unique_ptr<workgroup>{ new python_workgroup{ workspace_id_, workgroup_json } };
 		else
 			return nullptr;
@@ -4402,12 +4501,12 @@ inline bool start_eln_cpm_server(
 
 	if (run_selftests)
 	{
-		tests::cpm_test test_cpm{http_configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
+		//tests::cpm_test test_cpm{http_configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
 
 		tests::cpm_test_as_lb test_cpm_lb{http_configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
 
 
-		result = test.run();
+		result = test_cpm_lb.run();
 	}
 
 	return result;
