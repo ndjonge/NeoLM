@@ -345,6 +345,8 @@ public:
 	{
 		json workgroup_def{ { "name", workgroup_name },
 							{ "type", "upstream" },
+							{ "on_setup", "" },
+							{ "on_teardown", ""},
 							{ "parameters",
 							  { } },
 							{ "limits",
@@ -1472,6 +1474,8 @@ public:
 
 			new_worker.first->second.upstream(upstream);
 			new_worker.first->second.set_status(worker::status::up);
+			limits_.workers_startup_latency_max(new_worker.first->second.startup_latency());
+			limits_.workers_startup_latency_min(new_worker.first->second.startup_latency());
 
 			result = true;
 		}
@@ -1678,16 +1682,19 @@ public:
 	class limits
 	{
 	public:
-		std::int16_t workers_pending() const
-		{
-			std::lock_guard<std::mutex> m{ limits_mutex_ };
-			return workers_pending_;
-		}
+
 		std::int16_t workers_required() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			return workers_required_;
 		}
+
+		std::int16_t workers_pending() const
+		{
+			std::lock_guard<std::mutex> m{ limits_mutex_ };
+			return workers_pending_;
+		}
+
 		std::int16_t workers_required_to_add() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
@@ -1747,6 +1754,24 @@ public:
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			return worker_scale_out_factor_;
+		}
+
+		std::int16_t workers_startup_latency_timeout() const
+		{
+			std::lock_guard<std::mutex> m{ limits_mutex_ };
+			return workers_startup_latency_timeout_;
+		}
+
+		std::int16_t workers_startup_latency_min() const
+		{
+			std::lock_guard<std::mutex> m{ limits_mutex_ };
+			return workers_startup_latency_min_;
+		}
+
+		std::int16_t workers_startup_latency_max() const
+		{
+			std::lock_guard<std::mutex> m{ limits_mutex_ };
+			return workers_startup_latency_max_;
 		}
 
 		void workers_pending_upd(std::int16_t value)
@@ -1825,6 +1850,24 @@ public:
 			worker_scale_out_factor_ = value;
 		}
 
+		void workers_startup_latency_timeout(std::int16_t value)
+		{
+			std::lock_guard<std::mutex> m{ limits_mutex_ };
+			workers_startup_latency_timeout_ = value;
+		}
+
+		void workers_startup_latency_min(std::int16_t value)
+		{
+			std::lock_guard<std::mutex> m{ limits_mutex_ };
+			workers_startup_latency_min_ = value > workers_startup_latency_min_ ? workers_startup_latency_min_ : value;
+		}
+
+		void workers_startup_latency_max(std::int16_t value)
+		{
+			std::lock_guard<std::mutex> m{ limits_mutex_ };
+			workers_startup_latency_max_ = value < workers_startup_latency_max_ ? workers_startup_latency_max_ : value;
+		}
+
 		enum class from_json_operation
 		{
 			ignore,
@@ -1864,6 +1907,9 @@ public:
 
 				if (limit_name.empty() || limit_name == "worker_scale_out_factor")
 					worker_scale_out_factor_ = j.value("worker_scale_out_factor", std::int16_t{ 1 });
+
+				if (limit_name.empty() || limit_name == "workers_startup_latency_timeout")
+					workers_startup_latency_timeout_ = j.value("workers_startup_latency_timeout", std::int16_t{ 8000 });
 			}
 			else
 			{
@@ -1934,6 +1980,12 @@ public:
 				j["workers_label_required"] = workers_label_required_;
 			}
 
+			if (limit_name.empty() || limit_name == "workers_startup_latency_timeout")
+			{
+				j["workers_startup_latency_timeout"] = workers_startup_latency_timeout_;
+			}
+
+
 			if (options != output_formating::options::essential)
 			{
 				if (limit_name.empty() || limit_name == "workers_actual")
@@ -1964,6 +2016,18 @@ public:
 				{
 					j["worker_scale_out_factor"] = worker_scale_out_factor_;
 				}
+
+
+				if (limit_name.empty() || limit_name == "workers_startup_latency_max")
+				{
+					j["workers_startup_latency_max"] = workers_startup_latency_max_;
+				}
+
+				if (limit_name.empty() || limit_name == "worker_scale_out_factor")
+				{
+					j["workers_startup_latency_min"] = workers_startup_latency_min_;
+				}
+
 			}
 		}
 
@@ -1986,6 +2050,10 @@ public:
 
 		std::int16_t workers_queue_retry_timeout_{ 1 };
 		std::int16_t worker_scale_out_factor_{ 1 };
+
+		std::int16_t workers_startup_latency_timeout_{ 0 };
+		std::int16_t workers_startup_latency_min_{ 32767 };
+		std::int16_t workers_startup_latency_max_{ 0 };
 
 		mutable std::mutex limits_mutex_;
 	};
@@ -2295,7 +2363,7 @@ public:
 		std::int16_t workers_not_on_label_required = 0;
 		std::int16_t workers_runtime_max_reached = 0;
 		std::int16_t workers_responses_max_reached = 0;
-		std::int16_t workers_startup_latency_max_ = 8000;
+		std::int64_t workers_startup_latency_timeout = limits_.workers_startup_latency_timeout();
 
 		//if (is_group_changed)
 		//{
@@ -2318,24 +2386,38 @@ public:
 		{
 			if (worker_it->second.get_base_url().empty())
 			{
-				auto is_worker_too_late = (workers_startup_latency_max_ - worker_it->second.startup_latency()) < 0;
+				auto startup_latency = (workers_startup_latency_timeout - worker_it->second.startup_latency());
 
-				if (is_worker_too_late)
+				if (startup_latency < 0)
 				{
 					logger.api(
-						"/{s}/{s}/{s}: {s} failed to start as an upstream server in {d} msec.\n",
+						"/{s}/{s}/{s}: {s} failed to start as an upstream server in {d} msec (startup_latency: {d}).\n",
 						workspace_id_,
 						type_,
 						name_,
 						worker_it->first,
-						workers_startup_latency_max_);
+						workers_startup_latency_timeout,
+						worker_it->second.startup_latency());
 
 					worker_it = workers_.erase(worker_it);
 					limits_.workers_pending_upd(-1);
 					is_group_changed = true;
 				}
 				else
+				{
+					if (startup_latency < (workers_startup_latency_timeout /2))
+					{
+						logger.warning(
+							"/{s}/{s}/{s}: {s} upstream server started, but not alive yet (startup_latency: {d}).\n",
+							workspace_id_,
+							type_,
+							name_,
+							worker_it->first,
+							worker_it->second.startup_latency());
+						}
+
 					++worker_it;
+				}
 
 				continue;
 			}
@@ -2387,6 +2469,7 @@ public:
 
 				http::headers watchdog_headers{ { "Host", "localhost" },
 												{ "X-Infor-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" } };
+
 				http::client::async_request<http::method::post>(
 					upstreams_,
 					worker_it->second.get_base_url(),
@@ -2866,7 +2949,7 @@ public:
 private:
 	std::unique_ptr<workgroup> create_workgroup_from_json(const std::string& type, const json& workgroup_json)
 	{
-		if (type == "bshell")
+		if (type == "bshell" || type == "bshells") 
 			return std::unique_ptr<workgroup>{ new bshell_workgroup{ workspace_id_, workgroup_json } };
 		if (type == "upstream")
 			return std::unique_ptr<workgroup>{ new upstream_workgroup{ workspace_id_, workgroup_json } };
@@ -4501,12 +4584,12 @@ inline bool start_eln_cpm_server(
 
 	if (run_selftests)
 	{
-		//tests::cpm_test test_cpm{http_configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
+		tests::cpm_test test_cpm{http_configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
 
-		tests::cpm_test_as_lb test_cpm_lb{http_configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
+		//tests::cpm_test_as_lb test_cpm_lb{http_configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
 
 
-		result = test_cpm_lb.run();
+		result = test_cpm.run();
 	}
 
 	return result;
