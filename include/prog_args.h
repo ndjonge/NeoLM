@@ -15,7 +15,6 @@ typedef enum
 {
 	flag, // flag true or false
 	arg_val, // some string
-	fun_argx, // some function with arg
 	usage,
 	version,
 	illegal // illegal
@@ -41,19 +40,17 @@ public:
 		, fun(_f){};
 };
 
-using arg_list_t = std::map<std::string, argopt>;
+using arg_list = std::map<std::string, argopt>;
 
-//	static bool process_args( arguments_t& args, int argc, const char **argv );
-
-class arguments_t
+class arguments
 {
 private:
 	int argc;
 	const char** argv;
-	arg_list_t cmd_opts;
+	arg_list cmd_opts;
 
 public:
-	arguments_t(int _argc, const char** _argv, const std::initializer_list<arg_list_t::value_type>& args)
+	arguments(int _argc, const char** _argv, const std::initializer_list<arg_list::value_type>& args)
 		: argc(_argc), argv(_argv), cmd_opts()
 	{
 		for (auto& i : args)
@@ -62,10 +59,7 @@ public:
 		}
 		argopt usage(arg_t::usage, "show Usage");
 		argopt version(arg_t::version, "show program version");
-		cmd_opts["h"] = usage;
-		cmd_opts["H"] = usage;
 		cmd_opts["?"] = usage;
-		cmd_opts["v"] = version;
 		cmd_opts["V"] = version;
 	}
 
@@ -85,12 +79,6 @@ public:
 				a->second.arg_val = std::string(argv[i + 1]);
 				++i;
 			}
-			else if ((a->second.type == arg_t::fun_argx) && (i < argc) && (argv[i + 1][0] != '-'))
-			{
-				a->second.arg_val = std::string(argv[i + 1]);
-				a->second.fun(a->second.arg_val);
-				++i;
-			}
 			else if (a->second.type == arg_t::flag)
 			{
 				a->second.arg_val = "true";
@@ -98,6 +86,7 @@ public:
 			else if (a->second.type == arg_t::usage)
 			{
 				usage(argv[0]);
+				exit(0);
 			}
 #ifdef INFOR
 			else if (a->second.type == arg_t::version)
@@ -141,16 +130,18 @@ public:
 	}
 	void usage(const std::string& progname)
 	{
-		std::cerr << "Usage for " << progname << std::endl;
+		std::cerr << "Usage: " << progname << std::endl;
 		for (auto a : cmd_opts)
 		{
-			std::cerr << "  -" << a.first << " " << a.second.usage;
-			if (a.second.type != arg_t::usage)
+			std::cerr << "  -" << a.first << "\r\t\t\t" << a.second.usage;
+	/*		if (a.second.type != arg_t::usage)
 			{
 				std::cerr << " (default: '" << a.second.def_val << "' )";
-			}
+			}*/
 			std::cerr << std::endl;
 		}
+
+		exit(0);
 	}
 	//void prversion(const std::string& progname) { ::print_version(1); }
 };

@@ -5,10 +5,8 @@ project("cld_mgr" VERSION 0.0.1 LANGUAGES CXX)
 include_directories("include")
 
 set(CPM_TARGET "eln_cpm")
-set(CPD_TARGET "eln_cpd")
 
-add_executable("${CPM_TARGET}" src/eln_cpm.cpp "include/eln_cpd.h")
-add_executable("${CPD_TARGET}" "src/eln_cpd.cpp" "include/eln_cpd.h")
+add_executable("${CPM_TARGET}" src/eln_cpm.cpp "include/eln_cpm.h")
 
 set (CMAKE_CXX_STANDARD 11)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -60,12 +58,6 @@ target_link_libraries( ${CPM_TARGET} OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries( ${CPM_TARGET} ZLIB::ZLIB)
 target_link_libraries( ${CPM_TARGET} OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB) 
 
-message("eln_cpc:" ${CPD_TARGET})
-target_link_libraries( ${CPD_TARGET} OpenSSL::SSL OpenSSL::Crypto)
-target_link_libraries( ${CPD_TARGET} ZLIB::ZLIB)
-target_link_libraries( ${CPD_TARGET} OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB) 
-
-
 if(WIN32)
     add_definitions(-DUSE_VCPKG_INCLUDES)
     add_definitions(-DLOCAL_TESTING)
@@ -81,6 +73,5 @@ else()
     add_definitions(-DUSE_VCPKG_INCLUDES)
     add_definitions(-DHTTP_DO_NOT_USE_CURL -DLOCAL_TESTING -std=c++11 -Wall -Wreorder -g -fsanitize=thread -fno-omit-frame-pointer) 
     target_link_libraries( ${CPM_TARGET} Threads::Threads -fsanitize=thread -fno-omit-frame-pointer) 
-    target_link_libraries( ${CPD_TARGET} Threads::Threads -fsanitize=thread -fno-omit-frame-pointer) 
 endif()
 

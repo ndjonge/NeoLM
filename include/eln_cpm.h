@@ -267,11 +267,11 @@ inline bool start_cld_wrk_server(std::string config_options, bool run_as_daemon)
 
 inline bool start_cld_wrk_server(int argc, const char** argv)
 {
-	prog_args::arguments_t cmd_args(
+	prog_args::arguments cmd_args(
 		argc,
 		argv,
 		{ { "httpserver_options", { prog_args::arg_t::arg_val, "see doc.", "" } },
-		  { "httpserver", { prog_args::arg_t::flag, "http_server" } } ,
+		  { "httpserver", { prog_args::arg_t::flag, "http_server" } },
 		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } } });
 
 	if (cmd_args.process_args() == false)
@@ -305,7 +305,10 @@ protected:
 	tests::configuration configuration_;
 
 public:
-	test(const std::string& base_url, const tests::configuration& configuration) : base_url_(base_url), configuration_(configuration) {}
+	test(const std::string& base_url, const tests::configuration& configuration)
+		: base_url_(base_url), configuration_(configuration)
+	{
+	}
 
 	virtual bool run() = 0;
 };
@@ -313,7 +316,10 @@ public:
 class cpm_test_as_lb : public test
 {
 public:
-	cpm_test_as_lb(const std::string& base_url, const tests::configuration& configuration) : test(base_url, configuration) {}
+	cpm_test_as_lb(const std::string& base_url, const tests::configuration& configuration)
+		: test(base_url, configuration)
+	{
+	}
 
 	bool add_workspace(std::string workspace_id, std::string tenant_id)
 	{
@@ -337,20 +343,10 @@ public:
 		return true;
 	}
 
-	bool add_workgroup(
-		std::string workspace_id,
-		std::string workgroup_name,
-		std::string worker_endpoint,
-		std::string worker_options)
+	bool add_workgroup(std::string workspace_id, std::string workgroup_name)
 	{
-		json workgroup_def{ { "name", workgroup_name },
-							{ "type", "upstream" },
-							{ "on_setup", "" },
-							{ "on_teardown", ""},
-							{ "parameters",
-							  { } },
-							{ "limits",
-							  { } } };
+		json workgroup_def{ { "name", workgroup_name }, { "type", "upstream" }, { "setup", "" },
+							{ "teardown", "" },			{ "parameters", {} },	{ "limits", {} } };
 
 		std::string error;
 
@@ -381,15 +377,14 @@ public:
 							{ "worker_label", worker_label },
 							{ "worker_id", worker_id },
 							{ "base_url", worker_endpoint },
-							{ "parameters",
-							  { } },
-							{ "limits",
-							  { } } };
+							{ "parameters", {} },
+							{ "limits", {} } };
 
 		std::string error;
 
 		auto response = http::client::request<http::method::post>(
-			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name + "/workers",
+			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name
+				+ "/workers",
 			error,
 			{},
 			workgroup_def.dump());
@@ -490,8 +485,7 @@ public:
 			for (int i = 0; i != count; i++)
 			{
 				std::string error;
-				auto response
-					= http::client::request<http::method::get>(base_url + request_url, error, {}, {});
+				auto response = http::client::request<http::method::get>(base_url + request_url, error, {}, {});
 
 				if (response.status() == http::status::not_found)
 				{
@@ -514,36 +508,30 @@ public:
 		const bool clean_up = configuration_.get<bool>("cleanup", true);
 		const int stay_alive_time = configuration_.get<int>("stay_alive_time", 6000);
 
-		const std::string& worker_endpoint = configuration_.get<std::string>("worker_endpoint", "http://192.168.2.250:");
-
-		const std::string& worker_options = configuration_.get<std::string>("worker_options", "");
-
+		const std::string& worker_endpoint
+			= configuration_.get<std::string>("worker_endpoint", "http://192.168.2.250:");
 
 		for (int n = 0; n != run_count; n++)
 		{
 			for (int i = 0; i < workspace_count; i++)
-				add_workspace("workspace_" + std::to_string(100 + i), "");//"tenant" + std::to_string(100 + i) + "_tst");
+				add_workspace("workspace_" + std::to_string(100 + i), ""); //"tenant" + std::to_string(100 + i) +
+																		   //"_tst");
 
 			for (int j = 0; j < workspace_count; j++)
 				for (int i = 0; i < workgroup_count; i++)
-					add_workgroup(
-						"workspace_" + std::to_string(100 + j),
-						"workgroup_" + std::to_string(i),
-						worker_endpoint + std::to_string(8000+i),
-						worker_options);
+					add_workgroup("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
 
 			for (int j = 0; j < workspace_count; j++)
-					for (int i = 0; i < workgroup_count; i++)
-						add_worker(
-							"workspace_" + std::to_string(100 + j),
-							"workgroup_" + std::to_string(i),
-							"instance-" + std::to_string(8000+i),
-							"v1",
-							worker_endpoint + std::to_string(8000+i));
+				for (int i = 0; i < workgroup_count; i++)
+					add_worker(
+						"workspace_" + std::to_string(100 + j),
+						"workgroup_" + std::to_string(i),
+						"instance-" + std::to_string(8000 + i),
+						"v1",
+						worker_endpoint + std::to_string(8000 + i));
 
 			for (int i = 0; i < workspace_count; i++)
-				generate_proxied_requests(
-					"/api/tests/1k", "tenant" + std::to_string(100 + i) + "_tst", requests_count);
+				generate_proxied_requests("/api/tests/1k", "tenant" + std::to_string(100 + i) + "_tst", requests_count);
 
 			for (int i = 0; i < workspace_count; i++)
 				generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
@@ -564,13 +552,11 @@ public:
 
 		return true;
 	}
-
 };
 
 class cpm_test : public test
 {
 private:
-
 public:
 	cpm_test(const std::string& base_url, const tests::configuration& configuration) : test(base_url, configuration) {}
 
@@ -578,6 +564,13 @@ public:
 	{
 		json workspace_def{ { "workspace",
 							  { { "id", workspace_id },
+#ifdef _WIN32
+								{ "setup", "eln_cpm.exe -mkjail-setup $tenant_id,$tenant_id" },
+								{ "teardown", "eln_cpm.exe -mkns-teardown $tenant_id,$tenant_id" },
+#else
+								{ "setup", "eln_cpm -mkjail-setup $tenant_id,$tenant_id" },
+								{ "teardown", "eln_cpm -mkns-teardown $tenant_id,$tenant_id" },
+#endif
 								{ "routes",
 								  { { "paths", { "/api", "/internal" } },
 									{ "methods", { "get", "head", "post" } },
@@ -613,17 +606,23 @@ public:
 			else
 				worker_options += " -selftests_worker ";
 		}
+
 		json workgroup_def{ { "name", workgroup_name },
 							{ "type", "bshells" },
-	#ifdef _WIN32
+#ifdef _WIN32
+							{ "setup", "eln_cpm.exe -mkjail-setup $tenant_id,$tenant_id" },
+							{ "teardown", "eln_cpm.exe -mkns-teardown $tenant_id,$tenant_id" },
 							{ "parameters",
 							  { { "program", worker_cmd + ".exe" },
 								{ "cli_options", worker_options },
 								{ "bse", worker_bse },
-								{ "bse_bin", worker_bse_bin } } },
-	#else
+								{ "bse_bin",
+								  worker_bse_bin } } },
+#else
+							{ "setup", "eln_cpm -mkns -setup $tenant_id" },
+							{ "teardown", "eln_cpm -mkns -setup -teardown $tenant_id" },
 							{ "parameters", { { "program", worker_cmd }, { "cli_options", worker_options } } },
-	#endif
+#endif
 							{ "limits",
 							  { { "workers_min", required },
 								{ "workers_max", 16 },
@@ -736,8 +735,7 @@ public:
 			for (int i = 0; i != count; i++)
 			{
 				std::string error;
-				auto response
-					= http::client::request<http::method::get>(base_url + request_url, error, {}, {});
+				auto response = http::client::request<http::method::get>(base_url + request_url, error, {}, {});
 
 				if (response.status() == http::status::not_found)
 				{
@@ -791,8 +789,7 @@ public:
 						"workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i), worker_count);
 
 			for (int i = 0; i < workspace_count; i++)
-				generate_proxied_requests(
-					"/api/tests/1k", "tenant" + std::to_string(100 + i) + "_tst", requests_count);
+				generate_proxied_requests("/api/tests/1k", "tenant" + std::to_string(100 + i) + "_tst", requests_count);
 
 			for (int i = 0; i < workspace_count; i++)
 				generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
@@ -813,7 +810,6 @@ public:
 
 		return true;
 	}
-
 };
 
 } // namespace tests
@@ -889,7 +885,7 @@ static test_sockets<std::uint32_t> _test_sockets{
 
 } // namespace local_testing
 
-static bool create_bse_process_as_user(
+static std::int32_t create_bse_process_as_user(
 	const std::string&,
 	const std::string&,
 	const std::string&,
@@ -899,7 +895,7 @@ static bool create_bse_process_as_user(
 	std::uint32_t& pid,
 	std::string& ec)
 {
-	bool result = true;
+	std::int32_t result = 0;
 
 	auto parameters_as_configuration = http::configuration({}, parameters);
 
@@ -946,17 +942,19 @@ static bool create_bse_process_as_user(
 }
 
 #else
-static bool create_bse_process_as_user(
+
+static std::int64_t create_bse_process_as_user(
 	const std::string& bse,
 	const std::string& bse_bin,
-	const std::string& tenand_id,
+	const std::string& tenant_id,
 	const std::string& user,
 	const std::string& password,
 	const std::string& command,
 	std::uint32_t& pid,
-	std::string& ec)
+	std::string& ec,
+	bool wait_for_completion = false)
 {
-	bool result = false;
+	std::int64_t result = 0;
 
 #ifndef _WIN32
 	// If user is empty then start process as same user
@@ -1001,7 +999,7 @@ static bool create_bse_process_as_user(
 		ss << "BSE=" << bse << char{ 0 };
 		ss << "BSE_BIN=" << bse_bin << char{ 0 };
 		ss << "BSE_SHLIB=" << bse_bin << "\\..\\shlib" << char{ 0 };
-		ss << "TENANT_ID=" << tenand_id << char{ 0 };
+		ss << "TENANT_ID=" << tenant_id << char{ 0 };
 
 		for (auto var : required_environment_vars)
 		{
@@ -1094,6 +1092,19 @@ static bool create_bse_process_as_user(
 
 			ec.assign(buf, std::strlen(buf));
 			ec += "\n running this command: (" + command_cpy + ")";
+		}
+
+		if (wait_for_completion)
+		{
+			std::int32_t exit_code = 1;
+			WaitForSingleObject(reinterpret_cast<HANDLE>(piProcInfo.hProcess), 30 * 1000); // TODO make limit?
+			GetExitCodeProcess(reinterpret_cast<HANDLE>(piProcInfo.hProcess), reinterpret_cast<DWORD*>(&exit_code));
+
+			result = exit_code;
+		}
+		else
+		{
+			result = 0;
 		}
 
 		CloseHandle(piProcInfo.hThread);
@@ -1327,7 +1338,11 @@ public:
 	void worker_label(const std::string& level) { worker_label_ = level; }
 
 	int get_process_id() const { return process_id_; };
-	std::int64_t startup_latency() const { return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startup_t0_).count(); }
+	std::int64_t startup_latency() const
+	{
+		return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startup_t0_)
+			.count();
+	}
 
 	status get_status() const { return status_; }
 	void set_status(status s)
@@ -1410,10 +1425,34 @@ public:
 
 	enum class state
 	{
+		init,
+		setup,
 		down,
 		up,
-		drain
+		drain,
+		teardown,
 	};
+
+	static std::string to_string(workgroup::state state)
+	{
+		switch (state)
+		{
+			case state::init:
+				return "init";
+			case state::setup:
+				return "setup";
+			case state::down:
+				return "down";
+			case state::up:
+				return "up";
+			case state::teardown:
+				return "teardown";
+			case state::drain:
+				return "drain";
+			default:
+				return "-";
+		}
+	}
 
 	using container_type = std::map<const std::string, worker>;
 	using iterator = container_type::iterator;
@@ -1421,7 +1460,7 @@ public:
 	using mutex_type = std14::shared_mutex;
 
 	workgroup(const std::string& workspace_id, const std::string& type)
-		: workspace_id_(workspace_id), type_(type), state_(state::up)
+		: type_(type), workspace_id_(workspace_id), setup_(), teardown_(), state_(state::init)
 	{
 	}
 	virtual ~workgroup() = default;
@@ -1574,6 +1613,8 @@ public:
 	virtual void from_json(const json& j)
 	{
 		name_ = j.value("name", "anonymous");
+		setup_ = j.value("setup", "");
+		teardown_ = j.value("teardown", "");
 
 		if (j.contains("routes"))
 		{
@@ -1609,6 +1650,10 @@ public:
 	{
 		j["name"] = name_;
 		j["type"] = type_;
+
+		j["state"] = to_string(state_);
+		j["setup"] = setup_;
+		j["teardown"] = teardown_;
 
 		json limits_json;
 		limits_.to_json(limits_json, options);
@@ -1682,7 +1727,6 @@ public:
 	class limits
 	{
 	public:
-
 		std::int16_t workers_required() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
@@ -1756,19 +1800,19 @@ public:
 			return worker_scale_out_factor_;
 		}
 
-		std::int16_t workers_startup_latency_timeout() const
+		std::int64_t workers_startup_latency_timeout() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			return workers_startup_latency_timeout_;
 		}
 
-		std::int16_t workers_startup_latency_min() const
+		std::int64_t workers_startup_latency_min() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			return workers_startup_latency_min_;
 		}
 
-		std::int16_t workers_startup_latency_max() const
+		std::int64_t workers_startup_latency_max() const
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			return workers_startup_latency_max_;
@@ -1850,19 +1894,19 @@ public:
 			worker_scale_out_factor_ = value;
 		}
 
-		void workers_startup_latency_timeout(std::int16_t value)
+		void workers_startup_latency_timeout(std::int64_t value)
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			workers_startup_latency_timeout_ = value;
 		}
 
-		void workers_startup_latency_min(std::int16_t value)
+		void workers_startup_latency_min(std::int64_t value)
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			workers_startup_latency_min_ = value > workers_startup_latency_min_ ? workers_startup_latency_min_ : value;
 		}
 
-		void workers_startup_latency_max(std::int16_t value)
+		void workers_startup_latency_max(std::int64_t value)
 		{
 			std::lock_guard<std::mutex> m{ limits_mutex_ };
 			workers_startup_latency_max_ = value < workers_startup_latency_max_ ? workers_startup_latency_max_ : value;
@@ -1985,7 +2029,6 @@ public:
 				j["workers_startup_latency_timeout"] = workers_startup_latency_timeout_;
 			}
 
-
 			if (options != output_formating::options::essential)
 			{
 				if (limit_name.empty() || limit_name == "workers_actual")
@@ -2017,7 +2060,6 @@ public:
 					j["worker_scale_out_factor"] = worker_scale_out_factor_;
 				}
 
-
 				if (limit_name.empty() || limit_name == "workers_startup_latency_max")
 				{
 					j["workers_startup_latency_max"] = workers_startup_latency_max_;
@@ -2027,7 +2069,6 @@ public:
 				{
 					j["workers_startup_latency_min"] = workers_startup_latency_min_;
 				}
-
 			}
 		}
 
@@ -2051,9 +2092,9 @@ public:
 		std::int16_t workers_queue_retry_timeout_{ 1 };
 		std::int16_t worker_scale_out_factor_{ 1 };
 
-		std::int16_t workers_startup_latency_timeout_{ 0 };
-		std::int16_t workers_startup_latency_min_{ 32767 };
-		std::int16_t workers_startup_latency_max_{ 0 };
+		std::int64_t workers_startup_latency_timeout_{ 0 };
+		std::int64_t workers_startup_latency_min_{ 32767 };
+		std::int64_t workers_startup_latency_max_{ 0 };
 
 		mutable std::mutex limits_mutex_;
 	};
@@ -2071,10 +2112,16 @@ public:
 		bool workspace_is_updated)
 		= 0;
 
+	const std::string& teardown() const { return teardown_; }
+	const std::string& setup() const { return setup_; }
+
 protected:
 	std::string name_;
-	std::string workspace_id_;
 	std::string type_;
+	std::string workspace_id_;
+	std::string setup_;
+	std::string teardown_;
+
 	std::atomic<enum state> state_;
 	std::atomic<bool> is_changed_;
 
@@ -2093,11 +2140,7 @@ public:
 		from_json(worker_type_json, "");
 	}
 
-	virtual bool direct_workers(
-		asio::io_context& io_context,
-		const http::configuration& configuration,
-		lgr::logger& logger,
-		bool is_workspace_updated) override
+	virtual bool direct_workers(asio::io_context&, const http::configuration&, lgr::logger& logger, bool) override
 	{
 		std::unique_lock<mutex_type> lock{ workers_mutex_ };
 
@@ -2117,16 +2160,14 @@ public:
 					std::string{},
 					[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
 						if (!error_code
-							&& (response.status() == http::status::ok
-								|| response.status() == http::status::no_content)
+							&& (response.status() == http::status::ok || response.status() == http::status::no_content)
 							&& worker.get_status() != worker::status::up)
 						{
 							worker.set_status(worker::status::up);
 						}
 						else if (
 							error_code
-							|| (response.status() != http::status::ok
-								&& response.status() != http::status::no_content))
+							|| (response.status() != http::status::ok && response.status() != http::status::no_content))
 						{
 							worker.set_status(worker::status::drain);
 
@@ -2134,9 +2175,8 @@ public:
 								&& error_code == asio::error::connection_refused)
 							{
 								logger.api(
-									"/{s}/{s}/{s}: failed health check for worker {s}\n",
+									"/{s}/{s}: failed health check for worker {s}\n",
 									workspace_id_,
-									type_,
 									name_,
 									worker.get_base_url());
 							}
@@ -2152,25 +2192,13 @@ public:
 		return true;
 	}
 
-	void from_json(const json&, const std::string&) override
-	{
-		std::unique_lock<mutex_type> g(workers_mutex_);
-	}
+	void from_json(const json&, const std::string&) override { std::unique_lock<mutex_type> g(workers_mutex_); }
 
-	void from_json(const json& j) override
-	{
-		workgroup::from_json(j);
-	}
+	void from_json(const json& j) override { workgroup::from_json(j); }
 
-	void to_json(json&, const std::string&) const override
-	{
-		std14::shared_lock<mutex_type> g(workers_mutex_);
-	}
+	void to_json(json&, const std::string&) const override { std14::shared_lock<mutex_type> g(workers_mutex_); }
 
-	void to_json(json& j, output_formating::options options) const override
-	{
-		workgroup::to_json(j, options);
-	}
+	void to_json(json& j, output_formating::options options) const override { workgroup::to_json(j, options); }
 
 	virtual bool create_worker_process(
 		const std::string&,
@@ -2218,7 +2246,6 @@ public:
 
 		server_endpoint += "/internal/platform/manager/workspaces";
 
-
 		std::unique_lock<mutex_type> lock{ workers_mutex_ };
 
 		auto workers_required_to_add = limits_.workers_required_to_add();
@@ -2246,9 +2273,8 @@ public:
 			if (!success) // todo
 			{
 				logger.api(
-					"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s} (limits)\n",
+					"/{s}/{s}: new worker process ({d}/{d}), failed to start proces: {s} (limits)\n",
 					workspace_id_,
-					type_,
 					name_,
 					1 + n,
 					workers_required_to_add,
@@ -2257,9 +2283,8 @@ public:
 			else
 			{
 				logger.api(
-					"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s} (limits)\n",
+					"/{s}/{s}: new worker process ({d}/{d}), processid: {d}, worker_id: {s} (limits)\n",
 					workspace_id_,
-					type_,
 					name_,
 					1 + n,
 					workers_required_to_add,
@@ -2276,7 +2301,7 @@ public:
 
 		if (workers_required_to_add + limits_.workers_pending() < 0)
 		{
-			for (auto worker_it = workers_.rbegin(); worker_it != workers_.rend(); )
+			for (auto worker_it = workers_.rbegin(); worker_it != workers_.rend();)
 			{
 				if (worker_it->second.get_base_url().empty()
 					|| worker_it->second.get_status() == worker::status::recover)
@@ -2290,8 +2315,7 @@ public:
 				auto worker_runtime = worker_it->second.runtime();
 				auto worker_requests = worker_it->second.upstream().responses_tot_.load();
 
-				if (worker_it->second.get_status() != worker::status::up
-					|| (worker_label != workers_label_required)
+				if (worker_it->second.get_status() != worker::status::up || (worker_label != workers_label_required)
 					|| ((workers_requests_max >= 1) && (worker_requests >= workers_requests_max))
 					|| ((workers_runtime_max >= 1) && (worker_runtime >= workers_runtime_max))
 					|| (workers_.begin()->first == worker_it->first))
@@ -2312,14 +2336,14 @@ public:
 								if (!error_code
 									&& (response.status() == http::status::ok
 										|| response.status() == http::status::no_content
-	#ifdef LOCAL_TESTING
+#ifdef LOCAL_TESTING
 										|| response.status() == http::status::method_not_allowed // nginx test setup
 																								 // returns this
-	#endif //  LOCAL_TESTING
+#endif //  LOCAL_TESTING
 										))
 								{
 									logger.api(
-										"/{s}/{s}/{s}: process deleted for {s} (limits)\n", workspace_id_, type_, name_, base_url);
+										"/{s}/{s}: process deleted for {s} (limits)\n", workspace_id_, name_, base_url);
 								}
 								else if (
 									error_code
@@ -2333,17 +2357,15 @@ public:
 									else
 									{
 										logger.api(
-											"/{s}/{s}/{s}: failed to delete process {s} (limits)\n",
+											"/{s}/{s}: failed to delete process {s} (limits)\n",
 											workspace_id_,
-											type_,
 											name_,
 											base_url);
 									}
-
 								}
 								return;
 							});
-	
+
 						worker.set_status(worker::status::drain);
 					}
 
@@ -2365,23 +2387,6 @@ public:
 		std::int16_t workers_responses_max_reached = 0;
 		std::int64_t workers_startup_latency_timeout = limits_.workers_startup_latency_timeout();
 
-		//if (is_group_changed)
-		//{
-		//	logger.api(
-		//		"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, "
-		//		"label_required: {s}\n",
-		//		workspace_id_,
-		//		type_,
-		//		name_,
-		//		limits_.workers_actual(),
-		//		limits_.workers_pending(),
-		//		limits_.workers_required(),
-		//		limits_.workers_min(),
-		//		limits_.workers_max(),
-		//		limits_.workers_label_actual(),
-		//		workers_label_required);
-		//}
-
 		for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
 		{
 			if (worker_it->second.get_base_url().empty())
@@ -2391,9 +2396,8 @@ public:
 				if (startup_latency < 0)
 				{
 					logger.api(
-						"/{s}/{s}/{s}: {s} failed to start as an upstream server in {d} msec (startup_latency: {d}).\n",
+						"/{s}/{s}: {s} failed to start as an upstream server in {d} msec (startup_latency: {d}).\n",
 						workspace_id_,
-						type_,
 						name_,
 						worker_it->first,
 						workers_startup_latency_timeout,
@@ -2405,16 +2409,15 @@ public:
 				}
 				else
 				{
-					if (startup_latency < (workers_startup_latency_timeout /2))
+					if (startup_latency < (workers_startup_latency_timeout / 2))
 					{
 						logger.warning(
-							"/{s}/{s}/{s}: {s} upstream server started, but not alive yet (startup_latency: {d}).\n",
+							"/{s}/{s}: {s} upstream server started, but not alive yet (startup_latency: {d}).\n",
 							workspace_id_,
-							type_,
 							name_,
 							worker_it->first,
 							worker_it->second.startup_latency());
-						}
+					}
 
 					++worker_it;
 				}
@@ -2441,7 +2444,7 @@ public:
 					{
 						workers_responses_max_reached++;
 					}
-					
+
 					if ((worker.runtime() >= workers_runtime_max) && (workers_runtime_max > 0))
 					{
 						workers_runtime_max_reached++;
@@ -2478,16 +2481,14 @@ public:
 					std::string{},
 					[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
 						if (!error_code
-							&& (response.status() == http::status::ok
-								|| response.status() == http::status::no_content)
+							&& (response.status() == http::status::ok || response.status() == http::status::no_content)
 							&& worker.get_status() != worker::status::up)
 						{
 							worker.set_status(worker::status::up);
 						}
 						else if (
 							error_code
-							|| (response.status() != http::status::ok
-								&& response.status() != http::status::no_content))
+							|| (response.status() != http::status::ok && response.status() != http::status::no_content))
 						{
 							worker.set_status(worker::status::drain);
 
@@ -2495,9 +2496,8 @@ public:
 								&& error_code == asio::error::connection_refused)
 							{
 								logger.api(
-									"/{s}/{s}/{s}: failed health check for worker {s}\n",
+									"/{s}/{s}: failed health check for worker {s}\n",
 									workspace_id_,
-									type_,
 									name_,
 									worker.get_base_url());
 							}
@@ -2541,9 +2541,8 @@ public:
 			if (!success) // todo
 			{
 				logger.api(
-					"/{s}/{s}/{s} new worker process ({d}/{d}), failed to start proces: {s} (reload)\n",
+					"/{s}/{s}: new worker process ({d}/{d}), failed to start proces: {s} (reload)\n",
 					workspace_id_,
-					type_,
 					name_,
 					1 + n,
 					workers_to_start,
@@ -2552,9 +2551,8 @@ public:
 			else
 			{
 				logger.api(
-					"/{s}/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s} (reload)\n",
+					"/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s} (reload)\n",
 					workspace_id_,
-					type_,
 					name_,
 					1 + n,
 					workers_to_start,
@@ -2580,9 +2578,8 @@ public:
 			if (worker_it->second.get_status() == worker::status::down)
 			{
 				logger.api(
-					"/{s}/{s}/{s} delete {s} {s}\n",
+					"/{s}/{s}: delete {s} {s}\n",
 					workspace_id_,
-					type_,
 					name_,
 					worker_it->first,
 					worker_it->second.get_base_url());
@@ -2598,15 +2595,14 @@ public:
 			}
 			else
 				worker_it++;
-		}		
+		}
 
 		if (is_group_changed || is_changed() || is_workspace_updated)
 		{
 			logger.api(
-				"/{s}/{s}/{s} actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, "
+				"/{s}/{s}: actual: {d}, pending: {d}, required: {d}, min: {d}, max: {d}, label_actual: {s}, "
 				"label_required: {s}\n",
 				workspace_id_,
-				type_,
 				name_,
 				limits_.workers_actual(),
 				limits_.workers_pending(),
@@ -2771,7 +2767,7 @@ public:
 
 		if (http_options_.find("http_watchdog_idle_timeout") == std::string::npos)
 		{
-			if (http_options_.empty()) 
+			if (http_options_.empty())
 				http_options_ = "http_watchdog_idle_timeout:15";
 			else
 				http_options_ += ",http_watchdog_idle_timeout:15";
@@ -2783,15 +2779,18 @@ public:
 
 		parameters << cli_options_;
 
-		return bse_utils::create_bse_process_as_user(
-			bse_,
-			bse_bin_,
-			"",
-			os_user_,
-			os_password_,
-			bse_bin_ + (bse_bin_ != "" ? "\\" : "") + program_ + std::string{ " " } + parameters.str(),
-			pid,
-			ec);
+		auto result = bse_utils::create_bse_process_as_user(
+						  bse_,
+						  bse_bin_,
+						  "",
+						  os_user_,
+						  os_password_,
+						  bse_bin_ + (bse_bin_ != "" ? "\\" : "") + program_ + std::string{ " " } + parameters.str(),
+						  pid,
+						  ec)
+					  == 0;
+
+		return result;
 	}
 };
 
@@ -2832,7 +2831,10 @@ public:
 		j["parameters"].emplace("python_root", rootdir);
 	}
 
-	virtual bool direct_workers(asio::io_context&, const http::configuration&, lgr::logger&, bool) override{return false;}
+	virtual bool direct_workers(asio::io_context&, const http::configuration&, lgr::logger&, bool) override
+	{
+		return false;
+	}
 
 	virtual bool create_worker_process(
 		const std::string&,
@@ -2851,6 +2853,37 @@ public:
 class workspace
 {
 public:
+	enum class state
+	{
+		init,
+		setup,
+		down,
+		up,
+		drain,
+		teardown,
+	};
+
+	static std::string to_string(workspace::state state)
+	{
+		switch (state)
+		{
+			case state::init:
+				return "init";
+			case state::setup:
+				return "setup";
+			case state::down:
+				return "down";
+			case state::up:
+				return "up";
+			case state::teardown:
+				return "teardown";
+			case state::drain:
+				return "drain";
+			default:
+				return "-";
+		}
+	}
+
 	using key_type = std::string;
 	using value_type = std::unique_ptr<workgroup>;
 	using container_type = std::map<key_type, value_type>;
@@ -2861,18 +2894,13 @@ public:
 	using route_headers_type = std::vector<http::field<std::string>>;
 	using mutex_type = std14::shared_mutex;
 
-	enum class state
-	{
-		down,
-		up,
-		drain
-	};
-
 private:
 	std::string server_endpoint_;
 	std::string workspace_id_{};
 	std::string tenant_id_{};
 	std::string description_{};
+	std::string setup_{};
+	std::string teardown_{};
 
 	route_methods_type methods_;
 	route_path_type paths_;
@@ -2896,7 +2924,7 @@ public:
 
 public:
 	workspace(const std::string workspace_id, const json& json_workspace)
-		: workspace_id_(workspace_id), state_(state::up)
+		: workspace_id_(workspace_id), state_(state::init)
 	{
 		from_json(json_workspace);
 	}
@@ -2909,11 +2937,18 @@ public:
 	const std::string& get_description(void) const { return description_; };
 	const std::string& get_tenant_id(void) const { return tenant_id_; };
 
+	const std::string& teardown() const { return teardown_; }
+	const std::string& setup() const { return setup_; }
+
 public:
 	void to_json(json& workspace, output_formating::options options = output_formating::options::complete) const
 	{
 		workspace["id"] = workspace_id_;
 		workspace["description"] = description_;
+		workspace["setup"] = setup_;
+		workspace["teardown"] = teardown_;
+
+		if (options == output_formating::options::complete) workspace["state"] = to_string(state_);
 
 		if (paths_.empty() == false)
 		{
@@ -2949,7 +2984,7 @@ public:
 private:
 	std::unique_ptr<workgroup> create_workgroup_from_json(const std::string& type, const json& workgroup_json)
 	{
-		if (type == "bshell" || type == "bshells") 
+		if (type == "bshell" || type == "bshells")
 			return std::unique_ptr<workgroup>{ new bshell_workgroup{ workspace_id_, workgroup_json } };
 		if (type == "upstream")
 			return std::unique_ptr<workgroup>{ new upstream_workgroup{ workspace_id_, workgroup_json } };
@@ -3012,8 +3047,8 @@ public:
 			{
 				for (const auto& header : workgroup.second->headers())
 				{
-					//bool found = false;
-					//if (session.request().get<std::string>(header.name, found, "") == header.value && found == true)
+					// bool found = false;
+					// if (session.request().get<std::string>(header.name, found, "") == header.value && found == true)
 
 					if (session.request().get<std::string>(header.name, "") == header.value)
 					{
@@ -3112,6 +3147,8 @@ public:
 	void from_json(const json& j)
 	{
 		description_ = j.value("description", "");
+		setup_ = j.value("setup", "");
+		teardown_ = j.value("teardown", "");
 
 		if (j.contains("routes"))
 		{
@@ -3201,6 +3238,40 @@ public:
 		for (auto workspace = workspaces_.begin(); workspace != workspaces_.end();)
 		{
 			auto workspace_state = workspace->second->state();
+			if (workspace_state == workspace::state::init)
+			{
+				workspace->second->state(workspace::state::setup);
+				auto& setup = workspace->second->setup();
+				if (workspace->second->setup().empty() == false)
+				{
+					logger.api("/{s}: setup workspace running \"{s}\"\n", workspace->first, setup);
+
+					auto& workspace_ref = *(workspace->second.get());
+					std::thread{ [&workspace_ref, setup, &logger]() {
+						std::uint32_t pid = 0;
+						std::string ec;
+
+						auto exit_code
+							= bse_utils::create_bse_process_as_user("", "", "tenant_id", "", "", setup, pid, ec, true);
+
+						logger.api(
+							"/{s}: setup workspace with: \"{s}\" finshed with exitcode: {d}\n",
+							workspace_ref.get_workspace_id(),
+							setup,
+							exit_code);
+
+						if (exit_code == 0)
+							workspace_ref.state(workspace::state::up);
+						else
+							workspace_ref.state(workspace::state::drain);
+					} }.detach();
+				}
+				else
+				{
+					workspace->second->state(workspace::state::up);
+					workspace_state = workspace->second->state();
+				}
+			}
 
 			if (workspace->second->has_workgroups_available())
 			{
@@ -3208,6 +3279,44 @@ public:
 				for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();)
 				{
 					auto workgroup_state = workgroup->second->state();
+
+					if (workgroup_state == workgroup::state::init)
+					{
+						workgroup->second->state(workgroup::state::setup);
+						auto& setup = workgroup->second->setup();
+						if (workgroup->second->setup().empty() == false)
+						{
+							logger.api("/{s}/{s}: setup running \"{s}\"\n", workspace->first, workgroup->first, setup);
+
+							auto& workgroup_ref = *(workgroup->second.get());
+							auto& workspace_ref = *(workspace->second.get());
+
+							std::thread{ [&workspace_ref, &workgroup_ref, setup, &logger]() {
+								std::uint32_t pid = 0;
+								std::string ec;
+
+								auto exit_code = bse_utils::create_bse_process_as_user(
+									"", "", "tenant_id", "", "", setup, pid, ec, true);
+
+								logger.api(
+									"/{s}/{s}: setup workgroup with: \"{s}\" finshed with exitcode: {d}\n",
+									workspace_ref.get_workspace_id(),
+									workgroup_ref.get_name(),
+									setup,
+									exit_code);
+
+								if (exit_code == 0)
+									workgroup_ref.state(workgroup::state::up);
+								else
+									workgroup_ref.state(workgroup::state::drain);
+							} }.detach();
+						}
+						else
+						{
+							workgroup->second->state(workgroup::state::up);
+							workgroup_state = workgroup->second->state();
+						}
+					}
 
 					if (workgroup_state == workgroup::state::drain)
 					{
@@ -3218,14 +3327,52 @@ public:
 						}
 						else
 						{
-							workgroup->second->state(workgroup::state::down);
+							if (workgroup_state == workgroup::state::drain)
+							{
+								workgroup->second->state(workgroup::state::teardown);
+								auto& teardown = workgroup->second->teardown();
+
+								if (teardown.empty() == false)
+								{
+									logger.api(
+										"/{s}/{s}: teardown workgroup with: \"{s}\"\n",
+										workspace->first,
+										workgroup->first,
+										teardown);
+
+									auto& workgroup_ref = *(workgroup->second.get());
+									auto& workspace_ref = *(workspace->second.get());
+
+									std::thread{ [&workspace_ref, &workgroup_ref, teardown, &logger]() {
+										std::uint32_t pid = 0;
+										std::string ec;
+
+										auto exit_code = bse_utils::create_bse_process_as_user(
+											"", "", "tenant_id", "", "", teardown, pid, ec, true);
+
+										logger.api(
+											"/{s}/{s}: teardown workgroup with: \"{s}\" finshed with exitcode: {d}\n",
+											workspace_ref.get_workspace_id(),
+											workgroup_ref.get_name(),
+											teardown,
+											exit_code);
+
+										if (exit_code == 0)
+											workgroup_ref.state(workgroup::state::down);
+										else
+										{
+											workgroup_ref.state(workgroup::state::down); // TODO...?
+										}
+									} }.detach();
+								}
+							}
 							workgroup_state = workgroup->second->state();
 						}
 					}
 
 					if (workgroup_state == workgroup::state::down)
 					{
-						logger.api("workspace: {s}, erase worker: {s}\n", workspace->first, workgroup->first);
+						logger.api("/{s}/{s}: erase workgroup\n", workspace->first, workgroup->first);
 						workgroup = workspace->second->erase_workgroup(workgroup);
 					}
 					else
@@ -3241,14 +3388,43 @@ public:
 				}
 				else
 				{
-					workspace->second->state(workspace::state::down);
-					workspace_state = workspace->second->state();
+					workspace->second->state(workspace::state::teardown);
+					auto& teardown = workspace->second->teardown();
+
+					if (teardown.empty() == false)
+					{
+						logger.api("/{s}: teardown workspace with: \"{s}\"\n", workspace->first, teardown);
+
+						auto& workspace_ref = *(workspace->second.get());
+
+						std::thread{ [&workspace_ref, teardown, &logger]() {
+							std::uint32_t pid = 0;
+							std::string ec;
+
+							auto exit_code = bse_utils::create_bse_process_as_user(
+								"", "", "tenant_id", "", "", teardown, pid, ec, true);
+
+							logger.api(
+								"/{s}: teardown workspace with: \"{s}\" finshed with exitcode: {d}\n",
+								workspace_ref.get_workspace_id(),
+								teardown,
+								exit_code);
+
+							if (exit_code == 0)
+								workspace_ref.state(workspace::state::down);
+							else
+							{
+								workspace_ref.state(workspace::state::down); // TODO...?
+							}
+						} }.detach();
+					}
 				}
+				workspace_state = workspace->second->state();
 			}
 
 			if (workspace_state == workspace::state::down)
 			{
-				logger.api("erase workspace: {s}\n", workspace->first);
+				logger.api("/{s}: erase workspace\n", workspace->first);
 				workspace = erase_workspace(workspace);
 			}
 			else
@@ -3275,15 +3451,20 @@ public:
 					for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();
 						 ++workgroup)
 					{
-						if (workgroup->second->state() != workgroup::state::up) needs_cleanup = true;
-						
-						is_changed_new |= workgroup->second->direct_workers(io_context, configuration, logger, is_changed_);
+						auto workgroup_state = workgroup->second->state();
+
+						if (workgroup_state == workgroup::state::drain || workgroup_state == workgroup::state::down
+							|| workgroup_state == workgroup::state::init)
+							needs_cleanup = true;
+
+						if (workgroup_state == workgroup::state::up || workgroup_state == workgroup::state::drain)
+							is_changed_new
+								|= workgroup->second->direct_workers(io_context, configuration, logger, is_changed_);
 					}
 				}
 			}
 			is_changed(is_changed_new);
 		}
-
 
 		auto t1 = std::chrono::steady_clock::now();
 		auto elapsed = t1 - t0;
@@ -3356,8 +3537,8 @@ public:
 			{
 				for (const auto& header : workspace.second->headers())
 				{
-					//bool found = false;
-					//if (session.request().get<std::string>(header.name, found, "") == header.value && found == true)
+					// bool found = false;
+					// if (session.request().get<std::string>(header.name, found, "") == header.value && found == true)
 
 					if (session.request().get<std::string>(header.name, "") == header.value)
 					{
@@ -3542,7 +3723,7 @@ public:
 					std::unique_lock<mutex_type> g{ workgroup.second->workers_mutex() };
 					for (auto& worker : *(workgroup.second))
 					{
-						if (worker.first == worker_id) 
+						if (worker.first == worker_id)
 						{
 							auto result = method(worker.second, error_message);
 							workgroup.second->is_changed(result);
@@ -3636,11 +3817,16 @@ public:
 		}
 
 		server_base::router_.on_get(
-			http::server::configuration_.get<std::string>("health_check", "/private/health_check"),
+			http::server::configuration_.get<std::string>("health_check", "/internal/platform/manager/health_check"),
 			[this](http::session_handler& session) {
 				session.response().assign(http::status::ok, "OK");
 				server_base::manager().update_health_check_metrics();
 			});
+
+		server_base::router_.on_get("/favicon.ico", [](http::session_handler& session) {
+			session.routing().private_request(true);
+			session.response().assign(http::status::not_found);
+		});
 
 		server_base::router_.on_post("/internal/platform/manager/mirror", [](http::session_handler& session) {
 			session.response().status(http::status::ok);
@@ -4584,10 +4770,12 @@ inline bool start_eln_cpm_server(
 
 	if (run_selftests)
 	{
-		tests::cpm_test test_cpm{http_configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
+		tests::cpm_test test_cpm{ http_configuration.get<std::string>(
+									  "http_this_server_local_url", "http://localhost:4000"),
+								  tests::configuration({}, std::string{ selftest_options }) };
 
-		//tests::cpm_test_as_lb test_cpm_lb{http_configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
-
+		// tests::cpm_test_as_lb test_cpm_lb{http_configuration.get<std::string>("http_this_server_local_url",
+		// "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
 
 		result = test_cpm.run();
 	}
@@ -4597,7 +4785,7 @@ inline bool start_eln_cpm_server(
 
 inline bool start_eln_cpm_server(int argc, const char** argv)
 {
-	prog_args::arguments_t cmd_args(
+	prog_args::arguments cmd_args(
 		argc,
 		argv,
 		{ { "config",
@@ -4606,14 +4794,41 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } },
 		  { "httpserver", { prog_args::arg_t::flag, "internal" } },
 		  { "httpserver_options", { prog_args::arg_t::arg_val, "<options>: see doc.", "" } },
-		  { "selftests", { prog_args::arg_t::flag, "run selftests" } },
-		  { "selftests_options", { prog_args::arg_t::arg_val, "<options>: see doc." } },
+		  { "mkjail-setup", { prog_args::arg_t::arg_val, "-" } },
+		  { "mkjail-teardown", { prog_args::arg_t::arg_val, "-" } },
+		  { "selftests", { prog_args::arg_t::flag, "" } },
+		  { "selftests_options", { prog_args::arg_t::arg_val, "" } },
 		  { "selftests_worker", { prog_args::arg_t::flag, "false" } } });
 
 	if (cmd_args.process_args() == false)
 	{
 		std::cout << "error in arguments \n";
-		exit(1);
+		exit(-2);
+	}
+
+	if (cmd_args.get_val("mkjail-setup") != "")
+	{
+		std::this_thread::sleep_for(std::chrono::seconds(5));
+		if (cmd_args.get_val("mkjail-setup") != "fail")
+		{
+			exit(0);
+		}
+		else
+		{
+			exit(-3);
+		}
+	}
+	else if (cmd_args.get_val("mkjail-teardown") != "")
+	{
+		std::this_thread::sleep_for(std::chrono::seconds(5));
+		if (cmd_args.get_val("mkjail-teardown") != "fail")
+		{
+			exit(0);
+		}
+		else
+		{
+			exit(-3);
+		}
 	}
 
 	if (cmd_args.get_val("selftests_worker") == "")

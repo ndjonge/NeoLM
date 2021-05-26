@@ -4150,11 +4150,15 @@ public:
 	std::string& allowed_methods() { return allowed_methods_; }
 	const std::string& allowed_methods() const { return allowed_methods_; }
 
+	void private_request(bool value) { is_private_base_request_ = value; }
+	bool is_private_base_request() const {return is_private_base_request_;}
+
 private:
 	result result_;
 	route* route_{ nullptr };
 	middlewares middlewares_;
 	std::string allowed_methods_;
+	bool is_private_base_request_;
 };
 
 template <

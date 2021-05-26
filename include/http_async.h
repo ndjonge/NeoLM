@@ -1290,6 +1290,9 @@ public:
 
 		void write_response_complete()
 		{
+			if (routing_.is_private_base_request())
+				private_base_request_ = true;
+
 			if (routing_.match_result() == http::api::router_match::match_found)
 			{
 				routing_.the_route().metric_response_latency(
