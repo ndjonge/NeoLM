@@ -565,11 +565,11 @@ public:
 		json workspace_def{ { "workspace",
 							  { { "id", workspace_id },
 #ifdef _WIN32
-								{ "setup", "eln_cpm.exe -mkjail-setup $tenant_id,$tenant_id" },
-								{ "teardown", "eln_cpm.exe -mkns-teardown $tenant_id,$tenant_id" },
+								{ "setup", "eln_cpm.exe -mkjail-setup good" },
+								{ "teardown", "eln_cpm.exe -mkjail-teardown good" },
 #else
-								{ "setup", "eln_cpm -mkjail-setup $tenant_id,$tenant_id" },
-								{ "teardown", "eln_cpm -mkns-teardown $tenant_id,$tenant_id" },
+								{ "setup", "eln_cpm -mkjail-setup good" },
+								{ "teardown", "eln_cpm -mkjail-teardown good" },
 #endif
 								{ "routes",
 								  { { "paths", { "/api", "/internal" } },
@@ -610,8 +610,8 @@ public:
 		json workgroup_def{ { "name", workgroup_name },
 							{ "type", "bshells" },
 #ifdef _WIN32
-							{ "setup", "eln_cpm.exe -mkjail-setup $tenant_id,$tenant_id" },
-							{ "teardown", "eln_cpm.exe -mkns-teardown $tenant_id,$tenant_id" },
+							{ "setup", "eln_cpm.exe -mkjail-setup good" },
+							{ "teardown", "eln_cpm.exe -mkjail-teardown good" },
 							{ "parameters",
 							  { { "program", worker_cmd + ".exe" },
 								{ "cli_options", worker_options },
@@ -619,8 +619,8 @@ public:
 								{ "bse_bin",
 								  worker_bse_bin } } },
 #else
-							{ "setup", "eln_cpm -mkns -setup $tenant_id" },
-							{ "teardown", "eln_cpm -mkns -setup -teardown $tenant_id" },
+							{ "setup", "eln_cpm -mkjail-setup good" },
+							{ "teardown", "eln_cpm -mkjail-teardown good" },
 							{ "parameters", { { "program", worker_cmd }, { "cli_options", worker_options } } },
 #endif
 							{ "limits",
@@ -3010,7 +3010,9 @@ public:
 
 		for (auto& workgroup : workgroups_)
 		{
-			if (workgroup.second->state() == workgroup::state::up) workgroup.second->state(workgroup::state::drain);
+			if (workgroup.second->state() == workgroup::state::up || workgroup.second->state() == workgroup::state::init) 
+				workgroup.second->state(workgroup::state::drain);
+
 			result = true;
 		}
 
@@ -3263,7 +3265,8 @@ public:
 						if (exit_code == 0)
 							workspace_ref.state(workspace::state::up);
 						else
-							workspace_ref.state(workspace::state::drain);
+							workspace_ref.state(workspace::state::down);
+
 					} }.detach();
 				}
 				else
@@ -3273,7 +3276,7 @@ public:
 				}
 			}
 
-			if (workspace->second->has_workgroups_available())
+			if (workspace->second->has_workgroups_available() && (workspace_state == workspace::state::up || workspace_state == workspace::state::drain))
 			{
 				std::unique_lock<mutex_type> l2{ workspace->second->workgroups_mutex() };
 				for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();)
@@ -3443,7 +3446,11 @@ public:
 			auto is_changed_new = false;
 			for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); ++workspace)
 			{
-				if (workspace->second->state() != workspace::state::up) needs_cleanup = true;
+				auto workspace_state = workspace->second->state();
+
+				if (workspace_state == workspace::state::drain || workspace_state == workspace::state::down
+					|| workspace_state == workspace::state::init)
+					needs_cleanup = true;
 
 				if (workspace->second->has_workgroups_available())
 				{
