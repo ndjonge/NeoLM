@@ -1186,8 +1186,6 @@ static std::int64_t create_bse_process_as_user(
 
 		ec = command;
 
-		signal(SIGCHLD, SIG_IGN);
-
 		pid = fork();
 
 		if (pid == 0)
@@ -1219,6 +1217,19 @@ static std::int64_t create_bse_process_as_user(
 		}
 		else
 		{
+			if (wait_for_completion)
+			{
+				std::int32_t exit_code = 1;
+				exit_code = wait(pid);
+				result = exit_code;
+			}
+			else
+			{
+				signal(SIGCHLD, SIG_IGN);
+				result = 0;
+			}
+
+
 			for (auto env_var : envp)
 			{
 				free(env_var);
