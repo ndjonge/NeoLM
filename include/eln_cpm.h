@@ -570,7 +570,7 @@ public:
 							  { { "id", workspace_id },
 #ifdef _WIN32
 								{ "setup", "eln_cpm.exe -mkjail-setup good" },
-								{ "teardown", "eln_cpm.exe -mkjail-teardown good" },
+								{ "teardown", "eln_cpm.exe -mkjail-teardown fail" },
 #else
 								{ "setup", "eln_cpm -mkjail-setup good" },
 								{ "teardown", "eln_cpm -mkjail-teardown good" },
