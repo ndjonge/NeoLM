@@ -1495,8 +1495,8 @@ public:
 
 	bool has_workers_available() const { return limits_.workers_actual() > 0; }
 
-	state state() const { return state_; }
-	void state(const enum cloud::platform::workgroup::state& s) { state_ = s; }
+	const std::atomic<workgroup::state>& state() { return state_; }
+	void state(const enum workgroup::state& s) { state_ = s; }
 
 	iterator find_worker(const std::string& worker_id)
 	{
@@ -2290,7 +2290,7 @@ public:
 			if (!success) // todo
 			{
 				logger.api(
-					"/{s}/{s}: new worker process ({d}/{d}), failed to start proces: {s} (limits)\n",
+					"/{s}/{s}: create worker ({d}/{d}), failed with: {s} (limits)\n",
 					workspace_id_,
 					name_,
 					1 + n,
@@ -2300,7 +2300,7 @@ public:
 			else
 			{
 				logger.api(
-					"/{s}/{s}: new worker process ({d}/{d}), processid: {d}, worker_id: {s} (limits)\n",
+					"/{s}/{s}: create worker ({d}/{d}), processid: {d}, worker_id: {s} (limits)\n",
 					workspace_id_,
 					name_,
 					1 + n,
@@ -2558,9 +2558,10 @@ public:
 			if (!success) // todo
 			{
 				logger.api(
-					"/{s}/{s}: new worker process ({d}/{d}), failed to start proces: {s} (reload)\n",
+					"/{s}/{s}: create worker {s} ({d}/{d}), failed with: {s} (reload)\n",
 					workspace_id_,
 					name_,
+					worker_id,
 					1 + n,
 					workers_to_start,
 					ec);
@@ -2568,13 +2569,13 @@ public:
 			else
 			{
 				logger.api(
-					"/{s}/{s} new worker process ({d}/{d}), processid: {d}, worker_id: {s} (reload)\n",
+					"/{s}/{s}: create worker {s} ({d}/{d}), processid: {d} (reload)\n",
 					workspace_id_,
 					name_,
+					worker_id,
 					1 + n,
 					workers_to_start,
-					static_cast<int>(process_id),
-					worker_id);
+					static_cast<int>(process_id));
 
 				workers_.emplace(
 					std::pair<const std::string, worker>(worker_id, worker{ worker_id, workers_label_required }));
@@ -2925,7 +2926,7 @@ private:
 	mutable mutex_type workers_mutex;
 	container_type workgroups_;
 
-	std::atomic<enum state> state_;
+	std::atomic<workspace::state> state_;
 
 public:
 	const route_path_type& paths() const { return paths_; }
@@ -2936,7 +2937,7 @@ public:
 
 	mutex_type& workgroups_mutex() const { return workgroups_mutex_; }
 
-	enum state state() const { return state_; }
+	const std::atomic<workspace::state>& state() { return state_; }
 	void state(enum cloud::platform::workspace::state s) { state_ = s; }
 
 public:
@@ -3256,7 +3257,7 @@ public:
 
 		for (auto workspace = workspaces_.begin(); workspace != workspaces_.end();)
 		{
-			auto workspace_state = workspace->second->state();
+			auto workspace_state = workspace->second->state().load();
 			if (workspace_state == workspace::state::init)
 			{
 				workspace->second->state(workspace::state::setup);
@@ -3289,7 +3290,7 @@ public:
 				else
 				{
 					workspace->second->state(workspace::state::up);
-					workspace_state = workspace->second->state();
+					workspace_state = workspace->second->state().load();
 				}
 			}
 
@@ -3298,7 +3299,7 @@ public:
 				std::unique_lock<mutex_type> l2{ workspace->second->workgroups_mutex() };
 				for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();)
 				{
-					auto workgroup_state = workgroup->second->state();
+					auto workgroup_state = workgroup->second->state().load();
 
 					if (workgroup_state == workgroup::state::init)
 					{
@@ -3334,7 +3335,7 @@ public:
 						else
 						{
 							workgroup->second->state(workgroup::state::up);
-							workgroup_state = workgroup->second->state();
+							workgroup_state = workgroup->second->state().load();
 						}
 					}
 
@@ -3386,7 +3387,7 @@ public:
 									} }.detach();
 								}
 							}
-							workgroup_state = workgroup->second->state();
+							workgroup_state = workgroup->second->state().load();
 						}
 					}
 
@@ -3439,7 +3440,7 @@ public:
 						} }.detach();
 					}
 				}
-				workspace_state = workspace->second->state();
+				workspace_state = workspace->second->state().load();
 			}
 
 			if (workspace_state == workspace::state::down)
@@ -3463,7 +3464,7 @@ public:
 			auto is_changed_new = false;
 			for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); ++workspace)
 			{
-				auto workspace_state = workspace->second->state();
+				auto workspace_state = workspace->second->state().load();
 
 				if (workspace_state == workspace::state::drain || workspace_state == workspace::state::down
 					|| workspace_state == workspace::state::init)
@@ -3475,7 +3476,7 @@ public:
 					for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();
 						 ++workgroup)
 					{
-						auto workgroup_state = workgroup->second->state();
+						auto workgroup_state = workgroup->second->state().load();
 
 						if (workgroup_state == workgroup::state::drain || workgroup_state == workgroup::state::down
 							|| workgroup_state == workgroup::state::init)
