@@ -2155,39 +2155,6 @@ public:
 
 		on_complete_(response_, ec);
 		upstream_connection_.release();
-
-		// if (response_.connection_close() == true)
-		//{
-		//	auto me_resolve = this->shared_from_this();
-
-		//	upstream_connection_.resolver_.async_resolve(
-		//		asio::ip::tcp::v4(),
-		//		upstream_connection_.host_,
-		//		upstream_connection_.port_,
-		//		[me_resolve](asio::error_code error, asio::ip::tcp::resolver::iterator it) {
-		//			if (error) return;
-
-		//			auto me_connect = me_resolve->shared_from_this();
-
-		//			asio::async_connect(
-		//				me_connect->upstream_connection_.socket(),
-		//				it,
-		//				[me_connect](asio::error_code error_code, asio::ip::tcp::resolver::iterator) {
-		//					if (error_code)
-		//					{
-		//						// TODO try next resolve result?
-		//						me_connect->upstream_connection_.error();
-		//						me_connect->upstream_connection_.owner().set_state(
-		//							http::async::upstreams::upstream::state::drain);
-		//						return;
-		//					}
-		//					else
-		//					{
-		//						error_code.clear();
-		//					}
-		//				});
-		//		});
-		//}
 	}
 
 private:

@@ -2596,14 +2596,17 @@ public:
 
 			if (worker_it->second.get_status() == worker::status::down)
 			{
+				auto base_url = worker_it->second.get_base_url();
+
 				logger.api(
 					"/{s}/{s}: delete {s} {s}\n",
 					workspace_id_,
 					name_,
 					worker_it->first,
-					worker_it->second.get_base_url());
+					base_url);
 
-				upstreams_.erase_upstream(worker_it->second.get_base_url());
+				upstreams_.down(base_url);
+				upstreams_.erase_upstream(base_url);
 #ifdef LOCAL_TESTING_WITH_NGINX_BACKEND
 				bse_utils::local_testing::_test_sockets.release(workspace_id_, worker_it->second.get_base_url());
 #endif
