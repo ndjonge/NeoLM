@@ -149,7 +149,7 @@ public:
 			--(owner_.connections_busy_);
 			if (state_ != state::drain || state_ != state::down)
 			{
-				state_ = state::idle;
+				state_.store(state::idle);
 			}
 			//owner_.set_state(upstream::state::up);
 		}
