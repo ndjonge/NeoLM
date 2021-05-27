@@ -373,6 +373,23 @@ public:
 			state_ = state::up;
 		}
 
+		~upstream()
+		{
+			std::lock_guard<std::mutex> g{ connection_mutex_ };
+
+			connections_.erase(
+				std::remove_if(
+					connections_.begin(),
+					connections_.end(),
+					[](const std::unique_ptr<connection<upstream>>& connection) {
+						return true;
+					}),
+				connections_.end());
+
+			connections_total_ = connections_.size();
+			assert(connections_total_ == 0);
+		}
+
 		void update_status_code_metrics(std::int32_t status)
 		{
 			assert(status >= 100);
