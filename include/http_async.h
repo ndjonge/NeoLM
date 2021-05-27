@@ -95,7 +95,8 @@ public:
 			waiting,
 			idle,
 			error,
-			drain
+			drain,
+			down
 		};
 
 		std::string to_string(state s)
@@ -108,6 +109,8 @@ public:
 					return "idle";
 				case state::drain:
 					return "drain";
+				case state::down:
+					return "down";
 				case state::error:
 					return "error";
 				default:
@@ -127,8 +130,7 @@ public:
 
 		~connection() 
 		{
-			int x = 0;
-			x++;
+			state_.store(state::down);
 		}
 
 		connection(const connection& s) = delete;
