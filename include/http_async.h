@@ -123,8 +123,13 @@ public:
 			, socket_(io_context)
 			, owner_(owner)
 		{
-			asio::error_code error_code;
 		};
+
+		~connection() 
+		{
+			int x = 0;
+			x++;
+		}
 
 		connection(const connection& s) = delete;
 		connection(connection&& s) = delete;
@@ -363,17 +368,6 @@ public:
 
 			state_ = state::up;
 		}
-
-		//~upstream()
-		//{
-		//	std::unique_lock<std::mutex> lock_guard{ connection_mutex_ };
-		//	state_ = state::down;
-
-		//	assert(connections_busy_ == 0);
-		//	assert(state_ == state::down);
-
-		//	connections_.clear();
-		//}
 
 		void update_status_code_metrics(std::int32_t status)
 		{
