@@ -2923,7 +2923,7 @@ private:
 	mutable mutex_type workers_mutex;
 	container_type workgroups_;
 
-	enum state state_;
+	std::atomic<enum state> state_;
 
 public:
 	const route_path_type& paths() const { return paths_; }
@@ -2934,7 +2934,7 @@ public:
 
 	mutex_type& workgroups_mutex() const { return workgroups_mutex_; }
 
-	state state() const { return state_; }
+	enum state state() const { return state_; }
 	void state(enum cloud::platform::workspace::state s) { state_ = s; }
 
 public:
