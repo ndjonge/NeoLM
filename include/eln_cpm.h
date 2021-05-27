@@ -1223,9 +1223,12 @@ static std::int64_t create_bse_process_as_user(
 		{
 			if (wait_for_completion)
 			{
-				std::int32_t exit_code = 1;
-				exit_code = waitpid(pid, &exit_code, 0);
-				result = WEXITSTATUS(exit_code);
+				std::int32_t exit_code = 0;
+				waitpid(pid, &exit_code, 0);
+				if (WIFEXITED(exit_code))
+                    result = WEXITSTATUS(exit_code);
+                else
+                    result = -1;
 			}
 			else
 			{
@@ -1238,7 +1241,6 @@ static std::int64_t create_bse_process_as_user(
 			{
 				free(env_var);
 			}
-			result = true;
 		}
 	}
 #endif
