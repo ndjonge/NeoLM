@@ -3460,40 +3460,38 @@ public:
 
 	void direct_workspaces(asio::io_context& io_context, const http::configuration& configuration, lgr::logger& logger)
 	{
+		std14::shared_lock<mutex_type> l1{ workspaces_mutex_ };
 		auto t0 = std::chrono::steady_clock::now();
 		bool needs_cleanup = false;
-
+	
+		auto is_changed_new = false;
+		for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); ++workspace)
 		{
-			std14::shared_lock<mutex_type> l1{ workspaces_mutex_ };
-			auto is_changed_new = false;
-			for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); ++workspace)
+			auto workspace_state = workspace->second->state().load();
+
+			if (workspace_state == workspace::state::drain || workspace_state == workspace::state::down
+				|| workspace_state == workspace::state::init)
+				needs_cleanup = true;
+
+			if (workspace->second->has_workgroups_available())
 			{
-				auto workspace_state = workspace->second->state().load();
-
-				if (workspace_state == workspace::state::drain || workspace_state == workspace::state::down
-					|| workspace_state == workspace::state::init)
-					needs_cleanup = true;
-
-				if (workspace->second->has_workgroups_available())
+				std14::shared_lock<mutex_type> l2{ workspace->second->workgroups_mutex() };
+				for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();
+						++workgroup)
 				{
-					std14::shared_lock<mutex_type> l2{ workspace->second->workgroups_mutex() };
-					for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();
-						 ++workgroup)
-					{
-						auto workgroup_state = workgroup->second->state().load();
+					auto workgroup_state = workgroup->second->state().load();
 
-						if (workgroup_state == workgroup::state::drain || workgroup_state == workgroup::state::down
-							|| workgroup_state == workgroup::state::init)
-							needs_cleanup = true;
+					if (workgroup_state == workgroup::state::drain || workgroup_state == workgroup::state::down
+						|| workgroup_state == workgroup::state::init)
+						needs_cleanup = true;
 
-						if (workgroup_state == workgroup::state::up || workgroup_state == workgroup::state::drain)
-							is_changed_new
-								|= workgroup->second->direct_workers(io_context, configuration, logger, is_changed_);
-					}
+					if (workgroup_state == workgroup::state::up || workgroup_state == workgroup::state::drain)
+						is_changed_new
+							|= workgroup->second->direct_workers(io_context, configuration, logger, is_changed_);
 				}
 			}
-			is_changed(is_changed_new);
 		}
+		is_changed(is_changed_new);
 
 		auto t1 = std::chrono::steady_clock::now();
 		auto elapsed = t1 - t0;
