@@ -377,15 +377,14 @@ public:
 		{
 			std::lock_guard<std::mutex> g{ connection_mutex_ };
 
-			connections_.erase(
-				std::remove_if(
-					connections_.begin(),
-					connections_.end(),
-					[](const std::unique_ptr<connection<upstream>>& connection) {
-						return true;
-					}),
-				connections_.end());
 
+			for (auto& connection : connections_)
+			{
+				connection->drain();
+				connection.release();
+			}
+
+			connections_.clear();
 			connections_total_ = connections_.size();
 			assert(connections_total_ == 0);
 		}
