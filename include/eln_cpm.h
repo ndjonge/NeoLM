@@ -2290,9 +2290,10 @@ public:
 			if (!success) // todo
 			{
 				logger.api(
-					"/{s}/{s}: create worker ({d}/{d}), failed with: {s} (limits)\n",
+					"/{s}/{s}: create {s} ({d}/{d}), failed with: {s} (limits)\n",
 					workspace_id_,
 					name_,
+					worker_id,
 					1 + n,
 					workers_required_to_add,
 					ec);
@@ -2300,13 +2301,13 @@ public:
 			else
 			{
 				logger.api(
-					"/{s}/{s}: create worker ({d}/{d}), processid: {d}, worker_id: {s} (limits)\n",
+					"/{s}/{s}: create {s} ({d}/{d}), processid: {d} (limits)\n",
 					workspace_id_,
 					name_,
+					worker_id,
 					1 + n,
 					workers_required_to_add,
-					static_cast<int>(process_id),
-					worker_id);
+					static_cast<int>(process_id));
 
 				workers_.emplace(
 					std::pair<const std::string, worker>(worker_id, worker{ worker_id, workers_label_required }));
@@ -2558,7 +2559,7 @@ public:
 			if (!success) // todo
 			{
 				logger.api(
-					"/{s}/{s}: create worker {s} ({d}/{d}), failed with: {s} (reload)\n",
+					"/{s}/{s}: create {s} ({d}/{d}), failed with: {s} (reload)\n",
 					workspace_id_,
 					name_,
 					worker_id,
@@ -2569,7 +2570,7 @@ public:
 			else
 			{
 				logger.api(
-					"/{s}/{s}: create worker {s} ({d}/{d}), processid: {d} (reload)\n",
+					"/{s}/{s}: create {s} ({d}/{d}), processid: {d} (reload)\n",
 					workspace_id_,
 					name_,
 					worker_id,
