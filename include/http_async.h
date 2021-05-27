@@ -140,7 +140,8 @@ public:
 		void release()
 		{
 			--(owner_.connections_busy_);
-			state_ = state::idle;
+			if (state_ != state::drain)
+				state_ = state::idle;
 			//owner_.set_state(upstream::state::up);
 		}
 
