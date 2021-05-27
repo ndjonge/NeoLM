@@ -28,12 +28,16 @@
 #else
 #include <unistd.h>
 #endif
-
 #else
 #define get_version_ex(PORT_SET, NULL) "1.0"
 #define BAAN_WINSTATION_NAME "baan"
 #define BAAN_DESKTOP_NAME "desktop"
 #define PORT_SET "9.4x"
+#endif
+
+#ifndef _WIN32
+#include <sys/types.h>
+#include <sys/wait.h>
 #endif
 
 #include "http_async.h"
@@ -1220,8 +1224,8 @@ static std::int64_t create_bse_process_as_user(
 			if (wait_for_completion)
 			{
 				std::int32_t exit_code = 1;
-				exit_code = wait(pid);
-				result = exit_code;
+				exit_code = waitpid(pid, &exit_code, 0);
+				result = WEXITSTATUS(exit_code);
 			}
 			else
 			{
