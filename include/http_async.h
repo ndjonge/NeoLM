@@ -141,7 +141,7 @@ public:
 		{
 			--(owner_.connections_busy_);
 			state_ = state::idle;
-			owner_.set_state(upstream::state::up);
+			//owner_.set_state(upstream::state::up);
 		}
 
 		void drain()
