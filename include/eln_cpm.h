@@ -18,6 +18,7 @@
 #ifndef LOCAL_TESTING
 #include "baanlogin.h"
 #include "bdaemon.h"
+#include "version.h"
 #include <curl/curl.h>
 
 #ifdef _WIN32
@@ -568,6 +569,7 @@ public:
 	{
 		json workspace_def{ { "workspace",
 							  { { "id", workspace_id },
+								{ "tenant_id", tenant_id },
 #ifdef _WIN32
 								{ "setup", "eln_cpm.exe -mkjail-setup good" },
 								{ "teardown", "eln_cpm.exe -mkjail-teardown fail" },
@@ -1190,6 +1192,8 @@ static std::int64_t create_bse_process_as_user(
 
 		ec = command;
 
+		signal(SIGCLD, SIG_IGN); // By default not interested in signals from child processes.
+
 		pid = fork();
 
 		if (pid == 0)
@@ -1213,6 +1217,8 @@ static std::int64_t create_bse_process_as_user(
 				}
 			}
 
+			signal(SIGCLD, SIG_DFL); // otherwise stuff won't work in the new process (e.g. aws cli, in particular aws
+									 // kms decrypt)
 			if (execve(argv[0], &argv[0], envp.data()) == -1)
 			{
 				printf("error on execve: %d\n", errno);
@@ -1226,16 +1232,14 @@ static std::int64_t create_bse_process_as_user(
 				std::int32_t exit_code = 0;
 				waitpid(pid, &exit_code, 0);
 				if (WIFEXITED(exit_code))
-                    result = WEXITSTATUS(exit_code);
-                else
-                    result = -1;
+					result = WEXITSTATUS(exit_code);
+				else
+					result = -1;
 			}
 			else
 			{
-				signal(SIGCHLD, SIG_IGN);
 				result = 0;
 			}
-
 
 			for (auto env_var : envp)
 			{
@@ -1256,6 +1260,8 @@ namespace cloud
 namespace platform
 {
 
+class tenant;
+class tenants;
 class workspace;
 class workgroup;
 class workspaces;
@@ -2598,12 +2604,7 @@ public:
 			{
 				auto base_url = worker_it->second.get_base_url();
 
-				logger.api(
-					"/{s}/{s}: delete {s} {s}\n",
-					workspace_id_,
-					name_,
-					worker_it->first,
-					base_url);
+				logger.api("/{s}/{s}: delete {s} {s}\n", workspace_id_, name_, worker_it->first, base_url);
 
 				upstreams_.down(base_url);
 				upstreams_.erase_upstream(base_url);
@@ -3032,7 +3033,8 @@ public:
 
 		for (auto& workgroup : workgroups_)
 		{
-			if (workgroup.second->state() == workgroup::state::up || workgroup.second->state() == workgroup::state::init) 
+			if (workgroup.second->state() == workgroup::state::up
+				|| workgroup.second->state() == workgroup::state::init)
 				workgroup.second->state(workgroup::state::drain);
 
 			result = true;
@@ -3121,16 +3123,37 @@ public:
 				{
 					if (workgroup.second->workgroups_limits().workers_max() > 0)
 					{
-						std::int16_t queue_retry_timeout
-							= workgroup.second->workgroups_limits().workers_queue_retry_timeout();
-						std::int16_t scale_out_factor = workgroup.second->workgroups_limits().worker_scale_out_factor();
+						bool queued_request_timed_out = false;
 
-						if (workgroup.second->workgroups_limits().workers_pending() == 0)
+						if (session.request().has_attribute("queued"))
 						{
-							workgroup.second->workgroups_limits().workers_required_upd(scale_out_factor);
+							auto queue_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+													std::chrono::steady_clock::now() - session.t0())
+													.count();
+
+							auto time_left = workgroup.second->workgroups_limits().workers_startup_latency_max() - queue_duration;
+
+							if (time_left < 0)
+							{
+								session.response().status(http::status::service_unavailable);
+								queued_request_timed_out = true;
+							}
 						}
 
-						session.request().set_attribute<std::int16_t>("queued", queue_retry_timeout);
+						if (queued_request_timed_out == false)
+						{
+							std::int16_t queue_retry_timeout
+								= workgroup.second->workgroups_limits().workers_queue_retry_timeout();
+							std::int16_t scale_out_factor = workgroup.second->workgroups_limits().worker_scale_out_factor();
+
+							if (workgroup.second->workgroups_limits().workers_pending() == 0)
+							{
+								workgroup.second->workgroups_limits().workers_required_upd(scale_out_factor);
+							}
+
+							session.request().set_attribute<std::int16_t>("queued", queue_retry_timeout);
+						}
+
 					}
 					else
 					{
@@ -3173,6 +3196,7 @@ public:
 		description_ = j.value("description", "");
 		setup_ = j.value("setup", "");
 		teardown_ = j.value("teardown", "");
+		tenant_id_ = j.value("tenant_id", "");
 
 		if (j.contains("routes"))
 		{
@@ -3221,6 +3245,140 @@ public:
 
 inline void to_json(json& j, const workspace& w) { w.to_json(j); }
 
+class tenant
+{
+public:
+	enum class state
+	{
+		up,
+		drain,
+		down
+	};
+
+	static std::string to_string(tenant::state state)
+	{
+		switch (state)
+		{
+			case state::up:
+				return "up";
+			case state::drain:
+				return "drain";
+			case state::down:
+				return "down";
+			default:
+				return "-";
+		}
+	}
+
+	tenant(const std::string& tenant_id, workspace& workspace) : tenant_id_(tenant_id), workspace_(workspace), state_(tenant::state::up) {}
+
+	void to_json(json& tenant, output_formating::options options = output_formating::options::complete) const
+	{
+		json workspace_json;
+		if (options == output_formating::options::complete)
+		{
+			workspace_.to_json(workspace_json);
+			tenant["workspace"] = workspace_json;
+		}
+		tenant["id"] = tenant_id_;
+		tenant["state"] = tenant::to_string(state_);
+	}
+
+	const std::atomic<tenant::state>& state() const { return state_; }
+	void state(enum tenant::state s) { state_.store(s); }
+	workspace& workspace() {return workspace_;}
+
+	const std::string& id() const {return tenant_id_;};
+private:
+	std::string tenant_id_;
+	cloud::platform::workspace& workspace_;
+	std::atomic<enum tenant::state> state_;
+};
+
+class tenants
+{
+public:
+	using value_type = std::unique_ptr<tenant>;
+	using container_type = std::map<std::string, value_type>;
+
+	using iterator = container_type::iterator;
+	using const_iterator = container_type::const_iterator;
+	using mutex_type = std14::shared_mutex;
+
+	template <class M> bool select(const std::string& tenant_id, const M method, std::string& error_message) const
+	{
+		std14::shared_lock<mutex_type> l{ tenants_mutex_ };
+		auto tenant = tenants_.find(tenant_id);
+
+		if (tenant != tenants_.end())
+		{
+			return method(tenant->second, error_message);
+		}
+		else
+		{
+			error_message = tenant_id + " does not exists in tenant collection";
+		}
+		return false;
+	}
+
+	template <class M> bool change(const std::string& tenant_id, const M method, std::string& error_message)
+	{
+		std14::shared_lock<mutex_type> l{ tenants_mutex_ };
+		auto tenant = tenants_.find(tenant_id);
+
+		if (tenant != tenants_.end())
+		{
+			auto result = method(*tenant->second, error_message);
+			return result;
+		}
+		else
+		{
+			error_message = tenant_id + " does not exist in workspace collection";
+		}
+		return false;
+	}
+
+
+	bool add_tenant(const std::string& tenant_id, workspace& workspace)
+	{
+		auto new_tenant = tenants_.insert(std::pair<std::string, std::unique_ptr<tenant>>{ tenant_id, new tenant{ tenant_id, workspace } });
+		return new_tenant.second;
+	}
+
+
+	bool erase_tenant(const std::string& tenant_id)
+	{
+
+		auto tenant = tenants_.find(tenant_id);
+		tenant->second->workspace().state(workspace::state::drain);
+
+		auto remove_result = tenants_.erase(tenant_id) == 1;
+
+		return remove_result;
+	}
+
+	void to_json(json& j, output_formating::options options = output_formating::options::complete) const
+	{
+		std14::shared_lock<mutex_type> l{ tenants_mutex_ };
+
+		j = json::array();
+
+		for (auto& tenant : tenants_)
+		{
+			auto tenant_json = json{};
+			tenant.second->to_json(tenant_json, options);
+
+			j.emplace_back(tenant_json);
+		}
+	}
+
+	void from_json(const json&) {}
+
+private:
+	container_type tenants_;
+	mutable mutex_type tenants_mutex_;
+};
+
 class workspaces
 {
 public:
@@ -3233,6 +3391,7 @@ public:
 
 private:
 	container_type workspaces_;
+	tenants& tenants_;
 
 	std::string port;
 	std::string base_path;
@@ -3242,6 +3401,8 @@ private:
 	mutable std14::shared_mutex workspaces_mutex_;
 
 public:
+	workspaces(tenants& tenants) : tenants_(tenants) {}
+
 	iterator end() { return workspaces_.end(); }
 	iterator begin() { return workspaces_.begin(); }
 	const_iterator cend() const { return workspaces_.cend(); }
@@ -3254,6 +3415,69 @@ public:
 	const mutex_type& workspaces_mutex() const { return workspaces_mutex_; }
 
 	iterator erase_workspace(iterator i) { return workspaces_.erase(i); }
+
+	static json create_workspace(const json& tenant_json)
+	{
+		auto tenant_id = tenant_json.value("id", "");
+		auto options = tenant_json.value("options", "");
+
+		auto workers_min = tenant_json.value("capacity_min", 0);
+		auto workers_max = tenant_json.value("capacity_max", workers_min + 2);
+		auto prefered_company = tenant_json.value("prefered-company", 90);
+
+#if defined(_WIN32)
+		auto worker_cmd = std::string{ "eln_cpm.exe" };
+#else
+		auto worker_cmd = std::string{ "eln_cpm.exe" };
+#endif
+		auto worker_bse = std::string{ "" };
+		auto worker_bse_bin = std::string{ "" };
+
+		json workgroup_def{
+			"workgroups",
+			{ { { "name", "generic" },
+				{ "type", "bshell" },
+
+				{ "parameters",
+				  { { "program", worker_cmd },
+					{ "cli_options", options },
+					{ "bse", worker_bse },
+					{ "bse_bin", worker_bse_bin } } },
+				{ "limits",
+				  { { "workers_min", workers_min },
+					{ "workers_max", workers_max },
+					{ "workers_runtime_max", 1 },
+					{ "workers_start_at_once_max", 4 } } } },
+			  { { "name", "specific-company-90" },
+				{ "type", "bshell" },
+
+				{ "parameters",
+				  { { "program", worker_cmd },
+					{ "cli_options", options },
+					{ "bse", worker_bse },
+					{ "bse_bin", worker_bse_bin } } },
+				{ "routes", { { "headers", { { "X-Infor-Company", { std::to_string(prefered_company) } } } } } },
+				{ "limits",
+				  { { "workers_min", workers_min },
+					{ "workers_max", workers_max },
+					{ "workers_runtime_max", 1 },
+					{ "workers_start_at_once_max", 4 } } } } }
+		};
+
+		json result{ { "workspace",
+					   { { "id", tenant_id },
+						 { "tenant_id", tenant_id },
+						 { "setup", "eln_cpm.exe -mkjail-setup good" },
+						 { "teardown", "eln_cpm.exe -mkjail-teardown good" },
+						 workgroup_def,
+						 { "routes",
+						   { { "paths", { "/api", "/internal" } },
+							 { "headers", { { "X-Infor-TenantId", { tenant_id } } } } } } } } };
+
+		//std::cout << result.dump(4, ' ') << "\n";
+
+		return result;
+	}
 
 	void cleanup_workspaces(lgr::logger& logger)
 	{
@@ -3279,7 +3503,7 @@ public:
 							= bse_utils::create_bse_process_as_user("", "", "tenant_id", "", "", setup, pid, ec, true);
 
 						logger.api(
-							"/{s}: setup workspace with: \"{s}\" finshed with exitcode: {d}\n",
+							"/{s}: setup workspace with: \"{s}\" finished with exit code: {d}\n",
 							workspace_ref.get_workspace_id(),
 							setup,
 							exit_code);
@@ -3288,7 +3512,6 @@ public:
 							workspace_ref.state(workspace::state::up);
 						else
 							workspace_ref.state(workspace::state::down);
-
 					} }.detach();
 				}
 				else
@@ -3298,7 +3521,8 @@ public:
 				}
 			}
 
-			if (workspace->second->has_workgroups_available() && (workspace_state == workspace::state::up || workspace_state == workspace::state::drain))
+			if (workspace->second->has_workgroups_available()
+				&& (workspace_state == workspace::state::up || workspace_state == workspace::state::drain))
 			{
 				std::unique_lock<mutex_type> l2{ workspace->second->workgroups_mutex() };
 				for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();)
@@ -3324,7 +3548,7 @@ public:
 									"", "", "tenant_id", "", "", setup, pid, ec, true);
 
 								logger.api(
-									"/{s}/{s}: setup workgroup with: \"{s}\" finshed with exitcode: {d}\n",
+									"/{s}/{s}: setup workgroup with: \"{s}\" finished with exit code: {d}\n",
 									workspace_ref.get_workspace_id(),
 									workgroup_ref.get_name(),
 									setup,
@@ -3376,7 +3600,7 @@ public:
 											"", "", "tenant_id", "", "", teardown, pid, ec, true);
 
 										logger.api(
-											"/{s}/{s}: teardown workgroup with: \"{s}\" finshed with exitcode: {d}\n",
+											"/{s}/{s}: teardown workgroup with: \"{s}\" finished with exit code: {d}\n",
 											workspace_ref.get_workspace_id(),
 											workgroup_ref.get_name(),
 											teardown,
@@ -3389,6 +3613,10 @@ public:
 											workgroup_ref.state(workgroup::state::down); // TODO...?
 										}
 									} }.detach();
+								}
+								else
+								{
+									workgroup->second->state(workgroup::state::down);
 								}
 							}
 							workgroup_state = workgroup->second->state().load();
@@ -3430,7 +3658,7 @@ public:
 								"", "", "tenant_id", "", "", teardown, pid, ec, true);
 
 							logger.api(
-								"/{s}: teardown workspace with: \"{s}\" finshed with exitcode: {d}\n",
+								"/{s}: teardown workspace with: \"{s}\" finished with exit code: {d}\n",
 								workspace_ref.get_workspace_id(),
 								teardown,
 								exit_code);
@@ -3443,6 +3671,10 @@ public:
 							}
 						} }.detach();
 					}
+					else
+					{
+						workspace->second->state(workspace::state::down);
+					}
 				}
 				workspace_state = workspace->second->state().load();
 			}
@@ -3450,6 +3682,7 @@ public:
 			if (workspace_state == workspace::state::down)
 			{
 				logger.api("/{s}: erase workspace\n", workspace->first);
+
 				workspace = erase_workspace(workspace);
 			}
 			else
@@ -3464,7 +3697,7 @@ public:
 		{
 			std14::shared_lock<mutex_type> l1{ workspaces_mutex_ };
 			auto t0 = std::chrono::steady_clock::now();
-	
+
 			auto is_changed_new = false;
 			for (auto workspace = workspaces_.begin(); workspace != workspaces_.end(); ++workspace)
 			{
@@ -3478,7 +3711,7 @@ public:
 				{
 					std14::shared_lock<mutex_type> l2{ workspace->second->workgroups_mutex() };
 					for (auto workgroup = workspace->second->begin(); workgroup != workspace->second->end();
-							++workgroup)
+						 ++workgroup)
 					{
 						auto workgroup_state = workgroup->second->state().load();
 
@@ -3500,7 +3733,6 @@ public:
 		}
 
 		if (needs_cleanup) cleanup_workspaces(logger);
-
 	}
 
 public:
@@ -3513,6 +3745,12 @@ public:
 		if (i == workspaces_.end())
 		{
 			auto new_workspace = workspaces_.insert(container_type::value_type{ id, new workspace{ id, j } });
+			auto tenant_id = j.value("tenant_id", "");
+
+			if (tenant_id.empty() == false)
+			{
+				tenants_.add_tenant(tenant_id, *new_workspace.first->second.get());
+			}
 
 			result = new_workspace.second; // add_workspace returns true when an inserted happend.
 		}
@@ -3794,9 +4032,6 @@ public:
 	}
 };
 
-inline void to_json(json& j, const workspaces& ws) { ws.to_json(j); }
-inline void from_json(const json& j, workspaces& ws) { ws.from_json(j); }
-
 template <typename S> class manager : public S
 {
 protected:
@@ -3804,13 +4039,14 @@ protected:
 
 private:
 	workspaces workspaces_;
-	std::thread director_thread_;
+	tenants tenants_;
 
+	std::thread director_thread_;
 	std::string configuration_file_;
 
 public:
 	manager(http::configuration& http_configuration, const std::string& configuration_file)
-		: http::async::server(http_configuration), configuration_file_(configuration_file)
+		: http::async::server(http_configuration), workspaces_(tenants_), configuration_file_(configuration_file)
 	{
 		std::ifstream configuration_stream{ configuration_file_ };
 
@@ -3990,6 +4226,59 @@ public:
 			session.response().assign(http::status::ok, result_json.dump(), "application/json");
 		});
 
+		server_base::router_.on_get("/internal/platform/manager/tenants", [this](http::session_handler& session) {
+			json tenants_json{};
+			tenants_.to_json(tenants_json);
+
+			json result_json = json::object();
+			result_json["tenants"] = tenants_json;
+
+			session.response().assign(http::status::ok, result_json.dump(), "application/json");
+		});
+
+		server_base::router_.on_post("/internal/platform/manager/tenants", [this](http::session_handler& session) {
+			auto error_message = std::string{};
+			auto http_response = http::status::bad_request;
+			bool result = false;
+			
+			try
+			{
+				json tenant_json = json::parse(session.request().body());
+
+				auto tenant_id = tenant_json.value("id", "");
+				auto workspace_id = tenant_id;
+
+				json workspace = workspaces::create_workspace(tenant_json);
+
+				if (workspaces_.add_workspace(workspace_id, workspace["workspace"]) == true)
+				{
+					result = true;
+					http_response = http::status::created;
+				}
+				else
+				{
+					error_message = tenant_id + " already exists in tenant and/or workspace collection.";
+					http_response = http::status::conflict;
+				}
+			}
+			catch (const json::exception& ex)
+			{
+				error_message = ex.what();
+			}
+
+			if (result == false)
+			{
+				session.response().assign(
+					http_response,
+					error_json(http_response, error_message).dump(),
+					"application/json");
+			}
+			else
+			{
+				session.response().assign(http_response);
+			}
+		});
+
 		server_base::router_.on_get(
 			"/internal/platform/manager/workspaces/{workspace_id}", [this](http::session_handler& session) {
 				auto& workspace_id = session.params().get("workspace_id");
@@ -4014,35 +4303,71 @@ public:
 				}
 			});
 
+		server_base::router_.on_delete(
+			"/internal/platform/manager/tenants/{tenant_id}", [this](http::session_handler& session) {
+				auto error_message = std::string{};
+
+				auto& tenant_id = session.params().get("tenant_id");
+
+				auto result = tenants_.change(
+					tenant_id,
+					[&session,this](tenant& tenant, std::string&) {
+						
+						if (tenant.state().load() != tenant::state::down)
+							tenant.state(tenant::state::drain);
+							
+						tenants_.erase_tenant(tenant.id());
+
+						session.response().assign(http::status::accepted);
+						return true;
+					},
+					error_message);
+
+				if (result == false)
+				{
+					session.response().assign(
+						http::status::not_found,
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
+						"application/json");
+				}
+			});
+
+
 		server_base::router_.on_post("/internal/platform/manager/workspaces", [this](http::session_handler& session) {
-			// Json body: { "id" : <str:workspace_id>, ... }
+			auto error_message = std::string{};
+			auto http_response = http::status::bad_request;
+			bool result = false;
 
 			try
 			{
 				json workspace_json = json::parse(session.request().body());
 
-				auto& workspace_id = workspace_json.at("id");
+				auto workspace_id = std::string{workspace_json.at("id")};
 
 				if (workspaces_.add_workspace(workspace_id, workspace_json) == true)
 				{
-					session.response().assign(http::status::created);
+					result = true;
+					http_response = http::status::created;
 				}
 				else
 				{
-					session.response().assign(http::status::conflict);
+					http_response = http::status::conflict;
+					error_message = workspace_id + " already exists in workspace collection.";
 				}
 			}
 			catch (const json::exception& ex)
 			{
-				session.response().assign(http::status::bad_request);
-				server_base::logger_.error(
-					"error when handling on_post for /private/infra/workspaces: {s}\n", ex.what());
+				error_message = ex.what();
+			}
 
+			if (result == false)
+			{
 				session.response().assign(
-					http::status::bad_request,
-					error_json(http::status::to_int(session.response().status()), ex.what()),
+					http_response,
+					error_json(http_response, error_message).dump(),
 					"application/json");
 			}
+
 		});
 
 		server_base::router_.on_delete(
@@ -4818,13 +5143,14 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 		argc,
 		argv,
 		{ { "config",
-			{ prog_args::arg_t::arg_val, " <config>: filename for the workspace config file or url", "config.json" } },
+			{ prog_args::arg_t::arg_val, "<config>: filename for the workspace config file or url", "config.json" } },
 		  { "options", { prog_args::arg_t::arg_val, "<options>: see doc.", "" } },
 		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } },
 		  { "httpserver", { prog_args::arg_t::flag, "internal" } },
 		  { "httpserver_options", { prog_args::arg_t::arg_val, "<options>: see doc.", "" } },
-		  { "mkjail-setup", { prog_args::arg_t::arg_val, "-" } },
-		  { "mkjail-teardown", { prog_args::arg_t::arg_val, "-" } },
+		  { "test-exec", { prog_args::arg_t::arg_val, "" } },
+		  { "mkjail-setup", { prog_args::arg_t::arg_val, "" } },
+		  { "mkjail-teardown", { prog_args::arg_t::arg_val, "" } },
 		  { "selftests", { prog_args::arg_t::flag, "" } },
 		  { "selftests_options", { prog_args::arg_t::arg_val, "" } },
 		  { "selftests_worker", { prog_args::arg_t::flag, "false" } } });
@@ -4835,7 +5161,18 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 		exit(-2);
 	}
 
-	if (cmd_args.get_val("mkjail-setup") != "")
+	if (cmd_args.get_val("test-exec") != "")
+	{
+		std::uint32_t pid = 0;
+		std::string ec;
+
+		auto exit_code = bse_utils::create_bse_process_as_user(
+			"", "", "tenant_id", "", "", cmd_args.get_val("test-exec"), pid, ec, true);
+
+		std::cout << "exit_code: " << exit_code;
+		exit(static_cast<int>(exit_code));
+	}
+	else if (cmd_args.get_val("mkjail-setup") != "")
 	{
 		std::this_thread::sleep_for(std::chrono::seconds(5));
 		if (cmd_args.get_val("mkjail-setup") != "fail")

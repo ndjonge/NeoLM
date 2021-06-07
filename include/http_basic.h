@@ -2262,6 +2262,9 @@ public:
 		return vec;
 	}
 
+	bool has_attribute(const std::string& attribute_name) const { return attributes_.has(std::string{attribute_name}); }
+	bool has_attribute(const char* attribute_name) const { return attributes_.has(attribute_name); }
+
 	void reset_attribute(const std::string& attribute_name) { attributes_.reset(attribute_name); };
 
 	std::string target() const { return header<specialization>::target_; }

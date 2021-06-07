@@ -1,10 +1,10 @@
-//
-//
-// something to handle program args in a (not so) fancy C++ way.
-//
-//
+#pragma once
 #include <functional>
 #include <iostream>
+
+#ifdef LOCAL_TESTING
+inline void print_version(int x){std::cout << "version: v:" << x << "\n"; };
+#endif
 
 namespace prog_args
 {
@@ -88,13 +88,11 @@ public:
 				usage(argv[0]);
 				exit(0);
 			}
-#ifdef INFOR
 			else if (a->second.type == arg_t::version)
 			{
 				prversion(argv[0]);
 				return false;
 			}
-#endif
 			else
 			{
 				return false;
@@ -134,15 +132,11 @@ public:
 		for (auto a : cmd_opts)
 		{
 			std::cerr << "  -" << a.first << "\r\t\t\t" << a.second.usage;
-	/*		if (a.second.type != arg_t::usage)
-			{
-				std::cerr << " (default: '" << a.second.def_val << "' )";
-			}*/
 			std::cerr << std::endl;
 		}
 
 		exit(0);
 	}
-	//void prversion(const std::string& progname) { ::print_version(1); }
+	void prversion(const std::string&) { ::print_version(1); exit(0);}
 };
 } // namespace prog_args
