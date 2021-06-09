@@ -4227,8 +4227,18 @@ public:
 		});
 
 		server_base::router_.on_get("/internal/platform/manager/tenants", [this](http::session_handler& session) {
+			auto include_workspaces = session.request().query().get<bool>("show_workspaces", false);
+
+			auto output_options = output_formating::options::essential;
+
+			if (include_workspaces)
+				output_options = output_formating::options::complete;				
+
+			auto error_message = std::string{};
+
 			json tenants_json{};
-			tenants_.to_json(tenants_json);
+
+			tenants_.to_json(tenants_json, output_options);
 
 			json result_json = json::object();
 			result_json["tenants"] = tenants_json;
