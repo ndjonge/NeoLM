@@ -4235,7 +4235,6 @@ public:
 				output_options = output_formating::options::complete;				
 
 			auto error_message = std::string{};
-
 			json tenants_json{};
 
 			tenants_.to_json(tenants_json, output_options);
