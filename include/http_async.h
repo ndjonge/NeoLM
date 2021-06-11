@@ -1354,14 +1354,13 @@ public:
 				}
 			}
 
-			if (session_handler_.response().connection_keep_alive())
+			if (server_.is_active() && session_handler_.response().connection_keep_alive())
 			{
 				session_handler_.reset();
 				static_cast<connection_handler_derived*>(this)->start();
 			}
 			else
 			{
-				// socket().shutdown(asio::ip::tcp::socket::shutdown_both);
 			}
 		}
 	};
@@ -1665,6 +1664,18 @@ public:
 		request_rate_timer_.cancel();
 		if (is_active() || is_activating()) this->stop();
 
+		auto has_http = http::server::configuration_.get<bool>("http_enabled", false);
+		auto has_https = http::server::configuration_.get<bool>("http_enabled", false);
+
+		auto http_port_file = http::server::configuration_.get<std::string>("http_port_file", "");
+		auto https_port_file = http::server::configuration_.get<std::string>("https_port_file", "");
+
+		if (has_http && http_port_file.empty() == false)
+			std::remove(http_port_file.data());
+
+		if (has_https && https_port_file.empty() == false)
+			std::remove(https_port_file.data());
+
 		logger_.debug("server deleted\n");
 	}
 
@@ -1738,6 +1749,10 @@ public:
 
 		configuration_.set("http_this_server_local_url", "http://localhost:" + std::to_string(http_listen_port_probe));
 
+		std::ofstream http_port_file{ configuration_.get("http_port_file"), std::ios::binary };
+		http_port_file << http_listen_port_probe;
+		http_port_file.close();
+
 		logger_.info("http listener on port: {d} started\n", http_listen_port_probe);
 		http_listen_port_.store(http_listen_port_probe);
 
@@ -1789,6 +1804,10 @@ public:
 				"https_this_server_local_url",
 				"https://localhost:" + configuration_.get<std::string>("https_listen_port"));
 
+			std::ofstream https_port_file{ configuration_.get("https_port_file"), std::ios::binary };
+			https_port_file << https_listen_port_probe;
+			https_port_file.close();
+
 			logger_.info("https listener on port: {d} started\n", https_listen_port_probe);
 			http_listen_port_.store(https_listen_port_probe);
 		}
@@ -1826,43 +1845,56 @@ public:
 private:
 	void handle_new_connection(const shared_connection_handler_http& handler, const asio::error_code error)
 	{
-		auto new_handler = std::make_shared<server::connection_handler_http>(
-			io_context_pool_.get_io_context(), *this, configuration_);
-
-		http_acceptor_.async_accept(new_handler->socket(), [this, new_handler](const asio::error_code error) {
-			this->handle_new_connection(new_handler, error);
-		});
-
-		if (error)
+		if (is_active())
 		{
-			return;
+			auto new_handler = std::make_shared<server::connection_handler_http>(
+				io_context_pool_.get_io_context(), *this, configuration_);
+
+			http_acceptor_.async_accept(new_handler->socket(), [this, new_handler](const asio::error_code error) {
+				this->handle_new_connection(new_handler, error);
+			});
+
+			if (error)
+			{
+				return;
+			}
+
+			++manager().connections_accepted();
+			++manager().connections_current();
+
+			handler->start();
 		}
-
-		++manager().connections_accepted();
-		++manager().connections_current();
-
-		handler->start();
+		else
+		{
+		}
 	}
 
 	void handle_new_https_connection(const shared_https_connection_handler_https& handler, const asio::error_code error)
 	{
-		auto new_handler = std::make_shared<server::connection_handler_https>(
-			io_context_pool_.get_io_context(), *this, configuration_, https_ssl_context_);
-
-		https_acceptor_.async_accept(
-			new_handler->socket().lowest_layer(), [this, new_handler](const asio::error_code error) {
-				this->handle_new_https_connection(new_handler, error);
-			});
-
-		if (error)
+		if (is_active())
 		{
-			return;
+			auto new_handler = std::make_shared<server::connection_handler_https>(
+				io_context_pool_.get_io_context(), *this, configuration_, https_ssl_context_);
+
+			https_acceptor_.async_accept(
+				new_handler->socket().lowest_layer(), [this, new_handler](const asio::error_code error) {
+					this->handle_new_https_connection(new_handler, error);
+				});
+
+			if (error)
+			{
+				return;
+			}
+
+			++manager().connections_accepted();
+			++manager().connections_current();
+
+			handler->start();
 		}
-
-		++manager().connections_accepted();
-		++manager().connections_current();
-
-		handler->start();
+		else
+		{
+			stop();
+		}
 	}
 
 	std::uint8_t thread_count_;

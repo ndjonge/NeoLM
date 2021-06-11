@@ -62,7 +62,7 @@ public:
 		: server_base(http_configuration), cloud::platform::enable_server_as_worker<nlohmann::json>(this)
 	{
 		server_base::router_.on_get(
-			http::server::configuration_.get<std::string>("health_check", "/private/health_check"),
+			http::server::configuration_.get<std::string>("health_check", "/internal/platform/health_check"),
 			[this](http::session_handler& session) {
 				session.response().assign(http::status::ok, "OK");
 				server_base::manager().update_health_check_metrics();
@@ -272,20 +272,20 @@ inline bool start_cld_wrk_server(std::string config_options, bool run_as_daemon)
 
 inline bool start_cld_wrk_server(int argc, const char** argv)
 {
-	prog_args::arguments cmd_args(
+	cli::arguments arguments(
 		argc,
 		argv,
-		{ { "httpserver_options", { prog_args::arg_t::arg_val, "see doc.", "" } },
-		  { "httpserver", { prog_args::arg_t::flag, "http_server" } },
-		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } } });
+		{ { "httpserver_options", { cli::type::value, "see doc.", "" } },
+		  { "httpserver", { cli::type::flag, "http_server" } },
+		  { "daemonize", { cli::type::flag, "run daemonized" } } });
 
-	if (cmd_args.process_args() == false)
+	if (arguments.process_args() == false)
 	{
 		std::cout << "error in arguments \n";
 		exit(1);
 	}
 
-	return start_cld_wrk_server(cmd_args.get_val("httpserver_options"), cmd_args.get_val("daemonize") == "true");
+	return start_cld_wrk_server(arguments.get_val("httpserver_options"), arguments.get_val("daemonize") == "true");
 }
 
 inline void run_cld_wrk_server()
@@ -2924,6 +2924,7 @@ private:
 	std::string description_{};
 	std::string setup_{};
 	std::string teardown_{};
+	std::string gateway_url_{};
 
 	route_methods_type methods_;
 	route_path_type paths_;
@@ -2963,13 +2964,22 @@ public:
 	const std::string& teardown() const { return teardown_; }
 	const std::string& setup() const { return setup_; }
 
+	const std::string& gateway_url() const { return gateway_url_; }
+
 public:
 	void to_json(json& workspace, output_formating::options options = output_formating::options::complete) const
 	{
 		workspace["id"] = workspace_id_;
 		workspace["description"] = description_;
-		workspace["setup"] = setup_;
-		workspace["teardown"] = teardown_;
+
+		if (setup_.empty() == false)
+			workspace["setup"] = setup_;
+
+		if (setup_.empty() == false)
+			workspace["teardown"] = teardown_;
+
+		if (gateway_url_.empty() == false)
+			workspace["gateway_url"] = gateway_url_;
 
 		if (options == output_formating::options::complete) workspace["state"] = to_string(state_);
 
@@ -3198,6 +3208,8 @@ public:
 		teardown_ = j.value("teardown", "");
 		tenant_id_ = j.value("tenant_id", "");
 
+		gateway_url_ = j.value("gateway_url", "");
+
 		if (j.contains("routes"))
 		{
 			if (j["routes"].contains("headers"))
@@ -3285,7 +3297,11 @@ public:
 	}
 
 	const std::atomic<tenant::state>& state() const { return state_; }
-	void state(enum tenant::state s) { state_.store(s); }
+	void state(enum tenant::state s) 
+	{
+		state_.store(s); 
+	}
+
 	workspace& workspace() {return workspace_;}
 
 	const std::string& id() const {return tenant_id_;};
@@ -3420,9 +3436,14 @@ public:
 	{
 		auto tenant_id = tenant_json.value("id", "");
 		auto options = tenant_json.value("options", "");
+		auto gateway_url = std::string{};
+
+		if (tenant_json.contains("gateway_url"))
+			gateway_url = tenant_json.value("gateway_url", "");
 
 		auto workers_min = tenant_json.value("capacity_min", 0);
 		auto workers_max = tenant_json.value("capacity_max", workers_min + 2);
+
 		auto prefered_company = tenant_json.value("prefered-company", 90);
 
 #if defined(_WIN32)
@@ -3467,6 +3488,7 @@ public:
 		json result{ { "workspace",
 					   { { "id", tenant_id },
 						 { "tenant_id", tenant_id },
+						 { "gateway_url", gateway_url},
 						 { "setup", "eln_cpm.exe -mkjail-setup good" },
 						 { "teardown", "eln_cpm.exe -mkjail-teardown good" },
 						 workgroup_def,
@@ -3512,6 +3534,33 @@ public:
 							workspace_ref.state(workspace::state::up);
 						else
 							workspace_ref.state(workspace::state::down);
+
+						auto gateway_url = workspace_ref.gateway_url();
+
+						if (gateway_url.empty() == false)
+						{
+							std::string error;
+							json registrion_json = json::object();
+
+							auto response = http::client::request<http::method::post>(
+								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces", error, {}, registrion_json.dump());
+
+							if ((error.empty() == false) && (response.status() == http::status::created))
+							{
+								logger.api(
+									"/{s}: added to gateway on: {s}\n",
+									workspace_ref.get_workspace_id(),
+									gateway_url);
+							}
+							else
+							{
+								logger.api(
+									"/{s}: failed to add workspace to gateway on: {s}\n",
+									workspace_ref.get_workspace_id(),
+									gateway_url);
+							}
+						}
+
 					} }.detach();
 				}
 				else
@@ -3669,6 +3718,40 @@ public:
 							{
 								workspace_ref.state(workspace::state::down); // TODO...?
 							}
+	
+							auto gateway_url = workspace_ref.gateway_url();
+
+							if (gateway_url.empty() == false)
+							{
+								logger.api(
+									"/{s}: added to gateway on: {s}\n",
+									workspace_ref.get_workspace_id(),
+									gateway_url);
+
+								std::string error;
+								json registrion_json = json::object();
+
+								auto response = http::client::request<http::method::delete_>(
+									workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/"+workspace_ref.get_workspace_id(), error, {}, registrion_json.dump());
+
+								if ((error.empty() == false) && (response.status() == http::status::accepted || response.status() == http::status::ok))
+								{
+									logger.api(
+										"/{s}: removed from gateway on: {s}\n",
+										workspace_ref.get_workspace_id(),
+										gateway_url);
+								}
+								else
+								{
+									logger.api(
+										"/{s}: failed to remove workspace from gateway on: {s}\n",
+										workspace_ref.get_workspace_id(),
+										gateway_url);
+								}
+							}
+
+
+
 						} }.detach();
 					}
 					else
@@ -5006,7 +5089,10 @@ public:
 		});
 	}
 
-	virtual ~manager() {}
+	virtual ~manager() 
+	{
+
+	}
 
 	http::server::state start() override
 	{
@@ -5116,6 +5202,10 @@ inline bool start_eln_cpm_server(
 											  { "access_log_file", "access_log.txt" },
 											  { "extended_log_level", "api" },
 											  { "extended_log_file", "console" },
+											  { "pub_sub_registration_url", ""},
+											  { "http_port_file", server_version + ".http_port"},
+											  { "https_port_file", server_version +  ".https_port"},
+											  { "https_port_file", ""},
 											  { "https_enabled", "false" },
 											  { "http_enabled", "true" },
 											  { "http_use_portsharding", "false" } },
@@ -5148,43 +5238,43 @@ inline bool start_eln_cpm_server(
 
 inline bool start_eln_cpm_server(int argc, const char** argv)
 {
-	prog_args::arguments cmd_args(
+	cli::arguments arguments(
 		argc,
 		argv,
 		{ { "config",
-			{ prog_args::arg_t::arg_val, "<config>: filename for the workspace config file or url", "config.json" } },
-		  { "options", { prog_args::arg_t::arg_val, "<options>: see doc.", "" } },
-		  { "daemonize", { prog_args::arg_t::flag, "run daemonized" } },
-		  { "httpserver", { prog_args::arg_t::flag, "internal" } },
-		  { "httpserver_options", { prog_args::arg_t::arg_val, "<options>: see doc.", "" } },
-		  { "test-exec", { prog_args::arg_t::arg_val, "" } },
-		  { "mkjail-setup", { prog_args::arg_t::arg_val, "" } },
-		  { "mkjail-teardown", { prog_args::arg_t::arg_val, "" } },
-		  { "selftests", { prog_args::arg_t::flag, "" } },
-		  { "selftests_options", { prog_args::arg_t::arg_val, "" } },
-		  { "selftests_worker", { prog_args::arg_t::flag, "false" } } });
+			{ cli::type::value, "<config>: filename for the workspace config file or url", "config.json" } },
+		  { "options", { cli::type::value, "<options>: see doc.", "" } },
+		  { "daemonize", { cli::type::flag, "run daemonized" } },
+		  { "httpserver", { cli::type::hidden_flag, "internal" } },
+		  { "httpserver_options", { cli::type::hidden_value, "<options>: see doc.", "" } },
+		  { "test-exec", { cli::type::hidden_value, "" } },
+		  { "mkjail-setup", { cli::type::hidden_value, "" } },
+		  { "mkjail-teardown", { cli::type::hidden_value, "" } },
+		  { "selftests", { cli::type::hidden_flag, "" } },
+		  { "selftests_options", { cli::type::hidden_value, "" } },
+		  { "selftests_worker", { cli::type::hidden_flag, "false" } } });
 
-	if (cmd_args.process_args() == false)
+	if (arguments.process_args() == false)
 	{
 		std::cout << "error in arguments \n";
 		exit(-2);
 	}
 
-	if (cmd_args.get_val("test-exec") != "")
+	if (arguments.get_val("test-exec") != "")
 	{
 		std::uint32_t pid = 0;
 		std::string ec;
 
 		auto exit_code = bse_utils::create_bse_process_as_user(
-			"", "", "tenant_id", "", "", cmd_args.get_val("test-exec"), pid, ec, true);
+			"", "", "tenant_id", "", "", arguments.get_val("test-exec"), pid, ec, true);
 
 		std::cout << "exit_code: " << exit_code;
 		exit(static_cast<int>(exit_code));
 	}
-	else if (cmd_args.get_val("mkjail-setup") != "")
+	else if (arguments.get_val("mkjail-setup") != "")
 	{
 		std::this_thread::sleep_for(std::chrono::seconds(5));
-		if (cmd_args.get_val("mkjail-setup") != "fail")
+		if (arguments.get_val("mkjail-setup") != "fail")
 		{
 			exit(0);
 		}
@@ -5193,10 +5283,10 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 			exit(-3);
 		}
 	}
-	else if (cmd_args.get_val("mkjail-teardown") != "")
+	else if (arguments.get_val("mkjail-teardown") != "")
 	{
 		std::this_thread::sleep_for(std::chrono::seconds(5));
-		if (cmd_args.get_val("mkjail-teardown") != "fail")
+		if (arguments.get_val("mkjail-teardown") != "fail")
 		{
 			exit(0);
 		}
@@ -5206,16 +5296,16 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 		}
 	}
 
-	if (cmd_args.get_val("selftests_worker") == "")
+	if (arguments.get_val("selftests_worker") == "")
 		return start_eln_cpm_server(
-			cmd_args.get_val("config"),
-			cmd_args.get_val("options"),
-			cmd_args.get_val("daemonize") == "true",
-			cmd_args.get_val("selftests") == "true",
-			cmd_args.get_val("selftests_options"));
+			arguments.get_val("config"),
+			arguments.get_val("options"),
+			arguments.get_val("daemonize") == "true",
+			arguments.get_val("selftests") == "true",
+			arguments.get_val("selftests_options"));
 	else
 	{
-		tests::start_cld_wrk_server(cmd_args.get_val("httpserver_options"), cmd_args.get_val("daemonize") == "true");
+		tests::start_cld_wrk_server(arguments.get_val("httpserver_options"), arguments.get_val("daemonize") == "true");
 
 		tests::run_cld_wrk_server();
 		tests::stop_cld_wrk_server();
