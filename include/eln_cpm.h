@@ -5089,10 +5089,10 @@ public:
 		});
 	}
 
-	virtual ~manager() 
-	{
-
-	}
+	//virtual ~manager() 
+	//{
+	//	server_base()::~
+	//}
 
 	http::server::state start() override
 	{
@@ -5231,9 +5231,27 @@ inline bool start_eln_cpm_server(
 		// "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
 
 		result = test_cpm.run();
+
+		//exit(result == true);
 	}
 
 	return result;
+}
+
+inline void run_eln_cpm_server()
+{
+	while (cloud::platform::eln_cpm_server_->is_active())
+	{
+		std::this_thread::sleep_for(std::chrono::seconds(1));
+	}
+}
+
+inline int stop_eln_cpm_server()
+{
+	cloud::platform::eln_cpm_server_->stop();
+	cloud::platform::eln_cpm_server_.release();
+
+	return 0;
 }
 
 inline bool start_eln_cpm_server(int argc, const char** argv)
@@ -5297,12 +5315,28 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 	}
 
 	if (arguments.get_val("selftests_worker") == "")
-		return start_eln_cpm_server(
+	{
+		auto result = start_eln_cpm_server(
 			arguments.get_val("config"),
 			arguments.get_val("options"),
 			arguments.get_val("daemonize") == "true",
 			arguments.get_val("selftests") == "true",
 			arguments.get_val("selftests_options"));
+
+		if (arguments.get_val("selftests") == "true") 
+		{
+			stop_eln_cpm_server();
+
+			if (result) 
+				exit(0);
+			else
+				exit(-1);
+
+		}
+
+		return result;
+
+	}
 	else
 	{
 		tests::start_cld_wrk_server(arguments.get_val("httpserver_options"), arguments.get_val("daemonize") == "true");
@@ -5314,18 +5348,3 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 	}
 }
 
-inline void run_eln_cpm_server()
-{
-	while (cloud::platform::eln_cpm_server_->is_active())
-	{
-		std::this_thread::sleep_for(std::chrono::seconds(1));
-	}
-}
-
-inline int stop_eln_cpm_server()
-{
-	cloud::platform::eln_cpm_server_->stop();
-	cloud::platform::eln_cpm_server_.release();
-
-	return 0;
-}
