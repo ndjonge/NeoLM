@@ -9,22 +9,21 @@ inline void print_version(int x){std::cout << "version: v:" << x << "\n"; };
 namespace cli
 {
 
-enum class type
-{
-	flag,
-	hidden_flag,
-	value,
-	hidden_value,
-	usage,
-	version,
-	illegal 
-};
-
-class argopt
+class argument
 {
 public:
 
-using fun_type = std::function<void(const std::string& value)>;
+	using fun_type = std::function<void(const std::string& value)>;
+	enum class type
+	{
+		flag,
+		hidden_flag,
+		value,
+		hidden_value,
+		usage,
+		version,
+		illegal 
+	};
 
 	type type_;
 	std::string usage_;
@@ -32,9 +31,9 @@ using fun_type = std::function<void(const std::string& value)>;
 	std::string def_val_;
 	fun_type fun_;
 
-	argopt() : type_(type::illegal), usage_("illegal argument"){};
+	argument() : type_(argument::type::illegal), usage_("illegal argument"){};
 
-	argopt(type type, const std::string& usage = "", const std::string& def = "", fun_type f = fun_type())
+	argument(type type, const std::string& usage = "", const std::string& def = "", fun_type f = fun_type())
 		: type_(type)
 		, usage_(usage)
 		, value_(def)
@@ -42,7 +41,7 @@ using fun_type = std::function<void(const std::string& value)>;
 		, fun_(f){};
 };
 
-using arg_list = std::map<std::string, argopt>;
+using arg_list = std::map<std::string, argument>;
 
 class arguments
 {
@@ -59,8 +58,8 @@ public:
 		{
 			cmd_opts[i.first] = i.second;
 		}
-		argopt usage(type::usage, "show Usage");
-		argopt version(type::version, "show program version");
+		argument usage(argument::type::usage, "show Usage");
+		argument version(argument::type::version, "show program version");
 		cmd_opts["?"] = usage;
 		cmd_opts["V"] = version;
 	}
@@ -76,30 +75,30 @@ public:
 				usage(argv[0]);
 				return (false);
 			}
-			else if ((a->second.type_ == type::value) && (i < argc) && (argv[i + 1][0] != '-'))
+			else if ((a->second.type_ == argument::type::value) && (i < argc) && (argv[i + 1][0] != '-'))
 			{
 				a->second.value_ = std::string(argv[i + 1]);
 				++i;
 			}
-			else if (a->second.type_ == type::flag)
+			else if (a->second.type_ == argument::type::flag)
 			{
 				a->second.value_ = "true";
 			}
-			else if ((a->second.type_ == type::hidden_value) && (i < argc) && (argv[i + 1][0] != '-'))
+			else if ((a->second.type_ == argument::type::hidden_value) && (i < argc) && (argv[i + 1][0] != '-'))
 			{
 				a->second.value_ = std::string(argv[i + 1]);
 				++i;
 			}
-			else if (a->second.type_ == type::hidden_flag)
+			else if (a->second.type_ == argument::type::hidden_flag)
 			{
 				a->second.value_ = "true";
 			}
-			else if (a->second.type_ == type::usage)
+			else if (a->second.type_ == argument::type::usage)
 			{
 				usage(argv[0]);
 				exit(0);
 			}
-			else if (a->second.type_ == type::version)
+			else if (a->second.type_ == argument::type::version)
 			{
 				prversion(argv[0]);
 				return false;
@@ -142,7 +141,7 @@ public:
 		std::cerr << "Usage: " << progname << std::endl;
 		for (auto a : cmd_opts)
 		{
-			if ((a.second.type_ != type::hidden_flag) && (a.second.type_ != type::hidden_value))
+			if ((a.second.type_ != argument::type::hidden_flag) && (a.second.type_ != argument::type::hidden_value))
 			{
 				std::cerr << "  -" << a.first << "\r\t\t\t" << a.second.usage_;
 				std::cerr << std::endl;

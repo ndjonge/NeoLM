@@ -275,9 +275,9 @@ inline bool start_cld_wrk_server(int argc, const char** argv)
 	cli::arguments arguments(
 		argc,
 		argv,
-		{ { "httpserver_options", { cli::type::value, "see doc.", "" } },
-		  { "httpserver", { cli::type::flag, "http_server" } },
-		  { "daemonize", { cli::type::flag, "run daemonized" } } });
+		{ { "httpserver_options", { cli::argument::type::value, "see doc.", "" } },
+		  { "httpserver", { cli::argument::type::flag, "http_server" } },
+		  { "daemonize", { cli::argument::type::flag, "run daemonized" } } });
 
 	if (arguments.process_args() == false)
 	{
@@ -5242,17 +5242,17 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 		argc,
 		argv,
 		{ { "config",
-			{ cli::type::value, "<config>: filename for the workspace config file or url", "config.json" } },
-		  { "options", { cli::type::value, "<options>: see doc.", "" } },
-		  { "daemonize", { cli::type::flag, "run daemonized" } },
-		  { "httpserver", { cli::type::hidden_flag, "internal" } },
-		  { "httpserver_options", { cli::type::hidden_value, "<options>: see doc.", "" } },
-		  { "test-exec", { cli::type::hidden_value, "" } },
-		  { "mkjail-setup", { cli::type::hidden_value, "" } },
-		  { "mkjail-teardown", { cli::type::hidden_value, "" } },
-		  { "selftests", { cli::type::hidden_flag, "" } },
-		  { "selftests_options", { cli::type::hidden_value, "" } },
-		  { "selftests_worker", { cli::type::hidden_flag, "false" } } });
+			{ cli::argument::type::value, "<config>: filename for the workspace config file or url", "config.json" } },
+		  { "options", { cli::argument::type::value, "<options>: see doc.", "" } },
+		  { "daemonize", { cli::argument::type::flag, "run daemonized" } },
+		  { "httpserver", { cli::argument::type::hidden_flag, "internal" } },
+		  { "httpserver_options", { cli::argument::type::hidden_value, "<options>: see doc.", "" } },
+		  { "test-exec", { cli::argument::type::hidden_value, "" } },
+		  { "mkjail-setup", { cli::argument::type::hidden_value, "" } },
+		  { "mkjail-teardown", { cli::argument::type::hidden_value, "" } },
+		  { "selftests", { cli::argument::type::hidden_flag, "" } },
+		  { "selftests_options", { cli::argument::type::hidden_value, "" } },
+		  { "selftests_worker", { cli::argument::type::hidden_flag, "false" } } });
 
 	if (arguments.process_args() == false)
 	{
