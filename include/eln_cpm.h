@@ -2161,6 +2161,7 @@ public:
 		: workgroup(workspace_id, worker_type_json["type"])
 	{
 		from_json(worker_type_json, "");
+		state_ = workgroup::state::up;
 	}
 
 	virtual bool direct_workers(asio::io_context&, const http::configuration&, lgr::logger& logger, bool) override
@@ -3501,7 +3502,7 @@ public:
 		return result;
 	}
 
-	void cleanup_workspaces(lgr::logger& logger)
+	void change_workspaces(lgr::logger& logger, const http::configuration& configuration)
 	{
 		std::unique_lock<mutex_type> l1{ workspaces_mutex_ };
 
@@ -3517,7 +3518,7 @@ public:
 					logger.api("/{s}: setup workspace running \"{s}\"\n", workspace->first, setup);
 
 					auto& workspace_ref = *(workspace->second.get());
-					std::thread{ [&workspace_ref, setup, &logger]() {
+					std::thread{ [&workspace_ref, setup, &logger, &configuration]() {
 						std::uint32_t pid = 0;
 						std::string ec;
 
@@ -3540,12 +3541,33 @@ public:
 						if (gateway_url.empty() == false)
 						{
 							std::string error;
-							json registrion_json = json::object();
+
+							json workspace_def{ { "workspace",
+												  { { "id", "upstreams_"+workspace_ref.get_tenant_id() },
+													{ "routes",
+													  { { "headers", { { "X-Infor-TenantId", { workspace_ref.get_tenant_id() } } } } } } } } };
+
+							json workgroup_def{ { "name", "upstream_"+ workspace_ref.get_tenant_id() }, { "type", "upstream" }} ;
+
+							json worker_def{ 
+												{ "type", "upstream" },
+												{ "worker_label", "" },
+												{ "worker_id", "worker_id_1" },
+												{ "base_url", configuration.get<std::string>("this_server_url", "") }};
+
+							//std::cout << workspace_def["workspace"].dump(4, ' ') << "\n";
 
 							auto response = http::client::request<http::method::post>(
-								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces", error, {}, registrion_json.dump());
+								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces", error, {}, workspace_def["workspace"].dump());
 
-							if ((error.empty() == false) && (response.status() == http::status::created))
+							response = http::client::request<http::method::post>(
+								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/upstreams_"+workspace_ref.get_workspace_id()+ "/workgroups", error, {}, workgroup_def.dump());
+
+							response = http::client::request<http::method::post>(
+								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/upstreams_"+workspace_ref.get_workspace_id()+ "/workgroups/"+ "upstream_"+workspace_ref.get_tenant_id()+"/workers", error, {}, worker_def.dump());
+
+
+							if ((error.empty() == true) && (response.status() == http::status::created))
 							{
 								logger.api(
 									"/{s}: added to gateway on: {s}\n",
@@ -3776,7 +3798,7 @@ public:
 
 	void direct_workspaces(asio::io_context& io_context, const http::configuration& configuration, lgr::logger& logger)
 	{
-		bool needs_cleanup = false;
+		bool needs_changes = false;
 		{
 			std14::shared_lock<mutex_type> l1{ workspaces_mutex_ };
 			auto t0 = std::chrono::steady_clock::now();
@@ -3788,7 +3810,7 @@ public:
 
 				if (workspace_state == workspace::state::drain || workspace_state == workspace::state::down
 					|| workspace_state == workspace::state::init)
-					needs_cleanup = true;
+					needs_changes = true;
 
 				if (workspace->second->has_workgroups_available())
 				{
@@ -3800,7 +3822,7 @@ public:
 
 						if (workgroup_state == workgroup::state::drain || workgroup_state == workgroup::state::down
 							|| workgroup_state == workgroup::state::init)
-							needs_cleanup = true;
+							needs_changes = true;
 
 						if (workgroup_state == workgroup::state::up || workgroup_state == workgroup::state::drain)
 							is_changed_new
@@ -3815,7 +3837,7 @@ public:
 			logger.info("{u} workspaces took {d}msec\n", workspaces_.size(), elapsed.count() / 1000000);
 		}
 
-		if (needs_cleanup) cleanup_workspaces(logger);
+		if (needs_changes) change_workspaces(logger, configuration);
 	}
 
 public:
@@ -4459,6 +4481,10 @@ public:
 					error_json(http_response, error_message).dump(),
 					"application/json");
 			}
+			else
+			{
+				session.response().assign(http_response);
+			}
 
 		});
 
@@ -4755,7 +4781,7 @@ public:
 							workgroup.workgroups_limits().workers_pending_upd(-1);
 
 						if (result)
-							session.response().assign(http::status::no_content);
+							session.response().assign(http::status::created);
 						else
 							session.response().assign(http::status::conflict);
 
@@ -5291,7 +5317,7 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 	}
 	else if (arguments.get_val("mkjail-setup") != "")
 	{
-		std::this_thread::sleep_for(std::chrono::seconds(1));
+		std::this_thread::sleep_for(std::chrono::seconds(5));
 		if (arguments.get_val("mkjail-setup") != "fail")
 		{
 			exit(0);
@@ -5328,7 +5354,7 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 			stop_eln_cpm_server();
 
 			if (result) 
-exit(0);
+				exit(0);
 			else
 				exit(-1);
 
