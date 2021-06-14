@@ -5291,7 +5291,7 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 	}
 	else if (arguments.get_val("mkjail-setup") != "")
 	{
-		std::this_thread::sleep_for(std::chrono::seconds(5));
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 		if (arguments.get_val("mkjail-setup") != "fail")
 		{
 			exit(0);
@@ -5328,7 +5328,7 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 			stop_eln_cpm_server();
 
 			if (result) 
-				exit(0);
+exit(0);
 			else
 				exit(-1);
 
