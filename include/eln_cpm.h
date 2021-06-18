@@ -41,6 +41,12 @@
 #include <sys/wait.h>
 #endif
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#pragma GCC diagnostic ignored "-Wlogical-op"
+#endif
+
 #include "http_async.h"
 #include "http_basic.h"
 #include "http_network.h"
@@ -294,6 +300,7 @@ inline void run_cld_wrk_server()
 	{
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
+
 }
 
 inline int stop_cld_wrk_server()
@@ -308,10 +315,10 @@ class test
 protected:
 	std::string base_url_;
 	tests::configuration configuration_;
-
+	http::server& server_;
 public:
-	test(const std::string& base_url, const tests::configuration& configuration)
-		: base_url_(base_url), configuration_(configuration)
+	test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
+		: base_url_(base_url), configuration_(configuration), server_(server)
 	{
 	}
 
@@ -321,8 +328,8 @@ public:
 class cpm_test_as_lb : public test
 {
 public:
-	cpm_test_as_lb(const std::string& base_url, const tests::configuration& configuration)
-		: test(base_url, configuration)
+	cpm_test_as_lb(const std::string& base_url, const tests::configuration& configuration, http::server& server)
+		: test(base_url, configuration, server)
 	{
 	}
 
@@ -563,7 +570,7 @@ class cpm_test : public test
 {
 private:
 public:
-	cpm_test(const std::string& base_url, const tests::configuration& configuration) : test(base_url, configuration) {}
+	cpm_test(const std::string& base_url, const tests::configuration& configuration, http::server& server) : test(base_url, configuration, server) {}
 
 	bool add_workspace(std::string workspace_id, std::string tenant_id)
 	{
@@ -802,7 +809,12 @@ public:
 
 			if (n + 1 == run_count && clean_up == false) break;
 
-			std::this_thread::sleep_for(std::chrono::seconds(stay_alive_time));
+			for (int t = 0; t != stay_alive_time; t++)
+			{
+				std::this_thread::sleep_for(std::chrono::seconds(1));
+				if (server_.is_active() == false)
+					return false;
+			}
 
 			for (int j = 0; j < workspace_count; j++)
 				for (int i = 0; i < workgroup_count; i++)
@@ -1532,7 +1544,7 @@ public:
 		{
 			limits_.workers_actual_upd(1);
 			auto& upstream = upstreams_.add_upstream(
-				io_context, base_url, "/" + name_ + "/" + type_ + "/" + worker_id + "_" + worker_label);
+				io_context, base_url, "/" + name_ + "/" + worker_id + "_" + worker_label);
 
 			new_worker.first->second.upstream(upstream);
 			new_worker.first->second.set_status(worker::status::up);
@@ -2176,10 +2188,10 @@ public:
 			{
 				http::headers watchdog_headers{ { "Host", "localhost" } };
 
-				http::client::async_request<http::method::post>(
+				http::client::async_request<http::method::get>(
 					upstreams_,
 					worker_it->second.get_base_url(),
-					"/internal/platform/worker/watchdog",
+					"/internal/platform/manager/healthcheck",
 					watchdog_headers,
 					std::string{},
 					[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
@@ -2216,7 +2228,7 @@ public:
 		return true;
 	}
 
-	void from_json(const json&, const std::string&) override { std::unique_lock<mutex_type> g(workers_mutex_); }
+	void from_json(const json& j, const std::string&) override { std::unique_lock<mutex_type> g(workers_mutex_); workgroup::from_json(j);}
 
 	void from_json(const json& j) override { workgroup::from_json(j); }
 
@@ -3303,7 +3315,7 @@ public:
 		state_.store(s); 
 	}
 
-	workspace& workspace() {return workspace_;}
+	cloud::platform::workspace& workspace() {return workspace_;}
 
 	const std::string& id() const {return tenant_id_;};
 private:
@@ -3329,7 +3341,7 @@ public:
 
 		if (tenant != tenants_.end())
 		{
-			return method(tenant->second, error_message);
+			return method(*tenant->second, error_message);
 		}
 		else
 		{
@@ -3553,7 +3565,7 @@ public:
 												{ "type", "upstream" },
 												{ "worker_label", "" },
 												{ "worker_id", "worker_id_1" },
-												{ "base_url", configuration.get<std::string>("this_server_url", "") }};
+												{ "base_url", configuration.get<std::string>("http_this_server_base_url", "http://localhost:4000") }};
 
 							//std::cout << workspace_def["workspace"].dump(4, ' ') << "\n";
 
@@ -4256,6 +4268,15 @@ public:
 			session.response().status(http::status::ok);
 		});
 
+
+		server_base::router_.on_delete("/internal/platform/manager/process", [this](http::session_handler& session) {
+			session.response().status(http::status::no_content);
+			session.response().body() = std::string("");
+			session.response().set("Connection", "close");
+
+			server_base::deactivate();
+		});
+
 		server_base::router_.on_get(
 			"/internal/platform/manager/status/{section}", [this](http::session_handler& session) {
 				const auto& format = session.request().get<std::string>("Accept", "application/json");
@@ -4332,11 +4353,11 @@ public:
 		});
 
 		server_base::router_.on_get("/internal/platform/manager/tenants", [this](http::session_handler& session) {
-			auto include_workspaces = session.request().query().get<bool>("show_workspaces", false);
+			auto include_workspace = session.request().query().get<bool>("include_workspace", false);
 
 			auto output_options = output_formating::options::essential;
 
-			if (include_workspaces)
+			if (include_workspace)
 				output_options = output_formating::options::complete;				
 
 			auto error_message = std::string{};
@@ -4348,6 +4369,35 @@ public:
 			result_json["tenants"] = tenants_json;
 
 			session.response().assign(http::status::ok, result_json.dump(), "application/json");
+		});
+
+		server_base::router_.on_get("/internal/platform/manager/tenants/{tenant_id}", [this](http::session_handler& session) {
+			auto include_workspace = session.request().query().get<bool>("include_workspace", false);
+			auto& tenant_id = session.params().get("tenant_id");
+			auto error_message = std::string{};
+			auto output_options = output_formating::options::essential;
+
+			if (include_workspace)
+				output_options = output_formating::options::complete;				
+
+			auto result = tenants_.select(
+				tenant_id,
+				[&session, output_options](const tenant& tenant, std::string&) {
+					json result_json;
+					tenant.to_json(result_json["tenant"], output_options);
+
+					session.response().assign(http::status::ok, result_json.dump(), "application/json");
+					return true;
+				},
+				error_message);
+
+			if (result == false)
+			{
+				session.response().assign(
+					http::status::not_found,
+					error_json(http::status::to_int(session.response().status()), error_message).dump(),
+					"application/json");
+			}
 		});
 
 		server_base::router_.on_post("/internal/platform/manager/tenants", [this](http::session_handler& session) {
@@ -5115,10 +5165,10 @@ public:
 		});
 	}
 
-	//virtual ~manager() 
-	//{
-	//	server_base()::~
-	//}
+	virtual ~manager() 
+	{
+		director_thread_.join();
+	}
 
 	http::server::state start() override
 	{
@@ -5126,6 +5176,47 @@ public:
 		{
 			auto ret = server_base::start();
 			director_thread_ = std::thread{ [this]() { director_handler(); } };
+
+			auto pub_sub_endpoint = server_base::configuration_.template get<std::string>("pub_sub_endpoint", "");
+			auto pub_sub_farm = server_base::configuration_.template get<std::string>("pub_sub_farm", "");
+
+			if (pub_sub_endpoint.empty() == false)
+			{
+				auto http_this_server_base_url = server_base::configuration_.template get<std::string>("http_this_server_base_url", "http://localhost:4000");
+				auto http_this_server_base_host = server_base::configuration_.template get<std::string>("http_this_server_base_host", "localhost:4000");
+
+				json subscription_json{ 
+					{"request", "subscribe"},
+					{"farmname", pub_sub_farm},
+					{ "topics", {{
+						{ "channel", "eln-landscape"},
+						{ "subscriberid", "eln-cpm@"+ http_this_server_base_host},
+						{ "details", {{"recipienturi", http_this_server_base_url + "/internal/platform/manager/tenants"}}},  
+						{ "topic", "Created:Tenant"}
+					},{
+						{ "channel", "eln-landscape"},
+						{ "subscriberid", "eln-cpm@"+ http_this_server_base_host},
+						{ "details", {{"recipienturi", http_this_server_base_url + "/internal/platform/manager/tenants"}}},  
+						{ "topic", "Modified:Tenant"}
+					},{
+						{ "channel", "eln-landscape"},
+						{ "subscriberid", "eln-cpm@"+ http_this_server_base_host},
+						{ "details", {{"recipienturi", http_this_server_base_url + "/internal/platform/manager/tenants"}}},  
+						{ "topic", "Deleted:Tenant"}
+					}}
+				}};
+	
+				std::string error_code;
+				auto response = http::client::request<http::method::post>(pub_sub_endpoint, error_code, {}, subscription_json.dump());
+				bool failed = true; 
+
+				if (error_code.empty() || (response.status() > 200 && response.status() < 300 ))
+				{
+					failed = false;
+				}
+
+				server_base::logger().api("subscribing to: {s} in farm: {s} ended with: {s} with json-body:\n{s}.\n", pub_sub_endpoint, pub_sub_farm, failed ? "error" : "succes", subscription_json.dump(2, ' '));	
+			}
 
 			return ret;
 		}
@@ -5251,7 +5342,7 @@ inline bool start_eln_cpm_server(
 	{
 		tests::cpm_test test_cpm{ http_configuration.get<std::string>(
 									  "http_this_server_local_url", "http://localhost:4000"),
-								  tests::configuration({}, std::string{ selftest_options }) };
+								  tests::configuration({}, std::string{ selftest_options }), *(cloud::platform::eln_cpm_server_) };
 
 		// tests::cpm_test_as_lb test_cpm_lb{http_configuration.get<std::string>("http_this_server_local_url",
 		// "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
@@ -5275,7 +5366,7 @@ inline void run_eln_cpm_server()
 inline int stop_eln_cpm_server()
 {
 	cloud::platform::eln_cpm_server_->stop();
-	cloud::platform::eln_cpm_server_.release();
+	cloud::platform::eln_cpm_server_.reset(nullptr);
 
 	return 0;
 }
@@ -5317,7 +5408,7 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 	}
 	else if (arguments.get_val("mkjail-setup") != "")
 	{
-		std::this_thread::sleep_for(std::chrono::seconds(5));
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 		if (arguments.get_val("mkjail-setup") != "fail")
 		{
 			exit(0);
@@ -5329,7 +5420,7 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 	}
 	else if (arguments.get_val("mkjail-teardown") != "")
 	{
-		std::this_thread::sleep_for(std::chrono::seconds(5));
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 		if (arguments.get_val("mkjail-teardown") != "fail")
 		{
 			exit(0);
@@ -5352,12 +5443,14 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 		if (arguments.get_val("selftests") == "true") 
 		{
 			stop_eln_cpm_server();
-
-			if (result) 
+			if (result)
+			{
 				exit(0);
+			}
 			else
+			{
 				exit(-1);
-
+			}
 		}
 
 		return result;
@@ -5374,3 +5467,6 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 	}
 }
 
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif

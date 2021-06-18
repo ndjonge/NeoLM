@@ -46,6 +46,11 @@ using json = nlohmann::json;
 #define gmtime_r(X, Y) gmtime_s(Y, X)
 #endif
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#endif
+
 #include "http_network.h"
 
 #if __cplusplus > 1201402L
@@ -1661,6 +1666,15 @@ public:
 		return i != std::end(fields_);
 	}
 
+         inline bool has(const std::string&  name) const
+         {
+                 auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+                         return (compare_field_name()(f.name, name));
+                 });
+
+                 return i != std::end(fields_);
+         }
+
 	inline void set(const std::string& name, const T& value)
 	{
 		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
@@ -2262,7 +2276,7 @@ public:
 		return vec;
 	}
 
-	bool has_attribute(const std::string& attribute_name) const { return attributes_.has(std::string{attribute_name}); }
+	bool has_attribute(const std::string& attribute_name) const { return attributes_.has(attribute_name); }
 	bool has_attribute(const char* attribute_name) const { return attributes_.has(attribute_name); }
 
 	void reset_attribute(const std::string& attribute_name) { attributes_.reset(attribute_name); };
@@ -6651,3 +6665,8 @@ request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bo
 #endif
 
 } // namespace http
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop 
+#endif
+

@@ -283,6 +283,7 @@ public:
 			upstream_json["responses"]["5xx"] = upstream->responses_5xx_.load();
 			upstream_json["responses"]["tot"] = upstream->responses_tot_.load();
 			upstream_json["responses"]["health"] = upstream->responses_health_.load();
+			upstream_json["responses"]["response_time"] = upstream->response_time_.load();
 
 			if (options == options::include_connections)
 			{
@@ -321,9 +322,10 @@ public:
 			   << ", 3xx: " << std::to_string(upstream->responses_3xx_)
 			   << ", 4xx: " << std::to_string(upstream->responses_4xx_)
 			   << ", 5xx: " << std::to_string(upstream->responses_5xx_)
-			   << ", tot: " << std::to_string(upstream->responses_tot_) << ", rps: " << std::to_string(upstream->rate_)
-
-			   << ", health: " << std::to_string(upstream->responses_health_) << "\n";
+			   << ", tot: " << std::to_string(upstream->responses_tot_) 
+			   << ", rps: " << std::to_string(upstream->rate_)
+			   << ", health: " << std::to_string(upstream->responses_health_)
+			   << ", response_time: " << std::to_string(upstream->response_time_) << "\n";
 
 			if (options == options::include_connections)
 			{
@@ -403,12 +405,13 @@ public:
 			responses_tot_++;
 		}
 
-		void update_health_check_metrics()
+		void update_health_check_metrics(std::int64_t response_time)
 		{
 			responses_health_++;
 			auto responses_diff = responses_tot_ - responses_prev_;
 
 			rate_.store(static_cast<std::uint16_t>(responses_diff / 2));
+			response_time_.store(static_cast<std::uint16_t>(response_time));
 
 			responses_prev_.store(responses_tot_);		
 		}
@@ -428,6 +431,8 @@ public:
 		std::atomic<std::uint16_t> responses_prev_{ 0 };
 		std::atomic<std::uint16_t> responses_health_{ 0 };
 		std::atomic<std::uint16_t> rate_{ 0 };
+		std::atomic<std::uint16_t> response_time_{ 0 };
+
 
 		std::string host() const
 		{
@@ -1749,7 +1754,7 @@ public:
 
 		configuration_.set("http_this_server_local_url", "http://localhost:" + std::to_string(http_listen_port_probe));
 
-		std::ofstream http_port_file{ configuration_.get("http_port_file"), std::ios::binary };
+		std::ofstream http_port_file{ configuration_.get("http_port_file") };
 		http_port_file << http_listen_port_probe;
 		http_port_file.close();
 
@@ -1804,7 +1809,7 @@ public:
 				"https_this_server_local_url",
 				"https://localhost:" + configuration_.get<std::string>("https_listen_port"));
 
-			std::ofstream https_port_file{ configuration_.get("https_port_file"), std::ios::binary };
+			std::ofstream https_port_file{ configuration_.get("https_port_file") };
 			https_port_file << https_listen_port_probe;
 			https_port_file.close();
 
@@ -1893,7 +1898,6 @@ private:
 		}
 		else
 		{
-			stop();
 		}
 	}
 
@@ -1945,8 +1949,13 @@ private:
 			for (std::uint8_t i = 0; i < thread_count_; ++i)
 			{
 				io_contexts_[i]->stop();
+			}
+
+			for (std::uint8_t i = 0; i < thread_count_; ++i)
+			{
 				thread_pool_[i].join();
 			}
+
 		}
 
 	private:
@@ -2045,6 +2054,7 @@ public:
 							}
 							else
 							{
+								me_1->t0_ = std::chrono::steady_clock::now();
 								me_1->write_request(error);
 							}
 						});
@@ -2054,6 +2064,7 @@ public:
 		{
 			// no need to reconnect, connection still open (due to keepalive)
 			error_code.clear();
+			t0_ = std::chrono::steady_clock::now();
 			write_request(error_code);
 		}
 	}
@@ -2198,7 +2209,11 @@ public:
 			return;
 		}
 
-		upstream_connection_.owner().update_health_check_metrics();
+		auto response_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+						std::chrono::steady_clock::now() - t0_)
+						.count();
+
+		upstream_connection_.owner().update_health_check_metrics(response_time);
 
 		on_complete_(response_, ec);
 		upstream_connection_.release();
@@ -2208,6 +2223,7 @@ private:
 	http::response_message response_;
 	http::async::upstreams::connection_type& upstream_connection_;
 	std::deque<std::string> write_buffer_;
+	std::chrono::steady_clock::time_point t0_;
 
 	std::function<void(http::response_message& response, asio::error_code& error_code)> on_complete_;
 };
