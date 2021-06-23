@@ -5095,6 +5095,7 @@ public:
 				{
 					if (!endpoint->second->middlewares())
 						endpoint->second->middlewares().reset(new routing::middlewares{});
+
 					endpoint->second->middlewares()->emplace_back(middleware_pair);
 				}
 			}
