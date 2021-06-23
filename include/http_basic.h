@@ -4080,6 +4080,15 @@ public:
 		middleware() = default;
 		middleware(const middleware&) = default;
 
+		middleware& operator=(const middleware& m)
+		{
+			middleware_attribute_ = m.middleware_attribute_;
+			middleware_type = m.middleware_type;
+			middleware_lambda_ = m.middleware_lambda_;
+
+			return *this;
+		}
+
 		middleware(std::string middleware_type, std::string middleware_attribute, middleware_lambda middleware_lambda_)
 			: middleware_type(std::move(middleware_type))
 			, middleware_lambda_(std::move(middleware_lambda_))
@@ -4093,11 +4102,29 @@ public:
 
 	private:
 		std::string middleware_type;
-		const middleware_lambda middleware_lambda_;
+		middleware_lambda middleware_lambda_;
 		std::string middleware_attribute_;
 	};
 
-	using middlewares = std::vector<std::pair<middleware, middleware>>;
+	class middleware_pair
+	{
+	public:
+		middleware_pair(const middleware& m1, const middleware& m2) : first(m1), second(m2) {}
+
+
+		middleware_pair& operator=(const middleware_pair& m1)
+		{
+			first = m1.first;
+			second = m1.second;
+
+			return *this;
+		}
+
+		middleware first;
+		middleware second;
+	};
+
+	using middlewares = std::vector<middleware_pair>;
 
 	class route
 	{
@@ -4958,8 +4985,8 @@ public:
 	{
 		W empty;
 
-		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>(
-			{ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty });
+		auto middleware_pair = routing::middleware_pair{
+			{ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty }};
 
 		on_middleware(service, name, path, middleware_pair);
 	}
@@ -5080,11 +5107,29 @@ public:
 		}
 	}
 
+	void erase_middleware(const route_part* it, const routing::middleware_pair& middleware_pair)
+	{
+		for (auto& link : it->link_)
+		{
+			if (link.second->middlewares_)
+				for (auto i = link.second->middlewares_->begin(); i != link.second->middlewares_->end();)
+				{
+					if (i->first.middleware_attribute() == middleware_pair.first.middleware_attribute())
+						i = link.second->middlewares_->erase(i);
+					else
+						i++;
+				}
+
+			if (link.second)
+				erase_middleware(link.second.get(), middleware_pair);
+		}
+	}
+
 	void on_middleware(
 		const std::string& service,
 		const std::string& name,
 		const T& route,
-		const std::pair<routing::middleware, routing::middleware>& middleware_pair)
+		const routing::middleware_pair& middleware_pair)
 	{
 		auto it = root_.get();
 
@@ -5093,7 +5138,6 @@ public:
 		for (const auto& part : parts)
 		{
 			// auto& l = it->link_[part];
-
 			auto l = std::find_if(
 				it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
 					return (l.first == part);
@@ -5112,6 +5156,7 @@ public:
 
 		if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
 
+		erase_middleware(it, middleware_pair);
 		it->middlewares_->emplace_back(middleware_pair);
 	}
 

@@ -67,6 +67,8 @@ public:
 	worker(http::configuration& http_configuration)
 		: server_base(http_configuration), cloud::platform::enable_server_as_worker<nlohmann::json>(this)
 	{
+
+
 		server_base::router_.on_get(
 			http::server::configuration_.get<std::string>("health_check", "/internal/platform/health_check"),
 			[this](http::session_handler& session) {
@@ -3448,68 +3450,112 @@ public:
 	static json create_workspace(const json& tenant_json)
 	{
 		auto tenant_id = tenant_json.value("id", "");
-		auto options = tenant_json.value("options", "");
+		auto tenant_type = tenant_json.value("tenant_type", "generic-jailed-v1");
+
+		auto program = tenant_json.value("program", "");
+		auto http_options = tenant_json.value("http_options", "");
+		auto cli_options = tenant_json.value("cli_options", "");
+		auto workspace_setup = tenant_json.value("workspace_setup", "");
+		auto workspace_teardown = tenant_json.value("workspace_teardown", "");
+
+		auto worker_bse = std::string{};
+		auto worker_bse_bin = std::string{};
+
+		if (tenant_type == "generic-jailed-v1")
+		{
+			if (workspace_setup.empty())
+				workspace_setup = "/usr/bin/sudo /usr/bin/bash /opt/eln/cp/local_storage/mgt/scripts/mkjail.sh --debug --tenant "+tenant_id+" --build --start";
+
+			if (workspace_teardown.empty())
+				workspace_teardown = "/usr/bin/sudo /usr/bin/bash /opt/eln/cp/local_storage/mgt/scripts/mkjail.sh --debug --tenant "+tenant_id+" --stop --rm";
+
+			if (http_options.empty())
+				http_options = "bshell_worker_process_pool_size:8,http_watchdog_idle_timeout:60,http_watchdog_max_connections:10,access_log_level:access_log";
+
+			if (cli_options.empty())
+				cli_options = "";
+
+			if (program.empty())
+				program = "/usr/bin/sudo /usr/bin/bash /opt/eln/cp/local_storage/mgt/scripts/mkjail.sh --debug --tenant "+ tenant_id +" --start-bshell-strace --";
+		}
+		else if (tenant_type == "generic-selftest-v1")
+		{
+			if (workspace_setup.empty())
+				workspace_setup = "eln_cpm.exe -mkjail-setup good";
+
+			if (workspace_teardown.empty())
+				workspace_teardown = "eln_cpm.exe -mkjail-teardown good";
+
+			if (http_options.empty())
+				http_options = "";
+
+			if (cli_options.empty())
+				cli_options = "-selftests_worker";
+
+			if (program.empty())
+			{
+#ifdef WIN32_
+				program = "eln_cpm.exe";
+#else
+				program = "eln_cpm";
+#endif
+			}
+		}
+
+		auto workers_min = tenant_json.value("capacity_min", 4);
+		auto workers_max = tenant_json.value("capacity_max", workers_min);
+
 		auto gateway_url = std::string{};
 
 		if (tenant_json.contains("gateway_url"))
 			gateway_url = tenant_json.value("gateway_url", "");
 
-		auto workers_min = tenant_json.value("capacity_min", 0);
-		auto workers_max = tenant_json.value("capacity_max", workers_min + 2);
 
-		auto prefered_company = tenant_json.value("prefered-company", 90);
-
-#if defined(_WIN32)
-		auto worker_cmd = std::string{ "eln_cpm.exe" };
-#else
-		auto worker_cmd = std::string{ "eln_cpm.exe" };
-#endif
-		auto worker_bse = std::string{ "" };
-		auto worker_bse_bin = std::string{ "" };
+		//auto prefered_company = tenant_json.value("prefered-company", 90);
 
 		json workgroup_def{
 			"workgroups",
 			{ { { "name", "generic" },
 				{ "type", "bshell" },
-
 				{ "parameters",
-				  { { "program", worker_cmd },
-					{ "cli_options", options },
+				  { { "program", program },
+					{ "cli_options", cli_options },
+					{ "http_options", http_options },
 					{ "bse", worker_bse },
 					{ "bse_bin", worker_bse_bin } } },
 				{ "limits",
 				  { { "workers_min", workers_min },
 					{ "workers_max", workers_max },
 					{ "workers_runtime_max", 1 },
-					{ "workers_start_at_once_max", 4 } } } },
-			  { { "name", "specific-company-90" },
-				{ "type", "bshell" },
+					{ "workers_start_at_once_max", 4 } } } }
+			 //	,
+			 // { { "name", "specific-company-90" },
+				//{ "type", "bshell" },
 
-				{ "parameters",
-				  { { "program", worker_cmd },
-					{ "cli_options", options },
-					{ "bse", worker_bse },
-					{ "bse_bin", worker_bse_bin } } },
-				{ "routes", { { "headers", { { "X-Infor-Company", { std::to_string(prefered_company) } } } } } },
-				{ "limits",
-				  { { "workers_min", workers_min },
-					{ "workers_max", workers_max },
-					{ "workers_runtime_max", 1 },
-					{ "workers_start_at_once_max", 4 } } } } }
-		};
+				//{ "parameters",
+				//  { { "program", worker_cmd },
+				//	{ "cli_options", options },
+				//	{ "bse", worker_bse },
+				//	{ "bse_bin", worker_bse_bin } } },
+				//{ "routes", { { "headers", { { "X-Infor-Company", { std::to_string(prefered_company) } } } } } },
+				//{ "limits",
+				//  { { "workers_min", workers_min },
+				//	{ "workers_max", workers_max },
+				//	{ "workers_runtime_max", 1 },
+				//	{ "workers_start_at_once_max", 4 } } } } 
+		}};
 
 		json result{ { "workspace",
 					   { { "id", tenant_id },
 						 { "tenant_id", tenant_id },
 						 { "gateway_url", gateway_url},
-						 { "setup", "eln_cpm.exe -mkjail-setup good" },
-						 { "teardown", "eln_cpm.exe -mkjail-teardown good" },
+						 { "setup", workspace_setup },
+						 { "teardown", workspace_teardown },
 						 workgroup_def,
 						 { "routes",
-						   { { "paths", { "/api", "/internal" } },
-							 { "headers", { { "X-Infor-TenantId", { tenant_id } } } } } } } } };
+						   { { "headers", { { "X-Infor-TenantId", { tenant_id } } } } } } } } };
 
-		//std::cout << result.dump(4, ' ') << "\n";
+		std::cout << result.dump(4, ' ') << "\n";
 
 		return result;
 	}
@@ -4165,6 +4211,11 @@ public:
 	manager(http::configuration& http_configuration, const std::string& configuration_file)
 		: http::async::server(http_configuration), workspaces_(tenants_), configuration_file_(configuration_file)
 	{
+		server_base::router_.use_middleware("service", "name", "/a/b/c/d", "c++", "pre-middleware", "post-middleware");
+		server_base::router_.use_middleware("service", "name", "/a/b/c/d", "c++", "pre-middleware", "post-middleware");
+		server_base::router_.use_middleware("service", "name", "/a", "c++", "pre-middleware", "post-middleware");
+		
+		
 		std::ifstream configuration_stream{ configuration_file_ };
 
 		auto configfile_available = configuration_stream.fail() == false;
