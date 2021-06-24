@@ -4089,6 +4089,11 @@ public:
 			return *this;
 		}
 
+		bool operator==(const middleware& m) const
+		{
+			return ((middleware_attribute_ == m.middleware_attribute_) && (middleware_type == m.middleware_type)); // can't compare lambda's
+		}
+
 		middleware(std::string middleware_type, std::string middleware_attribute, middleware_lambda middleware_lambda_)
 			: middleware_type(std::move(middleware_type))
 			, middleware_lambda_(std::move(middleware_lambda_))
@@ -4119,6 +4124,12 @@ public:
 
 			return *this;
 		}
+
+		bool operator==(const middleware_pair& m1) const
+		{
+			return first == m1.first && second == m1.second;
+		}
+
 
 		middleware first;
 		middleware second;
