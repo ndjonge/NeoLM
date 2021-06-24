@@ -4969,8 +4969,8 @@ public:
 	{
 		W empty;
 
-		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>(
-			{ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty });
+		auto middleware_pair = routing::middleware_pair{
+			{ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty }};
 
 		on_middleware(service, name, method, path, middleware_pair);
 	}
@@ -4988,7 +4988,7 @@ public:
 		auto middleware_pair = routing::middleware_pair{
 			{ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty }};
 
-		on_middleware(service, name, path, middleware_pair);
+		on_middleware(service, name, http::method::unknown,path, middleware_pair);
 	}
 
 	void use_middleware(
@@ -5001,9 +5001,9 @@ public:
 		const std::string& post_middleware_attribute,
 		W&& middleware_post_function)
 	{
-		auto middleware_pair = std::make_pair<routing::middleware, routing::middleware>(
+		auto middleware_pair = routing::middleware_pair{
 			{ "C++", pre_middleware_attribute, middleware_pre_function },
-			{ "C++", post_middleware_attribute, middleware_post_function });
+			{ "C++", post_middleware_attribute, middleware_post_function }};
 
 		on_middleware(service, name, method, path, middleware_pair);
 	}
@@ -5056,10 +5056,10 @@ public:
 		const std::string& name,
 		M method,
 		const T& route,
-		const std::pair<routing::middleware, routing::middleware>& middleware_pair)
+		const routing::middleware_pair& middleware_pair)
 	{
 		auto it = root_.get();
-
+		auto middlware_exists_downstream = false;
 		auto parts = util::split(route, "/");
 
 		for (const auto& part : parts)
@@ -5079,6 +5079,28 @@ public:
 						T{ part }, std::unique_ptr<router::route_part>{ new router::route_part{ service, name } } });
 			}
 
+			if (method == http::method::unknown)
+			{
+				if (l->second->middlewares_)
+					for (auto& middleware : *(l->second->middlewares_))
+					{
+						if (middleware.first.middleware_attribute() == middleware_pair.first.middleware_attribute())
+							middlware_exists_downstream = true;
+					}
+			}
+
+				//if (l->second->endpoints_ && middlware_exists_downstream == false)
+				//	for (auto& endpoint : *(l->second->endpoints_))
+				//	{
+				//		if (endpoint.second->middlewares())
+				//			for (auto& middleware : *(endpoint.second->middlewares()))
+				//			{
+				//				if (middleware.first.middleware_attribute() == middleware_pair.first.middleware_attribute())
+				//					middlware_exists_downstream = true;
+				//			}
+				//	
+				//	}
+			//}
 			it = l->second.get();
 		}
 
@@ -5096,7 +5118,8 @@ public:
 					if (!endpoint->second->middlewares())
 						endpoint->second->middlewares().reset(new routing::middlewares{});
 
-					endpoint->second->middlewares()->emplace_back(middleware_pair);
+					if (middlware_exists_downstream == false)
+						endpoint->second->middlewares()->emplace_back(middleware_pair);
 				}
 			}
 		}
@@ -5104,62 +5127,98 @@ public:
 		{
 			if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
 
-			it->middlewares_->emplace_back(middleware_pair);
+			erase_upstream_middleware(it, middleware_pair);
+
+			if (middlware_exists_downstream == false)
+				it->middlewares_->emplace_back(middleware_pair);
 		}
 	}
 
-	void erase_middleware(const route_part* it, const routing::middleware_pair& middleware_pair)
+	void erase_upstream_middleware(const route_part* it, const routing::middleware_pair& middleware_pair)
 	{
-		for (auto& link : it->link_)
-		{
-			if (link.second->middlewares_)
-				for (auto i = link.second->middlewares_->begin(); i != link.second->middlewares_->end();)
-				{
-					if (i->first.middleware_attribute() == middleware_pair.first.middleware_attribute())
-						i = link.second->middlewares_->erase(i);
-					else
-						i++;
-				}
-
-			if (link.second)
-				erase_middleware(link.second.get(), middleware_pair);
-		}
-	}
-
-	void on_middleware(
-		const std::string& service,
-		const std::string& name,
-		const T& route,
-		const routing::middleware_pair& middleware_pair)
-	{
-		auto it = root_.get();
-
-		auto parts = util::split(route, "/");
-
-		for (const auto& part : parts)
-		{
-			// auto& l = it->link_[part];
-			auto l = std::find_if(
-				it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
-					return (l.first == part);
-				});
-
-			if (l == it->link_.end())
+		if (it->middlewares_)
+			for (auto i = it->middlewares_->begin(); i != it->middlewares_->end();)
 			{
-				l = it->link_.insert(
-					it->link_.end(),
-					std::pair<T, std::unique_ptr<router::route_part>>{
-						T{ part }, std::unique_ptr<router::route_part>{ new router::route_part{ service, name } } });
+				if (i->first.middleware_attribute() == middleware_pair.first.middleware_attribute())
+					i = it->middlewares_->erase(i);
+				else
+					i++;
 			}
 
-			it = l->second.get();
-		}
+		if (it->endpoints_)
+			for (auto& endpoint : *(it->endpoints_))
+			{
+				if (endpoint.second->middlewares())
+					for (auto i = endpoint.second->middlewares()->begin(); i != endpoint.second->middlewares()->end();)
+					{
+						if (i->first.middleware_attribute() == middleware_pair.first.middleware_attribute())
+							i = endpoint.second->middlewares()->erase(i);
+						else
+							i++;
+					}
+			}
 
-		if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
 
-		erase_middleware(it, middleware_pair);
-		it->middlewares_->emplace_back(middleware_pair);
+			for (auto& link : it->link_)
+				if (link.second)
+					erase_upstream_middleware(link.second.get(), middleware_pair);
 	}
+
+	//void on_middleware(
+	//	const std::string& service,
+	//	const std::string& name,
+	//	const T& route,
+	//	const routing::middleware_pair& middleware_pair)
+	//{
+	//	auto it = root_.get();
+	//	bool middlware_exists_downstream = false;
+	//	auto parts = util::split(route, "/");
+
+	//	for (const auto& part : parts)
+	//	{
+	//		// auto& l = it->link_[part];
+	//		auto l = std::find_if(
+	//			it->link_.begin(), it->link_.end(), [&part](const std::pair<T, std::unique_ptr<route_part>>& l) {
+	//				return (l.first == part);
+	//			});
+
+	//		if (l == it->link_.end())
+	//		{
+	//			l = it->link_.insert(
+	//				it->link_.end(),
+	//				std::pair<T, std::unique_ptr<router::route_part>>{
+	//					T{ part }, std::unique_ptr<router::route_part>{ new router::route_part{ service, name } } });
+	//		}
+
+	//		if (l->second->middlewares_)
+	//			for (auto& middleware : *(l->second->middlewares_))
+	//			{
+	//				if (middleware.first.middleware_attribute() == middleware_pair.first.middleware_attribute())
+	//					middlware_exists_downstream = true;
+	//			}
+
+	//		if (l->second->endpoints_ && middlware_exists_downstream == false)
+	//			for (auto& endpoint : *(l->second->endpoints_))
+	//			{
+	//				if (endpoint.second->middlewares())
+	//					for (auto& middleware : *(endpoint.second->middlewares()))
+	//					{
+	//						if (middleware.first.middleware_attribute() == middleware_pair.first.middleware_attribute())
+	//							middlware_exists_downstream = true;
+	//					}
+	//				
+	//			}
+
+	//		it = l->second.get();
+	//	}
+
+	//	if (!it->middlewares_) it->middlewares_.reset(new routing::middlewares{});
+
+	//	erase_upstream_middleware(it, middleware_pair);
+
+	//	if (middlware_exists_downstream == false)
+	//		it->middlewares_->emplace_back(middleware_pair);
+	//}
 
 	void on_http_method(const M method, const T& route, R&& end_point)
 	{
