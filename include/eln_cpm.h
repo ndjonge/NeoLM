@@ -4211,49 +4211,6 @@ public:
 	manager(http::configuration& http_configuration, const std::string& configuration_file)
 		: http::async::server(http_configuration), workspaces_(tenants_), configuration_file_(configuration_file)
 	{
-		//server_base::router_.use_middleware("service", "name", "/a/b/c/d", "c++", "pre-middleware", "post-middleware");
-
-		//server_base::router_.use_middleware("service", "name", "/a/b/c/d", "c++", "pre-middleware", "post-middleware");
-		//server_base::router_.use_middleware("service", "name", "/a/b/c", "c++", "pre-middleware", "post-middleware");
-		//server_base::router_.use_middleware("service", "name", "/a/b", "c++", "pre-middleware", "post-middleware");
-		//server_base::router_.use_middleware("service", "name", "/a", "c++", "pre-middleware", "post-middleware");
-
-		server_base::router_.on_get(
-			"/a/b/c/d",
-			[this](http::session_handler& session) {
-				session.response().assign(http::status::ok, "OK");
-				server_base::manager().update_health_check_metrics();
-			});
-
-		server_base::router_.on_get(
-			"/a",
-			[this](http::session_handler& session) {
-				session.response().assign(http::status::ok, "OK");
-				server_base::manager().update_health_check_metrics();
-			});
-
-		server_base::router_.on_post(
-			"/a",
-			[this](http::session_handler& session) {
-				session.response().assign(http::status::ok, "OK");
-				server_base::manager().update_health_check_metrics();
-			});
-
-		server_base::router_.on_get(
-			"/a/b",
-			[this](http::session_handler& session) {
-				session.response().assign(http::status::ok, "OK");
-				server_base::manager().update_health_check_metrics();
-			});
-
-		server_base::router_.use_middleware("service", "name", "/a/b/c/d", "c++", "pre-middleware", "post-middleware");
-		server_base::router_.use_middleware("service", "name", "/a/b/c/d", "c++", "pre-middleware", "post-middleware");
-
-		server_base::router_.use_middleware("service", "name", http::method::post, "/a", "c++", "pre-middleware", "post-middleware");
-		server_base::router_.use_middleware("service", "name", http::method::get, "/a", "c++", "pre-middleware", "post-middleware");
-
-		server_base::router_.use_middleware("service", "name", "/a", "c++", "pre-middleware", "post-middleware");
-
 		std::ifstream configuration_stream{ configuration_file_ };
 
 		auto configfile_available = configuration_stream.fail() == false;
