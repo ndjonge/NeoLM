@@ -308,7 +308,7 @@ inline void run_cld_wrk_server()
 inline int stop_cld_wrk_server()
 {
 	cld_wrk_server_->stop();
-	cld_wrk_server_.release();
+	delete cld_wrk_server_.release();
 	return 0;
 }
 
