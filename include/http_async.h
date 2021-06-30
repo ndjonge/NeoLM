@@ -215,7 +215,7 @@ public:
 		}
 		
 		ssl_socket_stream& ssl_stream() { return ssl_socket_stream_;}
-		socket_stream stream() { return socket_stream_ };
+		socket_stream stream() { return socket_stream_; }
 	};
 
 	void up(const std::string& base_url)
