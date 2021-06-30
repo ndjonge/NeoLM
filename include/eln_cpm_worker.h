@@ -79,7 +79,7 @@ public:
 		cpm_worker_label_ = server_.config().template get<std::string>("cpm_worker_label", "no_label");
 
 		manager_endpoint_url_ = server_.config().template get<std::string>(
-									"cpm_endpoint", "http://127.0.0.1:4000/internal/platform/manager/workspaces")
+									"cpm_endpoint", "http://127.0.0.1:8080/internal/platform/manager/workspaces")
 								+ "/" + server_.config().template get<std::string>("cpm_workspace", "workspace-000")
 								+ "/workgroups/"
 								+ server_.config().template get<std::string>("cpm_workgroup", "anonymous/bshells");
@@ -103,7 +103,12 @@ public:
 		put_new_instance_json["process_id"] = pid;
 		put_new_instance_json["worker_label"] = cpm_worker_label_;
 		put_new_instance_json["worker_id"] = cpm_worker_id_;
-		put_new_instance_json["base_url"] = server_.config().get("http_this_server_local_url");
+
+		if (server_.config().template get<bool>("https_enabled", false) == true)
+			put_new_instance_json["base_url"] = server_.config().template get<std::string>("https_this_server_local_url", "");
+		else
+			put_new_instance_json["base_url"] = server_.config().template get<std::string>("http_this_server_local_url", "");
+
 		put_new_instance_json["version"] = server_.config().template get<std::string>("server", "");
 
 		auto response = http::client::request<http::method::post>(

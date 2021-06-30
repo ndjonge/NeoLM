@@ -1619,14 +1619,14 @@ public:
 			  configuration.get<std::int16_t>("http_watchdog_max_requests_concurrent", 0))
 		, http_use_portsharding_(configuration.get<bool>("http_use_portsharding", false))
 		, http_enabled_(configuration.get<bool>("http_enabled", true))
-		, http_listen_port_begin_(configuration.get<std::int16_t>("http_listen_port_begin", 3000))
+		, http_listen_port_begin_(configuration.get<std::int16_t>("http_listen_port_begin", 8080))
 		, http_listen_port_end_(configuration.get<int16_t>("http_listen_port_end", http_listen_port_begin_))
 		, http_listen_port_(network::tcp::socket::invalid_socket)
 		, http_listen_address_(configuration.get<std::string>("http_listen_address", "::0"))
 		, https_use_portsharding_(configuration.get<bool>("https_use_portsharding", false))
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
 		, https_listen_port_begin_(configuration.get<std::int16_t>(
-			  "https_listen_port_begin", configuration.get<int16_t>("http_listen_port_begin") + 2000))
+			  "https_listen_port_begin", 8443))
 		, https_listen_port_end_(configuration.get<int16_t>("https_listen_port_end", https_listen_port_begin_))
 		, https_listen_port_(network::tcp::socket::invalid_socket)
 		, https_listen_address_(configuration.get<std::string>("https_listen_address", "::0"))
@@ -2109,12 +2109,12 @@ public:
 			asio::async_connect(
 				me->upstream_connection_.socket(),
 				it,
-				[me](asio::error_code error, asio::ip::tcp::resolver::iterator i) {
+				[me](asio::error_code error, asio::ip::tcp::resolver::iterator) {
 					// TODO try next resolve result?
 					if (error)
 					{
 						// failed
-						std::cerr << error.message() << "connecting to" << i->endpoint() << "\n";
+						std::cerr << error.message() << "\n";
 						me->upstream_connection_.error();
 						me->upstream_connection_.owner().set_state(
 							http::async::upstreams::upstream::state::drain);

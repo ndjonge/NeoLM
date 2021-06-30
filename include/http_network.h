@@ -190,10 +190,10 @@ public:
 				ssl_method_ = TLSv1_2_method();
 				context_ = SSL_CTX_new(ssl_method_);
 #else
-				ssl_method_ = TLS_server_method();
+				ssl_method_ = TLSv1_2_method();
 				context_ = SSL_CTX_new(ssl_method_);
 				SSL_CTX_set_min_proto_version(context_, TLS1_2_VERSION);
-				SSL_CTX_set_max_proto_version(context_, TLS1_2_VERSION);
+				SSL_CTX_set_max_proto_version(context_, TLS1_3_VERSION);
 #endif
 				break;
 		}
@@ -309,7 +309,10 @@ public:
 	void handshake(stream_base::handshake_type)
 	{
 		ssl_ = SSL_new(context_.native());
+		SSL_set_verify(ssl_, SSL_VERIFY_NONE, nullptr);
+
 		SSL_set_fd(ssl_, (int)(lowest_layer_.lowest_layer()));
+		SSL_set_accept_state(ssl_);
 
 		if (SSL_accept(ssl_) <= 0)
 		{

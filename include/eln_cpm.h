@@ -257,6 +257,7 @@ inline bool start_cld_wrk_server(std::string config_options, bool run_as_daemon)
 
 	http::configuration http_configuration{ { { "server", server_version },
 											  { "http_listen_port_begin", "0" },
+											  { "https_listen_port_begin", "0" },
 											  { "http_watchdog_idle_timeout", "20" },
 											  { "private_base", "/internal/platform/worker" },
 											  { "health_check", "/internal/platform/worker/healthcheck" },
@@ -622,6 +623,16 @@ public:
 				worker_options += " -selftests_worker ";
 		}
 
+		bool https_upstreams_enabled = configuration_.get<bool>("https_enabled", false);
+		std::string worker_http_options;
+		if (https_upstreams_enabled)
+		{
+			auto https_certificate_key = configuration_.get<std::string>("https_certificate_key", "server.key");
+			auto https_certificate = configuration_.get<std::string>("https_certificate", "server.crt");
+
+			worker_http_options = "https_enabled:true,https_certificate_key:" + https_certificate_key + ",https_certificate:"+https_certificate;
+		}
+
 		json workgroup_def{ { "name", workgroup_name },
 							{ "type", "bshells" },
 #ifdef _WIN32
@@ -629,6 +640,7 @@ public:
 							{ "teardown", "eln_cpm.exe -mkjail-teardown good" },
 							{ "parameters",
 							  { { "program", worker_cmd + ".exe" },
+								{ "http_options", worker_http_options },
 								{ "cli_options", worker_options },
 								{ "bse", worker_bse },
 								{ "bse_bin",
@@ -2279,8 +2291,17 @@ public:
 		bool is_workspace_updated) override
 	{
 		std::string ec{};
-		std::string server_endpoint
-			= configuration.get<std::string>("http_this_server_local_url", "http://localhost:4000");
+
+		std::string server_endpoint{};
+
+		if (configuration.get<bool>("https_enabled", true))
+		{
+			server_endpoint = configuration.get<std::string>("https_this_server_local_url", "https://localhost:5000");
+		}
+		else
+		{
+			server_endpoint = configuration.get<std::string>("https_this_server_local_url", "http://localhost:4000");
+		}
 
 		server_endpoint += "/internal/platform/manager/workspaces";
 
@@ -5369,7 +5390,7 @@ inline bool start_eln_cpm_server(
 	if (run_as_daemon) util::daemonize("/tmp", "/var/lock/" + server_version + ".pid");
 
 	http::configuration http_configuration{ { { "server", server_version },
-											  { "http_listen_port_begin", "4000" },
+											  { "http_listen_port_begin", "8080" },
 											  { "private_base", "/internal/platform/manager" },
 											  { "health_check", "/internal/platform/manager/healthcheck" },
 											  { "private_ip_white_list", "::/0" },
@@ -5401,7 +5422,8 @@ inline bool start_eln_cpm_server(
 	{
 		tests::cpm_test test_cpm{ http_configuration.get<std::string>(
 									  "http_this_server_local_url", "http://localhost:4000"),
-								  tests::configuration({}, std::string{ selftest_options }), *(cloud::platform::eln_cpm_server_) };
+								  tests::configuration({
+								  }, std::string{ selftest_options }), *(cloud::platform::eln_cpm_server_) };
 
 		// tests::cpm_test_as_lb test_cpm_lb{http_configuration.get<std::string>("http_this_server_local_url",
 		// "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
@@ -5446,6 +5468,7 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 		  { "mkjail-teardown", { cli::argument::type::hidden_value, "" } },
 		  { "selftests", { cli::argument::type::hidden_flag, "" } },
 		  { "selftests_options", { cli::argument::type::hidden_value, "" } },
+		  { "selftests_http_options", { cli::argument::type::hidden_value, "" } },
 		  { "selftests_worker", { cli::argument::type::hidden_flag, "false" } } });
 
 	if (arguments.process_args() == false)

@@ -6206,14 +6206,25 @@ public:
 				network::ssl::context ssl_context(network::ssl::context::tlsv12);
 
 				ssl_context.use_certificate_chain_file(
-					configuration_.get<std::string>("ssl_certificate", std::string("")).c_str());
+					configuration_.get<std::string>("https_certificate", std::string("")).c_str());
 				ssl_context.use_private_key_file(
-					configuration_.get<std::string>("ssl_certificate_key", std::string("")).c_str());
+					configuration_.get<std::string>("https_certificate_key", std::string("")).c_str());
 
 				acceptor_https.listen();
 
 				configuration_.set("https_listen_port", std::to_string(https_listen_port_probe));
-				logger_.info("http listener on port: {d} started\n", https_listen_port_probe);
+
+				if (configuration_.get<std::string>("https_listen_address", "::0") == "::0")
+				{
+					configuration_.set(
+						"https_this_server_base_url",
+						"https://" + network::hostname() + ":" + configuration_.get<std::string>("https_listen_port"));
+				}
+				configuration_.set(
+					"https_this_server_local_url",
+					"https://localhost:" + configuration_.get<std::string>("https_listen_port"));
+
+				logger_.info("https listener on port: {d} started\n", https_listen_port_probe);
 				https_listen_port_.store(https_listen_port_probe);
 
 				while (is_activating() || is_active())
@@ -6229,7 +6240,7 @@ public:
 					https_socket.handshake(network::ssl::stream_base::server);
 					network::tcp_nodelay(https_socket.lowest_layer(), 1);
 
-					if (https_socket.lowest_layer().lowest_layer() > network::tcp::socket::invalid_socket)
+					if (https_socket.lowest_layer().lowest_layer() != network::tcp::socket::invalid_socket)
 					{
 						auto new_connection_handler
 							= std::make_shared<connection_handler<network::ssl::stream<network::tcp::socket>>>(
