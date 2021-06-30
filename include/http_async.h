@@ -417,7 +417,7 @@ public:
 			for (auto& connection : connections_)
 			{
 				connection->drain();
-				connection.release();
+				delete connection.release();
 			}
 
 			connections_.clear();
@@ -2051,7 +2051,7 @@ public:
 	{
 		asio::error_code error;
 
-		write_buffer_.emplace_back(http::to_string(request));
+		write_buffer_ = http::to_string(request);
 
 		if (upstream_connection_.socket().is_open() == true)
 		{
@@ -2161,9 +2161,10 @@ public:
 		{
 			asio::async_write(
 				upstream_connection_.ssl_stream(),
-				asio::buffer(write_buffer_.front()),
+				asio::buffer(write_buffer_),
 				[me](asio::error_code const& error_code, std::size_t) {
-					me->write_buffer_.pop_front();
+
+					me->write_buffer_ = "done";
 
 					if (!error_code)
 						me->read_response_headers();
@@ -2175,9 +2176,9 @@ public:
 		{
 			asio::async_write(
 				upstream_connection_.socket(),
-				asio::buffer(write_buffer_.front()),
+				asio::buffer(write_buffer_),
 				[me](asio::error_code const& error_code, std::size_t) {
-					me->write_buffer_.pop_front();
+					me->write_buffer_= "done";
 
 					if (!error_code)
 						me->read_response_headers();
@@ -2422,7 +2423,7 @@ public:
 private:
 	http::response_message response_;
 	http::async::upstreams::connection_type& upstream_connection_;
-	std::deque<std::string> write_buffer_;
+	std::string write_buffer_;
 	std::chrono::steady_clock::time_point t0_;
 	http::transfer_encoding_chunked_parser chunked_parser_{};
 
