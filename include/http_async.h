@@ -215,7 +215,7 @@ public:
 		}
 		
 		ssl_socket_stream& ssl_stream() { return ssl_socket_stream_;}
-		socket_stream stream() { return socket_stream_ };
+		socket_stream stream() { return socket_stream_; }
 	};
 
 	void up(const std::string& base_url)
@@ -417,7 +417,7 @@ public:
 			for (auto& connection : connections_)
 			{
 				connection->drain();
-				connection.release();
+				//connection.release();
 			}
 
 			connections_.clear();
