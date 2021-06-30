@@ -1443,12 +1443,19 @@ public:
 		}
 		else
 		{
-			port_ = "80";
+			if (scheme_ == "https")
+				port_ = "443";
+			else if (scheme_ == "http")
+				port_ = "80";
+
 			start_of_port = start_of_path;
 		}
 
 		host_ = url.substr(start_of_host, start_of_port - start_of_host);
 		target_ = url.substr(start_of_path);
+
+		if (target_.empty())
+			target_= "/";
 	}
 
 	const std::string& scheme() const { return scheme_; };
@@ -2212,7 +2219,8 @@ public:
 		header<specialization>::method_ = method;
 		header<specialization>::target_ = target;
 
-		content_length(body.size());
+		if (method != http::method::get)
+			content_length(body.size());
 	}
 
 	const http::session_handler& session() const
@@ -3502,17 +3510,17 @@ public:
 
 	state state_{ chunk_header_size };
 
-	template <typename InputIterator>
-	std::tuple<result_type, InputIterator> parse(http::request_message& req, InputIterator begin, InputIterator end)
+	template <typename InputIterator, typename T>
+	std::tuple<result_type, InputIterator> parse(T& target, InputIterator begin, InputIterator end)
 	{
 		while (begin != end)
 		{
-			result_type result = consume(req, *begin++);
+			result_type result = consume(target, *begin++);
 
 			if (result == good)
 			{
 				state_ = chunk_header_size;
-				req.content_length(req.body().size());
+				target.content_length(target.body().size());
 				return std::make_tuple(result, begin);
 			}
 			else if (result == bad)
@@ -3526,7 +3534,8 @@ public:
 	}
 
 private:
-	result_type consume(http::request_message& res, char input)
+	template <typename T>
+	result_type consume(T& res, char input)
 	{
 		switch (state_)
 		{

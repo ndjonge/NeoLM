@@ -5223,6 +5223,9 @@ public:
 			auto ret = server_base::start();
 			director_thread_ = std::thread{ [this]() { director_handler(); } };
 
+				std::string error_code_2;
+
+
 			auto pub_sub_endpoint = server_base::configuration_.template get<std::string>("pub_sub_endpoint", "");
 			auto pub_sub_farm = server_base::configuration_.template get<std::string>("pub_sub_farm", "");
 
@@ -5253,15 +5256,25 @@ public:
 				}};
 	
 				std::string error_code;
-				auto response = http::client::request<http::method::post>(pub_sub_endpoint, error_code, {}, subscription_json.dump());
-				bool failed = true; 
 
-				if (error_code.empty() || (response.status() > 200 && response.status() < 300 ))
-				{
-					failed = false;
+				try
+				{				
+					server_base::logger().api("subscribing to: {s}, in farm: {s}, with json:\n{s}\n", pub_sub_endpoint, pub_sub_farm, subscription_json.dump(2, ' '));
+
+					auto response = http::client::request<http::method::post>(pub_sub_endpoint, error_code, {}, subscription_json.dump());
+					bool failed = true; 
+
+					if (error_code.empty() && (response.status() > 200 && response.status() < 300 ))
+					{
+						failed = false;
+					}
+
+					server_base::logger().api("subscribing to: {s}, in farm: {s} ended with: {d} and reply:\n{s}\n", pub_sub_endpoint, pub_sub_farm, http::status::to_int(response.status()), http::to_string(response));
 				}
-
-				server_base::logger().api("subscribing to: {s} in farm: {s} ended with: {s} with json-body:\n{s}.\n", pub_sub_endpoint, pub_sub_farm, failed ? "error" : "succes", subscription_json.dump(2, ' '));	
+				catch(std::system_error& e)
+				{	
+					std::cerr << e.what();
+				}
 			}
 
 			return ret;
@@ -5507,6 +5520,8 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 		tests::start_cld_wrk_server(arguments.get_val("httpserver_options"), arguments.get_val("daemonize") == "true");
 
 		tests::run_cld_wrk_server();
+
+
 		tests::stop_cld_wrk_server();
 
 		exit(0);
