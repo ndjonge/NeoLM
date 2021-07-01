@@ -5423,7 +5423,7 @@ inline bool start_eln_cpm_server(
 	if (run_selftests)
 	{
 		tests::cpm_test test_cpm{ http_configuration.get<std::string>(
-									  "http_this_server_local_url", "http://localhost:4000"),
+									  "http_this_server_local_url", "http://localhost:8080"),
 								  tests::configuration({
 								  }, std::string{ selftest_options }), *(cloud::platform::eln_cpm_server_) };
 
