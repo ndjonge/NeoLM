@@ -23,6 +23,9 @@
 #endif
 
 #ifdef USE_WOLFSSL
+#ifndef ASIO_USE_WOLFSSL
+#define ASIO_USE_WOLFSSL
+#endif
 #include "infor_ssl.h"
 #else
 #include "openssl/err.h"
@@ -187,10 +190,10 @@ public:
 		{
 			case tlsv12:
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-				ssl_method_ = TLSv1_2_method();
+				ssl_method_ = TLS_method();
 				context_ = SSL_CTX_new(ssl_method_);
 #else
-				ssl_method_ = TLSv1_2_method();
+				ssl_method_ = TLS_method();
 				context_ = SSL_CTX_new(ssl_method_);
 				SSL_CTX_set_min_proto_version(context_, TLS1_2_VERSION);
 				SSL_CTX_set_max_proto_version(context_, TLS1_3_VERSION);
@@ -1090,7 +1093,7 @@ inline void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, 
 
 inline std::string hostname()
 {
-	std::array<char, 256> hostname_buffer;
+	std::array<char, 256> hostname_buffer{ '\0' };			
 	::gethostname(&hostname_buffer[0], sizeof(hostname_buffer));
 
 	std::transform(hostname_buffer.begin(), hostname_buffer.end(), hostname_buffer.begin(), [](char c) {
@@ -1099,7 +1102,7 @@ inline std::string hostname()
 	return std::string{ hostname_buffer.data() };
 }
 
-bool is_in_network(std::uint32_t allowed_range, std::uint32_t allowed_netmask, std::uint32_t ip)
+inline bool is_in_network(std::uint32_t allowed_range, std::uint32_t allowed_netmask, std::uint32_t ip)
 {
 	uint32_t netstart = (allowed_range & allowed_netmask); // first ip in subnet
 	uint32_t netend = (allowed_range | ~allowed_netmask); // last ip in subnet

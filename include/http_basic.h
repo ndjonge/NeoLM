@@ -1454,8 +1454,7 @@ public:
 		host_ = url.substr(start_of_host, start_of_port - start_of_host);
 		target_ = url.substr(start_of_path);
 
-		if (target_.empty())
-			target_= "/";
+		if (target_.empty()) target_ = "/";
 	}
 
 	const std::string& scheme() const { return scheme_; };
@@ -1673,14 +1672,14 @@ public:
 		return i != std::end(fields_);
 	}
 
-         inline bool has(const std::string&  name) const
-         {
-                 auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
-                         return (compare_field_name()(f.name, name));
-                 });
+	inline bool has(const std::string& name) const
+	{
+		auto i = std::find_if(std::begin(fields_), std::end(fields_), [name](const http::field<T>& f) {
+			return (compare_field_name()(f.name, name));
+		});
 
-                 return i != std::end(fields_);
-         }
+		return i != std::end(fields_);
+	}
 
 	inline void set(const std::string& name, const T& value)
 	{
@@ -2219,8 +2218,7 @@ public:
 		header<specialization>::method_ = method;
 		header<specialization>::target_ = target;
 
-		if (method != http::method::get)
-			content_length(body.size());
+		if (method != http::method::get) content_length(body.size());
 	}
 
 	const http::session_handler& session() const
@@ -3534,8 +3532,7 @@ public:
 	}
 
 private:
-	template <typename T>
-	result_type consume(T& res, char input)
+	template <typename T> result_type consume(T& res, char input)
 	{
 		switch (state_)
 		{
@@ -3729,7 +3726,8 @@ public:
 
 		if ((gzip_min_size_ < response_.body().size())
 			&& (request().get("Accept-Encoding", std::string{}).find("gzip") != std::string::npos)
-			&& (response().get<std::string>("Content-Encoding", "") != "gzip")) // e.g. proxied responses might already be zipped
+			&& (response().get<std::string>("Content-Encoding", "") != "gzip")) // e.g. proxied responses might already
+																				// be zipped
 		{
 			response_.body() = gzip::compress(response_.body().c_str(), response_.body().size());
 			response_.set("Content-Encoding", "gzip");
@@ -4100,7 +4098,9 @@ public:
 
 		bool operator==(const middleware& m) const
 		{
-			return ((middleware_attribute_ == m.middleware_attribute_) && (middleware_type == m.middleware_type)); // can't compare lambda's
+			return (
+				(middleware_attribute_ == m.middleware_attribute_)
+				&& (middleware_type == m.middleware_type)); // can't compare lambda's
 		}
 
 		middleware(std::string middleware_type, std::string middleware_attribute, middleware_lambda middleware_lambda_)
@@ -4125,7 +4125,6 @@ public:
 	public:
 		middleware_pair(const middleware& m1, const middleware& m2) : first(m1), second(m2) {}
 
-
 		middleware_pair& operator=(const middleware_pair& m1)
 		{
 			first = m1.first;
@@ -4134,11 +4133,7 @@ public:
 			return *this;
 		}
 
-		bool operator==(const middleware_pair& m1) const
-		{
-			return first == m1.first && second == m1.second;
-		}
-
+		bool operator==(const middleware_pair& m1) const { return first == m1.first && second == m1.second; }
 
 		middleware first;
 		middleware second;
@@ -4215,7 +4210,7 @@ public:
 	const std::string& allowed_methods() const { return allowed_methods_; }
 
 	void private_request(bool value) { is_private_base_request_ = value; }
-	bool is_private_base_request() const {return is_private_base_request_;}
+	bool is_private_base_request() const { return is_private_base_request_; }
 
 private:
 	result result_;
@@ -4989,8 +4984,8 @@ public:
 	{
 		W empty;
 
-		auto middleware_pair = routing::middleware_pair{
-			{ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty }};
+		auto middleware_pair = routing::middleware_pair{ { type, pre_middleware_attribute, empty },
+														 { type, post_middleware_attribute, empty } };
 
 		on_middleware(service, name, method, path, middleware_pair);
 	}
@@ -5005,10 +5000,10 @@ public:
 	{
 		W empty;
 
-		auto middleware_pair = routing::middleware_pair{
-			{ type, pre_middleware_attribute, empty }, { type, post_middleware_attribute, empty }};
+		auto middleware_pair = routing::middleware_pair{ { type, pre_middleware_attribute, empty },
+														 { type, post_middleware_attribute, empty } };
 
-		on_middleware(service, name, http::method::unknown,path, middleware_pair);
+		on_middleware(service, name, http::method::unknown, path, middleware_pair);
 	}
 
 	void use_middleware(
@@ -5021,9 +5016,9 @@ public:
 		const std::string& post_middleware_attribute,
 		W&& middleware_post_function)
 	{
-		auto middleware_pair = routing::middleware_pair{
-			{ "C++", pre_middleware_attribute, middleware_pre_function },
-			{ "C++", post_middleware_attribute, middleware_post_function }};
+		auto middleware_pair
+			= routing::middleware_pair{ { "C++", pre_middleware_attribute, middleware_pre_function },
+										{ "C++", post_middleware_attribute, middleware_post_function } };
 
 		on_middleware(service, name, method, path, middleware_pair);
 	}
@@ -5104,12 +5099,10 @@ public:
 				if (l->second->middlewares_)
 					for (auto& middleware : *(l->second->middlewares_))
 					{
-						if (middleware == middleware_pair)
-							middlware_exists_downstream = true;
+						if (middleware == middleware_pair) middlware_exists_downstream = true;
 					}
-				
-				// ignore endpoint middlewares at this point. 
 
+				// ignore endpoint middlewares at this point.
 			}
 
 			it = l->second.get();
@@ -5140,8 +5133,7 @@ public:
 
 			erase_upstream_middleware(it, middleware_pair);
 
-			if (middlware_exists_downstream == false)
-				it->middlewares_->emplace_back(middleware_pair);
+			if (middlware_exists_downstream == false) it->middlewares_->emplace_back(middleware_pair);
 		}
 	}
 
@@ -5175,8 +5167,7 @@ public:
 
 		for (auto& link : it->link_)
 		{
-			if (link.second)
-				erase_upstream_middleware(link.second.get(), middleware_pair);
+			if (link.second) erase_upstream_middleware(link.second.get(), middleware_pair);
 		}
 	}
 
@@ -6743,6 +6734,5 @@ request(const std::string& url, std::string& ec, std::ostream& s = std::clog, bo
 } // namespace http
 
 #ifdef __GNUC__
-#pragma GCC diagnostic pop 
+#pragma GCC diagnostic pop
 #endif
-

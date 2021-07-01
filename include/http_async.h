@@ -14,7 +14,6 @@
 // declaration
 #endif
 
-
 #ifdef USE_WOLFSSL
 #include "infor_ssl.h"
 #ifndef ASIO_USE_WOLFSSL
@@ -87,9 +86,11 @@ inline std::size_t get_static_id() noexcept
 class upstreams
 {
 public:
-
-
-	template <typename U, typename S = asio::buffered_stream<asio::ip::tcp::socket>, typename SS = asio::ssl::stream<asio::ip::tcp::socket>> class connection
+	template <
+		typename U,
+		typename S = asio::buffered_stream<asio::ip::tcp::socket>,
+		typename SS = asio::ssl::stream<asio::ip::tcp::socket>>
+	class connection
 	{
 	public:
 		using socket_stream = S;
@@ -132,14 +133,9 @@ public:
 			, resolver_(io_context)
 			, socket_stream_(io_context)
 			, ssl_socket_stream_(io_context, owner.ssl_context())
-			, owner_(owner)
-		{
-		};
+			, owner_(owner){};
 
-		~connection() 
-		{
-			state_.store(state::down);
-		}
+		~connection() { state_.store(state::down); }
 
 		connection(const connection& s) = delete;
 		connection(connection&& s) = delete;
@@ -159,7 +155,7 @@ public:
 			{
 				state_.store(state::idle);
 			}
-			//owner_.set_state(upstream::state::up);
+			// owner_.set_state(upstream::state::up);
 		}
 
 		void drain()
@@ -184,14 +180,14 @@ public:
 			   << static_cast<std::uint16_t>(socket_stream_.lowest_layer().native_handle()) << "\n";
 		}
 
-		bool is_https() const { return is_https_;}
+		bool is_https() const { return is_https_; }
 
 		std::atomic<state>& get_state() { return state_; }
 
 		std::string host_;
 		std::string port_;
 		std::string id_;
-		asio::streambuf in_packet_{ 8192 };	
+		asio::streambuf in_packet_{ 8192 };
 
 		bool is_https_;
 		asio::ip::tcp::resolver resolver_;
@@ -207,15 +203,16 @@ public:
 		upstream_type& owner_;
 
 	public:
-		asio::ip::tcp::socket& socket() { 
+		asio::ip::tcp::socket& socket()
+		{
 			if (is_https_)
-				return ssl_socket_stream_.next_layer(); 
+				return ssl_socket_stream_.next_layer();
 			else
 				return socket_stream_.next_layer();
 		}
-		
-		ssl_socket_stream& ssl_stream() { return ssl_socket_stream_;}
-		//socket_stream stream() { return socket_stream_; }
+
+		ssl_socket_stream& ssl_stream() { return ssl_socket_stream_; }
+		// socket_stream stream() { return socket_stream_; }
 	};
 
 	void up(const std::string& base_url)
@@ -347,8 +344,7 @@ public:
 			   << ", 3xx: " << std::to_string(upstream->responses_3xx_)
 			   << ", 4xx: " << std::to_string(upstream->responses_4xx_)
 			   << ", 5xx: " << std::to_string(upstream->responses_5xx_)
-			   << ", tot: " << std::to_string(upstream->responses_tot_) 
-			   << ", rps: " << std::to_string(upstream->rate_)
+			   << ", tot: " << std::to_string(upstream->responses_tot_) << ", rps: " << std::to_string(upstream->rate_)
 			   << ", health: " << std::to_string(upstream->responses_health_)
 			   << ", response_time: " << std::to_string(upstream->response_time_) << "\n";
 
@@ -385,8 +381,7 @@ public:
 			auto start_of_port = base_url.find_first_of(':', start_of_host);
 			auto start_of_path = base_url.find_first_of('/', start_of_host);
 
-			scheme_ = base_url.substr(0, end_of_scheme); 
-
+			scheme_ = base_url.substr(0, end_of_scheme);
 
 			if (start_of_path == std::string::npos) start_of_path = base_url_.size();
 
@@ -399,7 +394,7 @@ public:
 				if (scheme_ == "http")
 					port_ = "80";
 				else if (scheme_ == "https")
-					port_= "443";
+					port_ = "443";
 
 				start_of_port = start_of_path;
 			}
@@ -412,7 +407,6 @@ public:
 		~upstream()
 		{
 			std::lock_guard<std::mutex> g{ connection_mutex_ };
-
 
 			for (auto& connection : connections_)
 			{
@@ -447,7 +441,7 @@ public:
 			rate_.store(static_cast<std::uint16_t>(responses_diff / 2));
 			response_time_.store(static_cast<std::uint16_t>(response_time));
 
-			responses_prev_.store(responses_tot_);		
+			responses_prev_.store(responses_tot_);
 		}
 
 		containter_type& connections() { return connections_; }
@@ -467,7 +461,6 @@ public:
 		std::atomic<std::uint16_t> rate_{ 0 };
 		std::atomic<std::uint16_t> response_time_{ 0 };
 
-
 		std::string host() const
 		{
 			if (port_ == "80" || port_ == "443")
@@ -481,11 +474,8 @@ public:
 		const std::string& id() const { return id_; }
 		void set_state(upstream::state state) { state_ = state; }
 		upstream::state get_state() const { return state_; }
- 
-		asio::ssl::context& ssl_context() 
-		{
-			return *(ssl_context_);
-		}
+
+		asio::ssl::context& ssl_context() { return *(ssl_context_); }
 
 		void add_connection()
 		{
@@ -527,7 +517,6 @@ public:
 	std14::shared_mutex upstreams_lock_;
 
 	std::unique_ptr<asio::ssl::context> ssl_context_;
-
 
 	upstream& get_upstream(const std::string& base_url)
 	{
@@ -1208,12 +1197,13 @@ public:
 			http::response_parser response_parser;
 			http::response_parser::result_type result;
 			auto buffer_begin = asio::buffers_begin(upstream_connection.in_packet_.data());
-			auto buffer_end = asio::buffers_end(upstream_connection.in_packet_.data());
 
 			decltype(buffer_begin) c;
 
 			std::tie(result, c) = response_parser.parse(
-				session_handler_.response(), asio::buffers_begin(upstream_connection.in_packet_.data()), asio::buffers_begin(upstream_connection.in_packet_.data()) + bytes_red);
+				session_handler_.response(),
+				asio::buffers_begin(upstream_connection.in_packet_.data()),
+				asio::buffers_begin(upstream_connection.in_packet_.data()) + bytes_red);
 
 			if (result == http::response_parser::result_type::good)
 			{
@@ -1225,9 +1215,12 @@ public:
 
 				if (content_length > 0 && content_length != http::request_message::content_length_invalid)
 				{
-					upstream_connection.in_packet_.consume(c - asio::buffers_begin(upstream_connection.in_packet_.data()));
+					upstream_connection.in_packet_.consume(
+						c - asio::buffers_begin(upstream_connection.in_packet_.data()));
 					session_handler_.response().body().reserve(content_length);
-					session_handler_.response().body().assign(asio::buffers_begin(upstream_connection.in_packet_.data()), asio::buffers_end(upstream_connection.in_packet_.data()));
+					session_handler_.response().body().assign(
+						asio::buffers_begin(upstream_connection.in_packet_.data()),
+						asio::buffers_end(upstream_connection.in_packet_.data()));
 
 					if (session_handler_.response().body().size() < content_length)
 					{
@@ -1252,7 +1245,6 @@ public:
 			}
 		}
 
-
 		void read_upstream_response_body(http::async::upstreams::connection_type& upstream_connection)
 		{
 			asio::error_code ec;
@@ -1275,9 +1267,7 @@ public:
 								auto buffer_begin = asio::buffers_begin(upstream_connection.in_packet_.data());
 								auto buffer_end = asio::buffers_end(upstream_connection.in_packet_.data());
 
-
-								me->session_handler_.response().body().append(
-									buffer_begin, buffer_end);
+								me->session_handler_.response().body().append(buffer_begin, buffer_end);
 
 								if (me->session_handler_.response().body().length() < content_length)
 								{
@@ -1307,9 +1297,7 @@ public:
 								auto buffer_begin = asio::buffers_begin(upstream_connection.in_packet_.data());
 								auto buffer_end = asio::buffers_end(upstream_connection.in_packet_.data());
 
-
-								me->session_handler_.response().body().append(
-									buffer_begin, buffer_end);
+								me->session_handler_.response().body().append(buffer_begin, buffer_end);
 
 								if (me->session_handler_.response().body().length() < content_length)
 								{
@@ -1430,8 +1418,7 @@ public:
 
 		void write_response_complete()
 		{
-			if (routing_.is_private_base_request())
-				private_base_request_ = true;
+			if (routing_.is_private_base_request()) private_base_request_ = true;
 
 			if (routing_.match_result() == http::api::router_match::match_found)
 			{
@@ -1641,7 +1628,7 @@ public:
 		{
 			set_timeout();
 			asio::error_code ec;
-			//socket_.lowest_layer().set_option(asio::ip::tcp::no_delay(true), ec);
+			// socket_.lowest_layer().set_option(asio::ip::tcp::no_delay(true), ec);
 
 			auto me = shared_from_this();
 			socket_.async_handshake(asio::ssl::stream_base::server, [me](asio::error_code const& ec) {
@@ -1695,8 +1682,7 @@ public:
 		, http_listen_address_(configuration.get<std::string>("http_listen_address", "::0"))
 		, https_use_portsharding_(configuration.get<bool>("https_use_portsharding", false))
 		, https_enabled_(configuration.get<bool>("https_enabled", false))
-		, https_listen_port_begin_(configuration.get<std::int16_t>(
-			  "https_listen_port_begin", 8443))
+		, https_listen_port_begin_(configuration.get<std::int16_t>("https_listen_port_begin", 8443))
 		, https_listen_port_end_(configuration.get<int16_t>("https_listen_port_end", https_listen_port_begin_))
 		, https_listen_port_(network::tcp::socket::invalid_socket)
 		, https_listen_address_(configuration.get<std::string>("https_listen_address", "::0"))
@@ -1714,7 +1700,8 @@ public:
 
 			auto cypher_suite = configuration_.get<std::string>(
 				"https_cypher_list",
-				"TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-"
+				"TLS_AES_128_GCM_SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-"
+				"POLY1305:ECDHE-RSA-"
 				"CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:"
 				"ECDHE-RSA-AES256-SHA384");
 
@@ -1725,7 +1712,8 @@ public:
 				https_ssl_context_.set_options(
 					asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2
 					| asio::ssl::context::no_sslv3 | asio::ssl::context::no_tlsv1 | asio::ssl::context::no_tlsv1_1
-					| asio::ssl::context::no_tlsv1_2 | asio::ssl::context::single_dh_use | SSL_OP_CIPHER_SERVER_PREFERENCE);
+					| asio::ssl::context::no_tlsv1_2 | asio::ssl::context::single_dh_use
+					| SSL_OP_CIPHER_SERVER_PREFERENCE);
 			}
 			else if (tls_protocol == "tls_v1.2")
 			{
@@ -1762,8 +1750,7 @@ public:
 					configuration_.get<std::string>("https_certificate_key", "server.key"));
 			}
 
-
-			//https_ssl_context_.set_options(
+			// https_ssl_context_.set_options(
 			//	asio::ssl::context::default_workarounds | asio::ssl::context::no_sslv2 | asio::ssl::context::no_sslv3
 			//		| asio::ssl::context::no_tlsv1 | asio::ssl::context::single_dh_use
 			//		| SSL_OP_CIPHER_SERVER_PREFERENCE,
@@ -1795,11 +1782,9 @@ public:
 		auto http_port_file = http::server::configuration_.get<std::string>("http_port_file", "");
 		auto https_port_file = http::server::configuration_.get<std::string>("https_port_file", "");
 
-		if (has_http && http_port_file.empty() == false)
-			std::remove(http_port_file.data());
+		if (has_http && http_port_file.empty() == false) std::remove(http_port_file.data());
 
-		if (has_https && https_port_file.empty() == false)
-			std::remove(https_port_file.data());
+		if (has_https && https_port_file.empty() == false) std::remove(https_port_file.data());
 
 		logger_.debug("server deleted\n");
 	}
@@ -2075,7 +2060,6 @@ private:
 			{
 				thread_pool_[i].join();
 			}
-
 		}
 
 	private:
@@ -2166,7 +2150,7 @@ public:
 		}
 	}
 
-	void init_connection_to_upstream_resolved(asio::ip::tcp::resolver::iterator it, asio::error_code& error_code) 
+	void init_connection_to_upstream_resolved(asio::ip::tcp::resolver::iterator it, asio::error_code& error_code)
 	{
 		if (error_code)
 		{
@@ -2177,17 +2161,14 @@ public:
 		{
 			auto me = shared_from_this();
 			asio::async_connect(
-				me->upstream_connection_.socket(),
-				it,
-				[me](asio::error_code error, asio::ip::tcp::resolver::iterator) {
+				me->upstream_connection_.socket(), it, [me](asio::error_code error, asio::ip::tcp::resolver::iterator) {
 					// TODO try next resolve result?
 					if (error)
 					{
 						// failed
 						std::cerr << error.message() << "\n";
 						me->upstream_connection_.error();
-						me->upstream_connection_.owner().set_state(
-							http::async::upstreams::upstream::state::drain);
+						me->upstream_connection_.owner().set_state(http::async::upstreams::upstream::state::drain);
 					}
 					else
 					{
@@ -2197,7 +2178,7 @@ public:
 		}
 	}
 
-	void init_connection_to_upstream_connected() 
+	void init_connection_to_upstream_connected()
 	{
 		auto me = shared_from_this();
 
@@ -2205,23 +2186,22 @@ public:
 
 		if (me->upstream_connection_.is_https() == true)
 		{
-			me->upstream_connection_.ssl_stream().async_handshake(asio::ssl::stream_base::client, [me](const asio::error_code& error)
-			{					
-				if (error)
-				{
-					//std::cerr << "client ssl:" << error.message() << "\n";
-					//me_2->write_request(error);
-				}
-				else
-					me->write_request();
-			});
+			me->upstream_connection_.ssl_stream().async_handshake(
+				asio::ssl::stream_base::client, [me](const asio::error_code& error) {
+					if (error)
+					{
+						// std::cerr << "client ssl:" << error.message() << "\n";
+						// me_2->write_request(error);
+					}
+					else
+						me->write_request();
+				});
 		}
 		else
 		{
 			me->write_request();
 		}
 	}
-
 
 	void write_request()
 	{
@@ -2233,7 +2213,6 @@ public:
 				upstream_connection_.ssl_stream(),
 				asio::buffer(write_buffer_),
 				[me](asio::error_code const& error_code, std::size_t) {
-
 					me->write_buffer_ = "done";
 
 					if (!error_code)
@@ -2248,7 +2227,7 @@ public:
 				upstream_connection_.socket(),
 				asio::buffer(write_buffer_),
 				[me](asio::error_code const& error_code, std::size_t) {
-					me->write_buffer_= "done";
+					me->write_buffer_ = "done";
 
 					if (!error_code)
 						me->read_response_headers();
@@ -2256,9 +2235,7 @@ public:
 						me->read_response_body_complete(error_code);
 				});
 		}
-
 	}
-
 
 	void read_response_headers()
 	{
@@ -2282,15 +2259,15 @@ public:
 		else
 		{
 			asio::async_read_until(
-			upstream_connection_.socket(),
-			upstream_connection_.in_packet_,
-			"\r\n\r\n",
-			[me](asio::error_code ec, size_t bytes_red) {
-				if (!ec)
-					me->read_response_headers_complete(bytes_red);
-				else
-					me->read_response_body_complete(ec);
-			});
+				upstream_connection_.socket(),
+				upstream_connection_.in_packet_,
+				"\r\n\r\n",
+				[me](asio::error_code ec, size_t bytes_red) {
+					if (!ec)
+						me->read_response_headers_complete(bytes_red);
+					else
+						me->read_response_body_complete(ec);
+				});
 		}
 	}
 
@@ -2299,12 +2276,13 @@ public:
 		http::response_parser response_parser;
 		http::response_parser::result_type result;
 		auto buffer_begin = asio::buffers_begin(upstream_connection_.in_packet_.data());
-		auto buffer_end = asio::buffers_end(upstream_connection_.in_packet_.data());
 
 		decltype(buffer_begin) c;
 
 		std::tie(result, c) = response_parser.parse(
-			response_, asio::buffers_begin(upstream_connection_.in_packet_.data()), asio::buffers_begin(upstream_connection_.in_packet_.data()) + bytes_red);
+			response_,
+			asio::buffers_begin(upstream_connection_.in_packet_.data()),
+			asio::buffers_begin(upstream_connection_.in_packet_.data()) + bytes_red);
 
 		if (result == http::response_parser::result_type::good)
 		{
@@ -2312,10 +2290,13 @@ public:
 
 			if (content_length > 0 && content_length != http::request_message::content_length_invalid)
 			{
-				upstream_connection_.in_packet_.consume(c - asio::buffers_begin(upstream_connection_.in_packet_.data()));
+				upstream_connection_.in_packet_.consume(
+					c - asio::buffers_begin(upstream_connection_.in_packet_.data()));
 
 				response_.body().reserve(content_length);
-				response_.body().assign(asio::buffers_begin(upstream_connection_.in_packet_.data()), asio::buffers_end(upstream_connection_.in_packet_.data()));
+				response_.body().assign(
+					asio::buffers_begin(upstream_connection_.in_packet_.data()),
+					asio::buffers_end(upstream_connection_.in_packet_.data()));
 
 				if (response_.body().size() < content_length)
 				{
@@ -2323,13 +2304,14 @@ public:
 				}
 				else
 				{
-					//TODO check if response_.body().size() == content_length;
+					// TODO check if response_.body().size() == content_length;
 					read_response_body_complete(asio::error_code{});
 				}
 			}
 			else if (response_.chunked())
 			{
-				upstream_connection_.in_packet_.consume(c - asio::buffers_begin(upstream_connection_.in_packet_.data()));
+				upstream_connection_.in_packet_.consume(
+					c - asio::buffers_begin(upstream_connection_.in_packet_.data()));
 				chunked_parser_.reset();
 				read_response_body_chunked();
 			}
@@ -2402,7 +2384,9 @@ public:
 						{
 							auto content_length = me->response_.content_length();
 
-							me->response_.body().append(asio::buffers_begin(me->upstream_connection_.in_packet_.data()), asio::buffers_end(me->upstream_connection_.in_packet_.data()));
+							me->response_.body().append(
+								asio::buffers_begin(me->upstream_connection_.in_packet_.data()),
+								asio::buffers_end(me->upstream_connection_.in_packet_.data()));
 
 							if (me->response_.body().length() < content_length)
 							{
@@ -2418,38 +2402,38 @@ public:
 							me->read_response_body_complete(ec);
 						}
 					});
-
 			}
 			else
 			{
-			{
-				asio::async_read(
-					upstream_connection_.socket(),
-					upstream_connection_.in_packet_,
-					asio::transfer_at_least(1),
-					[me](const asio::error_code& ec, std::size_t) {
-						if (!ec)
-						{
-							auto content_length = me->response_.content_length();
-
-							me->response_.body().append(asio::buffers_begin(me->upstream_connection_.in_packet_.data()), asio::buffers_end(me->upstream_connection_.in_packet_.data()));
-
-							if (me->response_.body().length() < content_length)
+				{
+					asio::async_read(
+						upstream_connection_.socket(),
+						upstream_connection_.in_packet_,
+						asio::transfer_at_least(1),
+						[me](const asio::error_code& ec, std::size_t) {
+							if (!ec)
 							{
-								me->read_response_body();
+								auto content_length = me->response_.content_length();
+
+								me->response_.body().append(
+									asio::buffers_begin(me->upstream_connection_.in_packet_.data()),
+									asio::buffers_end(me->upstream_connection_.in_packet_.data()));
+
+								if (me->response_.body().length() < content_length)
+								{
+									me->read_response_body();
+								}
+								else
+								{
+									me->read_response_body_complete(ec);
+								}
 							}
 							else
 							{
 								me->read_response_body_complete(ec);
 							}
-						}
-						else
-						{
-							me->read_response_body_complete(ec);
-						}
-					});
-			}
-
+						});
+				}
 			}
 		}
 		else if (response_.body().size() == response_.content_length())
@@ -2480,9 +2464,8 @@ public:
 			return;
 		}
 
-		auto response_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-						std::chrono::steady_clock::now() - t0_)
-						.count();
+		auto response_time
+			= std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0_).count();
 
 		upstream_connection_.owner().update_health_check_metrics(response_time);
 

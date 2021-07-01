@@ -68,7 +68,6 @@ public:
 		: server_base(http_configuration), cloud::platform::enable_server_as_worker<nlohmann::json>(this)
 	{
 
-
 		server_base::router_.on_get(
 			http::server::configuration_.get<std::string>("health_check", "/internal/platform/health_check"),
 			[this](http::session_handler& session) {
@@ -303,7 +302,6 @@ inline void run_cld_wrk_server()
 	{
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
-
 }
 
 inline int stop_cld_wrk_server()
@@ -319,6 +317,7 @@ protected:
 	std::string base_url_;
 	tests::configuration configuration_;
 	http::server& server_;
+
 public:
 	test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
 		: base_url_(base_url), configuration_(configuration), server_(server)
@@ -573,7 +572,10 @@ class cpm_test : public test
 {
 private:
 public:
-	cpm_test(const std::string& base_url, const tests::configuration& configuration, http::server& server) : test(base_url, configuration, server) {}
+	cpm_test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
+		: test(base_url, configuration, server)
+	{
+	}
 
 	bool add_workspace(std::string workspace_id, std::string tenant_id)
 	{
@@ -630,7 +632,8 @@ public:
 			auto https_certificate_key = configuration_.get<std::string>("https_certificate_key", "server.key");
 			auto https_certificate = configuration_.get<std::string>("https_certificate", "server.crt");
 
-			worker_http_options = "https_enabled:true,https_certificate_key:" + https_certificate_key + ",https_certificate:"+https_certificate;
+			worker_http_options = "https_enabled:true,https_certificate_key:" + https_certificate_key
+								  + ",https_certificate:" + https_certificate;
 		}
 
 		json workgroup_def{ { "name", workgroup_name },
@@ -816,7 +819,8 @@ public:
 						"workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i), worker_count);
 
 			for (int i = 0; i < workspace_count; i++)
-				generate_proxied_requests("/internal/platform/worker/status", "tenant" + std::to_string(100 + i) + "_tst", requests_count);
+				generate_proxied_requests(
+					"/internal/platform/worker/status", "tenant" + std::to_string(100 + i) + "_tst", requests_count);
 
 			for (int i = 0; i < workspace_count; i++)
 				generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
@@ -826,8 +830,7 @@ public:
 			for (int t = 0; t != stay_alive_time; t++)
 			{
 				std::this_thread::sleep_for(std::chrono::seconds(1));
-				if (server_.is_active() == false)
-					return false;
+				if (server_.is_active() == false) return false;
 			}
 
 			for (int j = 0; j < workspace_count; j++)
@@ -1557,8 +1560,8 @@ public:
 		if (base_url.empty() == false)
 		{
 			limits_.workers_actual_upd(1);
-			auto& upstream = upstreams_.add_upstream(
-				io_context, base_url, "/" + name_ + "/" + worker_id + "_" + worker_label);
+			auto& upstream
+				= upstreams_.add_upstream(io_context, base_url, "/" + name_ + "/" + worker_id + "_" + worker_label);
 
 			new_worker.first->second.upstream(upstream);
 			new_worker.first->second.set_status(worker::status::up);
@@ -2242,7 +2245,11 @@ public:
 		return true;
 	}
 
-	void from_json(const json& j, const std::string&) override { std::unique_lock<mutex_type> g(workers_mutex_); workgroup::from_json(j);}
+	void from_json(const json& j, const std::string&) override
+	{
+		std::unique_lock<mutex_type> g(workers_mutex_);
+		workgroup::from_json(j);
+	}
 
 	void from_json(const json& j) override { workgroup::from_json(j); }
 
@@ -2291,7 +2298,6 @@ public:
 		bool is_workspace_updated) override
 	{
 		std::string ec{};
-
 
 		std::unique_lock<mutex_type> lock{ workers_mutex_ };
 
@@ -2880,10 +2886,7 @@ public:
 		j["parameters"].emplace("python_root", rootdir);
 	}
 
-	virtual bool direct_workers(asio::io_context&, const std::string&, lgr::logger&, bool) override
-	{
-		return false;
-	}
+	virtual bool direct_workers(asio::io_context&, const std::string&, lgr::logger&, bool) override { return false; }
 
 	virtual bool create_worker_process(
 		const std::string&,
@@ -2998,14 +3001,11 @@ public:
 		workspace["id"] = workspace_id_;
 		workspace["description"] = description_;
 
-		if (setup_.empty() == false)
-			workspace["setup"] = setup_;
+		if (setup_.empty() == false) workspace["setup"] = setup_;
 
-		if (setup_.empty() == false)
-			workspace["teardown"] = teardown_;
+		if (setup_.empty() == false) workspace["teardown"] = teardown_;
 
-		if (gateway_url_.empty() == false)
-			workspace["gateway_url"] = gateway_url_;
+		if (gateway_url_.empty() == false) workspace["gateway_url"] = gateway_url_;
 
 		if (options == output_formating::options::complete) workspace["state"] = to_string(state_);
 
@@ -3164,10 +3164,11 @@ public:
 						if (session.request().has_attribute("queued"))
 						{
 							auto queue_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-													std::chrono::steady_clock::now() - session.t0())
-													.count();
+													  std::chrono::steady_clock::now() - session.t0())
+													  .count();
 
-							auto time_left = workgroup.second->workgroups_limits().workers_startup_latency_max() - queue_duration;
+							auto time_left
+								= workgroup.second->workgroups_limits().workers_startup_latency_max() - queue_duration;
 
 							if (time_left < 0)
 							{
@@ -3180,7 +3181,8 @@ public:
 						{
 							std::int16_t queue_retry_timeout
 								= workgroup.second->workgroups_limits().workers_queue_retry_timeout();
-							std::int16_t scale_out_factor = workgroup.second->workgroups_limits().worker_scale_out_factor();
+							std::int16_t scale_out_factor
+								= workgroup.second->workgroups_limits().worker_scale_out_factor();
 
 							if (workgroup.second->workgroups_limits().workers_pending() == 0)
 							{
@@ -3189,7 +3191,6 @@ public:
 
 							session.request().set_attribute<std::int16_t>("queued", queue_retry_timeout);
 						}
-
 					}
 					else
 					{
@@ -3308,7 +3309,10 @@ public:
 		}
 	}
 
-	tenant(const std::string& tenant_id, workspace& workspace) : tenant_id_(tenant_id), workspace_(workspace), state_(tenant::state::up) {}
+	tenant(const std::string& tenant_id, workspace& workspace)
+		: tenant_id_(tenant_id), workspace_(workspace), state_(tenant::state::up)
+	{
+	}
 
 	void to_json(json& tenant, output_formating::options options = output_formating::options::complete) const
 	{
@@ -3323,14 +3327,12 @@ public:
 	}
 
 	const std::atomic<tenant::state>& state() const { return state_; }
-	void state(enum tenant::state s) 
-	{
-		state_.store(s); 
-	}
+	void state(enum tenant::state s) { state_.store(s); }
 
-	cloud::platform::workspace& workspace() {return workspace_;}
+	cloud::platform::workspace& workspace() { return workspace_; }
 
-	const std::string& id() const {return tenant_id_;};
+	const std::string& id() const { return tenant_id_; };
+
 private:
 	std::string tenant_id_;
 	cloud::platform::workspace& workspace_;
@@ -3380,13 +3382,12 @@ public:
 		return false;
 	}
 
-
 	bool add_tenant(const std::string& tenant_id, workspace& workspace)
 	{
-		auto new_tenant = tenants_.insert(std::pair<std::string, std::unique_ptr<tenant>>{ tenant_id, new tenant{ tenant_id, workspace } });
+		auto new_tenant = tenants_.insert(
+			std::pair<std::string, std::unique_ptr<tenant>>{ tenant_id, new tenant{ tenant_id, workspace } });
 		return new_tenant.second;
 	}
-
 
 	bool erase_tenant(const std::string& tenant_id)
 	{
@@ -3475,33 +3476,36 @@ public:
 		if (tenant_type == "generic-jailed-v1")
 		{
 			if (workspace_setup.empty())
-				workspace_setup = "/usr/bin/sudo /usr/bin/bash /opt/eln/cp/local_storage/mgt/scripts/mkjail.sh --debug --tenant "+tenant_id+" --build --start";
+				workspace_setup
+					= "/usr/bin/sudo /usr/bin/bash /opt/eln/cp/local_storage/mgt/scripts/mkjail.sh --debug --tenant "
+					  + tenant_id + " --build --start";
 
 			if (workspace_teardown.empty())
-				workspace_teardown = "/usr/bin/sudo /usr/bin/bash /opt/eln/cp/local_storage/mgt/scripts/mkjail.sh --debug --tenant "+tenant_id+" --stop --rm";
+				workspace_teardown
+					= "/usr/bin/sudo /usr/bin/bash /opt/eln/cp/local_storage/mgt/scripts/mkjail.sh --debug --tenant "
+					  + tenant_id + " --stop --rm";
 
 			if (http_options.empty())
-				http_options = "bshell_worker_process_pool_size:8,http_watchdog_idle_timeout:60,http_watchdog_max_connections:10,access_log_level:access_log";
+				http_options
+					= "bshell_worker_process_pool_size:8,http_watchdog_idle_timeout:60,http_watchdog_max_connections:"
+					  "10,access_log_level:access_log";
 
-			if (cli_options.empty())
-				cli_options = "";
+			if (cli_options.empty()) cli_options = "";
 
 			if (program.empty())
-				program = "/usr/bin/sudo /usr/bin/bash /opt/eln/cp/local_storage/mgt/scripts/mkjail.sh --debug --tenant "+ tenant_id +" --start-bshell-strace --";
+				program
+					= "/usr/bin/sudo /usr/bin/bash /opt/eln/cp/local_storage/mgt/scripts/mkjail.sh --debug --tenant "
+					  + tenant_id + " --start-bshell-strace --";
 		}
 		else if (tenant_type == "generic-selftest-v1")
 		{
-			if (workspace_setup.empty())
-				workspace_setup = "eln_cpm.exe -mkjail-setup good";
+			if (workspace_setup.empty()) workspace_setup = "eln_cpm.exe -mkjail-setup good";
 
-			if (workspace_teardown.empty())
-				workspace_teardown = "eln_cpm.exe -mkjail-teardown good";
+			if (workspace_teardown.empty()) workspace_teardown = "eln_cpm.exe -mkjail-teardown good";
 
-			if (http_options.empty())
-				http_options = "";
+			if (http_options.empty()) http_options = "";
 
-			if (cli_options.empty())
-				cli_options = "-selftests_worker";
+			if (cli_options.empty()) cli_options = "-selftests_worker";
 
 			if (program.empty())
 			{
@@ -3518,53 +3522,50 @@ public:
 
 		auto gateway_url = std::string{};
 
-		if (tenant_json.contains("gateway_url"))
-			gateway_url = tenant_json.value("gateway_url", "");
+		if (tenant_json.contains("gateway_url")) gateway_url = tenant_json.value("gateway_url", "");
 
+		// auto prefered_company = tenant_json.value("prefered-company", 90);
 
-		//auto prefered_company = tenant_json.value("prefered-company", 90);
+		json workgroup_def{ "workgroups",
+							{
+								{ { "name", "generic" },
+								  { "type", "bshell" },
+								  { "parameters",
+									{ { "program", program },
+									  { "cli_options", cli_options },
+									  { "http_options", http_options },
+									  { "bse", worker_bse },
+									  { "bse_bin", worker_bse_bin } } },
+								  { "limits",
+									{ { "workers_min", workers_min },
+									  { "workers_max", workers_max },
+									  { "workers_runtime_max", 1 },
+									  { "workers_start_at_once_max", 4 } } } }
+								//	,
+								// { { "name", "specific-company-90" },
+								//{ "type", "bshell" },
 
-		json workgroup_def{
-			"workgroups",
-			{ { { "name", "generic" },
-				{ "type", "bshell" },
-				{ "parameters",
-				  { { "program", program },
-					{ "cli_options", cli_options },
-					{ "http_options", http_options },
-					{ "bse", worker_bse },
-					{ "bse_bin", worker_bse_bin } } },
-				{ "limits",
-				  { { "workers_min", workers_min },
-					{ "workers_max", workers_max },
-					{ "workers_runtime_max", 1 },
-					{ "workers_start_at_once_max", 4 } } } }
-			 //	,
-			 // { { "name", "specific-company-90" },
-				//{ "type", "bshell" },
-
-				//{ "parameters",
-				//  { { "program", worker_cmd },
-				//	{ "cli_options", options },
-				//	{ "bse", worker_bse },
-				//	{ "bse_bin", worker_bse_bin } } },
-				//{ "routes", { { "headers", { { "X-Infor-Company", { std::to_string(prefered_company) } } } } } },
-				//{ "limits",
-				//  { { "workers_min", workers_min },
-				//	{ "workers_max", workers_max },
-				//	{ "workers_runtime_max", 1 },
-				//	{ "workers_start_at_once_max", 4 } } } } 
-		}};
+								//{ "parameters",
+								//  { { "program", worker_cmd },
+								//	{ "cli_options", options },
+								//	{ "bse", worker_bse },
+								//	{ "bse_bin", worker_bse_bin } } },
+								//{ "routes", { { "headers", { { "X-Infor-Company", { std::to_string(prefered_company) }
+								//} } } } }, { "limits",
+								//  { { "workers_min", workers_min },
+								//	{ "workers_max", workers_max },
+								//	{ "workers_runtime_max", 1 },
+								//	{ "workers_start_at_once_max", 4 } } } }
+							} };
 
 		json result{ { "workspace",
 					   { { "id", tenant_id },
 						 { "tenant_id", tenant_id },
-						 { "gateway_url", gateway_url},
+						 { "gateway_url", gateway_url },
 						 { "setup", workspace_setup },
 						 { "teardown", workspace_teardown },
 						 workgroup_def,
-						 { "routes",
-						   { { "headers", { { "X-Infor-TenantId", { tenant_id } } } } } } } } };
+						 { "routes", { { "headers", { { "X-Infor-TenantId", { tenant_id } } } } } } } } };
 
 		std::cout << result.dump(4, ' ') << "\n";
 
@@ -3611,37 +3612,49 @@ public:
 						{
 							std::string error;
 
-							json workspace_def{ { "workspace",
-												  { { "id", "upstreams_"+workspace_ref.get_tenant_id() },
-													{ "routes",
-													  { { "headers", { { "X-Infor-TenantId", { workspace_ref.get_tenant_id() } } } } } } } } };
+							json workspace_def{
+								{ "workspace",
+								  { { "id", "upstreams_" + workspace_ref.get_tenant_id() },
+									{ "routes",
+									  { { "headers",
+										  { { "X-Infor-TenantId", { workspace_ref.get_tenant_id() } } } } } } } }
+							};
 
-							json workgroup_def{ { "name", "upstream_"+ workspace_ref.get_tenant_id() }, { "type", "upstream" }} ;
+							json workgroup_def{ { "name", "upstream_" + workspace_ref.get_tenant_id() },
+												{ "type", "upstream" } };
 
-							json worker_def{ 
-												{ "type", "upstream" },
-												{ "worker_label", "" },
-												{ "worker_id", "worker_id_1" },
-												{ "base_url", this_server_base_url }};
+							json worker_def{ { "type", "upstream" },
+											 { "worker_label", "" },
+											 { "worker_id", "worker_id_1" },
+											 { "base_url", this_server_base_url } };
 
-							//std::cout << workspace_def["workspace"].dump(4, ' ') << "\n";
+							// std::cout << workspace_def["workspace"].dump(4, ' ') << "\n";
 
 							auto response = http::client::request<http::method::post>(
-								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces", error, {}, workspace_def["workspace"].dump());
+								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces",
+								error,
+								{},
+								workspace_def["workspace"].dump());
 
 							response = http::client::request<http::method::post>(
-								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/upstreams_"+workspace_ref.get_workspace_id()+ "/workgroups", error, {}, workgroup_def.dump());
+								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/upstreams_"
+									+ workspace_ref.get_workspace_id() + "/workgroups",
+								error,
+								{},
+								workgroup_def.dump());
 
 							response = http::client::request<http::method::post>(
-								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/upstreams_"+workspace_ref.get_workspace_id()+ "/workgroups/"+ "upstream_"+workspace_ref.get_tenant_id()+"/workers", error, {}, worker_def.dump());
-
+								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/upstreams_"
+									+ workspace_ref.get_workspace_id() + "/workgroups/" + "upstream_"
+									+ workspace_ref.get_tenant_id() + "/workers",
+								error,
+								{},
+								worker_def.dump());
 
 							if ((error.empty() == true) && (response.status() == http::status::created))
 							{
 								logger.api(
-									"/{s}: added to gateway on: {s}\n",
-									workspace_ref.get_workspace_id(),
-									gateway_url);
+									"/{s}: added to gateway on: {s}\n", workspace_ref.get_workspace_id(), gateway_url);
 							}
 							else
 							{
@@ -3651,7 +3664,6 @@ public:
 									gateway_url);
 							}
 						}
-
 					} }.detach();
 				}
 				else
@@ -3809,23 +3821,27 @@ public:
 							{
 								workspace_ref.state(workspace::state::down); // TODO...?
 							}
-	
+
 							auto gateway_url = workspace_ref.gateway_url();
 
 							if (gateway_url.empty() == false)
 							{
 								logger.api(
-									"/{s}: added to gateway on: {s}\n",
-									workspace_ref.get_workspace_id(),
-									gateway_url);
+									"/{s}: added to gateway on: {s}\n", workspace_ref.get_workspace_id(), gateway_url);
 
 								std::string error;
 								json registrion_json = json::object();
 
 								auto response = http::client::request<http::method::delete_>(
-									workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/"+workspace_ref.get_workspace_id(), error, {}, registrion_json.dump());
+									workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/"
+										+ workspace_ref.get_workspace_id(),
+									error,
+									{},
+									registrion_json.dump());
 
-								if ((error.empty() == false) && (response.status() == http::status::accepted || response.status() == http::status::ok))
+								if ((error.empty() == false)
+									&& (response.status() == http::status::accepted
+										|| response.status() == http::status::ok))
 								{
 									logger.api(
 										"/{s}: removed from gateway on: {s}\n",
@@ -3840,9 +3856,6 @@ public:
 										gateway_url);
 								}
 							}
-
-
-
 						} }.detach();
 					}
 					else
@@ -3894,8 +3907,8 @@ public:
 							needs_changes = true;
 
 						if (workgroup_state == workgroup::state::up || workgroup_state == workgroup::state::drain)
-							is_changed_new
-								|= workgroup->second->direct_workers(io_context, this_server_local_url, logger, is_changed_);
+							is_changed_new |= workgroup->second->direct_workers(
+								io_context, this_server_local_url, logger, is_changed_);
 					}
 				}
 			}
@@ -4325,7 +4338,6 @@ public:
 			session.response().status(http::status::ok);
 		});
 
-
 		server_base::router_.on_delete("/internal/platform/manager/process", [this](http::session_handler& session) {
 			session.response().status(http::status::no_content);
 			session.response().body() = std::string("");
@@ -4414,8 +4426,7 @@ public:
 
 			auto output_options = output_formating::options::essential;
 
-			if (include_workspace)
-				output_options = output_formating::options::complete;				
+			if (include_workspace) output_options = output_formating::options::complete;
 
 			auto error_message = std::string{};
 			json tenants_json{};
@@ -4428,40 +4439,40 @@ public:
 			session.response().assign(http::status::ok, result_json.dump(), "application/json");
 		});
 
-		server_base::router_.on_get("/internal/platform/manager/tenants/{tenant_id}", [this](http::session_handler& session) {
-			auto include_workspace = session.request().query().get<bool>("include_workspace", false);
-			auto& tenant_id = session.params().get("tenant_id");
-			auto error_message = std::string{};
-			auto output_options = output_formating::options::essential;
+		server_base::router_.on_get(
+			"/internal/platform/manager/tenants/{tenant_id}", [this](http::session_handler& session) {
+				auto include_workspace = session.request().query().get<bool>("include_workspace", false);
+				auto& tenant_id = session.params().get("tenant_id");
+				auto error_message = std::string{};
+				auto output_options = output_formating::options::essential;
 
-			if (include_workspace)
-				output_options = output_formating::options::complete;				
+				if (include_workspace) output_options = output_formating::options::complete;
 
-			auto result = tenants_.select(
-				tenant_id,
-				[&session, output_options](const tenant& tenant, std::string&) {
-					json result_json;
-					tenant.to_json(result_json["tenant"], output_options);
+				auto result = tenants_.select(
+					tenant_id,
+					[&session, output_options](const tenant& tenant, std::string&) {
+						json result_json;
+						tenant.to_json(result_json["tenant"], output_options);
 
-					session.response().assign(http::status::ok, result_json.dump(), "application/json");
-					return true;
-				},
-				error_message);
+						session.response().assign(http::status::ok, result_json.dump(), "application/json");
+						return true;
+					},
+					error_message);
 
-			if (result == false)
-			{
-				session.response().assign(
-					http::status::not_found,
-					error_json(http::status::to_int(session.response().status()), error_message).dump(),
-					"application/json");
-			}
-		});
+				if (result == false)
+				{
+					session.response().assign(
+						http::status::not_found,
+						error_json(http::status::to_int(session.response().status()), error_message).dump(),
+						"application/json");
+				}
+			});
 
 		server_base::router_.on_post("/internal/platform/manager/tenants", [this](http::session_handler& session) {
 			auto error_message = std::string{};
 			auto http_response = http::status::bad_request;
 			bool result = false;
-			
+
 			try
 			{
 				json tenant_json = json::parse(session.request().body());
@@ -4490,9 +4501,7 @@ public:
 			if (result == false)
 			{
 				session.response().assign(
-					http_response,
-					error_json(http_response, error_message).dump(),
-					"application/json");
+					http_response, error_json(http_response, error_message).dump(), "application/json");
 			}
 			else
 			{
@@ -4532,11 +4541,9 @@ public:
 
 				auto result = tenants_.change(
 					tenant_id,
-					[&session,this](tenant& tenant, std::string&) {
-						
-						if (tenant.state().load() != tenant::state::down)
-							tenant.state(tenant::state::drain);
-							
+					[&session, this](tenant& tenant, std::string&) {
+						if (tenant.state().load() != tenant::state::down) tenant.state(tenant::state::drain);
+
 						tenants_.erase_tenant(tenant.id());
 
 						session.response().assign(http::status::accepted);
@@ -4553,7 +4560,6 @@ public:
 				}
 			});
 
-
 		server_base::router_.on_post("/internal/platform/manager/workspaces", [this](http::session_handler& session) {
 			auto error_message = std::string{};
 			auto http_response = http::status::bad_request;
@@ -4563,7 +4569,7 @@ public:
 			{
 				json workspace_json = json::parse(session.request().body());
 
-				auto workspace_id = std::string{workspace_json.at("id")};
+				auto workspace_id = std::string{ workspace_json.at("id") };
 
 				if (workspaces_.add_workspace(workspace_id, workspace_json) == true)
 				{
@@ -4584,15 +4590,12 @@ public:
 			if (result == false)
 			{
 				session.response().assign(
-					http_response,
-					error_json(http_response, error_message).dump(),
-					"application/json");
+					http_response, error_json(http_response, error_message).dump(), "application/json");
 			}
 			else
 			{
 				session.response().assign(http_response);
 			}
-
 		});
 
 		server_base::router_.on_delete(
@@ -5222,10 +5225,7 @@ public:
 		});
 	}
 
-	virtual ~manager() 
-	{
-		director_thread_.join();
-	}
+	virtual ~manager() { director_thread_.join(); }
 
 	http::server::state start() override
 	{
@@ -5234,56 +5234,61 @@ public:
 			auto ret = server_base::start();
 			director_thread_ = std::thread{ [this]() { director_handler(); } };
 
-				std::string error_code_2;
-
+			std::string error_code_2;
 
 			auto pub_sub_endpoint = server_base::configuration_.template get<std::string>("pub_sub_endpoint", "");
 			auto pub_sub_farm = server_base::configuration_.template get<std::string>("pub_sub_farm", "");
 
 			if (pub_sub_endpoint.empty() == false)
 			{
-				auto http_this_server_base_url = server_base::configuration_.template get<std::string>("http_this_server_base_url", "http://localhost:8080");
-				auto http_this_server_base_host = server_base::configuration_.template get<std::string>("http_this_server_base_host", "localhost:8080");
+				auto http_this_server_base_url = server_base::configuration_.template get<std::string>(
+					"http_this_server_base_url", "http://localhost:8080");
+				auto http_this_server_base_host = server_base::configuration_.template get<std::string>(
+					"http_this_server_base_host", "localhost:8080");
 
-				json subscription_json{ 
-					{"request", "subscribe"},
-					{"farmname", pub_sub_farm},
-					{ "topics", {{
-						{ "channel", "eln-landscape"},
-						{ "subscriberid", "eln-cpm@"+ http_this_server_base_host},
-						{ "details", {{"recipienturi", http_this_server_base_url + "/internal/platform/manager/tenants"}}},  
-						{ "topic", "Created:Tenant"}
-					},{
-						{ "channel", "eln-landscape"},
-						{ "subscriberid", "eln-cpm@"+ http_this_server_base_host},
-						{ "details", {{"recipienturi", http_this_server_base_url + "/internal/platform/manager/tenants"}}},  
-						{ "topic", "Modified:Tenant"}
-					},{
-						{ "channel", "eln-landscape"},
-						{ "subscriberid", "eln-cpm@"+ http_this_server_base_host},
-						{ "details", {{"recipienturi", http_this_server_base_url + "/internal/platform/manager/tenants"}}},  
-						{ "topic", "Deleted:Tenant"}
-					}}
-				}};
-	
+				json subscription_json{
+					{ "request", "subscribe" },
+					{ "farmname", pub_sub_farm },
+					{ "topics",
+					  { { { "channel", "eln-landscape" },
+						  { "subscriberid", "eln-cpm@" + http_this_server_base_host },
+						  { "details",
+							{ { "recipienturi", http_this_server_base_url + "/internal/platform/manager/tenants" } } },
+						  { "topic", "Created:Tenant" } },
+						{ { "channel", "eln-landscape" },
+						  { "subscriberid", "eln-cpm@" + http_this_server_base_host },
+						  { "details",
+							{ { "recipienturi", http_this_server_base_url + "/internal/platform/manager/tenants" } } },
+						  { "topic", "Modified:Tenant" } },
+						{ { "channel", "eln-landscape" },
+						  { "subscriberid", "eln-cpm@" + http_this_server_base_host },
+						  { "details",
+							{ { "recipienturi", http_this_server_base_url + "/internal/platform/manager/tenants" } } },
+						  { "topic", "Deleted:Tenant" } } } }
+				};
+
 				std::string error_code;
 
 				try
-				{				
-					server_base::logger().api("subscribing to: {s}, in farm: {s}, with json:\n{s}\n", pub_sub_endpoint, pub_sub_farm, subscription_json.dump(2, ' '));
+				{
+					server_base::logger().api(
+						"subscribing to: {s}, in farm: {s}, with json:\n{s}\n",
+						pub_sub_endpoint,
+						pub_sub_farm,
+						subscription_json.dump(2, ' '));
 
-					auto response = http::client::request<http::method::post>(pub_sub_endpoint, error_code, {}, subscription_json.dump());
-					bool failed = true; 
+					auto response = http::client::request<http::method::post>(
+						pub_sub_endpoint, error_code, {}, subscription_json.dump());
 
-					if (error_code.empty() && (response.status() > 200 && response.status() < 300 ))
-					{
-						failed = false;
-					}
-
-					server_base::logger().api("subscribing to: {s}, in farm: {s} ended with: {d} and reply:\n{s}\n", pub_sub_endpoint, pub_sub_farm, http::status::to_int(response.status()), http::to_string(response));
+					server_base::logger().api(
+						"subscribing to: {s}, in farm: {s} ended with: {d} and reply:\n{s}\n",
+						pub_sub_endpoint,
+						pub_sub_farm,
+						http::status::to_int(response.status()),
+						http::to_string(response));
 				}
-				catch(std::system_error& e)
-				{	
+				catch (std::system_error& e)
+				{
 					std::cerr << e.what();
 				}
 			}
@@ -5323,15 +5328,16 @@ private:
 
 		std::string this_server_local_url{};
 
-		if (server_base::configuration_.get<bool>("https_enabled", true))
+		if (server_base::configuration_.template get<bool>("https_enabled", true))
 		{
-			this_server_local_url = server_base::configuration_.get<std::string>("https_this_server_local_url", "https://localhost:8443");
+			this_server_local_url
+				= server_base::configuration_.template get<std::string>("https_this_server_local_url", "https://localhost:8443");
 		}
 		else
 		{
-			this_server_local_url = server_base::configuration_.get<std::string>("https_this_server_local_url", "http://localhost:8080");
+			this_server_local_url
+				= server_base::configuration_.template get<std::string>("https_this_server_local_url", "http://localhost:8080");
 		}
-	
 
 		while (server_base::is_active() || server_base::is_activating())
 		{
@@ -5401,10 +5407,10 @@ inline bool start_eln_cpm_server(
 											  { "access_log_file", "access_log.txt" },
 											  { "extended_log_level", "api" },
 											  { "extended_log_file", "console" },
-											  { "pub_sub_registration_url", ""},
-											  { "http_port_file", server_version + ".http_port"},
-											  { "https_port_file", server_version +  ".https_port"},
-											  { "https_port_file", ""},
+											  { "pub_sub_registration_url", "" },
+											  { "http_port_file", server_version + ".http_port" },
+											  { "https_port_file", server_version + ".https_port" },
+											  { "https_port_file", "" },
 											  { "https_enabled", "false" },
 											  { "http_enabled", "true" },
 											  { "http_use_portsharding", "false" } },
@@ -5424,15 +5430,15 @@ inline bool start_eln_cpm_server(
 	{
 		tests::cpm_test test_cpm{ http_configuration.get<std::string>(
 									  "http_this_server_local_url", "http://localhost:8080"),
-								  tests::configuration({
-								  }, std::string{ selftest_options }), *(cloud::platform::eln_cpm_server_) };
+								  tests::configuration({}, std::string{ selftest_options }),
+								  *(cloud::platform::eln_cpm_server_) };
 
 		// tests::cpm_test_as_lb test_cpm_lb{http_configuration.get<std::string>("http_this_server_local_url",
 		// "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
 
 		result = test_cpm.run();
 
-		//exit(result == true);
+		// exit(result == true);
 	}
 
 	return result;
@@ -5524,7 +5530,7 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 			arguments.get_val("selftests") == "true",
 			arguments.get_val("selftests_options"));
 
-		if (arguments.get_val("selftests") == "true") 
+		if (arguments.get_val("selftests") == "true")
 		{
 			stop_eln_cpm_server();
 			if (result)
@@ -5538,14 +5544,12 @@ inline bool start_eln_cpm_server(int argc, const char** argv)
 		}
 
 		return result;
-
 	}
 	else
 	{
 		tests::start_cld_wrk_server(arguments.get_val("httpserver_options"), arguments.get_val("daemonize") == "true");
 
 		tests::run_cld_wrk_server();
-
 
 		tests::stop_cld_wrk_server();
 
