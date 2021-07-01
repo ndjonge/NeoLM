@@ -215,7 +215,7 @@ public:
 		}
 		
 		ssl_socket_stream& ssl_stream() { return ssl_socket_stream_;}
-		socket_stream stream() { return socket_stream_; }
+		//socket_stream stream() { return socket_stream_; }
 	};
 
 	void up(const std::string& base_url)
@@ -1136,17 +1136,34 @@ public:
 
 			auto me = this->shared_from_this();
 
-			asio::async_write(
-				upstream_connection.socket(),
-				asio::buffer(write_buffer_.front()),
-				[me, &upstream_connection](asio::error_code const& ec, std::size_t) {
-					me->write_buffer_.pop_front();
+			if (upstream_connection.is_https())
+			{
+				asio::async_write(
+					upstream_connection.ssl_stream(),
+					asio::buffer(write_buffer_.front()),
+					[me, &upstream_connection](asio::error_code const& ec, std::size_t) {
+						me->write_buffer_.pop_front();
 
-					if (!ec)
-						me->read_upstream_response_headers(upstream_connection);
-					else
-						me->read_upstream_response_body_complete(upstream_connection, ec);
-				});
+						if (!ec)
+							me->read_upstream_response_headers(upstream_connection);
+						else
+							me->read_upstream_response_body_complete(upstream_connection, ec);
+					});
+			}
+			else
+			{
+				asio::async_write(
+					upstream_connection.socket(),
+					asio::buffer(write_buffer_.front()),
+					[me, &upstream_connection](asio::error_code const& ec, std::size_t) {
+						me->write_buffer_.pop_front();
+
+						if (!ec)
+							me->read_upstream_response_headers(upstream_connection);
+						else
+							me->read_upstream_response_body_complete(upstream_connection, ec);
+					});
+			}
 		}
 
 		void read_upstream_response_headers(http::async::upstreams::connection_type& upstream_connection)
@@ -1155,16 +1172,34 @@ public:
 
 			upstream_connection.in_packet_.consume(upstream_connection.in_packet_.size());
 
-			asio::async_read_until(
-				upstream_connection.socket(),
-				upstream_connection.in_packet_,
-				"\r\n\r\n",
-				[me, &upstream_connection](asio::error_code ec, size_t bytes_red) {
-					if (!ec)
-						me->read_upstream_response_headers_complete(upstream_connection, bytes_red);
-					else
-						me->read_upstream_response_body_complete(upstream_connection, ec);
-				});
+			if (upstream_connection.is_https())
+			{
+				asio::async_read_until(
+					upstream_connection.ssl_stream(),
+					upstream_connection.in_packet_,
+					"\r\n\r\n",
+					[me, &upstream_connection](asio::error_code ec, size_t bytes_red) {
+						if (!ec)
+							me->read_upstream_response_headers_complete(upstream_connection, bytes_red);
+						else
+							me->read_upstream_response_body_complete(upstream_connection, ec);
+					});
+			}
+			else
+			{
+				asio::async_read_until(
+					upstream_connection.socket(),
+					upstream_connection.in_packet_,
+					"\r\n\r\n",
+					[me, &upstream_connection](asio::error_code ec, size_t bytes_red) {
+						auto msg = ec.message();
+
+						if (!ec)
+							me->read_upstream_response_headers_complete(upstream_connection, bytes_red);
+						else
+							me->read_upstream_response_body_complete(upstream_connection, ec);
+					});
+			}
 		}
 
 		void read_upstream_response_headers_complete(
@@ -1227,35 +1262,70 @@ public:
 
 				upstream_connection.in_packet_.consume(upstream_connection.in_packet_.size());
 
-				asio::async_read(
-					upstream_connection.socket(),
-					upstream_connection.in_packet_,
-					asio::transfer_at_least(1),
-					[me, &upstream_connection](const asio::error_code& ec, std::size_t) {
-						if (!ec)
-						{
-							auto content_length = me->session_handler_.response().content_length();
-							auto buffer_begin = asio::buffers_begin(upstream_connection.in_packet_.data());
-							auto buffer_end = asio::buffers_end(upstream_connection.in_packet_.data());
-
-
-							me->session_handler_.response().body().append(
-								buffer_begin, buffer_end);
-
-							if (me->session_handler_.response().body().length() < content_length)
+				if (upstream_connection.is_https())
+				{
+					asio::async_read(
+						upstream_connection.ssl_stream(),
+						upstream_connection.in_packet_,
+						asio::transfer_at_least(1),
+						[me, &upstream_connection](const asio::error_code& ec, std::size_t) {
+							if (!ec)
 							{
-								me->read_upstream_response_body(upstream_connection);
+								auto content_length = me->session_handler_.response().content_length();
+								auto buffer_begin = asio::buffers_begin(upstream_connection.in_packet_.data());
+								auto buffer_end = asio::buffers_end(upstream_connection.in_packet_.data());
+
+
+								me->session_handler_.response().body().append(
+									buffer_begin, buffer_end);
+
+								if (me->session_handler_.response().body().length() < content_length)
+								{
+									me->read_upstream_response_body(upstream_connection);
+								}
+								else
+								{
+									me->read_upstream_response_body_complete(upstream_connection, ec);
+								}
 							}
 							else
 							{
 								me->read_upstream_response_body_complete(upstream_connection, ec);
 							}
-						}
-						else
-						{
-							me->read_upstream_response_body_complete(upstream_connection, ec);
-						}
-					});
+						});
+				}
+				else
+				{
+					asio::async_read(
+						upstream_connection.socket(),
+						upstream_connection.in_packet_,
+						asio::transfer_at_least(1),
+						[me, &upstream_connection](const asio::error_code& ec, std::size_t) {
+							if (!ec)
+							{
+								auto content_length = me->session_handler_.response().content_length();
+								auto buffer_begin = asio::buffers_begin(upstream_connection.in_packet_.data());
+								auto buffer_end = asio::buffers_end(upstream_connection.in_packet_.data());
+
+
+								me->session_handler_.response().body().append(
+									buffer_begin, buffer_end);
+
+								if (me->session_handler_.response().body().length() < content_length)
+								{
+									me->read_upstream_response_body(upstream_connection);
+								}
+								else
+								{
+									me->read_upstream_response_body_complete(upstream_connection, ec);
+								}
+							}
+							else
+							{
+								me->read_upstream_response_body_complete(upstream_connection, ec);
+							}
+						});
+				}
 			}
 			else if (session_handler_.response().body().size() == session_handler_.response().content_length())
 			{
