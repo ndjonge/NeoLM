@@ -1272,7 +1272,7 @@ static std::int64_t create_bse_process_as_user(
 
 			for (auto env_var : envp)
 			{
-				free(env_var);
+				delete env_var;
 			}
 		}
 	}
