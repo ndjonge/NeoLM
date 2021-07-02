@@ -1270,9 +1270,15 @@ static std::int64_t create_bse_process_as_user(
 				result = 0;
 			}
 
-			for (auto env_var : envp)
+			for (auto& arg : argv)
+                        {
+				if (arg)
+                                	delete[] arg;
+                        }
+			for (auto& env_var : envp)
 			{
-				delete env_var;
+				if (env_var)
+					free(env_var);
 			}
 		}
 	}
