@@ -1271,14 +1271,12 @@ static std::int64_t create_bse_process_as_user(
 			}
 
 			for (auto& arg : argv)
-                        {
-				if (arg)
-                                	delete[] arg;
-                        }
+			{
+				if (arg) delete[] arg;
+			}
 			for (auto& env_var : envp)
 			{
-				if (env_var)
-					free(env_var);
+				if (env_var) free(env_var);
 			}
 		}
 	}
@@ -5336,13 +5334,13 @@ private:
 
 		if (server_base::configuration_.template get<bool>("https_enabled", true))
 		{
-			this_server_local_url
-				= server_base::configuration_.template get<std::string>("https_this_server_local_url", "https://localhost:8443");
+			this_server_local_url = server_base::configuration_.template get<std::string>(
+				"https_this_server_local_url", "https://localhost:8443");
 		}
 		else
 		{
-			this_server_local_url
-				= server_base::configuration_.template get<std::string>("https_this_server_local_url", "http://localhost:8080");
+			this_server_local_url = server_base::configuration_.template get<std::string>(
+				"https_this_server_local_url", "http://localhost:8080");
 		}
 
 		while (server_base::is_active() || server_base::is_activating())
