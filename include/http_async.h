@@ -1890,6 +1890,7 @@ public:
 				else
 				{
 					https_listen_port_probe = https_acceptor_.local_endpoint().port();
+					break;
 				}
 			}
 

@@ -5280,7 +5280,7 @@ inline bool start_eln_cpm_server(
 
 		if (run_as == "eln_cpg")
 		{
-			tests::eln_cpg_test test_cpg{ http_configuration.get<std::string>(
+			tests::eln_cpg_test test_cpg{ cloud::platform::eln_cpm_server_->config().get<std::string>(
 											  "http_this_server_base_url", "http://localhost:8080"),
 										  options,
 										  *(cloud::platform::eln_cpm_server_) };
@@ -5288,7 +5288,7 @@ inline bool start_eln_cpm_server(
 		}
 		else if (run_as == "eln_cpm")
 		{
-			tests::eln_cpm_test test_cpm{ http_configuration.get<std::string>(
+			tests::eln_cpm_test test_cpm{ cloud::platform::eln_cpm_server_->config().get<std::string>(
 											  "http_this_server_base_url", "http://localhost:8080"),
 										  options,
 										  *(cloud::platform::eln_cpm_server_) };
