@@ -327,10 +327,10 @@ public:
 	virtual bool run() = 0;
 };
 
-class cpm_test_as_lb : public test
+class eln_cpg_test : public test
 {
 public:
-	cpm_test_as_lb(const std::string& base_url, const tests::configuration& configuration, http::server& server)
+	eln_cpg_test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
 		: test(base_url, configuration, server)
 	{
 	}
@@ -568,11 +568,11 @@ public:
 	}
 };
 
-class cpm_test : public test
+class eln_cpm_test : public test
 {
 private:
 public:
-	cpm_test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
+	eln_cpm_test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
 		: test(base_url, configuration, server)
 	{
 	}
@@ -5432,17 +5432,23 @@ inline bool start_eln_cpm_server(
 
 	if (run_selftests)
 	{
-		tests::cpm_test test_cpm{ http_configuration.get<std::string>(
-									  "http_this_server_local_url", "http://localhost:8080"),
-								  tests::configuration({}, std::string{ selftest_options }),
-								  *(cloud::platform::eln_cpm_server_) };
+		if (http_configuration.get<std::string>("tests_as", "eln_cpm") == "eln_cpg")
+		{
+			tests::eln_cpg_test test_cpg{ http_configuration.get<std::string>(
+										  "http_this_server_local_url", "http://localhost:8080"),
+									  tests::configuration({}, std::string{ selftest_options }),
+									  *(cloud::platform::eln_cpm_server_) };
+			result = test_cpg.run();
+		}
+		else
+		{
+			 tests::eln_cpm_test test_cpm{http_configuration.get<std::string>(
+										  "http_this_server_local_url", "http://localhost:18080"),
+									  tests::configuration({}, std::string{ selftest_options }),
+									  *(cloud::platform::eln_cpm_server_) };
 
-		// tests::cpm_test_as_lb test_cpm_lb{http_configuration.get<std::string>("http_this_server_local_url",
-		// "http://localhost:4000"), tests::configuration({}, std::string{ selftest_options })};
-
-		result = test_cpm.run();
-
-		// exit(result == true);
+			 result = test_cpm.run();
+		}
 	}
 
 	return result;
