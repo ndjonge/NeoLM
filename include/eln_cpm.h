@@ -54,801 +54,6 @@
 #include "eln_cpm_worker.h"
 using json = nlohmann::json;
 
-namespace tests
-{
-using configuration = http::configuration;
-
-template <typename S> class worker : public S, public cloud::platform::enable_server_as_worker<nlohmann::json>
-{
-protected:
-	using server_base = S;
-
-public:
-	worker(http::configuration& http_configuration)
-		: server_base(http_configuration), cloud::platform::enable_server_as_worker<nlohmann::json>(this)
-	{
-
-		server_base::router_.on_get(
-			http::server::configuration_.get<std::string>("health_check", "/internal/platform/health_check"),
-			[this](http::session_handler& session) {
-				session.response().assign(http::status::ok, "OK");
-				server_base::manager().update_health_check_metrics();
-			});
-
-		server_base::router_.on_post("/internal/platform/worker/mirror", [](http::session_handler& session) {
-			session.response().status(http::status::ok);
-			session.response().type(session.response().get<std::string>("Content-Type", "text/plain"));
-			session.response().body() = session.request().body();
-		});
-
-		server_base::router_.on_post(
-			"/internal/platform/worker/access_log_level", [this](http::session_handler& session) {
-				server_base::logger_.set_access_log_level(session.request().body());
-				auto new_level = server_base::logger_.current_access_log_level_to_string();
-				http::server::configuration_.set("access_log_level", new_level);
-				session.response().body() = server_base::logger_.current_access_log_level_to_string();
-				session.response().status(http::status::ok);
-			});
-
-		server_base::router_.on_get(
-			"/internal/platform/worker/access_log_level", [this](http::session_handler& session) {
-				session.response().body() = server_base::logger_.current_access_log_level_to_string();
-				session.response().status(http::status::ok);
-			});
-
-		server_base::router_.on_post(
-			"/internal/platform/worker/extended_log_level", [this](http::session_handler& session) {
-				server_base::logger_.set_extended_log_level(session.request().body());
-				auto new_level = server_base::logger_.current_extended_log_level_to_string();
-				http::server::configuration_.set("extended_log_level", new_level);
-				session.response().body() = server_base::logger_.current_extended_log_level_to_string();
-				session.response().status(http::status::ok);
-			});
-
-		server_base::router_.on_get(
-			"/internal/platform/worker/extended_log_level", [this](http::session_handler& session) {
-				session.response().body() = server_base::logger_.current_extended_log_level_to_string();
-				session.response().status(http::status::ok);
-			});
-
-		server_base::router_.on_get("/internal/platform/worker/status", [this](http::session_handler& session) {
-			const auto& format = session.request().get<std::string>("Accept", "application/json");
-			const auto& format_from_query_parameter = session.request().query().get<std::string>("format", "text");
-
-			if (format.find("application/json") != std::string::npos || format_from_query_parameter == "json")
-			{
-				session.response().assign(
-					http::status::ok,
-					server_base::manager().to_json(http::server::server_manager::json_status_options::full).dump(),
-					"json");
-			}
-			else
-			{
-				server_base::manager().server_information(http::server::configuration_.to_string());
-				server_base::manager().router_information(server_base::router_.to_string());
-				session.response().body() = server_base::manager().to_string();
-				session.response().type("text");
-			}
-
-			session.response().status(http::status::ok);
-		});
-
-		server_base::router_.on_get(
-			"/internal/platform/worker/status/{section}", [this](http::session_handler& session) {
-				const auto& format = session.request().get<std::string>("Accept", "application/json");
-				const auto& format_from_query_parameter = session.request().query().get<std::string>("format", "text");
-				const auto& section = session.params().get("section");
-
-				if (section == "metrics")
-				{
-					session.response().assign(
-						http::status::ok,
-						server_base::manager()
-							.to_json(http::server::server_manager::json_status_options::server_metrics)
-							.dump(),
-						"json");
-				}
-				else if (section == "configuration")
-				{
-					session.response().assign(
-						http::status::ok,
-						server_base::manager()
-							.to_json(http::server::server_manager::json_status_options::config)
-							.dump(),
-						"json");
-				}
-				else if (section == "router")
-				{
-					session.response().assign(
-						http::status::ok,
-						server_base::manager()
-							.to_json(http::server::server_manager::json_status_options::router)
-							.dump(),
-						"json");
-				}
-				else if (section == "access_log")
-				{
-					session.response().assign(
-						http::status::ok,
-						server_base::manager()
-							.to_json(http::server::server_manager::json_status_options::access_log)
-							.dump(),
-						"json");
-				}
-				else if (section == "version")
-				{
-					std::string version = std::string{ "cld_wrk " } + get_version_ex(PORT_SET, NULL)
-										  + std::string{ "/" } + get_version_ex(PORT_NO, NULL);
-
-					if (format.find("application/json") != std::string::npos || format_from_query_parameter == "json")
-					{
-						auto result = json::object();
-						result["version"] = version;
-
-						session.response().assign(http::status::ok, result.dump(), "json");
-					}
-					else
-					{
-						session.response().assign(http::status::ok, std::move(version), "text");
-					}
-				}
-				else
-				{
-					session.response().assign(http::status::not_found);
-				}
-			});
-
-		server_base::router_.on_delete("/internal/platform/worker/process", [this](http::session_handler& session) {
-			session.response().status(http::status::no_content);
-			session.response().body() = std::string("");
-			session.response().set("Connection", "close");
-
-			server_base::deactivate();
-		});
-
-		server_base::router_.on_post("/internal/platform/worker/watchdog", [this](http::session_handler& session) {
-			if (session.request().has("X-Infor-Feed-Watchdog") == true)
-			{
-				server_base::manager().idle_time_reset();
-			}
-			session.response().status(http::status::ok);
-		});
-
-		server_base::router_.on_idle([this](bool is_idle_timeout_execeeded) {
-			if (is_idle_timeout_execeeded == true)
-			{
-				server_base::deactivate();
-			}
-			else
-			{
-				server_base::logger_.info("idle \n {s} \n", server_base::manager().to_string());
-			}
-		});
-	}
-
-	virtual ~worker() {}
-
-	http::server::state start() override
-	{
-		try
-		{
-			auto ret = server_base::start();
-
-			if (ret == http::server::state::active && workgroup_controller_) workgroup_controller_->add();
-
-			return ret;
-		}
-		catch (std::runtime_error& e)
-		{
-			std::cerr << e.what() << std::endl;
-			_exit(-1);
-		}
-	}
-};
-
-static std::unique_ptr<worker<http::sync::server>> cld_wrk_server_;
-
-inline bool start_cld_wrk_server(std::string config_options, bool run_as_daemon)
-{
-	std::string server_version = std::string{ "ln-cld-wrk" };
-
-	if (run_as_daemon) util::daemonize("/tmp", "/var/lock/" + server_version + ".pid");
-
-	http::configuration http_configuration{ { { "server", server_version },
-											  { "http_listen_port_begin", "0" },
-											  { "https_listen_port_begin", "0" },
-											  { "http_watchdog_idle_timeout", "20" },
-											  { "private_base", "/internal/platform/worker" },
-											  { "health_check", "/internal/platform/worker/healthcheck" },
-											  { "private_ip_white_list", "::/0" },
-											  { "public_ip_white_list", "::/0" },
-											  { "access_log_level", "access_log" },
-											  { "access_log_file", "access_log.txt" },
-											  { "extended_log_level", "none" },
-											  { "extended_log_file", "extended_log.txt" },
-											  { "https_enabled", "false" },
-											  { "http_enabled", "true" },
-											  { "http_use_portsharding", "false" } },
-											config_options };
-
-	cld_wrk_server_ = std::unique_ptr<worker<http::sync::server>>(new worker<http::sync::server>(http_configuration));
-
-	auto result = cld_wrk_server_->start() == http::server::state::active;
-
-	return result;
-}
-
-inline bool start_cld_wrk_server(int argc, const char** argv)
-{
-	cli::arguments arguments(
-		argc,
-		argv,
-		{ { "httpserver_options", { cli::argument::type::value, "see doc.", "" } },
-		  { "httpserver", { cli::argument::type::flag, "http_server" } },
-		  { "daemonize", { cli::argument::type::flag, "run daemonized" } } });
-
-	if (arguments.process_args() == false)
-	{
-		std::cout << "error in arguments \n";
-		exit(1);
-	}
-
-	return start_cld_wrk_server(arguments.get_val("httpserver_options"), arguments.get_val("daemonize") == "true");
-}
-
-inline void run_cld_wrk_server()
-{
-	while (cld_wrk_server_->is_active())
-	{
-		std::this_thread::sleep_for(std::chrono::seconds(1));
-	}
-}
-
-inline int stop_cld_wrk_server()
-{
-	cld_wrk_server_->stop();
-	delete cld_wrk_server_.release();
-	return 0;
-}
-
-class test
-{
-protected:
-	std::string base_url_;
-	tests::configuration configuration_;
-	http::server& server_;
-
-public:
-	test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
-		: base_url_(base_url), configuration_(configuration), server_(server)
-	{
-	}
-
-	virtual bool run() = 0;
-};
-
-class eln_cpg_test : public test
-{
-public:
-	eln_cpg_test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
-		: test(base_url, configuration, server)
-	{
-	}
-
-	bool add_workspace(std::string workspace_id, std::string tenant_id)
-	{
-		json workspace_def{ { "workspace",
-							  { { "id", workspace_id },
-								{ "routes",
-								  { { "paths", { "/api", "/internal" } },
-									{ "methods", { "get", "head", "post" } },
-									{ "headers", { { "X-Infor-TenantId", { tenant_id } } } } } } } } };
-		std::string error;
-
-		auto response = http::client::request<http::method::post>(
-			base_url_ + "/internal/platform/manager/workspaces", error, {}, workspace_def["workspace"].dump());
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-		}
-
-		return true;
-	}
-
-	bool add_workgroup(std::string workspace_id, std::string workgroup_name)
-	{
-		json workgroup_def{ { "name", workgroup_name }, { "type", "upstream" }, { "setup", "" },
-							{ "teardown", "" },			{ "parameters", {} },	{ "limits", {} } };
-
-		std::string error;
-
-		auto response = http::client::request<http::method::post>(
-			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups",
-			error,
-			{},
-			workgroup_def.dump());
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-		}
-
-		return true;
-	}
-
-	bool add_worker(
-		std::string workspace_id,
-		std::string workgroup_name,
-		std::string worker_id,
-		std::string worker_label,
-		std::string worker_endpoint)
-	{
-		json workgroup_def{ { "name", workgroup_name },
-							{ "type", "upstream" },
-							{ "worker_label", worker_label },
-							{ "worker_id", worker_id },
-							{ "base_url", worker_endpoint },
-							{ "parameters", {} },
-							{ "limits", {} } };
-
-		std::string error;
-
-		auto response = http::client::request<http::method::post>(
-			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name
-				+ "/workers",
-			error,
-			{},
-			workgroup_def.dump());
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-		}
-
-		return true;
-	}
-
-	bool increase_workgroup_limits(std::string workspace_id, std::string workgroup_name, int required)
-	{
-		json limits_def{ { "limits", { { "workers_required", required } } } };
-
-		// std::cout << workgroup_def.dump(4, ' ') << "\n";
-
-		std::string error;
-
-		auto response = http::client::request<http::method::put>(
-			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name
-				+ "/limits/workers_required",
-			error,
-			{},
-			limits_def.dump());
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-		}
-
-		return true;
-	}
-
-	bool remove_workgroup(std::string workspace_id, std::string workgroup_name)
-	{
-		std::string error;
-
-		auto response = http::client::request<http::method::delete_>(
-			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name,
-			error,
-			{});
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-		}
-
-		return true;
-	}
-
-	inline bool remove_workspace(std::string workspace_id)
-	{
-		std::string error;
-
-		auto response = http::client::request<http::method::delete_>(
-			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id, error, {});
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-		}
-
-		return true;
-	}
-
-	inline bool generate_proxied_requests(const std::string& request_url, std::string tenant, int count)
-	{
-		auto base_url = base_url_;
-		std::thread{ [base_url, count, request_url, tenant]() {
-			for (int i = 0; i != count; i++)
-			{
-				std::string error;
-				auto response = http::client::request<http::method::get>(
-					base_url + request_url, error, { { "X-Infor-TenantId", tenant } }, {});
-
-				if (response.status() == http::status::not_found)
-				{
-				}
-				else
-				{
-				}
-			}
-		} }.detach();
-
-		return true;
-	}
-
-	bool generate_proxied_requests(const std::string& request_url, int count)
-	{
-		auto base_url = base_url_;
-		std::thread{ [base_url, count, request_url]() {
-			for (int i = 0; i != count; i++)
-			{
-				std::string error;
-				auto response = http::client::request<http::method::get>(base_url + request_url, error, {}, {});
-
-				if (response.status() == http::status::not_found)
-				{
-				}
-				else
-				{
-				}
-			}
-		} }.detach();
-
-		return true;
-	}
-
-	bool run()
-	{
-		const int workspace_count = configuration_.get<int>("workspaces", 1);
-		const int workgroup_count = configuration_.get<int>("workgroups", 1);
-		const int run_count = configuration_.get<int>("runs", -1);
-		const int requests_count = configuration_.get<int>("requets", 0);
-		const bool clean_up = configuration_.get<bool>("cleanup", true);
-		const int stay_alive_time = configuration_.get<int>("stay_alive_time", 6000);
-
-		const std::string& worker_endpoint
-			= configuration_.get<std::string>("worker_endpoint", "http://192.168.2.250:");
-
-		for (int n = 0; n != run_count; n++)
-		{
-			for (int i = 0; i < workspace_count; i++)
-				add_workspace("workspace_" + std::to_string(100 + i), ""); //"tenant" + std::to_string(100 + i) +
-																		   //"_tst");
-
-			for (int j = 0; j < workspace_count; j++)
-				for (int i = 0; i < workgroup_count; i++)
-					add_workgroup("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
-
-			for (int j = 0; j < workspace_count; j++)
-				for (int i = 0; i < workgroup_count; i++)
-					add_worker(
-						"workspace_" + std::to_string(100 + j),
-						"workgroup_" + std::to_string(i),
-						"instance-" + std::to_string(8000 + i),
-						"v1",
-						worker_endpoint + std::to_string(8000 + i));
-
-			for (int i = 0; i < workspace_count; i++)
-				generate_proxied_requests("/api/tests/1k", "tenant" + std::to_string(100 + i) + "_tst", requests_count);
-
-			for (int i = 0; i < workspace_count; i++)
-				generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
-
-			if (n + 1 == run_count && clean_up == false) break;
-
-			std::this_thread::sleep_for(std::chrono::seconds(stay_alive_time));
-
-			for (int j = 0; j < workspace_count; j++)
-				for (int i = 0; i < workgroup_count; i++)
-					remove_workgroup("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
-
-			for (int i = 0; i < workspace_count; i++)
-				remove_workspace("workspace_" + std::to_string(100 + i));
-
-			std::this_thread::sleep_for(std::chrono::seconds(10));
-		}
-
-		return true;
-	}
-};
-
-class eln_cpm_test : public test
-{
-private:
-public:
-	eln_cpm_test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
-		: test(base_url, configuration, server)
-	{
-	}
-
-	bool add_workspace(std::string workspace_id, std::string tenant_id)
-	{
-		json workspace_def{ { "workspace",
-							  { { "id", workspace_id },
-								{ "tenant_id", tenant_id },
-#ifdef _WIN32
-								{ "setup", "eln_cpm.exe -mkjail-setup good" },
-								{ "teardown", "eln_cpm.exe -mkjail-teardown fail" },
-#else
-								{ "setup", "eln_cpm -mkjail-setup good" },
-								{ "teardown", "eln_cpm -mkjail-teardown good" },
-#endif
-								{ "routes",
-								  { { "paths", { "/api", "/internal" } },
-									{ "methods", { "get", "head", "post" } },
-									{ "headers", { { "X-Infor-TenantId", { tenant_id } } } } } } } } };
-		std::string error;
-
-		auto response = http::client::request<http::method::post>(
-			base_url_ + "/internal/platform/manager/workspaces", error, {}, workspace_def["workspace"].dump());
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-		}
-
-		return true;
-	}
-
-	bool add_workgroup(
-		std::string workspace_id,
-		std::string workgroup_name,
-		std::string worker_bse,
-		std::string worker_bse_bin,
-		std::string worker_cmd,
-		std::string worker_options,
-		int required,
-		int start_at_once)
-	{
-		if (worker_cmd.find("eln_cpm") == 0)
-		{
-			if (worker_options.empty())
-				worker_options = "-selftests_worker ";
-			else
-				worker_options += " -selftests_worker ";
-		}
-
-		bool https_upstreams_enabled = configuration_.get<bool>("https_enabled", false);
-		std::string worker_http_options;
-		if (https_upstreams_enabled)
-		{
-			auto https_certificate_key = configuration_.get<std::string>("https_certificate_key", "server.key");
-			auto https_certificate = configuration_.get<std::string>("https_certificate", "server.crt");
-
-			worker_http_options = "https_enabled:true,https_certificate_key:" + https_certificate_key
-								  + ",https_certificate:" + https_certificate;
-		}
-
-		json workgroup_def{ { "name", workgroup_name },
-							{ "type", "bshells" },
-#ifdef _WIN32
-							{ "setup", "eln_cpm.exe -mkjail-setup good" },
-							{ "teardown", "eln_cpm.exe -mkjail-teardown good" },
-							{ "parameters",
-							  { { "program", worker_cmd + ".exe" },
-								{ "http_options", worker_http_options },
-								{ "cli_options", worker_options },
-								{ "bse", worker_bse },
-								{ "bse_bin",
-								  worker_bse_bin } } },
-#else
-							{ "setup", "eln_cpm -mkjail-setup good" },
-							{ "teardown", "eln_cpm -mkjail-teardown good" },
-							{ "parameters", { { "program", worker_cmd }, { "cli_options", worker_options } } },
-#endif
-							{ "limits",
-							  { { "workers_min", required },
-								{ "workers_max", 16 },
-								{ "workers_required", required },
-								{ "workers_runtime_max", 1 },
-								{ "workers_start_at_once_max", start_at_once } } } };
-		// std::cout << workgroup_def.dump(4, ' ') << "\n";
-
-		std::string error;
-
-		auto response = http::client::request<http::method::post>(
-			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups",
-			error,
-			{},
-			workgroup_def.dump());
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-		}
-
-		return true;
-	}
-
-	bool increase_workgroup_limits(std::string workspace_id, std::string workgroup_name, int required)
-	{
-		json limits_def{ { "limits", { { "workers_required", required } } } };
-
-		// std::cout << workgroup_def.dump(4, ' ') << "\n";
-
-		std::string error;
-
-		auto response = http::client::request<http::method::put>(
-			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name
-				+ "/limits/workers_required",
-			error,
-			{},
-			limits_def.dump());
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-		}
-
-		return true;
-	}
-
-	bool remove_workgroup(std::string workspace_id, std::string workgroup_name)
-	{
-		std::string error;
-
-		auto response = http::client::request<http::method::delete_>(
-			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name,
-			error,
-			{});
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-		}
-
-		return true;
-	}
-
-	inline bool remove_workspace(std::string workspace_id)
-	{
-		std::string error;
-
-		auto response = http::client::request<http::method::delete_>(
-			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id, error, {});
-
-		if (error.empty() == false) return false;
-
-		if (response.status() == http::status::conflict)
-		{
-		}
-
-		return true;
-	}
-
-	inline bool generate_proxied_requests(const std::string& request_url, std::string tenant, int count)
-	{
-		auto base_url = base_url_;
-		std::thread{ [base_url, count, request_url, tenant]() {
-			for (int i = 0; i != count; i++)
-			{
-				std::string error;
-				auto response = http::client::request<http::method::get>(
-					base_url + request_url, error, { { "X-Infor-TenantId", tenant } }, {});
-
-				if (response.status() == http::status::not_found)
-				{
-				}
-				else
-				{
-				}
-			}
-		} }.detach();
-
-		return true;
-	}
-
-	bool generate_proxied_requests(const std::string& request_url, int count)
-	{
-		auto base_url = base_url_;
-		std::thread{ [base_url, count, request_url]() {
-			for (int i = 0; i != count; i++)
-			{
-				std::string error;
-				auto response = http::client::request<http::method::get>(base_url + request_url, error, {}, {});
-
-				if (response.status() == http::status::not_found)
-				{
-				}
-				else
-				{
-				}
-			}
-		} }.detach();
-
-		return true;
-	}
-
-	bool run()
-	{
-		const int workspace_count = configuration_.get<int>("workspaces", 1);
-		const int workgroup_count = configuration_.get<int>("workgroups", 1);
-		const int run_count = configuration_.get<int>("runs", -1);
-		const int worker_count = configuration_.get<int>("workers_min", 0);
-		const int worker_start_at_once_count = configuration_.get<int>("workers_start_at_once", 1);
-		const int requests_count = configuration_.get<int>("request", 0);
-		const bool clean_up = configuration_.get<bool>("cleanup", true);
-		const int stay_alive_time = configuration_.get<int>("stay_alive_time", 6000);
-
-		const std::string& worker_cmd = configuration_.get<std::string>("worker_cmd", "eln_cpm");
-		const std::string& worker_options = configuration_.get<std::string>("worker_options", "");
-
-		const std::string& worker_bse = configuration_.get<std::string>("bse", "");
-		const std::string& worker_bse_bin = configuration_.get<std::string>("bse_bin", "");
-
-		for (int n = 0; n != run_count; n++)
-		{
-			for (int i = 0; i < workspace_count; i++)
-				add_workspace("workspace_" + std::to_string(100 + i), "tenant" + std::to_string(100 + i) + "_tst");
-
-			for (int j = 0; j < workspace_count; j++)
-				for (int i = 0; i < workgroup_count; i++)
-					add_workgroup(
-						"workspace_" + std::to_string(100 + j),
-						"workgroup_" + std::to_string(i),
-						worker_bse,
-						worker_bse_bin,
-						worker_cmd,
-						worker_options,
-						worker_count,
-						worker_start_at_once_count);
-
-			for (int j = 0; j < workspace_count; j++)
-				for (int i = 0; i < workgroup_count; i++)
-					increase_workgroup_limits(
-						"workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i), worker_count);
-
-			for (int i = 0; i < workspace_count; i++)
-				generate_proxied_requests(
-					"/internal/platform/worker/status", "tenant" + std::to_string(100 + i) + "_tst", requests_count);
-
-			for (int i = 0; i < workspace_count; i++)
-				generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
-
-			if (n + 1 == run_count && clean_up == false) break;
-
-			for (int t = 0; t != stay_alive_time; t++)
-			{
-				std::this_thread::sleep_for(std::chrono::seconds(1));
-				if (server_.is_active() == false) return false;
-			}
-
-			for (int j = 0; j < workspace_count; j++)
-				for (int i = 0; i < workgroup_count; i++)
-					remove_workgroup("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
-
-			for (int i = 0; i < workspace_count; i++)
-				remove_workspace("workspace_" + std::to_string(100 + i));
-
-			std::this_thread::sleep_for(std::chrono::seconds(10));
-		}
-
-		return true;
-	}
-};
-
-} // namespace tests
-
 namespace bse_utils
 {
 
@@ -1286,6 +491,646 @@ static std::int64_t create_bse_process_as_user(
 #endif
 
 } // namespace bse_utils
+
+namespace tests
+{
+using configuration = http::configuration;
+
+template <typename S> class worker : public S, public cloud::platform::enable_server_as_worker<nlohmann::json>
+{
+protected:
+	using server_base = S;
+
+public:
+	worker(http::configuration& http_configuration)
+		: server_base(http_configuration), cloud::platform::enable_server_as_worker<nlohmann::json>(this)
+	{
+
+		server_base::router_.on_get(
+			http::server::configuration_.get<std::string>("health_check", "/internal/platform/health_check"),
+			[this](http::session_handler& session) {
+				session.response().assign(http::status::ok, "OK");
+				server_base::manager().update_health_check_metrics();
+			});
+
+		server_base::router_.on_post("/internal/platform/worker/mirror", [](http::session_handler& session) {
+			session.response().status(http::status::ok);
+			session.response().type(session.response().get<std::string>("Content-Type", "text/plain"));
+			session.response().body() = session.request().body();
+		});
+
+		server_base::router_.on_post(
+			"/internal/platform/worker/access_log_level", [this](http::session_handler& session) {
+				server_base::logger_.set_access_log_level(session.request().body());
+				auto new_level = server_base::logger_.current_access_log_level_to_string();
+				http::server::configuration_.set("access_log_level", new_level);
+				session.response().body() = server_base::logger_.current_access_log_level_to_string();
+				session.response().status(http::status::ok);
+			});
+
+		server_base::router_.on_get(
+			"/internal/platform/worker/access_log_level", [this](http::session_handler& session) {
+				session.response().body() = server_base::logger_.current_access_log_level_to_string();
+				session.response().status(http::status::ok);
+			});
+
+		server_base::router_.on_post(
+			"/internal/platform/worker/extended_log_level", [this](http::session_handler& session) {
+				server_base::logger_.set_extended_log_level(session.request().body());
+				auto new_level = server_base::logger_.current_extended_log_level_to_string();
+				http::server::configuration_.set("extended_log_level", new_level);
+				session.response().body() = server_base::logger_.current_extended_log_level_to_string();
+				session.response().status(http::status::ok);
+			});
+
+		server_base::router_.on_get(
+			"/internal/platform/worker/extended_log_level", [this](http::session_handler& session) {
+				session.response().body() = server_base::logger_.current_extended_log_level_to_string();
+				session.response().status(http::status::ok);
+			});
+
+		server_base::router_.on_get("/internal/platform/worker/status", [this](http::session_handler& session) {
+			const auto& format = session.request().get<std::string>("Accept", "application/json");
+			const auto& format_from_query_parameter = session.request().query().get<std::string>("format", "text");
+
+			if (format.find("application/json") != std::string::npos || format_from_query_parameter == "json")
+			{
+				session.response().assign(
+					http::status::ok,
+					server_base::manager().to_json(http::server::server_manager::json_status_options::full).dump(),
+					"json");
+			}
+			else
+			{
+				server_base::manager().server_information(http::server::configuration_.to_string());
+				server_base::manager().router_information(server_base::router_.to_string());
+				session.response().body() = server_base::manager().to_string();
+				session.response().type("text");
+			}
+
+			session.response().status(http::status::ok);
+		});
+
+		server_base::router_.on_get(
+			"/internal/platform/worker/status/{section}", [this](http::session_handler& session) {
+				const auto& format = session.request().get<std::string>("Accept", "application/json");
+				const auto& format_from_query_parameter = session.request().query().get<std::string>("format", "text");
+				const auto& section = session.params().get("section");
+
+				if (section == "metrics")
+				{
+					session.response().assign(
+						http::status::ok,
+						server_base::manager()
+							.to_json(http::server::server_manager::json_status_options::server_metrics)
+							.dump(),
+						"json");
+				}
+				else if (section == "configuration")
+				{
+					session.response().assign(
+						http::status::ok,
+						server_base::manager()
+							.to_json(http::server::server_manager::json_status_options::config)
+							.dump(),
+						"json");
+				}
+				else if (section == "router")
+				{
+					session.response().assign(
+						http::status::ok,
+						server_base::manager()
+							.to_json(http::server::server_manager::json_status_options::router)
+							.dump(),
+						"json");
+				}
+				else if (section == "access_log")
+				{
+					session.response().assign(
+						http::status::ok,
+						server_base::manager()
+							.to_json(http::server::server_manager::json_status_options::access_log)
+							.dump(),
+						"json");
+				}
+				else if (section == "version")
+				{
+					std::string version = std::string{ "cld_wrk " } + get_version_ex(PORT_SET, NULL)
+										  + std::string{ "/" } + get_version_ex(PORT_NO, NULL);
+
+					if (format.find("application/json") != std::string::npos || format_from_query_parameter == "json")
+					{
+						auto result = json::object();
+						result["version"] = version;
+
+						session.response().assign(http::status::ok, result.dump(), "json");
+					}
+					else
+					{
+						session.response().assign(http::status::ok, std::move(version), "text");
+					}
+				}
+				else
+				{
+					session.response().assign(http::status::not_found);
+				}
+			});
+
+		server_base::router_.on_delete("/internal/platform/worker/process", [this](http::session_handler& session) {
+			session.response().status(http::status::no_content);
+			session.response().body() = std::string("");
+			session.response().set("Connection", "close");
+
+			server_base::deactivate();
+		});
+
+		server_base::router_.on_post("/internal/platform/worker/watchdog", [this](http::session_handler& session) {
+			if (session.request().has("X-Infor-Feed-Watchdog") == true)
+			{
+				server_base::manager().idle_time_reset();
+			}
+			session.response().status(http::status::ok);
+		});
+
+		server_base::router_.on_idle([this](bool is_idle_timeout_execeeded) {
+			if (is_idle_timeout_execeeded == true)
+			{
+				server_base::deactivate();
+			}
+			else
+			{
+				server_base::logger_.info("idle \n {s} \n", server_base::manager().to_string());
+			}
+		});
+	}
+
+	virtual ~worker() {}
+
+	http::server::state start() override
+	{
+		try
+		{
+			auto ret = server_base::start();
+
+			if (ret == http::server::state::active && workgroup_controller_) workgroup_controller_->add();
+
+			return ret;
+		}
+		catch (std::runtime_error& e)
+		{
+			std::cerr << e.what() << std::endl;
+			_exit(-1);
+		}
+	}
+};
+
+static std::unique_ptr<worker<http::sync::server>> cld_wrk_server_;
+
+inline bool start_cld_wrk_server(std::string config_options, bool run_as_daemon)
+{
+	std::string server_version = std::string{ "ln-cld-wrk" };
+
+	if (run_as_daemon) util::daemonize("/tmp", "/var/lock/" + server_version + ".pid");
+
+	http::configuration http_configuration{ { { "server", server_version },
+											  { "http_listen_port_begin", "0" },
+											  { "https_listen_port_begin", "0" },
+											  { "http_watchdog_idle_timeout", "20" },
+											  { "private_base", "/internal/platform/worker" },
+											  { "health_check", "/internal/platform/worker/healthcheck" },
+											  { "private_ip_white_list", "::/0" },
+											  { "public_ip_white_list", "::/0" },
+											  { "access_log_level", "access_log" },
+											  { "access_log_file", "access_log.txt" },
+											  { "extended_log_level", "none" },
+											  { "extended_log_file", "extended_log.txt" },
+											  { "https_enabled", "false" },
+											  { "http_enabled", "true" },
+											  { "http_use_portsharding", "false" } },
+											config_options };
+
+	cld_wrk_server_ = std::unique_ptr<worker<http::sync::server>>(new worker<http::sync::server>(http_configuration));
+
+	auto result = cld_wrk_server_->start() == http::server::state::active;
+
+	return result;
+}
+
+inline bool start_cld_wrk_server(int argc, const char** argv)
+{
+	cli::arguments arguments(
+		argc,
+		argv,
+		{ { "httpserver_options", { cli::argument::type::value, "see doc.", "" } },
+		  { "httpserver", { cli::argument::type::flag, "http_server" } },
+		  { "daemonize", { cli::argument::type::flag, "run daemonized" } } });
+
+	if (arguments.process_args() == false)
+	{
+		std::cout << "error in arguments \n";
+		exit(1);
+	}
+
+	return start_cld_wrk_server(arguments.get_val("httpserver_options"), arguments.get_val("daemonize") == "true");
+}
+
+inline void run_cld_wrk_server()
+{
+	while (cld_wrk_server_->is_active())
+	{
+		std::this_thread::sleep_for(std::chrono::seconds(1));
+	}
+}
+
+inline int stop_cld_wrk_server()
+{
+	cld_wrk_server_->stop();
+	delete cld_wrk_server_.release();
+	return 0;
+}
+
+class test
+{
+protected:
+	std::string base_url_;
+	tests::configuration configuration_;
+	http::server& server_;
+
+public:
+	test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
+		: base_url_(base_url), configuration_(configuration), server_(server)
+	{
+	}
+
+	virtual bool run() = 0;
+};
+
+class eln_cpg_test : public test
+{
+public:
+	eln_cpg_test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
+		: test(base_url, configuration, server)
+	{
+	}
+
+	bool add_nodes(
+		std::string workspace_id,
+		std::string workgroup_name,
+		std::string worker_id,
+		std::string worker_label,
+		std::string worker_endpoint)
+	{
+		std::string eln_cpm = "eln_cpm.exe";
+		std::string ec;
+		std::uint32_t pid = 0;
+		std::string gateway_url;
+
+
+		if (server_.config().template get<bool>("https_enabled", false) == true)
+		{
+			gateway_url
+				= server_.config().template get<std::string>("https_this_server_base_url", "https://localhost:8443");
+		}
+		else
+		{
+			gateway_url
+				= server_.config().template get<std::string>("http_this_server_base_url", "http://localhost:8080");
+		}
+
+		std::string launch_cmd = eln_cpm + " -options http_listen_port_begin:0,https_listen_port_begin:0,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key -selftests -selftests_options tests_as:eln_cpm,workspaces:1,workgroups:1,runs:1,workers_min:2,stay_alive_time:30,request:0,runs:1,cleanup:true,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key,eln_cpg:" + gateway_url;
+
+		auto exit_code = bse_utils::create_bse_process_as_user("", "", "tenant_id", "", "", launch_cmd, pid, ec, false);
+
+		if (exit_code == 0)
+			return true;
+		else
+			return false;
+	}
+
+	bool run()
+	{
+		const int workspace_count = configuration_.get<int>("workspaces", 1);
+		const int workgroup_count = configuration_.get<int>("workgroups", 1);
+		const int run_count = configuration_.get<int>("runs", -1);
+		const int requests_count = configuration_.get<int>("requets", 0);
+		const bool clean_up = configuration_.get<bool>("cleanup", true);
+		const int stay_alive_time = configuration_.get<int>("stay_alive_time", 6000);
+
+		const std::string& worker_endpoint
+			= configuration_.get<std::string>("worker_endpoint", "http://192.168.2.250:");
+
+		if (run_count == 0)
+			std::this_thread::sleep_for(std::chrono::seconds(stay_alive_time));
+
+		for (int n = 0; n != run_count; n++)
+		{
+			for (int j = 0; j < workspace_count; j++)
+				for (int i = 0; i < workgroup_count; i++)
+					add_nodes(
+						"workspace_" + std::to_string(100 + j),
+						"workgroup_" + std::to_string(i),
+						"instance-" + std::to_string(8000 + i),
+						"v1",
+						worker_endpoint + std::to_string(8000 + i));
+
+			if (n + 1 == run_count && clean_up == false) break;
+
+			std::this_thread::sleep_for(std::chrono::seconds(stay_alive_time));
+
+			std::this_thread::sleep_for(std::chrono::seconds(10));
+		}
+
+		return true;
+	}
+};
+
+class eln_cpm_test : public test
+{
+private:
+public:
+	eln_cpm_test(const std::string& base_url, const tests::configuration& configuration, http::server& server)
+		: test(base_url, configuration, server)
+	{
+	}
+
+	bool add_workspace(std::string workspace_id, std::string tenant_id, std::string eln_cpg)
+	{
+		json workspace_def{ { "workspace",
+							  { { "id", workspace_id },
+								{ "tenant_id", tenant_id },
+#ifdef _WIN32
+								{ "setup", "eln_cpm.exe -mkjail-setup good" },
+								{ "teardown", "eln_cpm.exe -mkjail-teardown fail" },
+#else
+								{ "setup", "eln_cpm -mkjail-setup good" },
+								{ "teardown", "eln_cpm -mkjail-teardown good" },
+#endif
+								{ "routes",
+								  { { "paths", { "/api", "/internal" } },
+									{ "methods", { "get", "head", "post" } },
+									{ "headers", { { "X-Infor-TenantId", { tenant_id } } } } } } } } };
+
+		if (eln_cpg.empty() == false)
+			workspace_def["workspace"]["gateway_url"] = eln_cpg;
+
+		std::string error;
+
+		auto response = http::client::request<http::method::post>(
+			base_url_ + "/internal/platform/manager/workspaces", error, {}, workspace_def["workspace"].dump());
+
+		if (error.empty() == false) return false;
+
+		if (response.status() == http::status::conflict)
+		{
+		}
+
+		return true;
+	}
+
+	bool add_workgroup(
+		std::string workspace_id,
+		std::string workgroup_name,
+		std::string worker_bse,
+		std::string worker_bse_bin,
+		std::string worker_cmd,
+		std::string worker_options,
+		int required,
+		int start_at_once)
+	{
+		if (worker_cmd.find("eln_cpm") == 0)
+		{
+			if (worker_options.empty())
+				worker_options = "-selftests_worker ";
+			else
+				worker_options += " -selftests_worker ";
+		}
+
+		bool https_upstreams_enabled = configuration_.get<bool>("https_enabled", false);
+		std::string worker_http_options;
+		if (https_upstreams_enabled)
+		{
+			auto https_certificate_key = configuration_.get<std::string>("https_certificate_key", "server.key");
+			auto https_certificate = configuration_.get<std::string>("https_certificate", "server.crt");
+
+			worker_http_options = "https_enabled:true,https_certificate_key:" + https_certificate_key
+								  + ",https_certificate:" + https_certificate;
+		}
+
+		json workgroup_def{ { "name", workgroup_name },
+							{ "type", "bshells" },
+#ifdef _WIN32
+							{ "setup", "eln_cpm.exe -mkjail-setup good" },
+							{ "teardown", "eln_cpm.exe -mkjail-teardown good" },
+							{ "parameters",
+							  { { "program", worker_cmd + ".exe" },
+								{ "http_options", worker_http_options },
+								{ "cli_options", worker_options },
+								{ "bse", worker_bse },
+								{ "bse_bin",
+								  worker_bse_bin } } },
+#else
+							{ "setup", "eln_cpm -mkjail-setup good" },
+							{ "teardown", "eln_cpm -mkjail-teardown good" },
+							{ "parameters", { { "program", worker_cmd }, { "cli_options", worker_options } } },
+#endif
+							{ "limits",
+							  { { "workers_min", required },
+								{ "workers_max", 16 },
+								{ "workers_required", required },
+								{ "workers_runtime_max", 1 },
+								{ "workers_start_at_once_max", start_at_once } } } };
+		// std::cout << workgroup_def.dump(4, ' ') << "\n";
+
+		std::string error;
+
+		auto response = http::client::request<http::method::post>(
+			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups",
+			error,
+			{},
+			workgroup_def.dump());
+
+		if (error.empty() == false) return false;
+
+		if (response.status() == http::status::conflict)
+		{
+		}
+
+		return true;
+	}
+
+	bool increase_workgroup_limits(std::string workspace_id, std::string workgroup_name, int required)
+	{
+		json limits_def{ { "limits", { { "workers_required", required } } } };
+
+		// std::cout << workgroup_def.dump(4, ' ') << "\n";
+
+		std::string error;
+
+		auto response = http::client::request<http::method::put>(
+			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name
+				+ "/limits/workers_required",
+			error,
+			{},
+			limits_def.dump());
+
+		if (error.empty() == false) return false;
+
+		if (response.status() == http::status::conflict)
+		{
+		}
+
+		return true;
+	}
+
+	bool remove_workgroup(std::string workspace_id, std::string workgroup_name)
+	{
+		std::string error;
+
+		auto response = http::client::request<http::method::delete_>(
+			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id + "/workgroups/" + workgroup_name,
+			error,
+			{});
+
+		if (error.empty() == false) return false;
+
+		if (response.status() == http::status::conflict)
+		{
+		}
+
+		return true;
+	}
+
+	inline bool remove_workspace(std::string workspace_id)
+	{
+		std::string error;
+
+		auto response = http::client::request<http::method::delete_>(
+			base_url_ + "/internal/platform/manager/workspaces/" + workspace_id, error, {});
+
+		if (error.empty() == false) return false;
+
+		if (response.status() == http::status::conflict)
+		{
+		}
+
+		return true;
+	}
+
+	inline bool generate_proxied_requests(const std::string& request_url, std::string tenant, int count)
+	{
+		auto base_url = base_url_;
+		std::thread{ [base_url, count, request_url, tenant]() {
+			for (int i = 0; i != count; i++)
+			{
+				std::string error;
+				auto response = http::client::request<http::method::get>(
+					base_url + request_url, error, { { "X-Infor-TenantId", tenant } }, {});
+
+				if (response.status() == http::status::not_found)
+				{
+				}
+				else
+				{
+				}
+			}
+		} }.detach();
+
+		return true;
+	}
+
+	bool generate_proxied_requests(const std::string& request_url, int count)
+	{
+		auto base_url = base_url_;
+		std::thread{ [base_url, count, request_url]() {
+			for (int i = 0; i != count; i++)
+			{
+				std::string error;
+				auto response = http::client::request<http::method::get>(base_url + request_url, error, {}, {});
+
+				if (response.status() == http::status::not_found)
+				{
+				}
+				else
+				{
+				}
+			}
+		} }.detach();
+
+		return true;
+	}
+
+	bool run()
+	{
+		const int workspace_count = configuration_.get<int>("workspaces", 1);
+		const int workgroup_count = configuration_.get<int>("workgroups", 1);
+		const int run_count = configuration_.get<int>("runs", -1);
+		const int worker_count = configuration_.get<int>("workers_min", 0);
+		const int worker_start_at_once_count = configuration_.get<int>("workers_start_at_once", 1);
+		const int requests_count = configuration_.get<int>("request", 0);
+		const bool clean_up = configuration_.get<bool>("cleanup", true);
+		const int stay_alive_time = configuration_.get<int>("stay_alive_time", 6000);
+
+
+		
+		const std::string& eln_cpg = configuration_.get<std::string>("eln_cpg", "");
+		const std::string& worker_cmd = configuration_.get<std::string>("worker_cmd", "eln_cpm");
+		const std::string& worker_options = configuration_.get<std::string>("worker_options", "");
+
+		const std::string& worker_bse = configuration_.get<std::string>("bse", "");
+		const std::string& worker_bse_bin = configuration_.get<std::string>("bse_bin", "");
+
+		for (int n = 0; n != run_count; n++)
+		{
+			for (int i = 0; i < workspace_count; i++)
+				add_workspace("workspace_" + std::to_string(100 + i), "tenant" + std::to_string(100 + i) + "_tst", eln_cpg);
+
+			for (int j = 0; j < workspace_count; j++)
+				for (int i = 0; i < workgroup_count; i++)
+					add_workgroup(
+						"workspace_" + std::to_string(100 + j),
+						"workgroup_" + std::to_string(i),
+						worker_bse,
+						worker_bse_bin,
+						worker_cmd,
+						worker_options,
+						worker_count,
+						worker_start_at_once_count);
+
+			for (int j = 0; j < workspace_count; j++)
+				for (int i = 0; i < workgroup_count; i++)
+					increase_workgroup_limits(
+						"workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i), worker_count);
+
+			for (int i = 0; i < workspace_count; i++)
+				generate_proxied_requests(
+					"/internal/platform/worker/status", "tenant" + std::to_string(100 + i) + "_tst", requests_count);
+
+			for (int i = 0; i < workspace_count; i++)
+				generate_proxied_requests("/internal/platform/manager/workspaces", requests_count);
+
+			if (n + 1 == run_count && clean_up == false) break;
+
+			for (int t = 0; t != stay_alive_time; t++)
+			{
+				std::this_thread::sleep_for(std::chrono::seconds(1));
+				if (server_.is_active() == false) return false;
+			}
+
+			for (int j = 0; j < workspace_count; j++)
+				for (int i = 0; i < workgroup_count; i++)
+					remove_workgroup("workspace_" + std::to_string(100 + j), "workgroup_" + std::to_string(i));
+
+			for (int i = 0; i < workspace_count; i++)
+				remove_workspace("workspace_" + std::to_string(100 + i));
+
+			std::this_thread::sleep_for(std::chrono::seconds(10));
+		}
+
+		return true;
+	}
+};
+
+} // namespace tests
 
 namespace cloud
 {
@@ -3618,21 +3463,19 @@ public:
 
 							json workspace_def{
 								{ "workspace",
-								  { { "id", "upstreams_" + workspace_ref.get_tenant_id() },
+								  { { "id", workspace_ref.get_workspace_id() },
 									{ "routes",
 									  { { "headers",
 										  { { "X-Infor-TenantId", { workspace_ref.get_tenant_id() } } } } } } } }
 							};
 
-							json workgroup_def{ { "name", "upstream_" + workspace_ref.get_tenant_id() },
+							json workgroup_def{ { "name", workspace_ref.get_workspace_id() },
 												{ "type", "upstream" } };
 
 							json worker_def{ { "type", "upstream" },
 											 { "worker_label", "" },
 											 { "worker_id", "worker_id_1" },
 											 { "base_url", this_server_base_url } };
-
-							// std::cout << workspace_def["workspace"].dump(4, ' ') << "\n";
 
 							auto response = http::client::request<http::method::post>(
 								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces",
@@ -3641,16 +3484,16 @@ public:
 								workspace_def["workspace"].dump());
 
 							response = http::client::request<http::method::post>(
-								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/upstreams_"
+								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/"
 									+ workspace_ref.get_workspace_id() + "/workgroups",
 								error,
 								{},
 								workgroup_def.dump());
 
 							response = http::client::request<http::method::post>(
-								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/upstreams_"
-									+ workspace_ref.get_workspace_id() + "/workgroups/" + "upstream_"
-									+ workspace_ref.get_tenant_id() + "/workers",
+								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/"
+									+ workspace_ref.get_workspace_id() + "/workgroups/"
+									+ workspace_ref.get_workspace_id() + "/workers",
 								error,
 								{},
 								worker_def.dump());
@@ -5432,22 +5275,29 @@ inline bool start_eln_cpm_server(
 
 	if (run_selftests)
 	{
-		if (http_configuration.get<std::string>("tests_as", "eln_cpm") == "eln_cpg")
+		auto options = tests::configuration({}, std::string{ selftest_options });
+		auto run_as = options.get<std::string>("tests_as", "eln_cpm");
+
+		if (run_as == "eln_cpg")
 		{
 			tests::eln_cpg_test test_cpg{ http_configuration.get<std::string>(
-										  "http_this_server_local_url", "http://localhost:8080"),
-									  tests::configuration({}, std::string{ selftest_options }),
-									  *(cloud::platform::eln_cpm_server_) };
+											  "http_this_server_base_url", "http://localhost:8080"),
+										  options,
+										  *(cloud::platform::eln_cpm_server_) };
 			result = test_cpg.run();
+		}
+		else if (run_as == "eln_cpm")
+		{
+			tests::eln_cpm_test test_cpm{ http_configuration.get<std::string>(
+											  "http_this_server_base_url", "http://localhost:8080"),
+										  options,
+										  *(cloud::platform::eln_cpm_server_) };
+
+			result = test_cpm.run();
 		}
 		else
 		{
-			 tests::eln_cpm_test test_cpm{http_configuration.get<std::string>(
-										  "http_this_server_local_url", "http://localhost:18080"),
-									  tests::configuration({}, std::string{ selftest_options }),
-									  *(cloud::platform::eln_cpm_server_) };
-
-			 result = test_cpm.run();
+			result = false;
 		}
 	}
 

@@ -1888,7 +1888,9 @@ public:
 					continue;
 				}
 				else
-					break;
+				{
+					https_listen_port_probe = https_acceptor_.local_endpoint().port();
+				}
 			}
 
 			if (ec)
@@ -2161,12 +2163,12 @@ public:
 		{
 			auto me = shared_from_this();
 			asio::async_connect(
-				me->upstream_connection_.socket(), it, [me](asio::error_code error, asio::ip::tcp::resolver::iterator) {
+				me->upstream_connection_.socket(), it, [me](asio::error_code error, asio::ip::tcp::resolver::iterator it) {
 					// TODO try next resolve result?
 					if (error)
 					{
 						// failed
-						std::cerr << error.message() << "\n";
+						std::cerr << error.message() << " when connecting to: " << me->upstream_connection_.owner().base_url() << "\n";
 						me->upstream_connection_.error();
 						me->upstream_connection_.owner().set_state(http::async::upstreams::upstream::state::drain);
 					}
