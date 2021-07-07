@@ -3491,12 +3491,13 @@ public:
 										  { { "X-Infor-TenantId", { workspace_ref.get_tenant_id() } } } } } } } }
 							};
 
-							json workgroup_def{ { "name", workspace_ref.get_workspace_id() },
+							json workgroup_def{ { "name", "upstreams" },
 												{ "type", "upstream" } };
 
+
 							json worker_def{ { "type", "upstream" },
-											 { "worker_label", "" },
-											 { "worker_id", this_server_base_url },
+											 { "worker_label", "upstream" },
+											 { "worker_id", http::url::make_url(this_server_base_url).base_url_as_id() },
 											 { "base_url", this_server_base_url } };
 
 							auto response = http::client::request<http::method::post>(
@@ -3514,8 +3515,7 @@ public:
 
 							response = http::client::request<http::method::post>(
 								workspace_ref.gateway_url() + "/internal/platform/manager/workspaces/"
-									+ workspace_ref.get_workspace_id() + "/workgroups/"
-									+ workspace_ref.get_workspace_id() + "/workers",
+									+ workspace_ref.get_workspace_id() + "/workgroups/upstreams/workers",
 								error,
 								{},
 								worker_def.dump());

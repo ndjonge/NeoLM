@@ -1466,6 +1466,26 @@ public:
 
 	std::string base_url() const { return std::string{ scheme_ + "://" + host_ + ":" + port_ }; }
 
+	std::string base_url_as_id() const 
+	{ 
+		auto id = std::string{ scheme_ + "_" + host_ + "_" + port_ };
+
+		std::transform(id.begin(), id.end(), id.begin(), [](char c)
+		{ 
+			switch(c)
+			{
+				case '.':
+					c = '_';
+				default:
+					c = c;
+			}
+
+			return c;
+		});
+
+		return id;
+	}
+
 	static url make_url(const std::string& url) { return http::url{ url }; }
 
 private:

@@ -2169,7 +2169,7 @@ public:
 					if (error)
 					{
 						// failed
-						std::cerr << error.message() << " when connecting to: " << me->upstream_connection_.owner().base_url() << "\n";
+						// std::cerr << error.message() << " when connecting to: " << me->upstream_connection_.owner().base_url() << "\n";
 						me->upstream_connection_.error();
 						me->upstream_connection_.owner().set_state(http::async::upstreams::upstream::state::drain);
 					}
