@@ -773,18 +773,12 @@ public:
 	{
 	}
 
-	bool add_nodes(
-		std::string workspace_id,
-		std::string workgroup_name,
-		std::string worker_id,
-		std::string worker_label,
-		std::string worker_endpoint)
+	bool add_nodes()
 	{
 		std::string eln_cpm = "eln_cpm.exe";
 		std::string ec;
 		std::uint32_t pid = 0;
 		std::string gateway_url;
-
 
 		if (server_.config().template get<bool>("https_enabled", false) == true)
 		{
@@ -809,29 +803,19 @@ public:
 
 	bool run()
 	{
-		const int workspace_count = configuration_.get<int>("workspaces", 1);
-		const int workgroup_count = configuration_.get<int>("workgroups", 1);
+		const int nodes = configuration_.get<int>("eln_cpg_nodes", 1);
 		const int run_count = configuration_.get<int>("runs", -1);
 		const int requests_count = configuration_.get<int>("requets", 0);
 		const bool clean_up = configuration_.get<bool>("cleanup", true);
 		const int stay_alive_time = configuration_.get<int>("stay_alive_time", 6000);
-
-		const std::string& worker_endpoint
-			= configuration_.get<std::string>("worker_endpoint", "http://192.168.2.250:");
 
 		if (run_count == 0)
 			std::this_thread::sleep_for(std::chrono::seconds(stay_alive_time));
 
 		for (int n = 0; n != run_count; n++)
 		{
-			for (int j = 0; j < workspace_count; j++)
-				for (int i = 0; i < workgroup_count; i++)
-					add_nodes(
-						"workspace_" + std::to_string(100 + j),
-						"workgroup_" + std::to_string(i),
-						"instance-" + std::to_string(8000 + i),
-						"v1",
-						worker_endpoint + std::to_string(8000 + i));
+			for (int j = 0; j < nodes; j++)
+				add_nodes();
 
 			if (n + 1 == run_count && clean_up == false) break;
 
@@ -2009,6 +1993,7 @@ public:
 	virtual bool direct_workers(
 		asio::io_context& io_context,
 		const std::string& this_server_local_url,
+		const std::string& this_server_base_url,
 		lgr::logger& logger,
 		bool workspace_is_updated)
 		= 0;
@@ -2042,10 +2027,10 @@ public:
 		state_ = workgroup::state::up;
 	}
 
-	virtual bool direct_workers(asio::io_context&, const std::string&, lgr::logger& logger, bool) override
+	virtual bool direct_workers(asio::io_context&, const std::string&, const std::string&, lgr::logger& logger, bool is_workspace_updated) override
 	{
 		std::unique_lock<mutex_type> lock{ workers_mutex_ };
-
+		bool is_group_changed = false;
 		for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
 		{
 			auto& worker = worker_it->second;
@@ -2087,8 +2072,44 @@ public:
 						return;
 					});
 			}
+			worker_it++;
+		}
 
-			++worker_it;
+		for (auto worker_it = workers_.begin(); worker_it != workers_.end();)
+		{
+			if (worker_it->second.get_status() == worker::status::drain)
+			{
+				if (worker_it->second.upstream().connections_busy_.load() == 0)
+					worker_it->second.set_status(worker::status::down);
+			}
+
+			if (worker_it->second.get_status() == worker::status::down)
+			{
+				auto base_url = worker_it->second.get_base_url();
+
+				logger.api("/{s}/{s}: delete {s} {s}\n", workspace_id_, name_, worker_it->first, base_url);
+
+				upstreams_.down(base_url);
+				upstreams_.erase_upstream(base_url);
+#ifdef LOCAL_TESTING_WITH_NGINX_BACKEND
+				bse_utils::local_testing::_test_sockets.release(workspace_id_, worker_it->second.get_base_url());
+#endif
+				worker_it = workers_.erase(workers_.find(worker_it->first));
+
+				limits_.workers_actual_upd(-1);
+				is_group_changed = true;
+			}
+			else
+				worker_it++;
+		}
+
+		if (is_group_changed || is_changed() || is_workspace_updated)
+		{
+			logger.api(
+				"/{s}/{s}: actual: {d}\n",
+				workspace_id_,
+				name_,
+				limits_.workers_actual());
 		}
 
 		return true;
@@ -2142,7 +2163,8 @@ public:
 
 	virtual bool direct_workers(
 		asio::io_context& io_context,
-		const std::string& this_server_local_endpoint,
+		const std::string& this_server_local_url,
+		const std::string&,
 		lgr::logger& logger,
 		bool is_workspace_updated) override
 	{
@@ -2157,7 +2179,7 @@ public:
 		bool is_group_changed = is_changed();
 		is_changed(false);
 
-		std::string server_endpoint = this_server_local_endpoint + "/internal/platform/manager/workspaces";
+		std::string server_endpoint = this_server_local_url + "/internal/platform/manager/workspaces";
 
 		for (std::int16_t n = 0; n < workers_required_to_add; n++)
 		{
@@ -2735,7 +2757,7 @@ public:
 		j["parameters"].emplace("python_root", rootdir);
 	}
 
-	virtual bool direct_workers(asio::io_context&, const std::string&, lgr::logger&, bool) override { return false; }
+	virtual bool direct_workers(asio::io_context&, const std::string&, const std::string&, lgr::logger&, bool) override { return false; }
 
 	virtual bool create_worker_process(
 		const std::string&,
@@ -3474,7 +3496,7 @@ public:
 
 							json worker_def{ { "type", "upstream" },
 											 { "worker_label", "" },
-											 { "worker_id", "worker_id_1" },
+											 { "worker_id", this_server_base_url },
 											 { "base_url", this_server_base_url } };
 
 							auto response = http::client::request<http::method::post>(
@@ -3725,7 +3747,7 @@ public:
 		is_changed_ = true;
 	}
 
-	void direct_workspaces(asio::io_context& io_context, const std::string& this_server_local_url, lgr::logger& logger)
+	void direct_workspaces(asio::io_context& io_context, const std::string& this_server_local_url, const std::string& this_server_base_url, lgr::logger& logger)
 	{
 		bool needs_changes = false;
 		{
@@ -3755,7 +3777,7 @@ public:
 
 						if (workgroup_state == workgroup::state::up || workgroup_state == workgroup::state::drain)
 							is_changed_new |= workgroup->second->direct_workers(
-								io_context, this_server_local_url, logger, is_changed_);
+								io_context, this_server_local_url, this_server_base_url, logger, is_changed_);
 					}
 				}
 			}
@@ -5174,16 +5196,23 @@ private:
 		}
 
 		std::string this_server_local_url{};
+		std::string this_server_base_url{};
 
 		if (server_base::configuration_.template get<bool>("https_enabled", true))
 		{
 			this_server_local_url = server_base::configuration_.template get<std::string>(
 				"https_this_server_local_url", "https://localhost:8443");
+
+			this_server_base_url = server_base::configuration_.template get<std::string>(
+				"https_this_server_base_url", "https://localhost:8443");
 		}
 		else
 		{
 			this_server_local_url = server_base::configuration_.template get<std::string>(
-				"https_this_server_local_url", "http://localhost:8080");
+				"http_this_server_local_url", "http://localhost:8080");
+
+			this_server_base_url = server_base::configuration_.template get<std::string>(
+				"http_this_server_base_url", "http://localhost:8080");
 		}
 
 		while (server_base::is_active() || server_base::is_activating())
@@ -5191,7 +5220,7 @@ private:
 			if (server_base::is_active())
 			{
 				workspaces_.direct_workspaces(
-					server_base::get_io_context(), this_server_local_url, server_base::logger_);
+					server_base::get_io_context(), this_server_local_url, this_server_base_url, server_base::logger_);
 
 				if (workspaces_.is_changed())
 				{
