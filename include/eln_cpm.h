@@ -3443,7 +3443,7 @@ public:
 		return result;
 	}
 
-	void change_workspaces(lgr::logger& logger, const std::string& this_server_base_url)
+	void change_workspaces(lgr::logger& logger, const std::string& this_server_local_url, const std::string& this_server_base_url)
 	{
 		std::unique_lock<mutex_type> l1{ workspaces_mutex_ };
 
@@ -3459,7 +3459,7 @@ public:
 					logger.api("/{s}: setup workspace running \"{s}\"\n", workspace->first, setup);
 
 					auto& workspace_ref = *(workspace->second.get());
-					std::thread{ [&workspace_ref, setup, &logger, this_server_base_url]() {
+					std::thread{ [&workspace_ref, setup, &logger, this_server_local_url, this_server_base_url]() {
 						std::uint32_t pid = 0;
 						std::string ec;
 
@@ -3788,7 +3788,7 @@ public:
 			logger.info("{u} workspaces took {d}msec\n", workspaces_.size(), elapsed.count() / 1000000);
 		}
 
-		if (needs_changes) change_workspaces(logger, this_server_local_url);
+		if (needs_changes) change_workspaces(logger, this_server_local_url, this_server_base_url);
 	}
 
 public:
