@@ -791,7 +791,7 @@ public:
 				= server_.config().template get<std::string>("http_this_server_base_url", "http://localhost:8080");
 		}
 
-		std::string launch_cmd = eln_cpm + " -options http_listen_port_begin:0,https_listen_port_begin:0,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key -selftests -selftests_options tests_as:eln_cpm,workspaces:1,workgroups:1,runs:1,workers_min:2,stay_alive_time:30,request:0,runs:1,cleanup:true,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key,eln_cpg:" + gateway_url;
+		std::string launch_cmd = eln_cpm + " -options http_listen_port_begin:0,https_listen_port_begin:0,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key -selftests -selftests_options tests_as:eln_cpm,workspaces:4,workgroups:1,runs:1,workers_min:2,stay_alive_time:20,request:0,runs:1,cleanup:true,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key,eln_cpg:" + gateway_url;
 
 		auto exit_code = bse_utils::create_bse_process_as_user("", "", "tenant_id", "", "", launch_cmd, pid, ec, false);
 
@@ -805,7 +805,6 @@ public:
 	{
 		const int nodes = configuration_.get<int>("eln_cpg_nodes", 1);
 		const int run_count = configuration_.get<int>("runs", -1);
-		const int requests_count = configuration_.get<int>("requets", 0);
 		const bool clean_up = configuration_.get<bool>("cleanup", true);
 		const int stay_alive_time = configuration_.get<int>("stay_alive_time", 6000);
 
@@ -1407,32 +1406,8 @@ public:
 		return result;
 	}
 
-	bool drain_all_workers()
-	{
-		bool result = false;
+	virtual bool drain_all_workers() = 0;
 
-		for (auto& worker : workers_)
-		{
-			if (worker.second.get_base_url().empty() == false)
-			{
-				std::string ec;
-				auto response = http::client::request<http::method::delete_>(
-					worker.second.get_base_url() + "/internal/platform/worker/process", ec, {});
-
-				if (response.status() == http::status::no_content)
-				{
-					worker.second.set_status(worker::status::drain);
-				}
-
-				if (worker.second.get_status() == worker::status::drain)
-					if (worker.second.upstream().connections_busy_.load() == 0)
-						worker.second.set_status(worker::status::down);
-			}
-			result = true;
-		}
-
-		return result;
-	}
 
 	bool delete_worker(const std::string& id)
 	{
@@ -2035,7 +2010,7 @@ public:
 		{
 			auto& worker = worker_it->second;
 
-			if (worker_it->second.get_status() == worker::status::up)
+			if (worker_it->second.get_status() == worker::status::up && state() != workgroup::state::drain)
 			{
 				http::headers watchdog_headers{ { "Host", "localhost" } };
 
@@ -2113,6 +2088,21 @@ public:
 		}
 
 		return true;
+	}
+
+	bool drain_all_workers() override
+	{
+		bool result = false;
+
+		for (auto& worker : workers_)
+		{
+			if (worker.second.get_status() == worker::status::drain)
+				if (worker.second.upstream().connections_busy_.load() == 0)
+					worker.second.set_status(worker::status::down);
+			result = true;
+		}
+
+		return result;
 	}
 
 	void from_json(const json& j, const std::string&) override
@@ -2542,6 +2532,33 @@ public:
 		return is_group_changed;
 	};
 
+	bool drain_all_workers() override
+	{
+		bool result = false;
+
+		for (auto& worker : workers_)
+		{
+			if (worker.second.get_base_url().empty() == false)
+			{
+				std::string ec;
+				auto response = http::client::request<http::method::delete_>(
+					worker.second.get_base_url() + "/internal/platform/worker/process", ec, {});
+
+				if (response.status() == http::status::no_content)
+				{
+					worker.second.set_status(worker::status::drain);
+				}
+
+				if (worker.second.get_status() == worker::status::drain)
+					if (worker.second.upstream().connections_busy_.load() == 0)
+						worker.second.set_status(worker::status::down);
+			}
+			result = true;
+		}
+
+		return result;
+	}
+
 	void from_json(const json& j) override
 	{
 		std::unique_lock<mutex_type> g(workers_mutex_);
@@ -2758,6 +2775,12 @@ public:
 	}
 
 	virtual bool direct_workers(asio::io_context&, const std::string&, const std::string&, lgr::logger&, bool) override { return false; }
+
+	bool drain_all_workers() override
+	{
+		return false;
+	}
+
 
 	virtual bool create_worker_process(
 		const std::string&,
@@ -3696,7 +3719,7 @@ public:
 							if (gateway_url.empty() == false)
 							{
 								logger.api(
-									"/{s}: added to gateway on: {s}\n", workspace_ref.get_workspace_id(), gateway_url);
+									"/{s}: remove from gateway on: {s}\n", workspace_ref.get_workspace_id(), gateway_url);
 
 								std::string error;
 								json registrion_json = json::object();
@@ -5150,10 +5173,11 @@ public:
 						pub_sub_endpoint, error_code, {}, subscription_json.dump());
 
 					server_base::logger().api(
-						"subscribing to: {s}, in farm: {s} ended with: {d} and reply:\n{s}\n",
+						"subscribing to: {s}, in farm: {s} ended with: {d}, error_code: {s}, and reply:\n{s}\n",
 						pub_sub_endpoint,
 						pub_sub_farm,
 						http::status::to_int(response.status()),
+						error_code,
 						http::to_string(response));
 				}
 				catch (std::system_error& e)

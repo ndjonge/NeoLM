@@ -1476,8 +1476,7 @@ public:
 			{
 				case '.':
 					c = '_';
-				default:
-					c = c;
+					break;
 			}
 
 			return c;

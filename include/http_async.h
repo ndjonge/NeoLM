@@ -133,6 +133,7 @@ public:
 			, resolver_(io_context)
 			, socket_stream_(io_context)
 			, ssl_socket_stream_(io_context, owner.ssl_context())
+			, timeout_timer_(io_context)
 			, owner_(owner){};
 
 		~connection() { state_.store(state::down); }
@@ -202,6 +203,9 @@ public:
 
 		upstream_type& owner_;
 
+		asio::steady_timer timeout_timer_;
+
+
 	public:
 		asio::ip::tcp::socket& socket()
 		{
@@ -211,8 +215,13 @@ public:
 				return socket_stream_.next_layer();
 		}
 
+		asio::steady_timer& timeout_timer()
+		{
+			return timeout_timer_;
+		}
+
 		ssl_socket_stream& ssl_stream() { return ssl_socket_stream_; }
-		// socket_stream stream() { return socket_stream_; }
+		socket_stream stream() { return socket_stream_; }
 	};
 
 	void up(const std::string& base_url)
@@ -2104,6 +2113,27 @@ public:
 
 	async_session(async_session&& rhs) = default;
 
+	void stop() 
+	{
+		this->upstream_connection_.socket().cancel();
+	}
+
+	void connect_timeout(int timeout)
+	{
+		auto me = this->shared_from_this();
+		upstream_connection_.timeout_timer().expires_after(std::chrono::seconds{timeout});
+		upstream_connection_.timeout_timer().async_wait([me](asio::error_code const& ec) {
+			if (!ec)
+				me->stop();
+		});
+	}
+
+	void cancel_timeout()
+	{
+		upstream_connection_.timeout_timer().cancel();
+	}
+
+
 	void init_connection_to_upstream(http::request_message& request, asio::error_code& error_code)
 	{
 		asio::error_code error;
@@ -2135,6 +2165,7 @@ public:
 			}
 
 			auto me = this->shared_from_this();
+			me->connect_timeout(1);
 
 			upstream_connection_.resolver_.async_resolve(
 				asio::ip::tcp::v4(),
@@ -2158,20 +2189,24 @@ public:
 		if (error_code)
 		{
 			auto error_msg = error_code.message();
+			http::response_message response{};
+			on_complete_(response, error_code);
 			return;
 		}
 		else
 		{
 			auto me = shared_from_this();
 			asio::async_connect(
-				me->upstream_connection_.socket(), it, [me](asio::error_code error, asio::ip::tcp::resolver::iterator it) {
+				me->upstream_connection_.socket(), it, [me](asio::error_code error, asio::ip::tcp::resolver::iterator) {
 					// TODO try next resolve result?
 					if (error)
 					{
 						// failed
-						// std::cerr << error.message() << " when connecting to: " << me->upstream_connection_.owner().base_url() << "\n";
+						//std::cerr << error.message() << " when connecting to: " << me->upstream_connection_.owner().base_url() << "\n";
 						me->upstream_connection_.error();
 						me->upstream_connection_.owner().set_state(http::async::upstreams::upstream::state::drain);
+						http::response_message response{};
+						me->on_complete_(response, error);
 					}
 					else
 					{
@@ -2193,11 +2228,18 @@ public:
 				asio::ssl::stream_base::client, [me](const asio::error_code& error) {
 					if (error)
 					{
+						http::response_message response{};
+						auto error_1 = asio::error_code{error};
+						me->on_complete_(response, error_1);
+
 						// std::cerr << "client ssl:" << error.message() << "\n";
 						// me_2->write_request(error);
 					}
 					else
+					{
+						me->cancel_timeout();
 						me->write_request();
+					}
 				});
 		}
 		else
