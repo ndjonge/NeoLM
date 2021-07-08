@@ -6422,7 +6422,7 @@ public:
 			, client_socket_(std::move(client_socket))
 			, session_handler_(
 				  server.configuration_.get<std::string>("server", "server_no_id"),
-				  server.configuration_.get<int>("keepalive_count", 1024 * 8),
+				  server.configuration_.get<int>("keepalive_count", 8192),
 				  server.configuration_.get<int>("keepalive_max", 120),
 				  server.configuration_.get<int>("gzip_min_size", 1024),
 				  http::protocol::http) // for now.

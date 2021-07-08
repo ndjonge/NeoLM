@@ -132,7 +132,7 @@ public:
 			, is_https_(owner.scheme() == "https")
 			, resolver_(io_context)
 			, socket_stream_(io_context)
-			, ssl_socket_stream_(io_context, owner.ssl_context())
+			, ssl_socket_stream_(new ssl_socket_stream{io_context, owner.ssl_context()})
 			, owner_(owner){};
 
 		~connection() { state_.store(state::down); }
@@ -198,7 +198,7 @@ public:
 		std::atomic<connection::state> state_{ state::idle };
 
 		socket_stream socket_stream_;
-		ssl_socket_stream ssl_socket_stream_;
+		std::unique_ptr<ssl_socket_stream> ssl_socket_stream_;
 
 		upstream_type& owner_;
 
@@ -206,7 +206,7 @@ public:
 		asio::ip::tcp::socket& socket()
 		{
 			if (is_https_)
-				return ssl_socket_stream_.next_layer();
+				return ssl_socket_stream_->next_layer();
 			else
 				return socket_stream_.next_layer();
 		}
@@ -216,7 +216,13 @@ public:
 			return timeout_timer_;
 		}
 
-		ssl_socket_stream& ssl_stream() { return ssl_socket_stream_; }
+		void ssl_stream_reset() 
+		{ 
+			auto io_context = ssl_socket_stream_->get_executor();
+			ssl_socket_stream_.reset(new ssl_socket_stream{io_context, owner_.ssl_context()}); 
+		}
+
+		ssl_socket_stream& ssl_stream() { return *ssl_socket_stream_; }
 		socket_stream stream() { return socket_stream_; }
 	};
 
@@ -1062,8 +1068,9 @@ public:
 		void init_connection_to_upstream(http::async::upstreams::connection_type& upstream_connection)
 		{
 			asio::error_code error{};
+			bool is_open = upstream_connection.socket().is_open();
 
-			if (upstream_connection.socket().is_open())
+			if (is_open)
 			{
 				char peek_buffer[1];
 				upstream_connection.socket().non_blocking(true);
@@ -1071,20 +1078,14 @@ public:
 					asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
 
 				upstream_connection.socket().non_blocking(false);
-
-				if (error)
-					std::cerr << error.message() << "\n";
-
 			}
 
-			if (error != asio::error::would_block)
+			if (is_open == false || error != asio::error::would_block)
 			{
 				asio::error_code error_1;
+
 				if (upstream_connection.socket().is_open())
 				{
-					if (error)
-						std::cerr << "reopening:"<< error.message() << "\n";
-
 					if (upstream_connection.is_https())
 					{
 						upstream_connection.ssl_stream().shutdown(error_1);
@@ -1094,14 +1095,15 @@ public:
 					{
 						upstream_connection.socket().shutdown(asio::socket_base::shutdown_send, error_1);
 						upstream_connection.socket().close(error_1);
-					}
-					
-
-					++upstream_connection.owner().connections_reopened_;
+					}					
 				}
 
-				auto me = this->shared_from_this();
+				if (upstream_connection.is_https())
+					upstream_connection.ssl_stream_reset();
 
+				++upstream_connection.owner().connections_reopened_;
+
+				auto me = this->shared_from_this();
 
 				upstream_connection.resolver_.async_resolve(
 					asio::ip::tcp::v4(),
@@ -1421,6 +1423,7 @@ public:
 			if (session_handler_.response().connection_close() == true)
 			{
 				upstream_connection.release();
+				upstream_connection.socket().close();
 			}
 			else
 			{
@@ -1678,10 +1681,16 @@ public:
 				{
 					// some clients terminate the ssl conneciton without shutdown.
 					// ignore and let connection_handler go out of scope to terminate connection.
+				}	
+				else if (ec.value() == 336151574) 
+				{
+					// ignore warning about certificate unknown.
+					me->set_timeout();
+					me->read_request_headers();
 				}
 				else if (ec)
 				{
-					me->server_.logger().error("{s} when during asyc_handshake\n", ec.message());
+					me->server_.logger().error("{s} during asyc_handshake\n", ec.message());
 				}
 				else
 				{
@@ -2175,7 +2184,9 @@ public:
 
 		write_buffer_ = http::to_string(request);
 
-		if (upstream_connection_.socket().is_open() == true)
+		bool is_open = upstream_connection_.socket().is_open();
+
+		if (is_open)
 		{
 			char peek_buffer[1];
 			upstream_connection_.socket().non_blocking(true);
@@ -2185,19 +2196,29 @@ public:
 			upstream_connection_.socket().non_blocking(false);
 		}
 
-		// connection was not open yet or closed! reopen now.
-		if (error != asio::error::would_block)
+		if (is_open == false || error != asio::error::would_block)
 		{
 
 			asio::error_code error_1;
 
 			if (upstream_connection_.socket().is_open())
 			{
-				upstream_connection_.socket().shutdown(asio::socket_base::shutdown_send, error_1);
-				upstream_connection_.socket().close(error_1);
-
-				++upstream_connection_.owner().connections_reopened_;
+				if (upstream_connection_.is_https())
+				{
+					upstream_connection_.ssl_stream().shutdown(error_1);
+					upstream_connection_.ssl_stream().lowest_layer().close(error_1);
+				}
+				else
+				{
+					upstream_connection_.socket().shutdown(asio::socket_base::shutdown_send, error_1);
+					upstream_connection_.socket().close(error_1);
+				}					
 			}
+
+			if (upstream_connection_.is_https())
+				upstream_connection_.ssl_stream_reset();
+
+			++upstream_connection_.owner().connections_reopened_;
 
 			auto me = this->shared_from_this();
 			//me->connect_timeout(4);

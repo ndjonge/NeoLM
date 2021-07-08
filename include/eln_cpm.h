@@ -791,7 +791,7 @@ public:
 				= server_.config().template get<std::string>("http_this_server_base_url", "http://localhost:8080");
 		}
 
-		std::string launch_cmd = eln_cpm + " -options http_listen_port_begin:0,https_listen_port_begin:0,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key -selftests -selftests_options tests_as:eln_cpm,workspaces:4,workgroups:1,runs:1,workers_min:2,stay_alive_time:20,request:0,runs:1,cleanup:true,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key,eln_cpg:" + gateway_url;
+		std::string launch_cmd = eln_cpm + " -options http_listen_port_begin:0,https_listen_port_begin:0,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key -selftests -selftests_options tests_as:eln_cpm,workspaces:1,workgroups:1,runs:4,workers_min:2,stay_alive_time:30,request:0,runs:2,cleanup:true,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key,eln_cpg:" + gateway_url;
 
 		auto exit_code = bse_utils::create_bse_process_as_user("", "", "tenant_id", "", "", launch_cmd, pid, ec, false);
 
@@ -2012,40 +2012,40 @@ public:
 
 			if (worker_it->second.get_status() == worker::status::up)
 			{
-				//http::headers watchdog_headers{ { "Host", "localhost" } };
+				http::headers watchdog_headers{ { "Host", "localhost" } };
 
-				//http::client::async_request<http::method::get>(
-				//	upstreams_,
-				//	worker_it->second.get_base_url(),
-				//	"/internal/platform/manager/healthcheck",
-				//	watchdog_headers,
-				//	std::string{},
-				//	[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
-				//		if (!error_code
-				//			&& (response.status() == http::status::ok || response.status() == http::status::no_content)
-				//			&& worker.get_status() != worker::status::up)
-				//		{
-				//			worker.set_status(worker::status::up);
-				//		}
-				//		else if (
-				//			error_code
-				//			|| (response.status() != http::status::ok && response.status() != http::status::no_content))
-				//		{
-				//			worker.set_status(worker::status::drain);
+				http::client::async_request<http::method::get>(
+					upstreams_,
+					worker_it->second.get_base_url(),
+					"/internal/platform/manager/healthcheck",
+					watchdog_headers,
+					std::string{},
+					[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
+						if (!error_code
+							&& (response.status() == http::status::ok || response.status() == http::status::no_content)
+							&& worker.get_status() != worker::status::up)
+						{
+							worker.set_status(worker::status::up);
+						}
+						else if (
+							error_code
+							|| (response.status() != http::status::ok && response.status() != http::status::no_content))
+						{
+							worker.set_status(worker::status::drain);
 
-				//			if (worker.upstream().get_state() != http::async::upstreams::upstream::state::drain
-				//				&& error_code == asio::error::connection_refused)
-				//			{
-				//				logger.api(
-				//					"/{s}/{s}: failed health check for worker {s}\n",
-				//					workspace_id_,
-				//					name_,
-				//					worker.get_base_url());
-				//			}
-				//		}
+							if (worker.upstream().get_state() != http::async::upstreams::upstream::state::drain
+								&& error_code == asio::error::connection_refused)
+							{
+								logger.api(
+									"/{s}/{s}: failed health check for worker {s}\n",
+									workspace_id_,
+									name_,
+									worker.get_base_url());
+							}
+						}
 
-				//		return;
-				//	});
+						return;
+					});
 			}
 			worker_it++;
 		}
@@ -2087,7 +2087,7 @@ public:
 				limits_.workers_actual());
 		}
 
-		return true;
+		return is_group_changed;
 	}
 
 	bool drain_all_workers() override
@@ -2096,6 +2096,8 @@ public:
 
 		for (auto& worker : workers_)
 		{
+			worker.second.set_status(worker::status::drain);
+
 			if (worker.second.get_status() == worker::status::drain)
 				if (worker.second.upstream().connections_busy_.load() == 0)
 					worker.second.set_status(worker::status::down);
@@ -2390,7 +2392,6 @@ public:
 				http::headers watchdog_headers{ { "Host", "localhost" },
 												{ "X-Infor-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" } };
 
-				if (0)
 				http::client::async_request<http::method::post>(
 					upstreams_,
 					worker_it->second.get_base_url(),
@@ -2712,9 +2713,9 @@ public:
 		if (http_options_.find("http_watchdog_idle_timeout") == std::string::npos)
 		{
 			if (http_options_.empty())
-				http_options_ = "http_watchdog_idle_timeout:120";
+				http_options_ = "http_watchdog_idle_timeout:15";
 			else
-				http_options_ += ",http_watchdog_idle_timeout:120";
+				http_options_ += ",http_watchdog_idle_timeout:15";
 		}
 		if (!http_options_.empty())
 			parameters << "," << http_options_ << " ";
