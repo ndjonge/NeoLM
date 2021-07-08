@@ -6049,7 +6049,7 @@ public:
 		, https_listen_port_end_(configuration.get<int>("https_listen_port_end", https_listen_port_begin_))
 		, https_listen_port_(network::tcp::socket::invalid_socket)
 		, endpoint_https_(configuration.get<std::string>("https_listen_address", "::0"), https_listen_port_begin_)
-		, connection_timeout_(configuration.get<int>("keepalive_timeout", 5))
+		, connection_timeout_(configuration.get<int>("keepalive_timeout", 120))
 	{
 		logger_.debug("server created\n");
 	}

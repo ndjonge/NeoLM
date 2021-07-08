@@ -133,7 +133,6 @@ public:
 			, resolver_(io_context)
 			, socket_stream_(io_context)
 			, ssl_socket_stream_(io_context, owner.ssl_context())
-			, timeout_timer_(io_context)
 			, owner_(owner){};
 
 		~connection() { state_.store(state::down); }
@@ -202,9 +201,6 @@ public:
 		ssl_socket_stream ssl_socket_stream_;
 
 		upstream_type& owner_;
-
-		asio::steady_timer timeout_timer_;
-
 
 	public:
 		asio::ip::tcp::socket& socket()
@@ -1065,7 +1061,7 @@ public:
 
 		void init_connection_to_upstream(http::async::upstreams::connection_type& upstream_connection)
 		{
-			asio::error_code error;
+			asio::error_code error{};
 
 			if (upstream_connection.socket().is_open())
 			{
@@ -1073,7 +1069,12 @@ public:
 				upstream_connection.socket().non_blocking(true);
 				upstream_connection.socket().receive(
 					asio::buffer(peek_buffer), asio::ip::tcp::socket::message_peek, error);
+
 				upstream_connection.socket().non_blocking(false);
+
+				if (error)
+					std::cerr << error.message() << "\n";
+
 			}
 
 			if (error != asio::error::would_block)
@@ -1081,40 +1082,39 @@ public:
 				asio::error_code error_1;
 				if (upstream_connection.socket().is_open())
 				{
-					upstream_connection.socket().shutdown(asio::socket_base::shutdown_send, error_1);
-					upstream_connection.socket().close(error_1);
+					if (error)
+						std::cerr << "reopening:"<< error.message() << "\n";
+
+					if (upstream_connection.is_https())
+					{
+						upstream_connection.ssl_stream().shutdown(error_1);
+						upstream_connection.ssl_stream().lowest_layer().close(error_1);
+					}
+					else
+					{
+						upstream_connection.socket().shutdown(asio::socket_base::shutdown_send, error_1);
+						upstream_connection.socket().close(error_1);
+					}
+					
 
 					++upstream_connection.owner().connections_reopened_;
 				}
 
 				auto me = this->shared_from_this();
 
+
 				upstream_connection.resolver_.async_resolve(
 					asio::ip::tcp::v4(),
 					upstream_connection.host_,
 					upstream_connection.port_,
 					[me, &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
-						if (error_code) return;
+						if (error_code)
+							std::cerr << error_code.message() << "\n";
 
-						auto me_1 = me->shared_from_this();
+						if (error_code) 
+							me->read_upstream_response_body_complete(upstream_connection, error_code);
 
-						asio::async_connect(
-							upstream_connection.socket(),
-							it,
-							[me_1,
-							 &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
-								if (error_code)
-								{
-									// failed
-									upstream_connection.error();
-									upstream_connection.owner().set_state(
-										http::async::upstreams::upstream::state::drain);
-								}
-								else
-								{
-									me_1->write_upstream_request(upstream_connection);
-								}
-							});
+						me->init_connection_to_upstream_resolved(upstream_connection, error_code, it);
 					});
 			}
 			else
@@ -1123,6 +1123,62 @@ public:
 				write_upstream_request(upstream_connection);
 			}
 		}
+
+		void init_connection_to_upstream_resolved(http::async::upstreams::connection_type& upstream_connection, asio::error_code error_code, asio::ip::tcp::resolver::iterator it) 
+		{
+			if (error_code)
+			{
+				return;
+			}
+			else
+			{
+				auto me = shared_from_this();
+				asio::async_connect(
+					upstream_connection.socket(), it, [me, &upstream_connection](asio::error_code error, asio::ip::tcp::resolver::iterator) {
+						// TODO try next resolve result?
+						if (error)
+						{
+							// failed
+							//std::cerr << error.message() << " when connecting to: " << me->upstream_connection_.owner().base_url() << "\n";
+							upstream_connection.error();
+							upstream_connection.owner().set_state(http::async::upstreams::upstream::state::drain);
+							me->read_upstream_response_body_complete(upstream_connection, error);
+						}
+						else
+						{
+							me->init_connection_to_upstream_connected(upstream_connection);
+						}
+					});
+			}
+		}
+
+		void init_connection_to_upstream_connected(http::async::upstreams::connection_type& upstream_connection)
+		{
+			auto me = shared_from_this();
+
+			if (upstream_connection.is_https() == true)
+			{
+				upstream_connection.ssl_stream().async_handshake(
+					asio::ssl::stream_base::client, [me, &upstream_connection](const asio::error_code& error) {
+						if (error)
+						{
+							// std::cerr << "client ssl:" << error.message() << "\n";
+							// me_2->write_request(error);
+							me->read_upstream_response_body_complete(upstream_connection, error);
+
+						}
+						else
+						{
+							me->write_upstream_request(upstream_connection);
+						}
+					});
+			}
+			else
+			{
+				me->write_upstream_request(upstream_connection);
+			}
+		}
+
 
 		void write_upstream_request(http::async::upstreams::connection_type& upstream_connection)
 		{
@@ -1155,11 +1211,13 @@ public:
 					asio::buffer(write_buffer_.front()),
 					[me, &upstream_connection](asio::error_code const& ec, std::size_t) {
 						me->write_buffer_.pop_front();
-
 						if (!ec)
 							me->read_upstream_response_headers(upstream_connection);
 						else
+						{
+							std::cerr << "ec:" << ec.message() << "\n";
 							me->read_upstream_response_body_complete(upstream_connection, ec);
+						}
 					});
 			}
 		}
@@ -1180,7 +1238,10 @@ public:
 						if (!ec)
 							me->read_upstream_response_headers_complete(upstream_connection, bytes_red);
 						else
+						{
 							me->read_upstream_response_body_complete(upstream_connection, ec);
+							std::cerr << "ec:" << ec.message() << "\n";	
+						}
 					});
 			}
 			else
@@ -1359,35 +1420,7 @@ public:
 
 			if (session_handler_.response().connection_close() == true)
 			{
-				asio::ip::tcp::resolver resolver(upstream_connection.socket().get_executor());
-
-				auto me = this->shared_from_this();
-
-				upstream_connection.resolver_.async_resolve(
-					asio::ip::tcp::v4(),
-					upstream_connection.host_,
-					upstream_connection.port_,
-					[me, &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
-						if (error_code) return;
-
-						auto me_1 = me->shared_from_this();
-
-						asio::async_connect(
-							upstream_connection.socket(),
-							it,
-							[me_1,
-							 &upstream_connection](asio::error_code error_code, asio::ip::tcp::resolver::iterator it) {
-								if (error_code)
-								{
-									// failed
-									upstream_connection.error();
-								}
-								else
-								{
-									upstream_connection.release();
-								}
-							});
-					});
+				upstream_connection.release();
 			}
 			else
 			{
@@ -2115,24 +2148,26 @@ public:
 
 	void stop() 
 	{
-		this->upstream_connection_.socket().cancel();
+		asio::error_code ec;
+		this->upstream_connection_.socket().cancel(ec);
+		this->upstream_connection_.socket().close(ec);
 	}
 
-	void connect_timeout(int timeout)
-	{
-		auto me = this->shared_from_this();
-		upstream_connection_.timeout_timer().expires_after(std::chrono::seconds{timeout});
-		upstream_connection_.timeout_timer().async_wait([me](asio::error_code const& ec) {
-			if (!ec)
-				me->stop();
-		});
-	}
+	//void connect_timeout(int timeout)
+	//{
+	//	auto me = this->shared_from_this();
+	//	upstream_connection_.timeout_timer().expires_after(std::chrono::seconds{timeout});
+	//	upstream_connection_.timeout_timer().async_wait([me](asio::error_code const& ec) {
+	//		if (!ec)
+	//			me->stop();
+	//	});
+	//}
 
-	void cancel_timeout()
-	{
-		upstream_connection_.timeout_timer().cancel();
-	}
-
+	//void cancel_timeout()
+	//{
+	//	asio::error_code ec;
+	//	upstream_connection_.timeout_timer().cancel(ec);
+	//}
 
 	void init_connection_to_upstream(http::request_message& request, asio::error_code& error_code)
 	{
@@ -2165,7 +2200,7 @@ public:
 			}
 
 			auto me = this->shared_from_this();
-			me->connect_timeout(1);
+			//me->connect_timeout(4);
 
 			upstream_connection_.resolver_.async_resolve(
 				asio::ip::tcp::v4(),
@@ -2237,7 +2272,6 @@ public:
 					}
 					else
 					{
-						me->cancel_timeout();
 						me->write_request();
 					}
 				});

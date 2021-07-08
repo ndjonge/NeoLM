@@ -1088,6 +1088,7 @@ enum shutdown_type
 
 inline void shutdown(network::ssl::stream<network::tcp::socket>& client_socket, shutdown_type how)
 {
+	SSL_shutdown(client_socket.native());
 	::shutdown(client_socket.lowest_layer().lowest_layer(), static_cast<int>(how));
 }
 

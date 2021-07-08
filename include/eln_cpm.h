@@ -659,7 +659,7 @@ public:
 			}
 			else
 			{
-				server_base::logger_.info("idle \n {s} \n", server_base::manager().to_string());
+				//server_base::logger_.info("idle \n {s} \n", server_base::manager().to_string());
 			}
 		});
 	}
@@ -2010,42 +2010,42 @@ public:
 		{
 			auto& worker = worker_it->second;
 
-			if (worker_it->second.get_status() == worker::status::up && state() != workgroup::state::drain)
+			if (worker_it->second.get_status() == worker::status::up)
 			{
-				http::headers watchdog_headers{ { "Host", "localhost" } };
+				//http::headers watchdog_headers{ { "Host", "localhost" } };
 
-				http::client::async_request<http::method::get>(
-					upstreams_,
-					worker_it->second.get_base_url(),
-					"/internal/platform/manager/healthcheck",
-					watchdog_headers,
-					std::string{},
-					[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
-						if (!error_code
-							&& (response.status() == http::status::ok || response.status() == http::status::no_content)
-							&& worker.get_status() != worker::status::up)
-						{
-							worker.set_status(worker::status::up);
-						}
-						else if (
-							error_code
-							|| (response.status() != http::status::ok && response.status() != http::status::no_content))
-						{
-							worker.set_status(worker::status::drain);
+				//http::client::async_request<http::method::get>(
+				//	upstreams_,
+				//	worker_it->second.get_base_url(),
+				//	"/internal/platform/manager/healthcheck",
+				//	watchdog_headers,
+				//	std::string{},
+				//	[this, &worker, &logger](http::response_message& response, asio::error_code& error_code) {
+				//		if (!error_code
+				//			&& (response.status() == http::status::ok || response.status() == http::status::no_content)
+				//			&& worker.get_status() != worker::status::up)
+				//		{
+				//			worker.set_status(worker::status::up);
+				//		}
+				//		else if (
+				//			error_code
+				//			|| (response.status() != http::status::ok && response.status() != http::status::no_content))
+				//		{
+				//			worker.set_status(worker::status::drain);
 
-							if (worker.upstream().get_state() != http::async::upstreams::upstream::state::drain
-								&& error_code == asio::error::connection_refused)
-							{
-								logger.api(
-									"/{s}/{s}: failed health check for worker {s}\n",
-									workspace_id_,
-									name_,
-									worker.get_base_url());
-							}
-						}
+				//			if (worker.upstream().get_state() != http::async::upstreams::upstream::state::drain
+				//				&& error_code == asio::error::connection_refused)
+				//			{
+				//				logger.api(
+				//					"/{s}/{s}: failed health check for worker {s}\n",
+				//					workspace_id_,
+				//					name_,
+				//					worker.get_base_url());
+				//			}
+				//		}
 
-						return;
-					});
+				//		return;
+				//	});
 			}
 			worker_it++;
 		}
@@ -2390,6 +2390,7 @@ public:
 				http::headers watchdog_headers{ { "Host", "localhost" },
 												{ "X-Infor-Feed-Watchdog", workers_feed_watchdog ? "true" : "false" } };
 
+				if (0)
 				http::client::async_request<http::method::post>(
 					upstreams_,
 					worker_it->second.get_base_url(),
@@ -2711,9 +2712,9 @@ public:
 		if (http_options_.find("http_watchdog_idle_timeout") == std::string::npos)
 		{
 			if (http_options_.empty())
-				http_options_ = "http_watchdog_idle_timeout:15";
+				http_options_ = "http_watchdog_idle_timeout:120";
 			else
-				http_options_ += ",http_watchdog_idle_timeout:15";
+				http_options_ += ",http_watchdog_idle_timeout:120";
 		}
 		if (!http_options_.empty())
 			parameters << "," << http_options_ << " ";
@@ -5265,9 +5266,12 @@ private:
 
 					workspaces_.is_changed(false);
 				}
+				std::this_thread::sleep_for(std::chrono::seconds(1));
 			}
-
-			std::this_thread::sleep_for(std::chrono::seconds(1));
+			else
+			{
+				std::this_thread::sleep_for(std::chrono::seconds(1));			
+			}
 		}
 	}
 
