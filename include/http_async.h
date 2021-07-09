@@ -211,11 +211,6 @@ public:
 				return socket_stream_.next_layer();
 		}
 
-		asio::steady_timer& timeout_timer()
-		{
-			return timeout_timer_;
-		}
-
 		void ssl_stream_reset() 
 		{ 
 			auto io_context = ssl_socket_stream_->get_executor();

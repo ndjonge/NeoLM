@@ -44,7 +44,9 @@
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow"
+#ifndef __clang__
 #pragma GCC diagnostic ignored "-Wlogical-op"
+#endif
 #endif
 
 #include "http_async.h"
