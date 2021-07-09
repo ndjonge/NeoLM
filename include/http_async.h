@@ -1684,7 +1684,7 @@ public:
 				}	
 				else if (ec.value() == 336151574) 
 				{
-					// ignore warning about certificate unknown.
+					// ignore warning about certificate unknown (336151574).
 					me->set_timeout();
 					me->read_request_headers();
 				}
