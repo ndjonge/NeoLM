@@ -791,7 +791,7 @@ public:
 				= server_.config().template get<std::string>("http_this_server_base_url", "http://localhost:8080");
 		}
 
-		std::string launch_cmd = eln_cpm + " -options http_listen_port_begin:0,https_listen_port_begin:0,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key -selftests -selftests_options tests_as:eln_cpm,workspaces:1,workgroups:1,runs:4,workers_min:2,stay_alive_time:30,request:0,runs:2,cleanup:true,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key,eln_cpg:" + gateway_url;
+		std::string launch_cmd = eln_cpm + " -options http_listen_port_begin:0,https_listen_port_begin:0,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key -selftests -selftests_options tests_as:eln_cpm,workspaces:2,workgroups:1,runs:4,workers_min:1,stay_alive_time:60,request:0,runs:4,cleanup:true,https_enabled:true,https_certificate:../../../config/server.crt,https_certificate_key:../../../config/server.key,eln_cpg:" + gateway_url;
 
 		auto exit_code = bse_utils::create_bse_process_as_user("", "", "tenant_id", "", "", launch_cmd, pid, ec, false);
 
@@ -804,24 +804,12 @@ public:
 	bool run()
 	{
 		const int nodes = configuration_.get<int>("eln_cpg_nodes", 1);
-		const int run_count = configuration_.get<int>("runs", -1);
-		const bool clean_up = configuration_.get<bool>("cleanup", true);
 		const int stay_alive_time = configuration_.get<int>("stay_alive_time", 6000);
 
-		if (run_count == 0)
-			std::this_thread::sleep_for(std::chrono::seconds(stay_alive_time));
+		for (int j = 0; j < nodes; j++)
+			add_nodes();
 
-		for (int n = 0; n != run_count; n++)
-		{
-			for (int j = 0; j < nodes; j++)
-				add_nodes();
-
-			if (n + 1 == run_count && clean_up == false) break;
-
-			std::this_thread::sleep_for(std::chrono::seconds(stay_alive_time));
-
-			std::this_thread::sleep_for(std::chrono::seconds(10));
-		}
+		std::this_thread::sleep_for(std::chrono::seconds(stay_alive_time));
 
 		return true;
 	}
@@ -3709,12 +3697,6 @@ public:
 								teardown,
 								exit_code);
 
-							if (exit_code == 0)
-								workspace_ref.state(workspace::state::down);
-							else
-							{
-								workspace_ref.state(workspace::state::down); // TODO...?
-							}
 
 							auto gateway_url = workspace_ref.gateway_url();
 
@@ -3749,6 +3731,13 @@ public:
 										workspace_ref.get_workspace_id(),
 										gateway_url);
 								}
+							}
+
+							if (exit_code == 0)
+								workspace_ref.state(workspace::state::down);
+							else
+							{
+								workspace_ref.state(workspace::state::down); // TODO...?
 							}
 						} }.detach();
 					}
@@ -5323,7 +5312,17 @@ inline bool start_eln_cpm_server(
 
 	if (run_selftests)
 	{
+		std::string type;
+
+		if (selftest_options.find("eln_cpg") != std::string::npos)
+			type = "eln_cpm";
+		else
+			type = "eln_cpg";
+
 		config_file = "selftest-" + std::to_string(getpid()) + ".json";
+		http_configuration.set("access_log_level", "api");
+		http_configuration.set("access_log_file", "acccess_log" + std::to_string(getpid()) + type + ".txt");
+
 	}
 
 	cloud::platform::eln_cpm_server_ = std::unique_ptr<cloud::platform::manager<http::async::server>>(

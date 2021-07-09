@@ -1134,7 +1134,7 @@ public:
 			}
 			else
 			{
-				auto me = shared_from_this();
+				auto me = this->shared_from_this();
 				asio::async_connect(
 					upstream_connection.socket(), it, [me, &upstream_connection](asio::error_code error, asio::ip::tcp::resolver::iterator) {
 						// TODO try next resolve result?
@@ -1156,7 +1156,7 @@ public:
 
 		void init_connection_to_upstream_connected(http::async::upstreams::connection_type& upstream_connection)
 		{
-			auto me = shared_from_this();
+			auto me = this->shared_from_this();
 
 			if (upstream_connection.is_https() == true)
 			{
